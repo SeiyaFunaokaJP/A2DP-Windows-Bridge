@@ -1,0 +1,14 @@
+{% assign current_lang = page.lang | default: "en" %}
+<div class="lang-switcher">
+  {% if current_lang == "ja" %}
+    {% assign switch_url = page.url | replace_first: "/ja/", "/" | replace_first: "/ja", "/" %}
+    <a href="{{ site.baseurl }}{{ switch_url }}">English</a>
+  {% else %}
+    {% if page.url == "/" %}
+      {% assign switch_url = "/ja/" %}
+    {% else %}
+      {% assign switch_url = "/ja" | append: page.url %}
+    {% endif %}
+    <a href="{{ site.baseurl }}{{ switch_url }}">日本語</a>
+  {% endif %}
+</div>

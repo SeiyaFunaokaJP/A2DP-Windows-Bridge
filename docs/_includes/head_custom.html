@@ -1,0 +1,23 @@
+{% if page.lang == "ja" %}
+<script>document.documentElement.lang = 'ja';</script>
+{% endif %}
+<style>
+.lang-switcher {
+  padding: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border-color, #eeebee);
+}
+.lang-switcher a {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--link-color, #7253ed);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  text-decoration: none;
+  transition: background-color 0.15s, color 0.15s;
+}
+.lang-switcher a:hover {
+  background-color: var(--link-color, #7253ed);
+  color: #fff;
+}
+</style>

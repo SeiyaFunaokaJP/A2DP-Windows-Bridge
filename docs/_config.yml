@@ -18,6 +18,16 @@ footer_content: >-
 plugins:
   - jekyll-remote-theme
 
+defaults:
+  - scope:
+      path: ""
+    values:
+      lang: en
+  - scope:
+      path: "ja"
+    values:
+      lang: ja
+
 exclude:
   - Gemfile
   - Gemfile.lock
