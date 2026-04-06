@@ -3,6 +3,8 @@
 Bluetooth A2DP audio streaming for Windows with full codec support.
 Streams system audio via LDAC, aptX HD, aptX Low Latency, AAC, or SBC using a USB Bluetooth adapter in WinUSB mode — no kernel driver or test signing required.
 
+**[Download](https://github.com/SeiyaFunaokaJP/A2DPWB/releases/latest)** | **[Documentation](https://seiyafunaokajp.github.io/A2DPWB/)**
+
 ## Supported Codecs
 
 | Codec | Bitrate | Sample Rate | Bit Depth | Latency |
