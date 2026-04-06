@@ -1,0 +1,17 @@
+@echo off
+REM ============================================================
+REM Build script for A2DPWB
+REM
+REM Usage:
+REM   1. Copy this file to build.bat
+REM   2. Edit the CMake path below to match your environment
+REM   3. Run build.bat
+REM
+REM CMake path examples:
+REM     "C:\Program Files\CMake\bin\cmake.exe"
+REM ============================================================
+
+set CMAKE_EXE="C:\Program Files\CMake\bin\cmake.exe"
+
+%CMAKE_EXE% --build build --target A2DPWB --config Release
+pause

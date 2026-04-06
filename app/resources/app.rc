@@ -1,0 +1,11 @@
+#include "resource.h"
+#include <winuser.h>
+
+/* DPI awareness manifest */
+1 RT_MANIFEST "app.manifest"
+
+/* Numeric ID for Win32 API (LoadIcon with MAKEINTRESOURCE) */
+IDI_APP_ICON ICON "app.ico"
+
+/* String name for wxWidgets (wxIcon("APP_ICON", wxBITMAP_TYPE_ICO_RESOURCE)) */
+APP_ICON ICON "app.ico"

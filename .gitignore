@@ -1,0 +1,78 @@
+# Build output
+build/
+out/
+x64/
+Debug/
+Release/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# IDE / Editor
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+# Compiled objects
+*.obj
+*.o
+*.lib
+*.a
+*.dll
+*.sys
+*.exe
+*.pdb
+*.exp
+*.ilk
+
+# Driver build
+*.cer
+*.cat
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# Temporary files
+.temp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# Firmware binaries (downloaded at runtime)
+*.fw
+*.bin
+
+# Package / distribution
+*.zip
+*.7z
+*.msi
+*.nupkg
+
+# User-specific build script (copy from build.bat.example)
+build.bat
+
+# AI
+.claude/
+CLAUDE.md
+AGENTS.md
+.cursor/
+.cursorrules
+.cursorignore
+.windsurf/
+.windsurfrules
+.aider*
+.codeium/
+.continue/
+.copilot/

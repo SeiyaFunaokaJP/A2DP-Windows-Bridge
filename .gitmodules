@@ -1,0 +1,15 @@
+[submodule "extern/libldac"]
+	path = extern/libldac
+	url = https://android.googlesource.com/platform/external/libldac
+[submodule "extern/libopenaptx"]
+	path = extern/libopenaptx
+	url = https://github.com/pali/libopenaptx.git
+[submodule "extern/btstack"]
+	path = extern/btstack
+	url = https://github.com/bluekitchen/btstack.git
+[submodule "extern/fdk-aac"]
+	path = extern/fdk-aac
+	url = https://github.com/mstorsjo/fdk-aac.git
+[submodule "extern/json"]
+	path = extern/json
+	url = https://github.com/nlohmann/json.git

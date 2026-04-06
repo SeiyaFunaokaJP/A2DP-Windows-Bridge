@@ -1,0 +1,23 @@
+title: A2DPWB
+description: Bluetooth A2DP audio streaming for Windows
+remote_theme: just-the-docs/just-the-docs
+
+url: https://seiyafunaokajp.github.io
+baseurl: /A2DPWB
+
+aux_links:
+  GitHub: https://github.com/SeiyaFunaokaJP/A2DPWB
+
+color_scheme: dark
+
+nav_sort: case_insensitive
+
+footer_content: >-
+  A2DPWB is licensed under the <a href="https://github.com/SeiyaFunaokaJP/A2DPWB/blob/main/LICENSE">MIT License</a>.
+
+plugins:
+  - jekyll-remote-theme
+
+exclude:
+  - Gemfile
+  - Gemfile.lock

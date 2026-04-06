@@ -1,0 +1,10 @@
+// Auto-generated from app/lang/*.json — do not edit
+#pragma once
+#include <string>
+#include <unordered_map>
+
+inline const std::unordered_map<std::string, std::string>& get_embedded_languages() {
+    static const std::unordered_map<std::string, std::string> langs = {
+@EMBEDDED_LANG_ENTRIES@    };
+    return langs;
+}
