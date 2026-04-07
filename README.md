@@ -147,6 +147,8 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -u "\\?\usb#..."
 A2DPWB.exe --cli -l
 ```
 
+> **Note**: Both capture modes (system loopback and virtual device) use WASAPI shared mode. The capture sample rate depends on the device's format configured in Windows Sound settings (typically 48 kHz). To use LDAC at 96 kHz, change the device format to 96 kHz in Sound settings > Advanced.
+
 ## Features
 
 - **Multi-codec support**: LDAC, aptX HD, aptX Low Latency, AAC, SBC with automatic negotiation

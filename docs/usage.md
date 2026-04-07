@@ -81,6 +81,18 @@ A2DPWB.exe --cli -l
 {: .note }
 Device listing uses the Windows Bluetooth API via your **built-in** Bluetooth adapter, not the WinUSB adapter.
 
+## Capture Modes
+
+A2DPWB supports two audio capture modes:
+
+| Mode | Description |
+|:-----|:------------|
+| System Loopback | Captures all system audio from the default output device |
+| Virtual Device | Captures from a specific virtual audio device (e.g., VB-CABLE) for per-app routing |
+
+{: .warning }
+Both modes use WASAPI shared mode, so the capture sample rate is determined by the device's **Default Format** in Windows Sound settings (typically 48 kHz). To use LDAC at 96 kHz, change the output device's format to 96 kHz in **Sound settings > Device properties > Advanced > Default format**.
+
 ## Codec Comparison
 
 | Codec | Best For | Trade-off |
