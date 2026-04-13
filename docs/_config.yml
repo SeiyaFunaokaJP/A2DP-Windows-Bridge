@@ -1,19 +1,19 @@
-title: A2DPWB
+title: A2DP Windows Bridge
 description: Bluetooth A2DP audio streaming for Windows
 remote_theme: just-the-docs/just-the-docs
 
 url: https://seiyafunaokajp.github.io
-baseurl: /A2DPWB
+baseurl: /A2DP-Windows-Bridge
 
 aux_links:
-  GitHub: https://github.com/SeiyaFunaokaJP/A2DPWB
+  GitHub: https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge
 
 color_scheme: dark
 
 nav_sort: case_insensitive
 
 footer_content: >-
-  A2DPWB is licensed under the <a href="https://github.com/SeiyaFunaokaJP/A2DPWB/blob/main/LICENSE">MIT License</a>.
+  A2DP Windows Bridge (A2DPWB) is licensed under the <a href="https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/LICENSE">MIT License</a>.
 
 plugins:
   - jekyll-remote-theme

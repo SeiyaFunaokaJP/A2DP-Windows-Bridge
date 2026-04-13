@@ -4,7 +4,7 @@ layout: default
 nav_order: 1
 ---
 
-# A2DPWB (A2DP Windows Bridge)
+# A2DP Windows Bridge (A2DPWB)
 
 Bluetooth A2DP audio streaming for Windows with full codec support.
 {: .fs-6 .fw-300 }
@@ -12,7 +12,7 @@ Bluetooth A2DP audio streaming for Windows with full codec support.
 Streams system audio via **LDAC, aptX HD, aptX Low Latency, AAC, SBC** using a USB Bluetooth adapter in WinUSB mode -- no kernel driver or test signing required.
 
 [Get Started](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[GitHub](https://github.com/SeiyaFunaokaJP/A2DPWB){: .btn .fs-5 .mb-4 .mb-md-0 }
+[GitHub](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 

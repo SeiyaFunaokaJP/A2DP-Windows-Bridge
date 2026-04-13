@@ -17,7 +17,7 @@ nav_order: 6
 
 ## Project License
 
-A2DPWB is licensed under the **MIT License**. See [LICENSE](https://github.com/SeiyaFunaokaJP/A2DPWB/blob/main/LICENSE).
+A2DP Windows Bridge (A2DPWB) is licensed under the **MIT License**. See [LICENSE](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/LICENSE).
 
 ## Third-Party Libraries
 
@@ -30,7 +30,7 @@ A2DPWB is licensed under the **MIT License**. See [LICENSE](https://github.com/S
 | [wxWidgets](https://www.wxwidgets.org/) | wxWindows Library Licence | GUI framework |
 | [nlohmann/json](https://github.com/nlohmann/json) | MIT | JSON parser |
 
-For full license texts and compliance details, see [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DPWB/blob/main/THIRD_PARTY_LICENSES.md).
+For full license texts and compliance details, see [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md).
 
 ## Important Notes
 

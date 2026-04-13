@@ -17,7 +17,7 @@ nav_order: 5
 
 ## Overview
 
-A2DPWB (A2DP Windows Bridge) enables LDAC, aptX HD, aptX Low Latency, AAC, and
+A2DP Windows Bridge (A2DPWB) enables LDAC, aptX HD, aptX Low Latency, AAC, and
 SBC Bluetooth audio on Windows. Windows natively only supports SBC and AAC for
 Bluetooth A2DP — this tool adds high-quality codecs without requiring a kernel
 driver.

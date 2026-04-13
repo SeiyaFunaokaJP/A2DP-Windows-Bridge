@@ -1,17 +1,17 @@
-# Contributing to A2DPWB
+# Contributing to A2DP Windows Bridge (A2DPWB)
 
-Thank you for your interest in contributing to A2DPWB!
+Thank you for your interest in contributing to A2DP Windows Bridge!
 
 ## Bug Reports & Feature Requests
 
-Please use [GitHub Issues](https://github.com/SeiyaFunaokaJP/A2DPWB/issues) for bug reports and feature requests.
+Please use [GitHub Issues](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues) for bug reports and feature requests.
 
 - **Bug reports**: Include steps to reproduce, expected behavior, and actual behavior.
 - **Feature requests**: Describe the feature you'd like and why it would be useful.
 
 ## Building from Source
 
-For detailed setup instructions, see the [GitHub Pages](https://seiyafunaokajp.github.io/A2DPWB/) documentation.
+For detailed setup instructions, see the [GitHub Pages](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/) documentation.
 
 ### Quick Start
 
@@ -25,8 +25,8 @@ For detailed setup instructions, see the [GitHub Pages](https://seiyafunaokajp.g
 **Build:**
 
 ```bash
-git clone --recursive https://github.com/SeiyaFunaokaJP/A2DPWB.git
-cd A2DPWB
+git clone --recursive https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge.git
+cd A2DP-Windows-Bridge
 cmake -B build -A x64
 cmake --build build --config Release
 ```
@@ -39,7 +39,7 @@ cmake --build build --config Release
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Commit your changes (`git commit -m "Add my feature"`)
 4. Push to the branch (`git push origin feature/my-feature`)
-5. Open a [Pull Request](https://github.com/SeiyaFunaokaJP/A2DPWB/pulls)
+5. Open a [Pull Request](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/pulls)
 
 ## License
 

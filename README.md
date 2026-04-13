@@ -1,9 +1,9 @@
-# A2DPWB (A2DP Windows Bridge)
+# A2DP Windows Bridge (A2DPWB)
 
 Bluetooth A2DP audio streaming for Windows with full codec support.
 Streams system audio via LDAC, aptX HD, aptX Low Latency, AAC, or SBC using a USB Bluetooth adapter in WinUSB mode — no kernel driver or test signing required.
 
-**[Download](https://github.com/SeiyaFunaokaJP/A2DPWB/releases/latest)** | **[Documentation](https://seiyafunaokajp.github.io/A2DPWB/)**
+**[Download](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/latest)** | **[Documentation](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/)**
 
 ## Supported Codecs
 
@@ -89,8 +89,8 @@ Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) re
 ## Building
 
 ```bash
-git clone --recursive https://github.com/SeiyaFunaokaJP/A2DPWB.git
-cd A2DPWB
+git clone --recursive https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge.git
+cd A2DP-Windows-Bridge
 cmake -B build -A x64
 cmake --build build --config Release
 ```

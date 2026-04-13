@@ -24,8 +24,8 @@ nav_order: 4
 ## Quick Build
 
 ```bash
-git clone --recursive https://github.com/SeiyaFunaokaJP/A2DPWB.git
-cd A2DPWB
+git clone --recursive https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge.git
+cd A2DP-Windows-Bridge
 cmake -B build -A x64
 cmake --build build --config Release
 ```
@@ -44,7 +44,7 @@ git submodule update --init --recursive
 ## Project Structure
 
 ```
-A2DPWB/
+A2DP-Windows-Bridge/
 ├── app/                    Application source
 │   ├── src/                C++ source files
 │   ├── lang/               Localization (en.json, ja.json)
@@ -86,4 +86,4 @@ All dependencies are included as git submodules or fetched at build time. No man
 | nlohmann/json | vendored (header-only) | MIT |
 | wxWidgets v3.2.6 | CMake FetchContent | wxWindows Library Licence |
 
-See [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DPWB/blob/main/THIRD_PARTY_LICENSES.md) for full license details.
+See [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md) for full license details.

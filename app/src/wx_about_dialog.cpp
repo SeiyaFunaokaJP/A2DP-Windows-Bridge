@@ -40,7 +40,7 @@ AboutDialog::AboutDialog(wxWindow *parent)
     vbox->AddSpacer(8);
     auto *github_link = new wxHyperlinkCtrl(this, wxID_ANY,
         wxString::FromUTF8(L("help.github")),
-        "https://github.com/SeiyaFunaokaJP/A2DPWB");
+        "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge");
     github_link->SetNormalColour(TM().get(ThemeColor::AboutTitle));
     github_link->SetHoverColour(TM().get(ThemeColor::AboutTitle));
     github_link->SetVisitedColour(TM().get(ThemeColor::AboutTitle));

@@ -18,7 +18,7 @@ nav_order: 5
 
 ## プロジェクトライセンス
 
-A2DPWB は **MIT License** の下でライセンスされています。[LICENSE](https://github.com/SeiyaFunaokaJP/A2DPWB/blob/main/LICENSE) を参照してください。
+A2DP Windows Bridge (A2DPWB) は **MIT License** の下でライセンスされています。[LICENSE](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/LICENSE) を参照してください。
 
 ## サードパーティライブラリ
 
@@ -31,7 +31,7 @@ A2DPWB は **MIT License** の下でライセンスされています。[LICENSE
 | [wxWidgets](https://www.wxwidgets.org/) | wxWindows Library Licence | GUI フレームワーク |
 | [nlohmann/json](https://github.com/nlohmann/json) | MIT | JSON パーサー |
 
-ライセンス全文とコンプライアンスの詳細は [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DPWB/blob/main/THIRD_PARTY_LICENSES.md) を参照してください。
+ライセンス全文とコンプライアンスの詳細は [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md) を参照してください。
 
 ## 重要な注意事項
 

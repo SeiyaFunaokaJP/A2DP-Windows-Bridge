@@ -1,7 +1,7 @@
 # Third-Party Licenses
 
-This document lists all third-party libraries used in A2DPWB, along with their
-license information and compliance obligations.
+This document lists all third-party libraries used in A2DP Windows Bridge (A2DPWB),
+along with their license information and compliance obligations.
 
 ---
 
@@ -212,7 +212,7 @@ for details.
 
 ## 9. Project License
 
-The A2DPWB project code itself (excluding third-party libraries) is licensed
+The A2DP Windows Bridge (A2DPWB) project code itself (excluding third-party libraries) is licensed
 under the **MIT License**. See [`LICENSE`](LICENSE) in the project root.
 
 ---

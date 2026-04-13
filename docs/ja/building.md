@@ -25,8 +25,8 @@ nav_order: 3
 ## クイックビルド
 
 ```bash
-git clone --recursive https://github.com/SeiyaFunaokaJP/A2DPWB.git
-cd A2DPWB
+git clone --recursive https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge.git
+cd A2DP-Windows-Bridge
 cmake -B build -A x64
 cmake --build build --config Release
 ```
@@ -45,7 +45,7 @@ git submodule update --init --recursive
 ## プロジェクト構成
 
 ```
-A2DPWB/
+A2DP-Windows-Bridge/
 ├── app/                    アプリケーションソース
 │   ├── src/                C++ ソースファイル
 │   ├── lang/               ローカライゼーション (en.json, ja.json)
@@ -87,4 +87,4 @@ cmake -B build -A x64 -DBUILD_TESTS=OFF
 | nlohmann/json | 同梱（ヘッダーオンリー） | MIT |
 | wxWidgets v3.2.6 | CMake FetchContent | wxWindows Library Licence |
 
-ライセンスの全文は [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DPWB/blob/main/THIRD_PARTY_LICENSES.md) を参照してください。
+ライセンスの全文は [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md) を参照してください。

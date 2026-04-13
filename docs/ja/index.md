@@ -5,7 +5,7 @@ nav_order: 7
 has_children: true
 ---
 
-# A2DPWB (A2DP Windows Bridge)
+# A2DP Windows Bridge (A2DPWB)
 
 Windows 向け Bluetooth A2DP オーディオストリーミングツール（全コーデック対応）
 {: .fs-6 .fw-300 }
@@ -13,7 +13,7 @@ Windows 向け Bluetooth A2DP オーディオストリーミングツール（�
 USB Bluetooth アダプターを WinUSB モードで使用し、**LDAC、aptX HD、aptX Low Latency、AAC、SBC** でシステム音声をストリーミングします。カーネルドライバーやテスト署名は不要です。
 
 [セットアップ](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[GitHub](https://github.com/SeiyaFunaokaJP/A2DPWB){: .btn .fs-5 .mb-4 .mb-md-0 }
+[GitHub](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 

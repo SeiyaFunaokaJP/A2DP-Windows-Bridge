@@ -1,5 +1,5 @@
 /*
- * A2DPWB (A2DP Windows Bridge): Bluetooth Audio Streaming Application
+ * A2DP Windows Bridge (A2DPWB): Bluetooth Audio Streaming Application
  *
  * Supports multiple Bluetooth audio codecs:
  *   - LDAC (Sony, up to 990 kbps)
@@ -339,7 +339,7 @@ static BOOL WINAPI console_handler(DWORD ctrl_type) {
 }
 
 static void print_usage(const char *prog) {
-    printf("A2DPWB (A2DP Windows Bridge)\n\n");
+    printf("A2DP Windows Bridge (A2DPWB)\n\n");
     printf("Usage: %s [options]\n", prog);
     printf("\nModes:\n");
     printf("  (default)    Launch GUI application\n");
@@ -741,7 +741,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* CLI mode */
-    printf("A2DPWB - A2DP Windows Bridge\n");
+    printf("A2DP Windows Bridge (A2DPWB)\n");
     printf("Codecs: LDAC | aptX HD | aptX Low Latency | AAC | SBC\n");
     printf("===================================================\n\n");
 
