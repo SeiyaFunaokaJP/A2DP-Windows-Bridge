@@ -295,47 +295,71 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
         fprintf(stderr, "BTstack: Realtek adapter PID=0x%04X\n", self->product_id_);
         btstack_chipset_realtek_set_product_id(self->product_id_);
 
-        /* Set firmware file paths. Files use .bin extension to match linux-firmware. */
-        std::string fw_dir;
+        /* Resolve firmware directory: explicit setting → exe dir fallback.
+         * Stored in a member so the c_str() handed to BTstack survives
+         * subsequent chipset_init() calls (hci_power_control_on() invokes
+         * chipset_init again after hci_set_chipset). */
+        self->resolved_fw_dir_.clear();
         if (!self->firmware_dir_.empty()) {
-            fw_dir = self->firmware_dir_;
+            self->resolved_fw_dir_ = self->firmware_dir_;
         } else {
             char exe_dir[MAX_PATH];
             if (GetModuleFileNameA(NULL, exe_dir, MAX_PATH)) {
                 char *last_sep = strrchr(exe_dir, '\\');
                 if (!last_sep) last_sep = strrchr(exe_dir, '/');
                 if (last_sep) *last_sep = '\0';
-                fw_dir = exe_dir;
-            }
-        }
-        if (!fw_dir.empty()) {
-            const char *fw_name = BtAdapterEnumerator::realtek_fw_name(self->product_id_);
-            const char *cfg_name = BtAdapterEnumerator::realtek_cfg_name(self->product_id_);
-            if (fw_name && cfg_name) {
-                self->fw_file_path_ = fw_dir + "\\" + fw_name + ".bin";
-                self->cfg_file_path_ = fw_dir + "\\" + cfg_name + ".bin";
-                btstack_chipset_realtek_set_firmware_file_path(self->fw_file_path_.c_str());
-                btstack_chipset_realtek_set_config_file_path(self->cfg_file_path_.c_str());
-                fprintf(stderr, "BTstack: Firmware: %s\n", self->fw_file_path_.c_str());
-                fprintf(stderr, "BTstack: Config:   %s\n", self->cfg_file_path_.c_str());
-            } else if (!self->fw_stem_.empty()) {
-                /* PID known but not in chip DB — use stem-based paths */
-                self->fw_file_path_ = fw_dir + "\\" + self->fw_stem_ + "_fw.bin";
-                self->cfg_file_path_ = fw_dir + "\\" + self->fw_stem_ + "_config.bin";
-                btstack_chipset_realtek_set_firmware_file_path(self->fw_file_path_.c_str());
-                btstack_chipset_realtek_set_config_file_path(self->cfg_file_path_.c_str());
-                fprintf(stderr, "BTstack: Firmware (stem): %s\n", self->fw_file_path_.c_str());
-                fprintf(stderr, "BTstack: Config (stem):   %s\n", self->cfg_file_path_.c_str());
-            } else {
-                /* PID not in our chip DB — fall back to folder-based lookup */
-                btstack_chipset_realtek_set_firmware_folder_path(fw_dir.c_str());
-                btstack_chipset_realtek_set_config_folder_path(fw_dir.c_str());
-                fprintf(stderr, "BTstack: Firmware search path: %s\n", fw_dir.c_str());
+                self->resolved_fw_dir_ = exe_dir;
             }
         }
 
+        /* BTstack's chipset_init() unconditionally rebuilds firmware/config paths
+         * as "${folder}/${patch_name}" when product_id is set, ignoring any
+         * set_firmware_file_path() we call. patch_name has NO .bin extension
+         * (e.g. "rtl8761bu_fw"), but our distribution and linux-firmware use
+         * .bin. Use folder-based lookup and materialise no-extension aliases
+         * (hard-link, falling back to copy) from the .bin files we ship. */
+        const std::string &fw_dir = self->resolved_fw_dir_;
+        if (!fw_dir.empty()) {
+            btstack_chipset_realtek_set_firmware_folder_path(fw_dir.c_str());
+            btstack_chipset_realtek_set_config_folder_path(fw_dir.c_str());
+            fprintf(stderr, "BTstack: Firmware search path: %s\n", fw_dir.c_str());
+
+            const char *fw_name = BtAdapterEnumerator::realtek_fw_name(self->product_id_);
+            const char *cfg_name = BtAdapterEnumerator::realtek_cfg_name(self->product_id_);
+            std::string fw_stem, cfg_stem;
+            if (fw_name && cfg_name) {
+                fw_stem = fw_name;
+                cfg_stem = cfg_name;
+            } else if (!self->fw_stem_.empty()) {
+                fw_stem = self->fw_stem_ + "_fw";
+                cfg_stem = self->fw_stem_ + "_config";
+            }
+
+            auto ensure_alias = [&fw_dir](const std::string &stem) {
+                if (stem.empty()) return;
+                std::string alias = fw_dir + "\\" + stem;        /* no extension */
+                std::string source = alias + ".bin";              /* shipped file */
+                DWORD attrs = GetFileAttributesA(alias.c_str());
+                if (attrs != INVALID_FILE_ATTRIBUTES) return;     /* alias already exists */
+                if (GetFileAttributesA(source.c_str()) == INVALID_FILE_ATTRIBUTES) {
+                    fprintf(stderr, "BTstack: WARNING firmware source missing: %s\n", source.c_str());
+                    return;
+                }
+                if (CreateHardLinkA(alias.c_str(), source.c_str(), NULL)) {
+                    fprintf(stderr, "BTstack: linked %s -> %s\n", stem.c_str(), source.c_str());
+                } else if (CopyFileA(source.c_str(), alias.c_str(), TRUE)) {
+                    fprintf(stderr, "BTstack: copied %s <- %s\n", alias.c_str(), source.c_str());
+                } else {
+                    fprintf(stderr, "BTstack: ERROR could not create alias %s (err=%lu)\n",
+                            alias.c_str(), GetLastError());
+                }
+            };
+            ensure_alias(fw_stem);
+            ensure_alias(cfg_stem);
+        }
+
         /* Register the Realtek chipset driver. This calls chipset_init()
-         * immediately, which uses the product ID and paths set above. */
+         * immediately, which uses the product ID and folder path set above. */
         hci_set_chipset(btstack_chipset_realtek_instance());
     } else {
         fprintf(stderr, "BTstack: No Realtek PID configured, skipping chipset init\n");

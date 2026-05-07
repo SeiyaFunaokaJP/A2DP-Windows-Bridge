@@ -249,9 +249,9 @@ private:
     std::string fw_stem_;           /* firmware stem for unknown chips (e.g. "rtl8761bu") */
     uint16_t product_id_ = 0;      /* Realtek USB Product ID (0 = non-Realtek, skip chipset init) */
 
-    /* Persistent storage for firmware paths (must outlive BTstack usage) */
-    std::string fw_file_path_;
-    std::string cfg_file_path_;
+    /* Resolved firmware folder path (must outlive BTstack: chipset_init() is
+     * called repeatedly, including from hci_power_control_on()). */
+    std::string resolved_fw_dir_;
 
     /* Init timing (for firmware loading detection) */
     uint32_t init_start_tick_ = 0;

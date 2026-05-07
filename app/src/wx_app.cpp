@@ -10,19 +10,26 @@
 #include "localization.h"
 #include "theme_manager.h"
 #include <wx/stdpaths.h>
+#include <wx/cmdline.h>
 #include <cstdio>
 #include <windows.h>
 
 wxIMPLEMENT_APP_NO_MAIN(A2dpBridgeApp);
 
+void A2dpBridgeApp::OnInitCmdLine(wxCmdLineParser &parser) {
+    wxApp::OnInitCmdLine(parser);
+    parser.AddSwitch("", "minimized", "Start minimized to the system tray");
+    parser.AddSwitch("", "cli",       "Run in CLI mode (handled before wx startup)");
+}
+
+bool A2dpBridgeApp::OnCmdLineParsed(wxCmdLineParser &parser) {
+    if (!wxApp::OnCmdLineParsed(parser)) return false;
+    start_minimized_ = parser.Found("minimized");
+    return true;
+}
+
 bool A2dpBridgeApp::OnInit() {
     if (!wxApp::OnInit()) return false;
-
-    /* Parse --minimized from argv */
-    for (int i = 1; i < argc; i++) {
-        if (wxString(argv[i]) == "--minimized")
-            start_minimized_ = true;
-    }
 
     /* Redirect stderr based on debug mode setting */
     AppSettings boot_settings;

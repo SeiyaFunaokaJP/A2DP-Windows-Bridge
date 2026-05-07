@@ -10,10 +10,14 @@
 
 class MainFrame;
 
+class wxCmdLineParser;
+
 class A2dpBridgeApp : public wxApp {
 public:
     bool OnInit() override;
     int  OnExit() override;
+    void OnInitCmdLine(wxCmdLineParser &parser) override;
+    bool OnCmdLineParsed(wxCmdLineParser &parser) override;
 
     bool start_minimized() const { return start_minimized_; }
 
