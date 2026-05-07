@@ -95,7 +95,7 @@ cmake -B build -A x64
 cmake --build build --config Release
 ```
 
-The executable is output to `build/app/Release/A2DPWB-1.0.0.exe`.
+The executable is output to `build/app/Release/A2DPWB-1.0.1.exe`.
 
 > **Note**: The first build takes several minutes because CMake FetchContent downloads and compiles wxWidgets.
 

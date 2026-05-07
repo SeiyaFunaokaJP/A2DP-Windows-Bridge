@@ -20,7 +20,7 @@
 #include <shellapi.h>
 
 #ifndef APP_VERSION
-#define APP_VERSION "1.0.0"
+#define APP_VERSION "1.0.1"
 #endif
 
 wxDEFINE_EVENT(wxEVT_STATUS_UPDATE, wxThreadEvent);
