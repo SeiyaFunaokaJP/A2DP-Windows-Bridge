@@ -58,7 +58,9 @@ add_executable(A2DPWB WIN32
     resources/app.rc
 )
 
-set_target_properties(A2DPWB PROPERTIES OUTPUT_NAME "A2DPWB-${PROJECT_VERSION}")
+# Fixed (version-less) name: the HKCU Run autostart entry stores the exe path,
+# so a name that changes per release would break autostart after every update.
+set_target_properties(A2DPWB PROPERTIES OUTPUT_NAME "A2DPWB")
 
 target_include_directories(A2DPWB PRIVATE
     ${CMAKE_SOURCE_DIR}/extern/libldac/inc
