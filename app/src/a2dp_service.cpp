@@ -395,6 +395,11 @@ A2dpService::A2dpService() {
 
 A2dpService::~A2dpService() {
     stop_streaming();
+    /* A joinable std::thread must be joined before destruction or
+     * std::terminate is called. Blocks briefly if the worker is still
+     * winding down after the stop_streaming poll timed out. */
+    if (worker_thread_.joinable())
+        worker_thread_.join();
 }
 
 std::string A2dpService::get_config_dir() const {
@@ -760,19 +765,34 @@ void A2dpService::start_streaming(const ConnectionProfile &profile) {
             profile.capture_mode.c_str(), profile.audio_device_name.c_str(), profile.auto_switch_device);
     fflush(stderr);
 
-    if (running_.load()) return;
+    if (running_.load()) {
+        /* A previous session is still active (e.g. the auto-reconnect loop
+         * after the device was powered off). Ask it to stop and abort any
+         * blocking transport waits so the join below is bounded.
+         * stop_requested_ must stay set until the old thread has exited —
+         * clearing it earlier would revive the old reconnect loop. */
+        fprintf(stderr, "A2dpService: stopping previous session before start\n");
+        fflush(stderr);
+        stop_requested_.store(true);
+        g_ctx.running.store(false);
+        std::unique_lock<std::mutex> lock(transport_mutex_, std::try_to_lock);
+        if (lock.owns_lock() && transport_)
+            transport_->cancel_pending_waits();
+        /* If the mutex is contended the worker is inside BTstack init or
+         * shutdown, not in a cancellable wait — it will see stop_requested_. */
+    }
 
-    active_profile_ = profile;
-    stop_requested_.store(false);
-    running_.store(true);
-    notify_state(State::Connecting, L("status.initializing"));
-
-    /* Join any previous thread before creating a new one */
+    /* Join any previous thread before touching shared session state */
     if (worker_thread_.joinable()) {
         fprintf(stderr, "A2dpService: joining previous worker thread\n");
         fflush(stderr);
         worker_thread_.join();
     }
+
+    active_profile_ = profile;
+    stop_requested_.store(false);
+    running_.store(true);
+    notify_state(State::Connecting, L("status.initializing"));
 
     worker_thread_ = std::thread(&A2dpService::streaming_thread_func, this);
     fprintf(stderr, "A2dpService: new worker thread started\n");
@@ -785,10 +805,12 @@ void A2dpService::stop_streaming() {
     stop_requested_.store(true);
     g_ctx.running.store(false);
 
-    /* Cancel any blocking waits in transport layer (e.g. connect_a2dp) */
+    /* Cancel any blocking waits in transport layer (e.g. connect/reconnect).
+     * try_lock: if the worker holds transport_mutex_ it is inside BTstack
+     * init/shutdown, not in a cancellable wait — don't block the UI on it. */
     {
-        std::lock_guard<std::mutex> lock(transport_mutex_);
-        if (transport_)
+        std::unique_lock<std::mutex> lock(transport_mutex_, std::try_to_lock);
+        if (lock.owns_lock() && transport_)
             transport_->cancel_pending_waits();
     }
 
@@ -801,7 +823,15 @@ void A2dpService::stop_streaming() {
     fprintf(stderr, "A2dpService: stop_streaming wait=%d running=%d\n", wait, running_.load());
     fflush(stderr);
 
-    running_.store(false);
+    if (running_.load()) {
+        /* Worker is still winding down. Do NOT force running_ to false —
+         * start_streaming() relies on it to know it must stop/join the old
+         * session first. The worker exits on its own shortly. */
+        fprintf(stderr, "A2dpService: worker still active after stop timeout\n");
+        fflush(stderr);
+    } else if (worker_thread_.joinable()) {
+        worker_thread_.join();
+    }
     notify_state(State::Idle, L("status.ready"));
 }
 
@@ -989,9 +1019,13 @@ void A2dpService::streaming_thread_func_inner() {
 
     /* Configure codec */
     if (!transport->configure_codec(selected_codec, sr, static_cast<uint8_t>(use_ch))) {
-        notify_state(State::Error, L("error.codec_configure"));
         transport->disconnect();
         running_.store(false);
+        /* A user stop cancels the blocking wait — that's not an error */
+        if (stop_requested_.load())
+            notify_state(State::Idle, L("status.ready"));
+        else
+            notify_state(State::Error, L("error.codec_configure"));
         return;
     }
 
@@ -1046,9 +1080,12 @@ void A2dpService::streaming_thread_func_inner() {
 
     /* Start stream */
     if (!transport->start_stream()) {
-        notify_state(State::Error, L("error.stream_start"));
         transport->disconnect();
         running_.store(false);
+        if (stop_requested_.load())
+            notify_state(State::Idle, L("status.ready"));
+        else
+            notify_state(State::Error, L("error.stream_start"));
         return;
     }
 
@@ -1137,7 +1174,9 @@ void A2dpService::streaming_thread_func_inner() {
                 char msg[64];
                 snprintf(msg, sizeof(msg), L("status.reconnect_attempt"), attempt, 10);
                 notify_state(State::Reconnecting, msg);
-                Sleep(3000);
+                /* Interruptible wait — react to stop within ~100ms */
+                for (int i = 0; i < 30 && !stop_requested_.load(); i++)
+                    Sleep(100);
 
                 if (stop_requested_.load()) break;
 
@@ -1150,7 +1189,9 @@ void A2dpService::streaming_thread_func_inner() {
             }
 
             if (!reconnected) {
-                notify_state(State::Error, L("error.reconnect_failed"));
+                /* User-requested stop is not an error — cleanup notifies Idle */
+                if (!stop_requested_.load())
+                    notify_state(State::Error, L("error.reconnect_failed"));
                 break;
             }
 
