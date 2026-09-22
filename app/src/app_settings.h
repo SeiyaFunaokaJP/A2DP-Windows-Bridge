@@ -26,6 +26,10 @@ public:
     bool start_minimized = false;
     bool minimize_to_tray = true;
 
+    /* Updates */
+    bool check_updates_on_startup = true;
+    std::string last_update_check; /* ISO date of the last automatic check */
+
     /* Debug */
     bool debug_mode = false;
 

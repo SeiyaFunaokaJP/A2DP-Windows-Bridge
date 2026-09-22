@@ -13,10 +13,12 @@
 #include "localization.h"
 #include "theme_manager.h"
 #include "system_integration.h"
+#include "update_checker.h"
 
 #include <wx/scrolwin.h>
 #include <wx/statline.h>
 #include <wx/clipbrd.h>
+#include <wx/datetime.h>
 #include <shellapi.h>
 
 #ifndef APP_VERSION
@@ -26,6 +28,13 @@
 wxDEFINE_EVENT(wxEVT_STATUS_UPDATE, wxThreadEvent);
 wxDEFINE_EVENT(wxEVT_STREAM_INFO, wxThreadEvent);
 wxDEFINE_EVENT(wxEVT_SCAN_COMPLETE, wxThreadEvent);
+wxDEFINE_EVENT(wxEVT_UPDATE_CHECK_DONE, wxThreadEvent);
+
+/* URLs from the GitHub API are plain ASCII */
+static void open_url(const std::string &url) {
+    std::wstring wide(url.begin(), url.end());
+    ShellExecuteW(nullptr, L"open", wide.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
 
 wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_CLOSE(MainFrame::OnClose)
@@ -85,6 +94,7 @@ MainFrame::MainFrame()
     Bind(wxEVT_STATUS_UPDATE, &MainFrame::OnStatusUpdate, this);
     Bind(wxEVT_STREAM_INFO, &MainFrame::OnStreamInfo, this);
     Bind(wxEVT_SCAN_COMPLETE, &MainFrame::OnScanComplete, this);
+    Bind(wxEVT_UPDATE_CHECK_DONE, &MainFrame::OnCheckUpdateDone, this);
 
     /* System tray */
     tray_icon_ = new A2dpTrayIcon(this);
@@ -98,6 +108,8 @@ MainFrame::MainFrame()
         delete tray_icon_;
         tray_icon_ = nullptr;
     }
+    if (tray_icon_)
+        tray_icon_->Bind(wxEVT_TASKBAR_BALLOON_CLICK, &MainFrame::OnTrayBalloonClick, this);
 
     /* Update startup registry */
     if (settings_.start_with_windows)
@@ -105,9 +117,22 @@ MainFrame::MainFrame()
 
     update_status_display();
     rebuild_profile_list();
+
+    /* Automatic update check, at most once per day, silent unless outdated */
+    if (settings_.check_updates_on_startup) {
+        std::string today = wxDateTime::Now().FormatISODate().ToStdString();
+        if (settings_.last_update_check != today) {
+            settings_.last_update_check = today;
+            settings_.save();
+            start_update_check(true);
+        }
+    }
 }
 
 MainFrame::~MainFrame() {
+    if (update_thread_.joinable())
+        update_thread_.join();
+
     service_.stop_streaming();
 
     if (tray_icon_) {
@@ -660,7 +685,78 @@ void MainFrame::OnReportBug(wxCommandEvent &) {
 }
 
 void MainFrame::OnCheckUpdate(wxCommandEvent &) {
-    ShellExecuteW(nullptr, L"open", L"https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases", nullptr, nullptr, SW_SHOWNORMAL);
+    start_update_check(false);
+}
+
+void MainFrame::start_update_check(bool silent) {
+    bool expected = false;
+    if (!update_check_running_.compare_exchange_strong(expected, true))
+        return; /* a check is already in flight */
+    if (update_thread_.joinable())
+        update_thread_.join(); /* reap the previous, already-finished check */
+
+    update_thread_ = std::thread([this, silent] {
+        UpdateCheckResult r = CheckLatestRelease();
+        auto *evt = new wxThreadEvent(wxEVT_UPDATE_CHECK_DONE);
+        evt->SetPayload(r);
+        evt->SetInt(silent ? 1 : 0);
+        wxQueueEvent(this, evt);
+    });
+}
+
+void MainFrame::OnCheckUpdateDone(wxThreadEvent &evt) {
+    update_check_running_ = false;
+    UpdateCheckResult result = evt.GetPayload<UpdateCheckResult>();
+    bool silent = evt.GetInt() != 0;
+
+    bool newer = result.ok &&
+                 CompareVersions(result.latest_version, APP_VERSION) > 0;
+
+    if (silent) {
+        if (!newer)
+            return;
+        /* Started hidden in the tray (e.g. via autostart): use a balloon
+         * notification instead of popping a modal dialog. */
+        if (tray_icon_ && !IsShown()) {
+            pending_update_url_ = result.release_url;
+            tray_icon_->ShowBalloon(
+                wxString::FromUTF8(L("update.available_title")),
+                wxString::Format(wxString::FromUTF8(L("update.balloon")),
+                                 wxString::FromUTF8(result.latest_version.c_str())),
+                15000, wxICON_INFORMATION);
+            return;
+        }
+    }
+
+    if (newer) {
+        int answer = wxMessageBox(
+            wxString::Format(wxString::FromUTF8(L("update.available")),
+                             wxString::FromUTF8(result.latest_version.c_str()),
+                             APP_VERSION),
+            wxString::FromUTF8(L("update.available_title")),
+            wxYES_NO | wxICON_INFORMATION, this);
+        if (answer == wxYES)
+            open_url(result.release_url);
+    } else if (result.ok) {
+        wxMessageBox(
+            wxString::Format(wxString::FromUTF8(L("update.uptodate")), APP_VERSION),
+            wxString::FromUTF8(L("update.check")),
+            wxOK | wxICON_INFORMATION, this);
+    } else {
+        int answer = wxMessageBox(
+            wxString::FromUTF8(L("update.error")),
+            wxString::FromUTF8(L("update.check")),
+            wxYES_NO | wxICON_ERROR, this);
+        if (answer == wxYES)
+            open_url(kReleasesPageUrl);
+    }
+}
+
+void MainFrame::OnTrayBalloonClick(wxTaskBarIconEvent &) {
+    if (pending_update_url_.empty())
+        return;
+    open_url(pending_update_url_);
+    pending_update_url_.clear();
 }
 
 void MainFrame::OnOpenAbout(wxCommandEvent &) {

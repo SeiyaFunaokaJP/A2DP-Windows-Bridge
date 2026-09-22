@@ -15,7 +15,7 @@ using json = nlohmann::json;
 
 std::string AppSettings::get_settings_path() const
 {
-    return get_config_dir() + "settings.json";
+    return get_config_dir() + "\\settings.json";
 }
 
 void AppSettings::load()
@@ -40,6 +40,10 @@ void AppSettings::load()
     start_minimized    = j.value("start_minimized", start_minimized);
     minimize_to_tray   = j.value("minimize_to_tray", minimize_to_tray);
 
+    /* Updates */
+    check_updates_on_startup = j.value("check_updates_on_startup", check_updates_on_startup);
+    last_update_check        = j.value("last_update_check", last_update_check);
+
     /* Debug */
     debug_mode = j.value("debug_mode", debug_mode);
 
@@ -63,6 +67,10 @@ void AppSettings::save() const
     j["start_with_windows"] = start_with_windows;
     j["start_minimized"]    = start_minimized;
     j["minimize_to_tray"]   = minimize_to_tray;
+
+    /* Updates */
+    j["check_updates_on_startup"] = check_updates_on_startup;
+    j["last_update_check"]        = last_update_check;
 
     /* Debug */
     j["debug_mode"] = debug_mode;

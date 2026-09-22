@@ -54,6 +54,7 @@ add_executable(A2DPWB WIN32
     src/localization.cpp
     src/profile_manager.cpp
     src/system_integration.cpp
+    src/update_checker.cpp
     src/zadig_helper.cpp
     resources/app.rc
 )
@@ -114,6 +115,7 @@ target_link_libraries(A2DPWB PRIVATE
     shell32        # Shell_NotifyIcon (system tray)
     shcore         # SetProcessDpiAwareness (high-DPI)
     winmm          # timeBeginPeriod/timeEndPeriod (timer resolution)
+    winhttp        # Update check (GitHub Releases API)
 )
 
 # Application version
