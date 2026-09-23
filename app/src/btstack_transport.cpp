@@ -52,6 +52,11 @@ BtStackTransport *BtStackTransport::instance_ = nullptr;
 /* HCI event callback registration (must be static/persistent) */
 static btstack_packet_callback_registration_t hci_event_callback_registration;
 
+/* SDP Service Buffers */
+static uint8_t sdp_a2dp_source_service_buffer[150];
+static uint8_t sdp_avrcp_controller_service_buffer[200];
+static uint8_t sdp_avrcp_target_service_buffer[200];
+
 /*
  * Cross-thread dispatch helper.
  * BTstack is NOT thread-safe.  All BTstack API calls must execute on
@@ -382,8 +387,8 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
 
     gap_set_local_name("A2DPWB");
 
-    /* Set device class: Audio (Major=0x04), Loudspeaker (Minor=0x14) — A2DP Source */
-    gap_set_class_of_device(0x200414);
+    /* Set device class: Audio (Major=0x04), Hi-Fi Audio Device (Minor=0x28) — A2DP Source */
+    gap_set_class_of_device(0x200428);
 
     /* Allow role switch — many headphones require being master */
     gap_set_allow_role_switch(true);
@@ -417,6 +422,23 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     avrcp_controller_register_packet_handler(&packet_handler_trampoline);
     avrcp_target_init();
     avrcp_target_register_packet_handler(&packet_handler_trampoline);
+
+    /* Setup A2DP Source SDP record */
+    memset(sdp_a2dp_source_service_buffer, 0, sizeof(sdp_a2dp_source_service_buffer));
+    a2dp_source_create_sdp_record(sdp_a2dp_source_service_buffer, sdp_create_service_record_handle(), AVDTP_SOURCE_FEATURE_MASK_PLAYER, NULL, NULL);
+    sdp_register_service(sdp_a2dp_source_service_buffer);
+
+    /* Setup AVRCP Controller SDP record */
+    memset(sdp_avrcp_controller_service_buffer, 0, sizeof(sdp_avrcp_controller_service_buffer));
+    uint16_t controller_supported_features = AVRCP_FEATURE_MASK_CATEGORY_PLAYER_OR_RECORDER;
+    avrcp_controller_create_sdp_record(sdp_avrcp_controller_service_buffer, sdp_create_service_record_handle(), controller_supported_features, NULL, NULL);
+    sdp_register_service(sdp_avrcp_controller_service_buffer);
+
+    /* Setup AVRCP Target SDP record */
+    memset(sdp_avrcp_target_service_buffer, 0, sizeof(sdp_avrcp_target_service_buffer));
+    uint16_t target_supported_features = AVRCP_FEATURE_MASK_CATEGORY_PLAYER_OR_RECORDER;
+    avrcp_target_create_sdp_record(sdp_avrcp_target_service_buffer, sdp_create_service_record_handle(), target_supported_features, NULL, NULL);
+    sdp_register_service(sdp_avrcp_target_service_buffer);
 
     /* Register vendor codec stream endpoints */
     self->register_codec_endpoints();
