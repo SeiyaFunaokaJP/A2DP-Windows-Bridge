@@ -47,9 +47,9 @@ wxEND_EVENT_TABLE()
 
 MainFrame::MainFrame()
     : wxFrame(nullptr, wxID_ANY, wxString::Format("A2DPWB v%s", APP_VERSION),
-              wxDefaultPosition, wxSize(520, 600),
-              wxDEFAULT_FRAME_STYLE & ~(wxRESIZE_BORDER | wxMAXIMIZE_BOX))
+              wxDefaultPosition, wxSize(520, 600))
 {
+    SetMinSize(wxSize(480, 400));
     /* Load settings and data */
     settings_.load();
     Localization::instance().load(settings_.language);
@@ -349,7 +349,9 @@ void MainFrame::rebuild_profile_list() {
             /* Text info */
             auto *text_sizer = new wxBoxSizer(wxVERTICAL);
             const char *dname = p.device_name.empty() ? p.device_address.c_str() : p.device_name.c_str();
-            auto *name_text = new wxStaticText(row, wxID_ANY, wxString::FromUTF8(dname));
+            auto *name_text = new wxStaticText(row, wxID_ANY, wxString::FromUTF8(dname),
+                wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END);
+            name_text->SetMinSize(wxSize(50, -1));
             auto name_font = name_text->GetFont();
             name_font.SetWeight(wxFONTWEIGHT_BOLD);
             name_text->SetFont(name_font);
@@ -397,12 +399,14 @@ void MainFrame::rebuild_profile_list() {
             char detail[256];
             snprintf(detail, sizeof(detail), "%s / %s / %s / %s", codec_str, quality_str, sr_buf, bd_buf);
 
-            auto *detail_text = new wxStaticText(row, wxID_ANY, wxString::FromUTF8(detail));
+            auto *detail_text = new wxStaticText(row, wxID_ANY, wxString::FromUTF8(detail),
+                wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END);
+            detail_text->SetMinSize(wxSize(50, -1));
             detail_text->SetForegroundColour(TM().get(ThemeColor::TextSecondary));
             detail_text->SetBackgroundColour(row_bg);
 
-            text_sizer->Add(name_text, 0, wxBOTTOM, 2);
-            text_sizer->Add(detail_text, 0);
+            text_sizer->Add(name_text, 0, wxEXPAND | wxBOTTOM, 2);
+            text_sizer->Add(detail_text, 0, wxEXPAND);
             row_sizer->Add(text_sizer, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
 
             /* Edit button */
