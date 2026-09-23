@@ -120,28 +120,24 @@ bool WasapiCapture::init(uint32_t preferred_sample_rate, const wchar_t *device_i
 
     /* Try preferred sample rate if specified and different from system default */
     WAVEFORMATEX *init_format = mix_format;
-    WAVEFORMATEX custom_format = {};
+    WAVEFORMATEXTENSIBLE custom_format_ext = {};
     bool use_custom = false;
 
     if (preferred_sample_rate > 0 && preferred_sample_rate != mix_format->nSamplesPerSec) {
         /* Build a custom format based on mix_format but with the preferred rate */
-        custom_format = *mix_format;
-        custom_format.nSamplesPerSec = preferred_sample_rate;
-        custom_format.nAvgBytesPerSec = preferred_sample_rate * mix_format->nBlockAlign;
-
-        WAVEFORMATEX *closest = nullptr;
-        hr = audio_client_->IsFormatSupported(
-            AUDCLNT_SHAREMODE_SHARED, &custom_format, &closest);
-        if (hr == S_OK) {
-            init_format = &custom_format;
-            use_custom = true;
-            fprintf(stderr, "WasapiCapture: Using preferred sample rate: %u Hz\n",
-                    preferred_sample_rate);
+        if (mix_format->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+            custom_format_ext = *reinterpret_cast<WAVEFORMATEXTENSIBLE *>(mix_format);
         } else {
-            fprintf(stderr, "WasapiCapture: Preferred rate %u Hz not supported, using system default\n",
-                    preferred_sample_rate);
-            if (closest) CoTaskMemFree(closest);
+            custom_format_ext.Format = *mix_format;
         }
+        
+        custom_format_ext.Format.nSamplesPerSec = preferred_sample_rate;
+        custom_format_ext.Format.nAvgBytesPerSec = preferred_sample_rate * mix_format->nBlockAlign;
+
+        init_format = reinterpret_cast<WAVEFORMATEX *>(&custom_format_ext);
+        use_custom = true;
+        fprintf(stderr, "WasapiCapture: Requesting custom sample rate: %u Hz (system: %u Hz)\n",
+                preferred_sample_rate, (uint32_t)mix_format->nSamplesPerSec);
     }
 
     sample_rate_ = init_format->nSamplesPerSec;
@@ -154,9 +150,21 @@ bool WasapiCapture::init(uint32_t preferred_sample_rate, const wchar_t *device_i
      * cause data discontinuity when polling with WaitForSingleObject. */
     REFERENCE_TIME buf_duration = static_cast<REFERENCE_TIME>(BUFFER_DURATION_MS) * 10000;
 
+#ifndef AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+#define AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM 0x80000000
+#endif
+#ifndef AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
+#define AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY 0x08000000
+#endif
+
+    DWORD stream_flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+    if (use_custom) {
+        stream_flags |= AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
+    }
+
     hr = audio_client_->Initialize(
         AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+        stream_flags,
         buf_duration,
         0,                  /* periodicity (0 = default for shared mode) */
         init_format,

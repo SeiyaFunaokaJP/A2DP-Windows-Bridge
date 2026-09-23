@@ -964,6 +964,39 @@ void A2dpService::streaming_thread_func_inner() {
 
     uint32_t preferred_sr = p.sample_rate; /* 0 = auto */
 
+    /* Determine max sample rate for codec */
+    uint32_t codec_max_sr = 48000;
+    if (selected_codec == AudioCodec::LDAC) {
+        codec_max_sr = 96000;
+    }
+
+    /* If auto, query device native rate */
+    if (preferred_sr == 0) {
+        WasapiCapture temp_cap;
+        std::wstring dev_id;
+        if (cmode == CaptureMode::VirtualDevice && !p.audio_device_id.empty()) {
+            int wlen = MultiByteToWideChar(CP_UTF8, 0, p.audio_device_id.c_str(),
+                (int)p.audio_device_id.size(), nullptr, 0);
+            if (wlen > 0) {
+                dev_id.resize(wlen);
+                MultiByteToWideChar(CP_UTF8, 0, p.audio_device_id.c_str(),
+                    (int)p.audio_device_id.size(), &dev_id[0], wlen);
+            }
+        }
+        if (temp_cap.init(0, dev_id.empty() ? nullptr : dev_id.c_str())) {
+            preferred_sr = temp_cap.get_sample_rate();
+        } else {
+            preferred_sr = 48000; /* Fallback */
+        }
+    }
+
+    /* Cap sample rate */
+    if (preferred_sr > codec_max_sr) {
+        LOG_INFO("A2dpService: Limiting capture sample rate from %u to %u Hz for codec %s",
+                 preferred_sr, codec_max_sr, codec_name_for(selected_codec));
+        preferred_sr = codec_max_sr;
+    }
+
     switch (cmode) {
     case CaptureMode::SystemLoopback:
         if (!wasapi_capture.init(preferred_sr)) {
