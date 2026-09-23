@@ -54,11 +54,14 @@ add_executable(A2DPWB WIN32
     src/localization.cpp
     src/profile_manager.cpp
     src/system_integration.cpp
+    src/update_checker.cpp
     src/zadig_helper.cpp
     resources/app.rc
 )
 
-set_target_properties(A2DPWB PROPERTIES OUTPUT_NAME "A2DPWB-${PROJECT_VERSION}")
+# Fixed (version-less) name: the HKCU Run autostart entry stores the exe path,
+# so a name that changes per release would break autostart after every update.
+set_target_properties(A2DPWB PROPERTIES OUTPUT_NAME "A2DPWB")
 
 target_include_directories(A2DPWB PRIVATE
     ${CMAKE_SOURCE_DIR}/extern/libldac/inc
@@ -112,6 +115,7 @@ target_link_libraries(A2DPWB PRIVATE
     shell32        # Shell_NotifyIcon (system tray)
     shcore         # SetProcessDpiAwareness (high-DPI)
     winmm          # timeBeginPeriod/timeEndPeriod (timer resolution)
+    winhttp        # Update check (GitHub Releases API)
 )
 
 # Application version

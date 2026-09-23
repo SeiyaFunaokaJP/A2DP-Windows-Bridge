@@ -3,7 +3,7 @@ REM ============================================================
 REM Build script for A2DPWB
 REM
 REM Usage:
-REM   1. Copy this file to build.bat
+REM   1. Copy build.bat.example to build.bat
 REM   2. Edit the CMake path below to match your environment
 REM   3. Run build.bat
 REM
@@ -13,5 +13,21 @@ REM ============================================================
 
 set CMAKE_EXE="C:\Program Files\CMake\bin\cmake.exe"
 
+if not exist build mkdir build
+git submodule update --init --recursive
+%CMAKE_EXE% -S . -B build
+if errorlevel 1 goto :fail
+
 %CMAKE_EXE% --build build --target A2DPWB --config Release
+if errorlevel 1 goto :fail
+
+echo.
+echo Build succeeded.
 pause
+exit /b 0
+
+:fail
+echo.
+echo Build FAILED.
+pause
+exit /b 1

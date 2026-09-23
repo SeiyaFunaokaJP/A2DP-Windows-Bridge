@@ -628,6 +628,9 @@ bool BtStackTransport::scan_devices(uint8_t duration_seconds) {
     fprintf(stderr, "BTstack: Starting inquiry scan (~%u seconds)...\n",
            (unsigned)(duration_units * 128 / 100));
     fflush(stderr);
+    /* Fresh user-initiated operation — clear a cancel latched by a
+     * previous stop, or the inquiry wait below aborts immediately. */
+    ResetEvent(static_cast<HANDLE>(cancel_event_));
     discovered_devices_.clear();
     inquiry_found_count_.store(0);
     inquiry_active_.store(true);
@@ -934,6 +937,12 @@ bool BtStackTransport::reconnect() {
         return false;
     }
 
+    /* Abort immediately if a cancel is pending (user pressed disconnect) */
+    if (WaitForSingleObject(static_cast<HANDLE>(cancel_event_), 0) == WAIT_OBJECT_0) {
+        fprintf(stderr, "BTstack: reconnect aborted (cancel requested)\n");
+        return false;
+    }
+
     /* Ensure previous connection state is fully cleared */
     connected_.store(false);
     streaming_.store(false);
@@ -949,8 +958,13 @@ bool BtStackTransport::reconnect() {
     remote_caps_ = {};
     disconnect_occurred_.store(false);
 
-    /* Reset sync event flags */
-    ResetEvent(static_cast<HANDLE>(cancel_event_));
+    /* Reset sync event flags.
+     * cancel_event_ is deliberately NOT reset here: it is armed by
+     * cancel_pending_waits() when the user stops the session and must stay
+     * latched across auto-reconnect attempts, otherwise a stop arriving
+     * between attempts is swallowed and the loop keeps blocking for the
+     * full page timeout. It is re-armed only at the start of a fresh
+     * user-initiated operation (connect_a2dp / scan_devices). */
     connect_result_.store(false);
     stream_result_.store(false);
     start_result_.store(false);

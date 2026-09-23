@@ -14,6 +14,9 @@
 #include <wx/wx.h>
 #include <wx/taskbar.h>
 
+#include <atomic>
+#include <thread>
+
 /* Custom event IDs */
 enum {
     ID_STATUS_UPDATE = wxID_HIGHEST + 1,
@@ -77,6 +80,8 @@ private:
     void OnStatusUpdate(wxThreadEvent &evt);
     void OnStreamInfo(wxThreadEvent &evt);
     void OnScanComplete(wxThreadEvent &evt);
+    void OnCheckUpdateDone(wxThreadEvent &evt);
+    void OnTrayBalloonClick(wxTaskBarIconEvent &evt);
     void OnClose(wxCloseEvent &evt);
     void OnIconize(wxIconizeEvent &evt);
 
@@ -124,6 +129,12 @@ private:
 
     /* ---- Tray state ---- */
     bool first_minimize_shown_ = false;
+
+    /* ---- Update check ---- */
+    void start_update_check(bool silent);
+    std::thread update_thread_;
+    std::atomic<bool> update_check_running_{false};
+    std::string pending_update_url_; /* set while a balloon notification is up */
 
     /* ---- Cached state for display ---- */
     A2dpService::State current_state_ = A2dpService::State::Idle;

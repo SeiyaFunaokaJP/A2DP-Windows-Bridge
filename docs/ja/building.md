@@ -31,7 +31,7 @@ cmake -B build -A x64
 cmake --build build --config Release
 ```
 
-実行ファイルは `build/app/Release/A2DPWB-1.0.1.exe` に出力されます。
+実行ファイルは `build/app/Release/A2DPWB.exe` に出力されます。
 
 {: .note }
 初回ビルドは CMake FetchContent が wxWidgets (v3.2.6) をダウンロード・コンパイルするため、数分かかります。
