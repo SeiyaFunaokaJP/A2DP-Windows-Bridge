@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(a2dpwb VERSION 1.0.3 LANGUAGES C CXX)
+project(a2dpwb VERSION 1.0.4 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
