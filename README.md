@@ -203,13 +203,15 @@ You can manually add this entry using `regedit` if needed. To disable it manuall
 
 This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for the full text.
 
+> **Important:** The A2DPWB source code is MIT-licensed. The distributed `A2DPWB.exe` includes BTstack and therefore may only be used and redistributed for personal, non-commercial purposes.
+
 Third-party libraries are used under their respective licenses. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for details.
 
-> **BTstack** is dual-licensed: BSD-3-Clause for non-commercial use, commercial license available from BlueKitchen GmbH.
+> **BTstack** is licensed under the BTstack License, a BSD-3-Clause-style license with an additional non-commercial clause ("Any redistribution, use, or modification is done solely for personal benefit and not for any commercial purpose or for monetary gain."). It is not BSD-3-Clause. Commercial licenses are available from BlueKitchen GmbH.
 
 ## References
 
-- [BTstack](https://github.com/bluekitchen/btstack) — Open-source Bluetooth stack with WinUSB support
+- [BTstack](https://github.com/bluekitchen/btstack) — Bluetooth stack with WinUSB support (source-available; non-commercial license)
 - [libldac (AOSP)](https://android.googlesource.com/platform/external/libldac) — LDAC encoder library
 - [libopenaptx](https://github.com/pali/libopenaptx) — Open-source aptX / aptX HD encoder (also used for aptX LL)
 - [fdk-aac](https://github.com/mstorsjo/fdk-aac) — Fraunhofer FDK AAC codec library

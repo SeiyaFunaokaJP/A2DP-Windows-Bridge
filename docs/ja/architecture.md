@@ -24,7 +24,7 @@ A2DP Windows Bridge (A2DPWB) は Windows で LDAC、aptX HD、aptX Low Latency�
 
 ## トランスポート: BTstack + WinUSB
 
-Windows の Bluetooth スタックを完全にバイパスし、WinUSB（Microsoft 署名済み汎用 USB ドライバー）経由で USB Bluetooth アダプターと直接通信します。オープンソースの Bluetooth スタックである BTstack が HCI、L2CAP、AVDTP、A2DP をユーザーモードで実装します。
+Windows の Bluetooth スタックを完全にバイパスし、WinUSB（Microsoft 署名済み汎用 USB ドライバー）経由で USB Bluetooth アダプターと直接通信します。ソース公開の Bluetooth スタック（非商用ライセンス）である BTstack が HCI、L2CAP、AVDTP、A2DP をユーザーモードで実装します。
 
 **利点**:
 - ドライバー署名コスト不要

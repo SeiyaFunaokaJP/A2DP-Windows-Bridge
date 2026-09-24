@@ -12,8 +12,15 @@ color_scheme: dark
 
 nav_sort: case_insensitive
 
+# Style the {: .note } / {: .warning } callouts used throughout the docs
+callouts:
+  note:
+    color: blue
+  warning:
+    color: red
+
 footer_content: >-
-  A2DP Windows Bridge (A2DPWB) is licensed under the <a href="https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/LICENSE">MIT License</a>.
+  A2DP Windows Bridge (A2DPWB) source code is licensed under the <a href="https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/LICENSE">MIT License</a>. The distributed A2DPWB.exe includes BTstack and may only be used for personal, non-commercial purposes (<a href="https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md">third-party licenses</a>).
 
 plugins:
   - jekyll-remote-theme

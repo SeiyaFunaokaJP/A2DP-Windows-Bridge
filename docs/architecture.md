@@ -28,7 +28,7 @@ Uses **BTstack + WinUSB** — entirely user-mode, no driver signing needed.
 
 Bypasses the Windows Bluetooth stack entirely by communicating directly with a
 USB Bluetooth adapter via WinUSB (Microsoft-signed generic USB driver). BTstack,
-an open-source Bluetooth stack, implements HCI, L2CAP, AVDTP, and A2DP in
+a source-available Bluetooth stack (non-commercial license), implements HCI, L2CAP, AVDTP, and A2DP in
 user-mode.
 
 **Advantages**:

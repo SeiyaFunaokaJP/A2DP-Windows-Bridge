@@ -77,13 +77,19 @@ cmake -B build -A x64 -DBUILD_TESTS=OFF
 
 All dependencies are included as git submodules or fetched at build time. No manual installation required.
 
-| Library | Method | License |
-|:--------|:-------|:--------|
-| BTstack | git submodule | BSD-3-Clause (non-commercial) |
-| libldac (AOSP) | git submodule | Apache-2.0 |
-| libopenaptx | git submodule (pinned to 0.2.0) | LGPL-2.1+ |
-| fdk-aac | git submodule | FDK AAC License |
-| nlohmann/json | vendored (header-only) | MIT |
-| wxWidgets v3.2.6 | CMake FetchContent | wxWindows Library Licence |
+| Library | Method | Pinned version | License |
+|:--------|:-------|:---------------|:--------|
+| BTstack | git submodule | v1.8.1-6-g5bc5cbdbe | BTstack License (BSD-3-Clause-style with a non-commercial clause) |
+| Bluedroid SBC codec | bundled in BTstack (`3rd-party/bluedroid`) | as in BTstack | Apache-2.0 |
+| rijndael | bundled in BTstack (`3rd-party/rijndael`) | as in BTstack | Public domain |
+| libldac (AOSP) | git submodule | android-15.0.0_r36-4-geeee1a3 | Apache-2.0 |
+| libopenaptx | git submodule | 0.2.0 (do not update) | LGPL-2.1+ |
+| fdk-aac | git submodule | v2.0.3-158-gd8e6b1a | FDK AAC License |
+| nlohmann/json | git submodule (header-only) | 3.12.0 | MIT |
+| wxWidgets | CMake FetchContent | v3.2.6 | wxWindows Library Licence 3.1 |
+| zlib / libpng / nanosvg | built-in copies in wxWidgets | 1.2.13.1 / 1.6.37 / as in wxWidgets | zlib / PNG Reference Library License v2 / zlib |
+
+{: .warning }
+Because BTstack is linked in, any `A2DPWB.exe` you build may only be used and redistributed for personal, non-commercial purposes, even though the A2DPWB source code itself is MIT-licensed.
 
 See [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md) for full license details.
