@@ -1,0 +1,74 @@
+name: Device compatibility report
+description: '"It works with my headphones!" (or not) — every report helps'
+labels: ["device report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tried A2DPWB with your gear? I'd love to hear how it went! 🎧
+        "It just works" reports are super helpful too, especially for the experimental aptX codecs.
+        Just check what you tried and leave the rest blank. If something is clearly broken, a [bug report](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) is a better fit.
+
+  - type: input
+    id: version
+    attributes:
+      label: A2DPWB version
+      description: Shown in Help → About.
+      placeholder: e.g. 1.0.6
+    validations:
+      required: true
+
+  - type: input
+    id: adapter
+    attributes:
+      label: USB Bluetooth adapter
+      description: Product name is enough. Chipset / VID:PID is a bonus if you happen to know it.
+      placeholder: e.g. TP-Link UB500 (Realtek RTL8761B, 2357:0604)
+    validations:
+      required: true
+
+  - type: input
+    id: headphones
+    attributes:
+      label: Headphones / speaker
+      placeholder: e.g. Sony WH-1000XM4
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: works
+    attributes:
+      label: Codecs that worked
+      description: Check each codec you confirmed plays audio correctly.
+      options:
+        - label: LDAC
+        - label: aptX HD
+        - label: aptX Low Latency
+        - label: aptX
+        - label: AAC
+        - label: SBC
+
+  - type: checkboxes
+    id: fails
+    attributes:
+      label: Codecs that did NOT work
+      description: Offered by the headphones, but failed to connect, fell back, or had audio problems.
+      options:
+        - label: LDAC
+        - label: aptX HD
+        - label: aptX Low Latency
+        - label: aptX
+        - label: AAC
+        - label: SBC
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: How did you confirm the codec?
+      description: Totally optional. e.g. codec shown in a headphone app, Wireshark capture (`hci_dump.pklg`), or just the A2DPWB status display.
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Dropouts, latency, stability, sample rate, impressions — anything you noticed.

@@ -1,0 +1,28 @@
+name: Feature request
+description: Got an idea? Share it — even half-baked ones are welcome
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas big or small are welcome 💡 A sentence or two is plenty.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like?
+      description: What you want to do, or what bugs you today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: If you have a concrete idea of how it should work.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you're using now, if any.
