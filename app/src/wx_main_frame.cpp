@@ -686,7 +686,7 @@ void MainFrame::OnOpenVBCable(wxCommandEvent &) {
 }
 
 void MainFrame::OnReportBug(wxCommandEvent &) {
-    ShellExecuteW(nullptr, L"open", L"https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues", nullptr, nullptr, SW_SHOWNORMAL);
+    ShellExecuteW(nullptr, L"open", L"https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new/choose", nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 void MainFrame::OnCheckUpdate(wxCommandEvent &) {

@@ -4,10 +4,13 @@ Thank you for your interest in contributing to A2DP Windows Bridge!
 
 ## Bug Reports & Feature Requests
 
-Please use [GitHub Issues](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues) for bug reports and feature requests.
+Feel free to [open an issue](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new/choose) — you'll find a few simple forms there:
 
-- **Bug reports**: Include steps to reproduce, expected behavior, and actual behavior.
-- **Feature requests**: Describe the feature you'd like and why it would be useful.
+- **Bug report**: Something isn't working right.
+- **Device compatibility report**: How A2DPWB works with your adapter and headphones. "It just works" reports are welcome too!
+- **Feature request**: Ideas big or small.
+
+You don't need to fill in every field. Rough reports are fine, and I'll ask if I need more details.
 
 ## Building from Source
 
