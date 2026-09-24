@@ -26,7 +26,7 @@ A2DP Windows Bridge (A2DPWB) は **MIT License** の下でライセンスされ�
 |:-----------|:-----------|:-----|
 | [BTstack](https://github.com/bluekitchen/btstack) | BSD-3-Clause（非商用）/ 商用 | ユーザーモード Bluetooth スタック |
 | [libldac (AOSP)](https://android.googlesource.com/platform/external/libldac) | Apache-2.0 | LDAC エンコーダー |
-| [libopenaptx](https://github.com/pali/libopenaptx) | LGPL-2.1+ | aptX / aptX HD エンコーダー |
+| [libopenaptx](https://github.com/pali/libopenaptx) 0.2.0 | LGPL-2.1+ | aptX / aptX HD / aptX LL エンコーダー |
 | [fdk-aac](https://github.com/mstorsjo/fdk-aac) | FDK AAC License | AAC-LC エンコーダー |
 | [wxWidgets](https://www.wxwidgets.org/) | wxWindows Library Licence | GUI フレームワーク |
 | [nlohmann/json](https://github.com/nlohmann/json) | MIT | JSON パーサー |
@@ -43,9 +43,13 @@ BTstack はデュアルライセンスです。BSD-3-Clause ライセンスは**
 
 LDAC を使用する商用製品は Sony の認証プロセスを完了する必要があります。[sony.net/Products/LDAC/aosp](https://www.sony.net/Products/LDAC/aosp/) を参照してください。
 
+### libopenaptx のバージョン
+
+libopenaptx は LGPL-2.1+ の最終版である **0.2.0** に固定しています。0.2.1 以降は GPL-3.0-or-later（追加の制限あり）となり、A2DPWB がリンクしている他のライブラリと両立しません。v1.0.4 までのリリースは誤って 0.2.1 でビルドされていたため、v1.0.5 以降を使用してください。
+
 ### aptX 特許に関する注意
 
-aptX および aptX HD は Qualcomm の商標です。libopenaptx ライブラリはクリーンルーム実装です。aptX エンコーディングは一部の法域で特許の対象となる場合があります。
+aptX（クラシック）、aptX HD、aptX Low Latency、aptX Adaptive は Qualcomm の商標です。libopenaptx ライブラリはクリーンルーム実装で、本ツールでは aptX、aptX HD、aptX Low Latency に使用しています。aptX エンコーディングは一部の法域で特許の対象となる場合があります。A2DPWB は aptX Adaptive エンコーダーを含みません。
 
 ### AAC 特許に関する注意
 

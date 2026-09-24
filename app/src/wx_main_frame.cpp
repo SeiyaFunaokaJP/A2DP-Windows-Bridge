@@ -363,6 +363,7 @@ void MainFrame::rebuild_profile_list() {
             if      (p.codec == "ldac")   codec_str = "LDAC";
             else if (p.codec == "aptxhd") codec_str = "aptX HD";
             else if (p.codec == "aptxll") codec_str = "aptX LL";
+            else if (p.codec == "aptx")   codec_str = "aptX";
             else if (p.codec == "sbc")    codec_str = "SBC";
             else if (p.codec == "aac")    codec_str = "AAC";
             else if (p.codec == "auto")   codec_str = L("codec.auto");

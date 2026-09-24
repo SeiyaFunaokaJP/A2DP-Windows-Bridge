@@ -1,22 +1,23 @@
 /*
- * aptX Low Latency Encoder Wrapper - Implementation
+ * aptX (classic) Encoder Wrapper - Implementation
  *
- * Uses libopenaptx to encode PCM audio to standard aptX.
- * aptX LL uses the same encoding as standard aptX (4 stereo samples -> 4 bytes)
- * but signals low-latency mode in the A2DP codec configuration so that the
- * sink device uses a smaller buffer/latency target (~32ms vs ~150ms).
- * libopenaptx wants packed 24-bit LE input (LLLRRR x4 = 24 bytes per group);
- * see aptx_pcm_pack.h.
+ * Uses libopenaptx (aptx_init(0)) to encode PCM audio to classic aptX.
+ *
+ * libopenaptx API contract (openaptx.h):
+ *   aptx_encode() consumes groups of 4 stereo samples given as PACKED 24-bit
+ *   signed little-endian values (24 bytes: LLLRRRLLLRRRLLLRRRLLLRRR) and
+ *   emits 4 bytes (LLRR) per group for aptX (6 bytes for aptX HD).
+ *   Packing is done by aptx_pcm_pack.h.
  *
  * Input:  interleaved PCM, stereo or mono (duplicated to L/R); signed 16-bit
  *         by default, or 32-bit MSB-aligned after set_bit_depth(24|32)
- * Output: raw aptX stream. Like classic aptX, aptX LL media packets carry NO
- *         RTP header (PipeWire a2dp-codec-aptx.c: RTP only for aptX HD).
+ * Output: raw aptX stream. Classic aptX media packets carry NO RTP header
+ *         (see BtStackTransport::send_media / CAN_SEND_MEDIA_PACKET_NOW).
  *
  * SPDX-License-Identifier: MIT
  */
 
-#include "aptxll_encoder.h"
+#include "aptx_encoder.h"
 #include <cstdio>
 #include <cstring>
 
@@ -26,48 +27,41 @@ extern "C" {
 #include "openaptx.h"
 }
 
-/*
- * Standard aptX encoding parameters (same encoding as aptX LL):
- *   - Processes 4 PCM samples per channel at a time
- *   - Output: 4 bytes per 4 stereo samples (16-bit aptX)
- *   - Fixed bitrate: 352 kbps at 44.1 kHz stereo
- */
-static constexpr uint32_t APTX_ENCODED_BYTES_PER_FRAME = 4; /* 16-bit: 2 bytes/ch */
+static constexpr uint32_t APTX_ENCODED_BYTES_PER_FRAME = 4;  /* 2 bytes/ch */
 
-AptxLlEncoder::AptxLlEncoder() = default;
+AptxEncoder::AptxEncoder() = default;
 
-AptxLlEncoder::~AptxLlEncoder() {
+AptxEncoder::~AptxEncoder() {
     shutdown();
 }
 
-void AptxLlEncoder::set_bit_depth(int bits) {
+void AptxEncoder::set_bit_depth(int bits) {
     /* 24 or 32: 32-bit MSB-aligned container (see aptx_pcm_pack.h); else 16-bit */
     bytes_per_sample_ = (bits == 24 || bits == 32) ? 4u : 2u;
 }
 
-bool AptxLlEncoder::init(uint16_t mtu, EncoderQuality quality,
-                          uint32_t sample_rate, uint32_t channels) {
-    (void)quality; /* aptX LL has fixed bitrate */
+bool AptxEncoder::init(uint16_t mtu, EncoderQuality quality,
+                       uint32_t sample_rate, uint32_t channels) {
+    (void)quality; /* aptX has a fixed bitrate */
 
     if (initialized_) {
         shutdown();
     }
 
     if (channels != 1 && channels != 2) {
-        fprintf(stderr, "AptxLlEncoder: Only stereo (2 channels) is supported\n");
+        fprintf(stderr, "AptxEncoder: Unsupported channel count %u\n", channels);
         return false;
     }
 
     if (sample_rate != 44100 && sample_rate != 48000) {
-        fprintf(stderr, "AptxLlEncoder: Unsupported sample rate %u (use 44100 or 48000)\n",
+        fprintf(stderr, "AptxEncoder: Unsupported sample rate %u (use 44100 or 48000)\n",
                 sample_rate);
         return false;
     }
 
-    /* Create standard aptX encoder context (0 = standard aptX, not HD) */
-    ctx_ = aptx_init(0);
+    ctx_ = aptx_init(0); /* 0 = classic aptX */
     if (!ctx_) {
-        fprintf(stderr, "AptxLlEncoder: Failed to initialize aptX context\n");
+        fprintf(stderr, "AptxEncoder: Failed to initialize aptX context\n");
         return false;
     }
 
@@ -76,12 +70,12 @@ bool AptxLlEncoder::init(uint16_t mtu, EncoderQuality quality,
     channels_ = channels;
     initialized_ = true;
 
-    fprintf(stderr, "AptxLlEncoder: Initialized (rate=%u, ch=%u, mtu=%u, bitrate=352kbps, low-latency)\n",
-           sample_rate, channels, mtu);
+    fprintf(stderr, "AptxEncoder: Initialized (rate=%u, in_ch=%u, mtu=%u, bitrate=%ukbps)\n",
+            sample_rate, channels, mtu, get_bitrate_kbps());
     return true;
 }
 
-bool AptxLlEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
+bool AptxEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
                          uint8_t *out_data, uint32_t *out_size,
                          uint32_t *out_frames) {
     if (!initialized_ || !ctx_) {
@@ -97,7 +91,7 @@ bool AptxLlEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
         return true;
     }
 
-    /* mtu_ is the media MTU (RTP header already subtracted); conservative for no-RTP aptX LL */
+    /* mtu_ is the media MTU (RTP header already subtracted); conservative for no-RTP aptX */
     uint32_t max_frames = mtu_ / APTX_ENCODED_BYTES_PER_FRAME;
     if (num_frames > max_frames && max_frames > 0) {
         num_frames = max_frames;
@@ -105,7 +99,7 @@ bool AptxLlEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
 
     uint32_t required_out = num_frames * APTX_ENCODED_BYTES_PER_FRAME;
     if (*out_size < required_out) {
-        fprintf(stderr, "AptxLlEncoder: Output buffer too small (%u < %u)\n",
+        fprintf(stderr, "AptxEncoder: Output buffer too small (%u < %u)\n",
                 *out_size, required_out);
         return false;
     }
@@ -124,7 +118,7 @@ bool AptxLlEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
             &written);
 
         if (processed != sizeof(packed) || written != APTX_ENCODED_BYTES_PER_FRAME) {
-            fprintf(stderr, "AptxLlEncoder: Encode failed at frame %u\n", f);
+            fprintf(stderr, "AptxEncoder: Encode failed at frame %u\n", f);
             return false;
         }
 
@@ -136,16 +130,12 @@ bool AptxLlEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
     return true;
 }
 
-uint32_t AptxLlEncoder::get_pcm_frames_per_encode() const {
-    /*
-     * Batch 128 PCM frames per encode call (32 aptX frames).
-     * Produces ~128 bytes per packet instead of 4 bytes, avoiding
-     * massive RTP header overhead from per-4-sample packets.
-     */
+uint32_t AptxEncoder::get_pcm_frames_per_encode() const {
+    /* 128 PCM frames (32 aptX groups) -> 128 bytes per encode call */
     return 128;
 }
 
-void AptxLlEncoder::shutdown() {
+void AptxEncoder::shutdown() {
     if (ctx_) {
         aptx_finish(static_cast<struct aptx_context *>(ctx_));
         ctx_ = nullptr;

@@ -1,5 +1,5 @@
 # A2DP Windows Bridge (A2DPWB)
-# Captures system audio via WASAPI, encodes with LDAC/aptX HD/aptX LL/SBC/AAC,
+# Captures system audio via WASAPI, encodes with LDAC/aptX HD/aptX LL/aptX/SBC/AAC,
 # and streams over Bluetooth via BTstack (WinUSB).
 # GUI frontend via wxWidgets.
 
@@ -33,6 +33,7 @@ add_executable(A2DPWB WIN32
     src/ldac_encoder.cpp
     src/aptxhd_encoder.cpp
     src/aptxll_encoder.cpp
+    src/aptx_encoder.cpp
     src/a2dp_sbc_encoder.cpp
     src/aac_encoder.cpp
     src/bt_device.cpp

@@ -24,6 +24,13 @@ struct avdtp_stream_endpoint;
 
 class BtStackTransport {
 public:
+    /* RTP media header size (BTstack AVDTP_MEDIA_PAYLOAD_HEADER_SIZE); already
+     * subtracted from get_media_mtu(). Codecs sent without RTP (aptX, aptX LL)
+     * may use get_media_mtu() + RTP_HEADER_SIZE bytes of payload. */
+    static constexpr uint32_t RTP_HEADER_SIZE = 12;
+    /* Capacity of one queued media packet (MediaPacket::data) */
+    static constexpr uint32_t MAX_MEDIA_PACKET_SIZE = 1024;
+
     BtStackTransport();
     ~BtStackTransport();
 
@@ -147,18 +154,42 @@ public:
         bool ldac = false;
         bool aptx_hd = false;
         bool aptx_ll = false;
+        bool aptx = false;          /* classic aptX (0x4F / 0x0001) */
         bool sbc = false;
         bool aac = false;
         /* Remote SEIDs for each codec */
         uint8_t ldac_seid = 0;
         uint8_t aptxhd_seid = 0;
         uint8_t aptxll_seid = 0;
+        uint8_t aptx_seid = 0;
         uint8_t sbc_seid = 0;
         uint8_t aac_seid = 0;
+        /* Remote aptX-family capability byte 6 (freq bits high nibble:
+         * 0x20=44.1k 0x10=48k; channel bits low: 0x02=stereo 0x01=mono).
+         * 0 = not reported (assume 44.1k+48k). */
+        uint8_t aptx_caps = 0;
+        uint8_t aptxhd_caps = 0;
+        uint8_t aptxll_caps = 0;
+        /* aptX LL: vendor ID the remote used (0x0A or 0xD7) and its raw
+         * codec info (8 bytes, or 17 with has_new_caps) */
+        uint32_t aptxll_vendor_id = 0;
+        uint8_t aptxll_info[17] = {};
+        uint8_t aptxll_info_len = 0;
+        /* aptX Adaptive (0xD7 / 0x00AD): detected for logging only — there
+         * is no open-source encoder */
+        bool aptx_adaptive = false;
+        uint8_t aptx_adaptive_seid = 0;
     };
 
     /* Get discovered remote capabilities (valid after connect_a2dp) */
     const RemoteCodecCaps &get_remote_caps() const { return remote_caps_; }
+
+    /*
+     * For aptX / aptX HD / aptX LL: choose a capture sample rate (44100 or
+     * 48000) that the remote advertises, preferring `wanted`. Returns
+     * `wanted` unchanged for other codecs or when no better choice exists.
+     */
+    uint32_t pick_aptx_sample_rate(AudioCodec codec, uint32_t wanted) const;
 
 private:
     /* BTstack event handler (static, dispatches to instance) */
@@ -190,6 +221,9 @@ private:
     void signal_event(void *event_handle, bool success);
     bool wait_for_event(void *event_handle, uint32_t timeout_ms);
 
+    /* Tear down a half-open AVDTP connection after a failed/timed-out connect */
+    void abort_pending_connection();
+
     /* Thread handle */
     void *thread_handle_ = nullptr;
 
@@ -219,6 +253,7 @@ private:
     uint8_t ldac_local_seid_ = 0;
     uint8_t aptxhd_local_seid_ = 0;
     uint8_t aptxll_local_seid_ = 0;
+    uint8_t aptx_local_seid_ = 0;
     uint8_t sbc_local_seid_ = 0;
     uint8_t aac_local_seid_ = 0;
 
@@ -226,6 +261,7 @@ private:
     avdtp_stream_endpoint *ldac_ep_ = nullptr;
     avdtp_stream_endpoint *aptxhd_ep_ = nullptr;
     avdtp_stream_endpoint *aptxll_ep_ = nullptr;
+    avdtp_stream_endpoint *aptx_ep_ = nullptr;
     avdtp_stream_endpoint *sbc_ep_ = nullptr;
     avdtp_stream_endpoint *aac_ep_ = nullptr;
 
@@ -277,10 +313,11 @@ private:
      * Ring buffer avoids dropping frames when multiple LDAC frames are
      * produced per WASAPI callback (e.g. 4 frames/10ms at 990kbps). */
     struct MediaPacket {
-        uint8_t  data[1024];
+        uint8_t  data[MAX_MEDIA_PACKET_SIZE];
         uint32_t size = 0;
         uint32_t timestamp = 0;
         uint8_t  frames = 0;
+        bool     no_rtp = false;   /* send without RTP header (aptX, aptX LL) */
     };
     static const int MEDIA_QUEUE_CAPACITY = 64;
     MediaPacket media_queue_[MEDIA_QUEUE_CAPACITY];

@@ -55,7 +55,7 @@ A2DP-Windows-Bridge/
 ├── extern/                 Third-party libraries (git submodules)
 │   ├── btstack/            BTstack Bluetooth stack
 │   ├── libldac/            AOSP LDAC encoder
-│   ├── libopenaptx/        aptX / aptX HD encoder
+│   ├── libopenaptx/        aptX / aptX HD / aptX LL encoder
 │   ├── fdk-aac/            Fraunhofer AAC encoder
 │   └── json/               nlohmann/json (header-only)
 ├── CMakeLists.txt          Root build config
@@ -81,7 +81,7 @@ All dependencies are included as git submodules or fetched at build time. No man
 |:--------|:-------|:--------|
 | BTstack | git submodule | BSD-3-Clause (non-commercial) |
 | libldac (AOSP) | git submodule | Apache-2.0 |
-| libopenaptx | git submodule | LGPL-2.1+ |
+| libopenaptx | git submodule (pinned to 0.2.0) | LGPL-2.1+ |
 | fdk-aac | git submodule | FDK AAC License |
 | nlohmann/json | vendored (header-only) | MIT |
 | wxWidgets v3.2.6 | CMake FetchContent | wxWindows Library Licence |

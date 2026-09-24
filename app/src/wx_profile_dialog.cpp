@@ -97,6 +97,7 @@ void ProfileDialog::create_ui() {
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.ldac")));
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.aptx_hd")));
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.aptx_ll")));
+    codec_ctrl_->Append(wxString::FromUTF8(L("codec.aptx")));
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.sbc")));
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.aac")));
     codec_ctrl_->SetSelection(0);
@@ -273,7 +274,7 @@ void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
 void ProfileDialog::update_codec_dependent() {
     int codec_idx = codec_ctrl_->GetSelection();
     bool is_ldac = (codec_idx == 1);
-    bool quality_enabled = (codec_idx == 0 || codec_idx == 1 || codec_idx == 4 || codec_idx == 5);
+    bool quality_enabled = (codec_idx == 0 || codec_idx == 1 || codec_idx == 5 || codec_idx == 6);
     bool abr_enabled = (codec_idx == 0 || codec_idx == 1);
 
     /* Rebuild quality items with codec-specific bitrate info */
@@ -286,12 +287,12 @@ void ProfileDialog::update_codec_dependent() {
         quality_ctrl_->Append(wxString::Format("%s (660kbps)", wxString::FromUTF8(L("quality.standard"))));
         quality_ctrl_->Append(wxString::Format("%s (330kbps)", wxString::FromUTF8(L("quality.mobile"))));
         break;
-    case 5: /* AAC */
+    case 6: /* AAC */
         quality_ctrl_->Append(wxString::Format("%s (256kbps)", wxString::FromUTF8(L("quality.high"))));
         quality_ctrl_->Append(wxString::Format("%s (192kbps)", wxString::FromUTF8(L("quality.standard"))));
         quality_ctrl_->Append(wxString::Format("%s (128kbps)", wxString::FromUTF8(L("quality.mobile"))));
         break;
-    case 4: /* SBC */
+    case 5: /* SBC */
         quality_ctrl_->Append(wxString::Format("%s (~345kbps)", wxString::FromUTF8(L("quality.high"))));
         quality_ctrl_->Append(wxString::Format("%s (~240kbps)", wxString::FromUTF8(L("quality.standard"))));
         quality_ctrl_->Append(wxString::Format("%s (~150kbps)", wxString::FromUTF8(L("quality.mobile"))));
@@ -560,10 +561,10 @@ void ProfileDialog::OnSave(wxCommandEvent &) {
     p.device_name = devname_ctrl_->GetValue().utf8_string();
 
     /* Auto-generate internal name from device + codec */
-    static const char *codec_short[] = { "Auto", "LDAC", "aptX HD", "aptX LL", "SBC", "AAC" };
+    static const char *codec_short[] = { "Auto", "LDAC", "aptX HD", "aptX LL", "aptX", "SBC", "AAC" };
     std::string auto_name = p.device_name.empty() ? p.device_address : p.device_name;
     int ci = codec_ctrl_->GetSelection();
-    if (ci >= 0 && ci <= 5) { auto_name += " "; auto_name += codec_short[ci]; }
+    if (ci >= 0 && ci < (int)(sizeof(codec_short) / sizeof(codec_short[0]))) { auto_name += " "; auto_name += codec_short[ci]; }
     p.name = auto_name;
     p.codec = ProfileManager::index_to_codec(codec_ctrl_->GetSelection());
     p.quality = ProfileManager::index_to_quality(quality_ctrl_->GetSelection());
