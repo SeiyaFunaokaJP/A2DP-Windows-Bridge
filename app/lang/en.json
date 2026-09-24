@@ -29,6 +29,7 @@
   "connection.disconnect": "Disconnect",
   "codec.auto": "Auto",
   "codec.ldac": "LDAC",
+  "codec.aptx": "aptX",
   "codec.aptx_ll": "aptX LL",
   "codec.aptx_hd": "aptX HD",
   "codec.aptx_low_latency": "aptX Low Latency",

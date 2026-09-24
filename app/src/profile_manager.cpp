@@ -112,8 +112,9 @@ int ProfileManager::codec_to_index(const std::string &codec) {
     if (codec == "ldac")   return 1;
     if (codec == "aptxhd") return 2;
     if (codec == "aptxll") return 3;
-    if (codec == "sbc")    return 4;
-    if (codec == "aac")    return 5;
+    if (codec == "aptx")   return 4;
+    if (codec == "sbc")    return 5;
+    if (codec == "aac")    return 6;
     return 0;
 }
 
@@ -122,8 +123,9 @@ std::string ProfileManager::index_to_codec(int index) {
     case 1: return "ldac";
     case 2: return "aptxhd";
     case 3: return "aptxll";
-    case 4: return "sbc";
-    case 5: return "aac";
+    case 4: return "aptx";
+    case 5: return "sbc";
+    case 6: return "aac";
     default: return "auto";
     }
 }

@@ -46,6 +46,8 @@ extern "C" {
 #define APTXLL_VENDOR_ID    0x0000000Au  /* CSR plc (now Qualcomm) */
 #define APTXLL_VENDOR_ID2   0x000000D7u  /* Qualcomm: some sinks list aptX LL here */
 #define APTXLL_CODEC_ID     0x0002u      /* aptX Low Latency */
+#define APTX_VENDOR_ID      0x0000004Fu  /* APT Ltd. (now Qualcomm) */
+#define APTX_CODEC_ID       0x0001u      /* aptX (classic) */
 
 /* Singleton for static callback dispatch */
 BtStackTransport *BtStackTransport::instance_ = nullptr;
@@ -588,6 +590,26 @@ void BtStackTransport::register_codec_endpoints() {
         }
     }
 
+    /* aptX (classic) endpoint */
+    {
+        static uint8_t aptx_caps[7];
+        static uint8_t aptx_config[7];
+        write_vendor_codec_id(aptx_caps, APTX_VENDOR_ID, APTX_CODEC_ID);
+        aptx_caps[6] = APTX_CAPS_ALL;
+        write_vendor_codec_id(aptx_config, APTX_VENDOR_ID, APTX_CODEC_ID);
+        aptx_config[6] = APTX_CONFIG_DEFAULT;
+
+        aptx_ep_ = a2dp_source_create_stream_endpoint(
+            AVDTP_AUDIO, AVDTP_CODEC_NON_A2DP,
+            aptx_caps, sizeof(aptx_caps),
+            aptx_config, sizeof(aptx_config)
+        );
+        if (aptx_ep_) {
+            aptx_local_seid_ = avdtp_local_seid(aptx_ep_);
+            fprintf(stderr, "BTstack: Registered aptX endpoint (SEID=%u)\n", aptx_local_seid_);
+        }
+    }
+
     /* aptX LL endpoint */
     {
         /* Byte 7 = 0: no bidirectional link, no new caps. One local SEP is
@@ -871,6 +893,11 @@ bool BtStackTransport::configure_codec(AudioCodec codec, uint32_t sample_rate, u
         local = aptxll_local_seid_;
         remote = remote_caps_.aptxll_seid;
         break;
+    case AudioCodec::Aptx:
+        if (!remote_caps_.aptx) return false;
+        local = aptx_local_seid_;
+        remote = remote_caps_.aptx_seid;
+        break;
     case AudioCodec::SBC:
         if (!remote_caps_.sbc) return false;
         local = sbc_local_seid_;
@@ -944,6 +971,15 @@ bool BtStackTransport::configure_codec(AudioCodec codec, uint32_t sample_rate, u
             put16(config_info + 15, good);
             config_len = APTXLL_EXT_INFO_LEN;
         }
+        break;
+    }
+    case AudioCodec::Aptx: {
+        uint8_t freq = aptx_freq_bits_for(codec, remote_caps_.aptx_caps, sample_rate);
+        if (freq == 0) return false;
+        write_vendor_codec_id(config_info, APTX_VENDOR_ID, APTX_CODEC_ID);
+        /* Always stereo on the wire; AptxEncoder duplicates mono input */
+        config_info[6] = freq | APTX_CH_STEREO;
+        config_len = 7;
         break;
     }
     case AudioCodec::SBC:
@@ -1312,9 +1348,10 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
             memcpy(slot.data + 1, data, size);
             slot.size = size + 1;
         } else {
-            /* aptX HD, aptX LL, AAC: raw payload, no additional header.
-             * aptX LL additionally goes out without an RTP header
-             * (slot.no_rtp), matching PipeWire. */
+            /* aptX, aptX HD, aptX LL, AAC: raw payload, no additional header.
+             * Classic aptX and aptX LL additionally go out without an RTP
+             * header (slot.no_rtp), matching Android (A2DP_APTX_OFFSET) and
+             * PipeWire. */
             if (size > sizeof(slot.data)) {
                 send_failure_count_.fetch_add(1);
                 return false;
@@ -1325,9 +1362,9 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
 
         slot.timestamp = timestamp;
         slot.frames = frames;
-        /* aptX LL: no RTP header (PipeWire a2dp-codec-aptx.c
+        /* aptX and aptX LL: no RTP header (PipeWire a2dp-codec-aptx.c
          * codec_start_encode() writes RTP only for aptX HD) */
-        slot.no_rtp = (codec == AudioCodec::AptxLL);
+        slot.no_rtp = (codec == AudioCodec::Aptx || codec == AudioCodec::AptxLL);
         media_queue_head_ = (media_queue_head_ + 1) % MEDIA_QUEUE_CAPACITY;
         media_queue_count_.fetch_add(1);
     }
@@ -1605,6 +1642,17 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
                         "flags=0x%02x, len=%u)%s\n",
                         remote_seid, (unsigned)vid, ll_caps, ll_flags, info_len,
                         usable ? "" : " - no stereo, ignored");
+            } else if (vid == APTX_VENDOR_ID && cid == APTX_CODEC_ID) {
+                uint8_t aptx_caps = (info_len >= 7) ? info[6] : 0;
+                /* Stereo is the only mode we send; skip mono-only sinks */
+                if (info_len < 7 || (aptx_caps & APTX_CH_STEREO)) {
+                    remote_caps_.aptx = true;
+                    remote_caps_.aptx_seid = remote_seid;
+                    remote_caps_.aptx_caps = aptx_caps;
+                }
+                fprintf(stderr, "BTstack: Remote supports aptX (SEID=%u, caps=0x%02x)%s\n",
+                        remote_seid, aptx_caps,
+                        remote_caps_.aptx ? "" : " - no stereo, ignored");
             }
         }
         break;
@@ -1630,8 +1678,9 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
 
     case A2DP_SUBEVENT_SIGNALING_CAPABILITIES_COMPLETE: {
         /* All SEP capabilities have been discovered */
-        fprintf(stderr, "BTstack: Capability discovery complete (LDAC=%d, aptXHD=%d, aptXLL=%d, SBC=%d, AAC=%d)\n",
-               remote_caps_.ldac, remote_caps_.aptx_hd, remote_caps_.aptx_ll,
+        fprintf(stderr, "BTstack: Capability discovery complete (LDAC=%d, aptXHD=%d, aptXLL=%d, aptX=%d, "
+               "SBC=%d, AAC=%d)\n",
+               remote_caps_.ldac, remote_caps_.aptx_hd, remote_caps_.aptx_ll, remote_caps_.aptx,
                remote_caps_.sbc, remote_caps_.aac);
         connected_.store(true);
         connect_result_.store(true);

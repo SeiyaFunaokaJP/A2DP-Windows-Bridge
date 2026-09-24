@@ -5,6 +5,7 @@
  *   - LDAC (Sony, up to 990 kbps)
  *   - aptX HD (Qualcomm, 576 kbps, 24-bit)
  *   - aptX Low Latency (Qualcomm/CSR, 352 kbps, ~32ms latency)
+ *   - aptX (Qualcomm/APT classic, 352/384 kbps)
  *   - AAC (MPEG-2/4 AAC-LC, up to 256 kbps)
  *   - SBC (mandatory A2DP codec, up to ~345 kbps)
  *
@@ -35,6 +36,7 @@
 #include "a2dp_sbc_encoder.h"
 #include "aac_encoder.h"
 #include "aptxll_encoder.h"
+#include "aptx_encoder.h"
 #include "bt_device.h"
 #include "btstack_transport.h"
 #include "config_path.h"
@@ -256,12 +258,12 @@ static void audio_callback(
     /* Reserve 1 byte for LDAC/SBC media payload header (added by send_media) */
     uint32_t max_raw = (g_active_codec == AudioCodec::LDAC ||
                         g_active_codec == AudioCodec::SBC) ? (mtu - 1) : mtu;
-    if (g_active_codec == AudioCodec::AptxLL) {
-        /* aptX LL has no RTP header: the full L2CAP MTU is payload */
+    if (g_active_codec == AudioCodec::Aptx || g_active_codec == AudioCodec::AptxLL) {
+        /* aptX / aptX LL have no RTP header: the full L2CAP MTU is payload */
         max_raw = static_cast<uint32_t>(mtu) + BtStackTransport::RTP_HEADER_SIZE;
         if (max_raw > BtStackTransport::MAX_MEDIA_PACKET_SIZE)
             max_raw = BtStackTransport::MAX_MEDIA_PACKET_SIZE;
-        if (sample_rate > 0) {
+        if (g_active_codec == AudioCodec::AptxLL && sample_rate > 0) {
             /* Low latency: keep packets <= ~7.5 ms like PipeWire */
             uint32_t ll_max = sample_rate * 75u / 10000u;
             if (ll_max >= 4 && max_raw > ll_max) max_raw = ll_max;
@@ -356,7 +358,7 @@ static void print_usage(const char *prog) {
     printf("  (default)    Launch GUI application\n");
     printf("  --cli        Run in command-line mode\n");
     printf("\nOptions (CLI mode):\n");
-    printf("  -c <codec>   Codec: ldac, aptxhd, aptxll, sbc, aac, auto (default: auto)\n");
+    printf("  -c <codec>   Codec: ldac, aptxhd, aptxll, aptx, sbc, aac, auto (default: auto)\n");
     printf("  -q <mode>    Quality mode: hq (990kbps), sq (660kbps), mq (330kbps)\n");
     printf("               Only affects LDAC. Default: hq\n");
     printf("  -d <addr>    Bluetooth device address (XX:XX:XX:XX:XX:XX)\n");
@@ -367,7 +369,7 @@ static void print_usage(const char *prog) {
     printf("  -l           List available Bluetooth audio devices and exit\n");
     printf("  -u <path>    USB device path for BTstack (optional)\n");
     printf("  -h           Show this help\n");
-    printf("\nCodec priority (auto mode): LDAC > aptX HD > aptX LL > AAC > SBC\n");
+    printf("\nCodec priority (auto mode): LDAC > aptX HD > aptX LL > aptX > AAC > SBC\n");
 }
 
 static EncoderQuality parse_quality(const char *mode) {
@@ -383,6 +385,7 @@ static const char *codec_name_str(AudioCodec codec) {
     case AudioCodec::LDAC:   return "LDAC";
     case AudioCodec::AptxHD: return "aptX HD";
     case AudioCodec::AptxLL: return "aptX Low Latency";
+    case AudioCodec::Aptx:   return "aptX";
     case AudioCodec::SBC:    return "SBC";
     case AudioCodec::AAC:    return "AAC";
     }
@@ -402,6 +405,7 @@ static bool find_best_btstack_codec(const BtStackTransport::RemoteCodecCaps &cap
         case AudioCodec::LDAC:   if (caps.ldac)    { *selected_codec = AudioCodec::LDAC;   return true; } break;
         case AudioCodec::AptxHD: if (caps.aptx_hd) { *selected_codec = AudioCodec::AptxHD; return true; } break;
         case AudioCodec::AptxLL: if (caps.aptx_ll) { *selected_codec = AudioCodec::AptxLL; return true; } break;
+        case AudioCodec::Aptx:   if (caps.aptx)    { *selected_codec = AudioCodec::Aptx;   return true; } break;
         case AudioCodec::SBC:    if (caps.sbc)     { *selected_codec = AudioCodec::SBC;    return true; } break;
         case AudioCodec::AAC:    if (caps.aac)     { *selected_codec = AudioCodec::AAC;    return true; } break;
         }
@@ -409,10 +413,11 @@ static bool find_best_btstack_codec(const BtStackTransport::RemoteCodecCaps &cap
                codec_name_str(requested_codec));
     }
 
-    /* Priority: LDAC > aptX HD > aptX LL > AAC > SBC */
+    /* Priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC */
     if (caps.ldac)    { *selected_codec = AudioCodec::LDAC;   return true; }
     if (caps.aptx_hd) { *selected_codec = AudioCodec::AptxHD; return true; }
     if (caps.aptx_ll) { *selected_codec = AudioCodec::AptxLL; return true; }
+    if (caps.aptx)    { *selected_codec = AudioCodec::Aptx;   return true; }
     if (caps.aac)     { *selected_codec = AudioCodec::AAC;    return true; }
     if (caps.sbc)     { *selected_codec = AudioCodec::SBC;    return true; }
 
@@ -572,6 +577,7 @@ static int run_streaming(const uint8_t target_addr[6],
         break;
     }
     case AudioCodec::AptxLL: encoder = std::make_unique<AptxLlEncoder>(); break;
+    case AudioCodec::Aptx:   encoder = std::make_unique<AptxEncoder>(); break;
     case AudioCodec::SBC:    encoder = std::make_unique<SbcEncoder>(); break;
 #ifdef AAC_ENCODER_AVAILABLE
     case AudioCodec::AAC:    encoder = std::make_unique<AacEncoder>(); break;
@@ -760,7 +766,7 @@ int main(int argc, char *argv[]) {
 
     /* CLI mode */
     printf("A2DP Windows Bridge (A2DPWB)\n");
-    printf("Codecs: LDAC | aptX HD | aptX Low Latency | AAC | SBC\n");
+    printf("Codecs: LDAC | aptX HD | aptX Low Latency | aptX | AAC | SBC\n");
     printf("===================================================\n\n");
 
     /* Parse command-line arguments */
@@ -788,6 +794,9 @@ int main(int argc, char *argv[]) {
             } else if (_stricmp(argv[i], "aptxll") == 0) {
                 requested_codec = AudioCodec::AptxLL;
                 auto_codec = false;
+            } else if (_stricmp(argv[i], "aptx") == 0) {
+                requested_codec = AudioCodec::Aptx;
+                auto_codec = false;
             } else if (_stricmp(argv[i], "sbc") == 0) {
                 requested_codec = AudioCodec::SBC;
                 auto_codec = false;
@@ -797,7 +806,7 @@ int main(int argc, char *argv[]) {
             } else if (_stricmp(argv[i], "auto") == 0) {
                 auto_codec = true;
             } else {
-                fprintf(stderr, "Unknown codec '%s'. Use: ldac, aptxhd, aptxll, sbc, aac, auto\n",
+                fprintf(stderr, "Unknown codec '%s'. Use: ldac, aptxhd, aptxll, aptx, sbc, aac, auto\n",
                         argv[i]);
                 return 1;
             }

@@ -25,7 +25,7 @@ struct avdtp_stream_endpoint;
 class BtStackTransport {
 public:
     /* RTP media header size (BTstack AVDTP_MEDIA_PAYLOAD_HEADER_SIZE); already
-     * subtracted from get_media_mtu(). Codecs sent without RTP (aptX LL)
+     * subtracted from get_media_mtu(). Codecs sent without RTP (aptX, aptX LL)
      * may use get_media_mtu() + RTP_HEADER_SIZE bytes of payload. */
     static constexpr uint32_t RTP_HEADER_SIZE = 12;
     /* Capacity of one queued media packet (MediaPacket::data) */
@@ -154,17 +154,20 @@ public:
         bool ldac = false;
         bool aptx_hd = false;
         bool aptx_ll = false;
+        bool aptx = false;          /* classic aptX (0x4F / 0x0001) */
         bool sbc = false;
         bool aac = false;
         /* Remote SEIDs for each codec */
         uint8_t ldac_seid = 0;
         uint8_t aptxhd_seid = 0;
         uint8_t aptxll_seid = 0;
+        uint8_t aptx_seid = 0;
         uint8_t sbc_seid = 0;
         uint8_t aac_seid = 0;
         /* Remote aptX-family capability byte 6 (freq bits high nibble:
          * 0x20=44.1k 0x10=48k; channel bits low: 0x02=stereo 0x01=mono).
          * 0 = not reported (assume 44.1k+48k). */
+        uint8_t aptx_caps = 0;
         uint8_t aptxhd_caps = 0;
         uint8_t aptxll_caps = 0;
         /* aptX LL: vendor ID the remote used (0x0A or 0xD7) and its raw
@@ -239,6 +242,7 @@ private:
     uint8_t ldac_local_seid_ = 0;
     uint8_t aptxhd_local_seid_ = 0;
     uint8_t aptxll_local_seid_ = 0;
+    uint8_t aptx_local_seid_ = 0;
     uint8_t sbc_local_seid_ = 0;
     uint8_t aac_local_seid_ = 0;
 
@@ -246,6 +250,7 @@ private:
     avdtp_stream_endpoint *ldac_ep_ = nullptr;
     avdtp_stream_endpoint *aptxhd_ep_ = nullptr;
     avdtp_stream_endpoint *aptxll_ep_ = nullptr;
+    avdtp_stream_endpoint *aptx_ep_ = nullptr;
     avdtp_stream_endpoint *sbc_ep_ = nullptr;
     avdtp_stream_endpoint *aac_ep_ = nullptr;
 
@@ -301,7 +306,7 @@ private:
         uint32_t size = 0;
         uint32_t timestamp = 0;
         uint8_t  frames = 0;
-        bool     no_rtp = false;   /* send without RTP header (aptX LL) */
+        bool     no_rtp = false;   /* send without RTP header (aptX, aptX LL) */
     };
     static const int MEDIA_QUEUE_CAPACITY = 64;
     MediaPacket media_queue_[MEDIA_QUEUE_CAPACITY];

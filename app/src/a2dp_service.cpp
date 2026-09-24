@@ -17,6 +17,7 @@
 #include "ldac_encoder.h"
 #include "aptxhd_encoder.h"
 #include "aptxll_encoder.h"
+#include "aptx_encoder.h"
 #include "a2dp_sbc_encoder.h"
 #include "aac_encoder.h"
 #include "bt_device.h"
@@ -294,15 +295,16 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
             if (mtu == 0) mtu = 679;
             uint32_t max_raw = (g_ctx.active_codec == AudioCodec::LDAC ||
                                 g_ctx.active_codec == AudioCodec::SBC) ? (mtu - 1) : mtu;
-            if (g_ctx.active_codec == AudioCodec::AptxLL) {
-                /* aptX LL is sent without the 12-byte RTP header, so the whole
-                 * L2CAP MTU is payload (get_media_mtu() already has the RTP
-                 * header subtracted). Cap to the transport's per-packet buffer
-                 * and keep whole 4-byte aptX frames. */
+            if (g_ctx.active_codec == AudioCodec::Aptx ||
+                g_ctx.active_codec == AudioCodec::AptxLL) {
+                /* aptX and aptX LL are sent without the 12-byte RTP header, so
+                 * the whole L2CAP MTU is payload (get_media_mtu() already has
+                 * the RTP header subtracted). Cap to the transport's per-packet
+                 * buffer and keep whole 4-byte aptX frames. */
                 max_raw = (static_cast<uint32_t>(mtu) + BtStackTransport::RTP_HEADER_SIZE);
                 if (max_raw > BtStackTransport::MAX_MEDIA_PACKET_SIZE)
                     max_raw = BtStackTransport::MAX_MEDIA_PACKET_SIZE;
-                if (sample_rate > 0) {
+                if (g_ctx.active_codec == AudioCodec::AptxLL && sample_rate > 0) {
                     /* Low latency: keep packets <= ~7.5 ms like PipeWire */
                     uint32_t ll_max = sample_rate * 75u / 10000u;  /* samples = bytes (4 B / 4 samples) */
                     if (ll_max >= 4 && max_raw > ll_max) max_raw = ll_max;
@@ -402,6 +404,7 @@ static const char *codec_name_for(AudioCodec c) {
     case AudioCodec::LDAC:   return "LDAC";
     case AudioCodec::AptxHD: return "aptX HD";
     case AudioCodec::AptxLL: return "aptX Low Latency";
+    case AudioCodec::Aptx:   return "aptX";
     case AudioCodec::SBC:    return "SBC";
     case AudioCodec::AAC:    return "AAC";
     }
@@ -900,8 +903,9 @@ void A2dpService::streaming_thread_func_inner() {
     case 1: requested_codec = AudioCodec::LDAC;   break;
     case 2: requested_codec = AudioCodec::AptxHD; break;
     case 3: requested_codec = AudioCodec::AptxLL; break;
-    case 4: requested_codec = AudioCodec::SBC;    break;
-    case 5: requested_codec = AudioCodec::AAC;    break;
+    case 4: requested_codec = AudioCodec::Aptx;   break;
+    case 5: requested_codec = AudioCodec::SBC;    break;
+    case 6: requested_codec = AudioCodec::AAC;    break;
     }
 
     EncoderQuality quality = EncoderQuality::High;
@@ -951,6 +955,7 @@ void A2dpService::streaming_thread_func_inner() {
         case AudioCodec::LDAC:   if (caps.ldac)    { selected_codec = AudioCodec::LDAC;   found = true; } break;
         case AudioCodec::AptxHD: if (caps.aptx_hd) { selected_codec = AudioCodec::AptxHD; found = true; } break;
         case AudioCodec::AptxLL: if (caps.aptx_ll) { selected_codec = AudioCodec::AptxLL; found = true; } break;
+        case AudioCodec::Aptx:   if (caps.aptx)    { selected_codec = AudioCodec::Aptx;   found = true; } break;
         case AudioCodec::SBC:    if (caps.sbc)     { selected_codec = AudioCodec::SBC;    found = true; } break;
         case AudioCodec::AAC:    if (caps.aac)     { selected_codec = AudioCodec::AAC;    found = true; } break;
         }
@@ -966,6 +971,7 @@ void A2dpService::streaming_thread_func_inner() {
         if (caps.ldac)        { selected_codec = AudioCodec::LDAC;   found = true; }
         else if (caps.aptx_hd){ selected_codec = AudioCodec::AptxHD; found = true; }
         else if (caps.aptx_ll){ selected_codec = AudioCodec::AptxLL; found = true; }
+        else if (caps.aptx)   { selected_codec = AudioCodec::Aptx;   found = true; }
         else if (caps.aac)    { selected_codec = AudioCodec::AAC;    found = true; }
         else if (caps.sbc)    { selected_codec = AudioCodec::SBC;    found = true; }
     }
@@ -977,8 +983,9 @@ void A2dpService::streaming_thread_func_inner() {
     }
 
     g_ctx.active_codec = selected_codec;
-    LOG_INFO("A2dpService: codec selected: %s (caps: ldac=%d aptxhd=%d aptxll=%d aac=%d sbc=%d)",
-             codec_name_for(selected_codec), caps.ldac, caps.aptx_hd, caps.aptx_ll, caps.aac, caps.sbc);
+    LOG_INFO("A2dpService: codec selected: %s (caps: ldac=%d aptxhd=%d aptxll=%d aptx=%d aac=%d sbc=%d)",
+             codec_name_for(selected_codec), caps.ldac, caps.aptx_hd, caps.aptx_ll, caps.aptx,
+             caps.aac, caps.sbc);
 
     /* Initialize audio capture */
     notify_state(State::Connecting, L("status.initializing_audio"));
@@ -1096,6 +1103,7 @@ void A2dpService::streaming_thread_func_inner() {
     case AudioCodec::LDAC:   encoder = std::make_unique<LdacEncoder>(); break;
     case AudioCodec::AptxHD: encoder = std::make_unique<AptxHdEncoder>(); break;
     case AudioCodec::AptxLL: encoder = std::make_unique<AptxLlEncoder>(); break;
+    case AudioCodec::Aptx:   encoder = std::make_unique<AptxEncoder>(); break;
     case AudioCodec::SBC:    encoder = std::make_unique<SbcEncoder>(); break;
 #ifdef AAC_ENCODER_AVAILABLE
     case AudioCodec::AAC:    encoder = std::make_unique<AacEncoder>(); break;
