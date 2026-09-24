@@ -760,10 +760,15 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
     /* Wait for stream establishment (includes signaling connection + SEP discovery) */
     if (!wait_for_event(connect_event_, CONNECT_TIMEOUT_MS)) {
         fprintf(stderr, "BTstack: Connection timed out\n");
+        abort_pending_connection();
         return false;
     }
 
-    return connect_result_.load();
+    if (!connect_result_.load()) {
+        abort_pending_connection();
+        return false;
+    }
+    return true;
 }
 
 bool BtStackTransport::configure_codec(AudioCodec codec, uint32_t sample_rate, uint8_t channels) {
@@ -957,6 +962,70 @@ void BtStackTransport::cancel_pending_waits() {
     SetEvent(static_cast<HANDLE>(cancel_event_));
 }
 
+void BtStackTransport::abort_pending_connection() {
+    /*
+     * After a failed or timed-out connect, the AVDTP connection may still be
+     * alive inside BTstack (outgoing_active set, SEP discovery lock held), so
+     * the next a2dp_source_establish_stream() would return COMMAND_DISALLOWED.
+     */
+    if (a2dp_cid_ != 0) {
+        ResetEvent(static_cast<HANDLE>(disconnect_event_));
+
+        RunLoopRequest req = {};
+        req.done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+        req.config_a2dp_cid = a2dp_cid_;
+        memcpy(req.addr, remote_addr_be_, 6);
+        req.reg.callback = [](void *ctx) {
+            auto *r = static_cast<RunLoopRequest *>(ctx);
+            r->int_result = 0;  /* 1 = wait for SIGNALING_CONNECTION_RELEASED */
+            avdtp_connection_t *c = avdtp_get_connection_for_avdtp_cid(r->config_a2dp_cid);
+            if (c == nullptr) {
+                /* Already finalized by BTstack (e.g. signaling connect failed) */
+            } else if (c->state == AVDTP_SIGNALING_CONNECTION_OPENED ||
+                       c->state == AVDTP_SIGNALING_CONNECTION_W4_L2CAP_DISCONNECTED) {
+                /* L2CAP signaling channel is up: normal close, RELEASED follows */
+                a2dp_source_disconnect(r->config_a2dp_cid);
+                r->int_result = 1;
+            } else {
+                /* Not open yet (SDP query / W4_L2CAP_CONNECTED): avdtp_disconnect
+                 * emits a failed CONNECTION_ESTABLISHED and frees the connection
+                 * synchronously, but a pending outgoing L2CAP channel would be
+                 * orphaned. Drop the ACL too if it is up; never touch an ACL
+                 * that is still paging (no valid con_handle yet). */
+                a2dp_source_disconnect(r->config_a2dp_cid);
+                hci_connection_t *acl = hci_connection_for_bd_addr_and_type(r->addr, BD_ADDR_TYPE_ACL);
+                if (acl != nullptr && acl->state == OPEN) {
+                    gap_disconnect(acl->con_handle);
+                }
+            }
+            SetEvent(r->done_event);
+        };
+        req.reg.context = &req;
+        btstack_run_loop_execute_on_main_thread(&req.reg);
+        WaitForSingleObject(req.done_event, 5000);
+        CloseHandle(req.done_event);
+
+        /* Plain wait (not wait_for_event): cleanup must complete even when
+         * cancel_event_ is latched by a user stop. */
+        if (req.int_result == 1) {
+            if (WaitForSingleObject(static_cast<HANDLE>(disconnect_event_),
+                                    DISCONNECT_TIMEOUT_MS) != WAIT_OBJECT_0) {
+                fprintf(stderr, "BTstack: AVDTP signaling release timed out\n");
+            }
+        }
+    }
+
+    /* This was never a live stream: don't let the RELEASED/HCI disconnect
+     * handlers make the streaming loop think a connection was lost. */
+    connected_.store(false);
+    streaming_.store(false);
+    a2dp_cid_ = 0;
+    disconnect_occurred_.store(false);
+    /* The failed CONNECTION_ESTABLISHED path signals these synchronously */
+    ResetEvent(static_cast<HANDLE>(connect_event_));
+    ResetEvent(static_cast<HANDLE>(stream_event_));
+}
+
 bool BtStackTransport::reconnect() {
     if (!hci_ready_.load() || !has_remote_addr_) {
         fprintf(stderr, "BTstack: Cannot reconnect — HCI not ready or no stored address\n");
@@ -991,6 +1060,7 @@ bool BtStackTransport::reconnect() {
      * between attempts is swallowed and the loop keeps blocking for the
      * full page timeout. It is re-armed only at the start of a fresh
      * user-initiated operation (connect_a2dp / scan_devices). */
+    ResetEvent(static_cast<HANDLE>(connect_event_));
     connect_result_.store(false);
     stream_result_.store(false);
     start_result_.store(false);
@@ -1022,11 +1092,13 @@ bool BtStackTransport::reconnect() {
     /* Wait for connection + capability discovery */
     if (!wait_for_event(connect_event_, CONNECT_TIMEOUT_MS)) {
         fprintf(stderr, "BTstack: Reconnection timed out\n");
+        abort_pending_connection();
         return false;
     }
 
     if (!connect_result_.load()) {
         fprintf(stderr, "BTstack: Reconnection failed\n");
+        abort_pending_connection();
         return false;
     }
 

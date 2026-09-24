@@ -190,6 +190,9 @@ private:
     void signal_event(void *event_handle, bool success);
     bool wait_for_event(void *event_handle, uint32_t timeout_ms);
 
+    /* Tear down a half-open AVDTP connection after a failed/timed-out connect */
+    void abort_pending_connection();
+
     /* Thread handle */
     void *thread_handle_ = nullptr;
 
