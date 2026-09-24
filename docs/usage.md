@@ -112,6 +112,12 @@ Both modes use WASAPI shared mode, so the capture sample rate is determined by t
 
 A2DPWB supports three aptX codecs, all encoded with [libopenaptx](https://github.com/pali/libopenaptx). aptX Adaptive is **not** supported.
 
+{: .warning }
+**aptX, aptX HD and aptX Low Latency are experimental.** They follow the Android / PipeWire implementations and pass encode/decode round-trip tests, but have not yet been verified with real headphones.
+
+{: .note }
+**Only need classic aptX?** Windows 10 already supports classic aptX in its built-in Bluetooth stack (not aptX HD, aptX LL or aptX Adaptive), so A2DPWB is not required for it. A2DPWB is mainly useful for LDAC, aptX HD and aptX Low Latency.
+
 | Codec | Vendor ID / Codec ID | RTP header | Status |
 |:------|:---------------------|:-----------|:-------|
 | aptX | 0x0000004F / 0x0001 | No | Supported (352/384 kbps at 44.1/48 kHz) |

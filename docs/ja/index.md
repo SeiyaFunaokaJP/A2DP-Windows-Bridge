@@ -28,6 +28,12 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LDAC、aptX HD
 | AAC | 128/192/256 kbps | 44.1/48 kHz | 16 bit | 約 150 ms |
 | SBC | 最大約 345 kbps | 44.1/48 kHz | 16 bit | 約 150 ms |
 
+{: .warning }
+**aptX・aptX HD・aptX Low Latency は実験的な対応です。** Android / PipeWire の実装に合わせ、エンコード→デコードの往復テストは通っていますが、実機のヘッドホンでの検証はまだです。表のレイテンシーは一般的な目安で、A2DPWB で測定した値ではありません。
+
+{: .note }
+**クラシック aptX だけが目的なら**、Windows 10 標準の Bluetooth スタックがクラシック aptX に対応しています（aptX HD・aptX LL・aptX Adaptive は非対応）。その場合 A2DPWB は不要です。A2DPWB が主に役立つのは LDAC・aptX HD・aptX Low Latency です。
+
 {: .note }
 **aptX Adaptive には対応していません**（オープンソースのエンコーダーが存在しないため）。ヘッドホンがクラシック aptX も通知していれば A2DPWB は aptX を直接使用し、そうでなければ Auto は AAC か SBC を選びます。詳しくは [aptX ファミリーと aptX Adaptive の互換性](usage#aptx-compatibility)を参照してください。
 

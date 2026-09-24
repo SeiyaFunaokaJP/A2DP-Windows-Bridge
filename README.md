@@ -16,6 +16,10 @@ Streams system audio via LDAC, aptX HD, aptX Low Latency, aptX, AAC, or SBC usin
 | AAC | 128/192/256 kbps | 44.1/48 kHz | 16 bit | ~150 ms |
 | SBC | up to ~345 kbps | 44.1/48 kHz | 16 bit | ~150 ms |
 
+> **aptX, aptX HD and aptX Low Latency are experimental.** They follow the Android / PipeWire implementations and pass encode/decode round-trip tests, but have not yet been verified with real headphones. Latency values in this table are typical figures, not measured with A2DPWB.
+
+> **Only need classic aptX?** Windows 10 already supports classic aptX in its built-in Bluetooth stack (not aptX HD, aptX LL or aptX Adaptive), so A2DPWB is not required for it. A2DPWB is mainly useful for LDAC, aptX HD and aptX Low Latency.
+
 > **aptX Adaptive is not supported.** There is no open-source aptX Adaptive encoder, so A2DPWB never selects it. If your headphones also list classic aptX (many aptX Adaptive models do), A2DPWB uses aptX directly; otherwise Auto picks AAC or SBC. See [aptX family and aptX Adaptive](#aptx-family-and-aptx-adaptive) below.
 
 ## Architecture
