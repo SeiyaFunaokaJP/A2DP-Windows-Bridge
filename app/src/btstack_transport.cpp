@@ -864,6 +864,26 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
     return true;
 }
 
+uint32_t BtStackTransport::pick_aptx_sample_rate(AudioCodec codec, uint32_t wanted) const {
+    uint8_t caps;
+    switch (codec) {
+    case AudioCodec::Aptx:   caps = remote_caps_.aptx_caps;   break;
+    case AudioCodec::AptxHD: caps = remote_caps_.aptxhd_caps; break;
+    case AudioCodec::AptxLL: caps = remote_caps_.aptxll_caps; break;
+    default: return wanted;
+    }
+    uint8_t freqs = caps & APTX_FREQ_MASK;
+    bool has441 = (freqs == 0) || (freqs & APTX_FREQ_44100);
+    bool has48  = (freqs == 0) || (freqs & APTX_FREQ_48000);
+    if (wanted == 48000 && has48) return 48000;
+    if (wanted == 44100 && has441) return 44100;
+    /* Other rate (e.g. 32k/88.2k/96k) or unsupported by the remote:
+     * prefer 48k, then 44.1k; WASAPI auto-resamples to the requested rate */
+    if (has48) return 48000;
+    if (has441) return 44100;
+    return wanted;  /* remote lists neither; configure_codec will reject */
+}
+
 bool BtStackTransport::configure_codec(AudioCodec codec, uint32_t sample_rate, uint8_t channels) {
     if (!connected_.load()) return false;
 

@@ -1029,6 +1029,19 @@ void A2dpService::streaming_thread_func_inner() {
         preferred_sr = codec_max_sr;
     }
 
+    /* aptX family: only 44.1/48 kHz, and only the rates the sink lists.
+     * Request one the remote supports; WASAPI auto-resamples to it. */
+    if (selected_codec == AudioCodec::Aptx || selected_codec == AudioCodec::AptxHD ||
+        selected_codec == AudioCodec::AptxLL) {
+        uint32_t aptx_sr = transport->pick_aptx_sample_rate(selected_codec, preferred_sr);
+        if (aptx_sr != preferred_sr) {
+            LOG_INFO("A2dpService: %s: using %u Hz capture instead of %u Hz "
+                     "(remote/codec supported rate)",
+                     codec_name_for(selected_codec), aptx_sr, preferred_sr);
+            preferred_sr = aptx_sr;
+        }
+    }
+
     switch (cmode) {
     case CaptureMode::SystemLoopback:
         if (!wasapi_capture.init(preferred_sr)) {

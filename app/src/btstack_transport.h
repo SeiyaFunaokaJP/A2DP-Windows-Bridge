@@ -180,6 +180,13 @@ public:
     /* Get discovered remote capabilities (valid after connect_a2dp) */
     const RemoteCodecCaps &get_remote_caps() const { return remote_caps_; }
 
+    /*
+     * For aptX / aptX HD / aptX LL: choose a capture sample rate (44100 or
+     * 48000) that the remote advertises, preferring `wanted`. Returns
+     * `wanted` unchanged for other codecs or when no better choice exists.
+     */
+    uint32_t pick_aptx_sample_rate(AudioCodec codec, uint32_t wanted) const;
+
 private:
     /* BTstack event handler (static, dispatches to instance) */
     static void packet_handler_trampoline(uint8_t packet_type, uint16_t channel,
