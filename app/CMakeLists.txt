@@ -5,10 +5,11 @@
 
 # --- wxWidgets (FetchContent) ---
 include(FetchContent)
+set(A2DPWB_WX_TAG v3.2.6)
 FetchContent_Declare(
     wxWidgets
     GIT_REPOSITORY https://github.com/wxWidgets/wxWidgets.git
-    GIT_TAG        v3.2.6
+    GIT_TAG        ${A2DPWB_WX_TAG}
     GIT_SHALLOW    TRUE
 )
 set(wxBUILD_SHARED OFF CACHE BOOL "" FORCE)
@@ -24,7 +25,13 @@ set(wxUSE_HTML OFF CACHE BOOL "" FORCE)
 set(wxUSE_HELP OFF CACHE BOOL "" FORCE)
 set(wxUSE_WXHTML_HELP OFF CACHE BOOL "" FORCE)
 set(wxBUILD_COMPATIBILITY "3.0" CACHE STRING "" FORCE)
+# Built-in third-party libraries the app does not need (only an .ico resource
+# is loaded; no wxRegEx). Keeps libjpeg / libtiff / PCRE2 out of the build.
+set(wxUSE_LIBJPEG OFF CACHE STRING "" FORCE)
+set(wxUSE_LIBTIFF OFF CACHE STRING "" FORCE)
+set(wxUSE_REGEX OFF CACHE STRING "" FORCE)
 FetchContent_MakeAvailable(wxWidgets)
+FetchContent_GetProperties(wxWidgets SOURCE_DIR A2DPWB_WX_SOURCE_DIR)
 
 # --- Main application ---
 add_executable(A2DPWB WIN32
@@ -163,3 +170,25 @@ configure_file(
     @ONLY
 )
 target_include_directories(A2DPWB PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
+# --- Release package (build/dist/A2DPWB-<ver>-win64.zip) ---
+# cmake --build build --target A2DPWB_dist --config Release
+# Assembles A2DPWB.exe, LICENSE, THIRD_PARTY_LICENSES.md, license texts copied
+# from the pinned sources (licenses/) and SOURCE.txt (repo/submodule commits).
+find_package(Git QUIET)
+set(A2DPWB_DIST_DIR ${CMAKE_BINARY_DIR}/dist)
+add_custom_target(A2DPWB_dist
+    COMMAND ${CMAKE_COMMAND}
+        -DAPP_VERSION=${PROJECT_VERSION}
+        -DAPP_EXE=$<TARGET_FILE:A2DPWB>
+        -DBUILD_CONFIG=$<CONFIG>
+        -DSRC_DIR=${CMAKE_SOURCE_DIR}
+        -DWX_SRC_DIR=${A2DPWB_WX_SOURCE_DIR}
+        -DWX_TAG=${A2DPWB_WX_TAG}
+        -DDIST_ROOT=${A2DPWB_DIST_DIR}
+        -DGIT_EXE=${GIT_EXECUTABLE}
+        -P ${CMAKE_SOURCE_DIR}/cmake/make_dist.cmake
+    COMMENT "Packaging ${A2DPWB_DIST_DIR}/A2DPWB-${PROJECT_VERSION}-win64.zip"
+    VERBATIM
+)
+add_dependencies(A2DPWB_dist A2DPWB)

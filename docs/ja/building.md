@@ -78,13 +78,19 @@ cmake -B build -A x64 -DBUILD_TESTS=OFF
 
 すべての依存関係は git サブモジュールとして含まれるか、ビルド時に取得されます。手動インストールは不要です。
 
-| ライブラリ | 取得方法 | ライセンス |
-|:-----------|:---------|:-----------|
-| BTstack | git サブモジュール | BSD-3-Clause（非商用） |
-| libldac (AOSP) | git サブモジュール | Apache-2.0 |
-| libopenaptx | git サブモジュール（0.2.0 に固定） | LGPL-2.1+ |
-| fdk-aac | git サブモジュール | FDK AAC License |
-| nlohmann/json | 同梱（ヘッダーオンリー） | MIT |
-| wxWidgets v3.2.6 | CMake FetchContent | wxWindows Library Licence |
+| ライブラリ | 取得方法 | 固定バージョン | ライセンス |
+|:-----------|:---------|:---------------|:-----------|
+| BTstack | git サブモジュール | v1.8.1-6-g5bc5cbdbe | BTstack License（非商用条項付きの BSD-3-Clause 類似ライセンス） |
+| Bluedroid SBC コーデック | BTstack に同梱（`3rd-party/bluedroid`） | BTstack に準拠 | Apache-2.0 |
+| rijndael | BTstack に同梱（`3rd-party/rijndael`） | BTstack に準拠 | パブリックドメイン |
+| libldac (AOSP) | git サブモジュール | android-15.0.0_r36-4-geeee1a3 | Apache-2.0 |
+| libopenaptx | git サブモジュール | 0.2.0（更新しないこと） | LGPL-2.1+ |
+| fdk-aac | git サブモジュール | v2.0.3-158-gd8e6b1a | FDK AAC License |
+| nlohmann/json | git サブモジュール（ヘッダーオンリー） | 3.12.0 | MIT |
+| wxWidgets | CMake FetchContent | v3.2.6 | wxWindows Library Licence 3.1 |
+| zlib / libpng / nanosvg | wxWidgets 内蔵のコピー | 1.2.13.1 / 1.6.37 / wxWidgets に準拠 | zlib / PNG Reference Library License v2 / zlib |
+
+{: .warning }
+BTstack をリンクしているため、A2DPWB のソースコード自体は MIT ライセンスであっても、ビルドした `A2DPWB.exe` は個人的かつ非商用の目的でのみ使用・再配布できます。
 
 ライセンスの全文は [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md) を参照してください。
