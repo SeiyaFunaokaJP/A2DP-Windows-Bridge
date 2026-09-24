@@ -931,26 +931,16 @@ bool BtStackTransport::disconnect() {
         stop_stream();
     }
 
-    /* Dispatch a2dp_source_disconnect to BTstack thread */
-    uint16_t cid = a2dp_cid_;
-    RunLoopRequest req = {};
-    req.done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-    req.config_a2dp_cid = cid;
-    req.reg.callback = [](void *ctx) {
-        auto *r = static_cast<RunLoopRequest *>(ctx);
-        a2dp_source_disconnect(r->config_a2dp_cid);
-        SetEvent(r->done_event);
-    };
-    req.reg.context = &req;
-    btstack_run_loop_execute_on_main_thread(&req.reg);
-    WaitForSingleObject(req.done_event, 5000);
-    CloseHandle(req.done_event);
+    fprintf(stderr, "BTstack: Disconnecting A2DP (cid=0x%04x)\n", a2dp_cid_);
 
-    wait_for_event(disconnect_event_, DISCONNECT_TIMEOUT_MS);
-
-    connected_.store(false);
-    streaming_.store(false);
-    a2dp_cid_ = 0;
+    /* Same teardown as a failed connect: resets disconnect_event_ before
+     * dispatching, closes the AVDTP signaling channel on the BTstack thread
+     * (or frees a half-open connection / drops the ACL), and waits for
+     * SIGNALING_CONNECTION_RELEASED with a plain bounded
+     * WaitForSingleObject. wait_for_event() must not be used here: after a
+     * user stop cancel_event_ stays latched, so it would return at once and
+     * a2dp_cid_ would be zeroed before the link was actually released. */
+    abort_pending_connection();
     return true;
 }
 
@@ -1438,7 +1428,15 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
 
     case A2DP_SUBEVENT_SIGNALING_CONNECTION_ESTABLISHED: {
         uint8_t status = a2dp_subevent_signaling_connection_established_get_status(packet);
-        a2dp_cid_ = a2dp_subevent_signaling_connection_established_get_a2dp_cid(packet);
+        uint16_t established_cid = a2dp_subevent_signaling_connection_established_get_a2dp_cid(packet);
+        if (a2dp_cid_ != 0 && established_cid != a2dp_cid_) {
+            /* Late event from an old/aborted connection: must not clobber
+             * the cid of the connection currently being established. */
+            fprintf(stderr, "BTstack: Ignoring signaling event for stale cid=0x%04x (current=0x%04x, status=0x%02x)\n",
+                    established_cid, a2dp_cid_, status);
+            break;
+        }
+        a2dp_cid_ = established_cid;
         if (status != ERROR_CODE_SUCCESS) {
             fprintf(stderr, "BTstack: Signaling connection failed (0x%02x)\n", status);
             connect_result_.store(false);
@@ -1624,8 +1622,32 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
         streaming_.store(false);
         break;
 
-    case A2DP_SUBEVENT_SIGNALING_CONNECTION_RELEASED:
-        fprintf(stderr, "BTstack: Signaling connection released\n");
+    case A2DP_SUBEVENT_SIGNALING_CONNECTION_RELEASED: {
+        uint16_t released_cid =
+            a2dp_subevent_signaling_connection_released_get_a2dp_cid(packet);
+        if (a2dp_cid_ != 0 && released_cid != a2dp_cid_) {
+            /* Late release of an old/aborted connection (e.g. after
+             * abort_pending_connection() gave up waiting): it must not
+             * clobber the newer connection's state. */
+            fprintf(stderr, "BTstack: Ignoring signaling release for stale cid=0x%04x (current=0x%04x)\n",
+                    released_cid, a2dp_cid_);
+            break;
+        }
+        if (a2dp_cid_ == 0) {
+            /* No current connection (worker already tore it down or is
+             * about to establish a new one): wake a pending disconnect wait
+             * and drop the old AVRCP link, but don't report a connection loss
+             * to the streaming loop. */
+            fprintf(stderr, "BTstack: Signaling connection released (cid=0x%04x, no current connection)\n",
+                    released_cid);
+            if (avrcp_cid_) {
+                avrcp_disconnect(avrcp_cid_);
+                avrcp_cid_ = 0;
+            }
+            signal_event(disconnect_event_, true);
+            break;
+        }
+        fprintf(stderr, "BTstack: Signaling connection released (cid=0x%04x)\n", released_cid);
         connected_.store(false);
         streaming_.store(false);
         media_queue_count_.store(0);
@@ -1637,6 +1659,7 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
         disconnect_occurred_.store(true);
         signal_event(disconnect_event_, true);
         break;
+    }
 
     case A2DP_SUBEVENT_COMMAND_REJECTED:
         fprintf(stderr, "BTstack: A2DP command rejected\n");
