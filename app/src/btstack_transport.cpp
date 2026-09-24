@@ -570,6 +570,8 @@ void BtStackTransport::register_codec_endpoints() {
         if (ldac_ep_) {
             ldac_local_seid_ = avdtp_local_seid(ldac_ep_);
             fprintf(stderr, "BTstack: Registered LDAC endpoint (SEID=%u)\n", ldac_local_seid_);
+        } else {
+            fprintf(stderr, "BTstack: WARNING — failed to register LDAC endpoint\n");
         }
     }
 
@@ -590,6 +592,8 @@ void BtStackTransport::register_codec_endpoints() {
         if (aptxhd_ep_) {
             aptxhd_local_seid_ = avdtp_local_seid(aptxhd_ep_);
             fprintf(stderr, "BTstack: Registered aptX HD endpoint (SEID=%u)\n", aptxhd_local_seid_);
+        } else {
+            fprintf(stderr, "BTstack: WARNING — failed to register aptX HD endpoint\n");
         }
     }
 
@@ -610,6 +614,8 @@ void BtStackTransport::register_codec_endpoints() {
         if (aptx_ep_) {
             aptx_local_seid_ = avdtp_local_seid(aptx_ep_);
             fprintf(stderr, "BTstack: Registered aptX endpoint (SEID=%u)\n", aptx_local_seid_);
+        } else {
+            fprintf(stderr, "BTstack: WARNING — failed to register aptX endpoint\n");
         }
     }
 
@@ -633,6 +639,8 @@ void BtStackTransport::register_codec_endpoints() {
         if (aptxll_ep_) {
             aptxll_local_seid_ = avdtp_local_seid(aptxll_ep_);
             fprintf(stderr, "BTstack: Registered aptX LL endpoint (SEID=%u)\n", aptxll_local_seid_);
+        } else {
+            fprintf(stderr, "BTstack: WARNING — failed to register aptX LL endpoint\n");
         }
     }
 
@@ -656,6 +664,8 @@ void BtStackTransport::register_codec_endpoints() {
         if (sbc_ep_) {
             sbc_local_seid_ = avdtp_local_seid(sbc_ep_);
             fprintf(stderr, "BTstack: Registered SBC endpoint (SEID=%u)\n", sbc_local_seid_);
+        } else {
+            fprintf(stderr, "BTstack: WARNING — failed to register SBC endpoint\n");
         }
     }
 
@@ -679,6 +689,8 @@ void BtStackTransport::register_codec_endpoints() {
         if (aac_ep_) {
             aac_local_seid_ = avdtp_local_seid(aac_ep_);
             fprintf(stderr, "BTstack: Registered AAC endpoint (SEID=%u)\n", aac_local_seid_);
+        } else {
+            fprintf(stderr, "BTstack: WARNING — failed to register AAC endpoint\n");
         }
     }
 }
