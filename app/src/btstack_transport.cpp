@@ -383,7 +383,10 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
 
     /* SSP: Just Works (no display, no keyboard) */
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
-    gap_ssp_set_authentication_requirement(0);  /* No MITM required */
+    /* General Bonding without MITM (BTstack default). 0 = No Bonding would never
+     * store link keys, and some headsets ignore profile connections from
+     * non-bonded peers (e.g. no reply to AVDTP Discover). */
+    gap_ssp_set_authentication_requirement(SSP_IO_AUTHREQ_MITM_PROTECTION_NOT_REQUIRED_GENERAL_BONDING);
 
     gap_set_local_name("A2DPWB");
 
