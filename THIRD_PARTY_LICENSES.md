@@ -10,7 +10,7 @@ along with their license information and compliance obligations.
 | Library | License | Copyright | Usage |
 |---------|---------|-----------|-------|
 | libldac (AOSP) | Apache-2.0 | Sony Corporation | LDAC audio encoding |
-| libopenaptx | LGPL-2.1+ | Pali Rohar | aptX / aptX HD audio encoding |
+| libopenaptx 0.2.0 | LGPL-2.1+ | Aurelien Jacobs, Pali Rohár | aptX / aptX HD / aptX LL audio encoding |
 | fdk-aac | FDK AAC License | Fraunhofer IIS | AAC-LC audio encoding |
 | BTstack | BSD-3-Clause (dual) | BlueKitchen GmbH | User-mode Bluetooth stack (incl. SBC encoder) |
 | wxWidgets | wxWindows Library Licence | wxWidgets Team | GUI framework |
@@ -53,10 +53,20 @@ For the detail of certification process, see the following URL:
 ## 2. libopenaptx (Open Source aptX / aptX HD Encoder)
 
 - **Source**: <https://github.com/pali/libopenaptx>
+- **Version**: 0.2.0 (tag `0.2.0`, commit `2459ed4`)
 - **Path in project**: `extern/libopenaptx/` (git submodule)
 - **License**: GNU Lesser General Public License v2.1 or later (LGPL-2.1+)
-- **Copyright**: Copyright (C) 2017-2024 Pali Rohar
+- **Copyright**: Copyright (C) 2017 Aurelien Jacobs, Copyright (C) 2018-2020 Pali Rohár
 - **SPDX**: `LGPL-2.1-or-later`
+- **Usage**: aptX, aptX HD and aptX Low Latency encoding
+
+> **Do not update this submodule to 0.2.1 or later.** Starting with 0.2.1,
+> libopenaptx is licensed under GPL-3.0-or-later with additional usage
+> restrictions in its README. That is not compatible with the other libraries
+> linked into A2DPWB (e.g. fdk-aac, BTstack). Version 0.2.0 is the last
+> LGPL-2.1+ release; its encoder code is identical to 0.2.1 apart from the
+> license headers. Releases up to and including v1.0.4 were mistakenly built
+> with 0.2.1.
 
 ### Obligations
 
@@ -71,7 +81,9 @@ For the detail of certification process, see the following URL:
 
 ### Patent Notice
 
-aptX and aptX HD are trademarks of Qualcomm Technologies International, Ltd.
+aptX, aptX HD, aptX Low Latency and aptX Adaptive are trademarks of Qualcomm
+Technologies International, Ltd. A2DPWB does not include an aptX Adaptive
+encoder.
 The libopenaptx library is a clean-room reverse-engineered implementation and
 does not use any Qualcomm proprietary code. However, aptX encoding/decoding
 may be covered by patents in some jurisdictions. Users should evaluate patent

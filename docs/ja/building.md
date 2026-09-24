@@ -82,7 +82,7 @@ cmake -B build -A x64 -DBUILD_TESTS=OFF
 |:-----------|:---------|:-----------|
 | BTstack | git サブモジュール | BSD-3-Clause（非商用） |
 | libldac (AOSP) | git サブモジュール | Apache-2.0 |
-| libopenaptx | git サブモジュール | LGPL-2.1+ |
+| libopenaptx | git サブモジュール（0.2.0 に固定） | LGPL-2.1+ |
 | fdk-aac | git サブモジュール | FDK AAC License |
 | nlohmann/json | 同梱（ヘッダーオンリー） | MIT |
 | wxWidgets v3.2.6 | CMake FetchContent | wxWindows Library Licence |

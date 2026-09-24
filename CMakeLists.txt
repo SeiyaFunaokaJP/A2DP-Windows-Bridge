@@ -50,7 +50,9 @@ else()
         "Run: git submodule update --init --recursive")
 endif()
 
-# --- libopenaptx (aptX / aptX HD encoder) ---
+# --- libopenaptx (aptX / aptX HD / aptX LL encoder) ---
+# Pinned to 0.2.0, the last LGPL-2.1+ release. 0.2.1+ is GPL-3.0-or-later,
+# which is incompatible with the other linked libraries (THIRD_PARTY_LICENSES.md).
 set(OPENAPTX_SRC_DIR ${CMAKE_SOURCE_DIR}/extern/libopenaptx)
 
 if(EXISTS ${OPENAPTX_SRC_DIR}/openaptx.c)
