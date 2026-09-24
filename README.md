@@ -167,12 +167,28 @@ A2DPWB encodes aptX, aptX HD and aptX Low Latency with libopenaptx. For these co
 
 To see exactly which codecs your headphones offer, enable debug mode and check the `Capability discovery complete (...)` line in `debug.log`. See the [Usage guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/usage#aptx-compatibility) for details.
 
+### Auto-start (Run on boot)
+
+You can configure A2DPWB to start automatically when Windows boots.
+
+**Via GUI:**
+Enable the "Run on startup" option in the Settings dialog. When enabled, the application will automatically launch minimized in the system tray upon user login.
+
+**Manual Configuration (regedit):**
+The auto-start behavior is controlled by the standard Windows registry key.
+- **Key**: `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`
+- **Value Name**: `A2DPWB`
+- **Value Data**: `"<Path-to-A2DPWB.exe>" --minimized`
+
+You can manually add this entry using `regedit` if needed. To disable it manually (e.g., if the GUI is inaccessible), simply delete the `A2DPWB` value from this registry key.
+
 ## Features
 
 - **Multi-codec support**: LDAC, aptX HD, aptX Low Latency, aptX, AAC, SBC with automatic negotiation
 - **Two capture modes**: System loopback (all system audio) or virtual audio device (per-app routing via VB-CABLE etc.)
 - **LDAC ABR**: Adaptive Bit Rate for unstable connections
 - **Auto-reconnect**: Reconnects on Bluetooth disconnection (up to 10 attempts)
+- **Auto-start**: Optionally run minimized in the system tray at Windows startup
 - **Profile management**: Save and load device + codec configurations
 - **Localization**: English / Japanese UI
 - **Realtek firmware**: Guided firmware download for Realtek adapters
