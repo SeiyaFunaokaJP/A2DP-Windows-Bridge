@@ -90,7 +90,6 @@ static void audio_callback(
     const uint8_t *data, uint32_t frames,
     uint32_t channels, uint32_t sample_rate, uint32_t bits_per_sample)
 {
-    (void)sample_rate;
 
     if (!g_running.load()) return;
 
@@ -257,6 +256,18 @@ static void audio_callback(
     /* Reserve 1 byte for LDAC/SBC media payload header (added by send_media) */
     uint32_t max_raw = (g_active_codec == AudioCodec::LDAC ||
                         g_active_codec == AudioCodec::SBC) ? (mtu - 1) : mtu;
+    if (g_active_codec == AudioCodec::AptxLL) {
+        /* aptX LL has no RTP header: the full L2CAP MTU is payload */
+        max_raw = static_cast<uint32_t>(mtu) + BtStackTransport::RTP_HEADER_SIZE;
+        if (max_raw > BtStackTransport::MAX_MEDIA_PACKET_SIZE)
+            max_raw = BtStackTransport::MAX_MEDIA_PACKET_SIZE;
+        if (sample_rate > 0) {
+            /* Low latency: keep packets <= ~7.5 ms like PipeWire */
+            uint32_t ll_max = sample_rate * 75u / 10000u;
+            if (ll_max >= 4 && max_raw > ll_max) max_raw = ll_max;
+        }
+        max_raw &= ~3u;
+    }
 
     static thread_local uint8_t accum[2048];
     uint32_t accum_size = 0;

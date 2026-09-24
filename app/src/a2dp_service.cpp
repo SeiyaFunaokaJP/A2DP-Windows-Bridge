@@ -284,6 +284,21 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
             if (mtu == 0) mtu = 679;
             uint32_t max_raw = (g_ctx.active_codec == AudioCodec::LDAC ||
                                 g_ctx.active_codec == AudioCodec::SBC) ? (mtu - 1) : mtu;
+            if (g_ctx.active_codec == AudioCodec::AptxLL) {
+                /* aptX LL is sent without the 12-byte RTP header, so the whole
+                 * L2CAP MTU is payload (get_media_mtu() already has the RTP
+                 * header subtracted). Cap to the transport's per-packet buffer
+                 * and keep whole 4-byte aptX frames. */
+                max_raw = (static_cast<uint32_t>(mtu) + BtStackTransport::RTP_HEADER_SIZE);
+                if (max_raw > BtStackTransport::MAX_MEDIA_PACKET_SIZE)
+                    max_raw = BtStackTransport::MAX_MEDIA_PACKET_SIZE;
+                if (sample_rate > 0) {
+                    /* Low latency: keep packets <= ~7.5 ms like PipeWire */
+                    uint32_t ll_max = sample_rate * 75u / 10000u;  /* samples = bytes (4 B / 4 samples) */
+                    if (ll_max >= 4 && max_raw > ll_max) max_raw = ll_max;
+                }
+                max_raw &= ~3u;
+            }
 
             uint32_t accum_size = 0;
             uint32_t accum_frames = 0;

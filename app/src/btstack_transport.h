@@ -24,6 +24,13 @@ struct avdtp_stream_endpoint;
 
 class BtStackTransport {
 public:
+    /* RTP media header size (BTstack AVDTP_MEDIA_PAYLOAD_HEADER_SIZE); already
+     * subtracted from get_media_mtu(). Codecs sent without RTP (aptX LL)
+     * may use get_media_mtu() + RTP_HEADER_SIZE bytes of payload. */
+    static constexpr uint32_t RTP_HEADER_SIZE = 12;
+    /* Capacity of one queued media packet (MediaPacket::data) */
+    static constexpr uint32_t MAX_MEDIA_PACKET_SIZE = 1024;
+
     BtStackTransport();
     ~BtStackTransport();
 
@@ -155,6 +162,16 @@ public:
         uint8_t aptxll_seid = 0;
         uint8_t sbc_seid = 0;
         uint8_t aac_seid = 0;
+        /* Remote aptX-family capability byte 6 (freq bits high nibble:
+         * 0x20=44.1k 0x10=48k; channel bits low: 0x02=stereo 0x01=mono).
+         * 0 = not reported (assume 44.1k+48k). */
+        uint8_t aptxhd_caps = 0;
+        uint8_t aptxll_caps = 0;
+        /* aptX LL: vendor ID the remote used (0x0A or 0xD7) and its raw
+         * codec info (8 bytes, or 17 with has_new_caps) */
+        uint32_t aptxll_vendor_id = 0;
+        uint8_t aptxll_info[17] = {};
+        uint8_t aptxll_info_len = 0;
     };
 
     /* Get discovered remote capabilities (valid after connect_a2dp) */
@@ -280,10 +297,11 @@ private:
      * Ring buffer avoids dropping frames when multiple LDAC frames are
      * produced per WASAPI callback (e.g. 4 frames/10ms at 990kbps). */
     struct MediaPacket {
-        uint8_t  data[1024];
+        uint8_t  data[MAX_MEDIA_PACKET_SIZE];
         uint32_t size = 0;
         uint32_t timestamp = 0;
         uint8_t  frames = 0;
+        bool     no_rtp = false;   /* send without RTP header (aptX LL) */
     };
     static const int MEDIA_QUEUE_CAPACITY = 64;
     MediaPacket media_queue_[MEDIA_QUEUE_CAPACITY];
