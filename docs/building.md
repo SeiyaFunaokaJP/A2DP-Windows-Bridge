@@ -55,7 +55,7 @@ A2DP-Windows-Bridge/
 ├── extern/                 Third-party libraries (git submodules)
 │   ├── btstack/            BTstack Bluetooth stack
 │   ├── libldac/            AOSP LDAC encoder
-│   ├── libopenaptx/        aptX / aptX HD encoder
+│   ├── libopenaptx/        aptX / aptX HD / aptX LL encoder
 │   ├── fdk-aac/            Fraunhofer AAC encoder
 │   └── json/               nlohmann/json (header-only)
 ├── CMakeLists.txt          Root build config

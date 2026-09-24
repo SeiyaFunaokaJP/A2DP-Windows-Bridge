@@ -18,7 +18,7 @@ nav_order: 4
 
 ## 概要
 
-A2DP Windows Bridge (A2DPWB) は Windows で LDAC、aptX HD、aptX Low Latency、AAC、SBC の Bluetooth オーディオを実現します。Windows は Bluetooth A2DP で SBC と AAC のみネイティブ対応ですが、このツールはカーネルドライバーなしで高音質コーデックを追加します。
+A2DP Windows Bridge (A2DPWB) は Windows で LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC の Bluetooth オーディオを実現します。Windows は Bluetooth A2DP で SBC と AAC のみネイティブ対応ですが、このツールはカーネルドライバーなしで高音質コーデックを追加します。
 
 **BTstack + WinUSB** を使用 -- 完全にユーザーモードで動作し、ドライバー署名は不要です。
 
@@ -69,6 +69,8 @@ A2DPWB.exe
 │   │   ├── ldac_encoder        LDAC (libldac, ABR 対応)
 │   │   ├── aptxhd_encoder      aptX HD (libopenaptx)
 │   │   ├── aptxll_encoder      aptX Low Latency (libopenaptx)
+│   │   ├── aptx_encoder        aptX クラシック (libopenaptx)
+│   │   ├── aptx_pcm_pack.h     aptX 系エンコーダー共通の PCM → パック 24-bit 変換
 │   │   ├── aac_encoder         AAC-LC (fdk-aac, LATM トランスポート)
 │   │   └── a2dp_sbc_encoder    SBC (BTstack Bluedroid)
 │   │
@@ -97,7 +99,7 @@ A2DPWB.exe
  WASAPI ループバックキャプチャ (PCM 16-bit, 44.1/48 kHz)
        │
        ▼
- オーディオエンコーダー (LDAC / aptX HD / aptX LL / AAC / SBC)
+ オーディオエンコーダー (LDAC / aptX HD / aptX LL / aptX / AAC / SBC)
        │
        ▼
  A2DP Service → BtStackTransport::send_media()
@@ -119,6 +121,7 @@ A2DPWB.exe
 接続ライフサイクルの中央管理:
 - コーデックネゴシエーション（自動選択またはユーザー指定）
 - 全対応コーデックのストリームエンドポイント登録
+- aptX 系のサンプルレート選択（リモートが通知する 44.1 / 48 kHz から選び、キャプチャは WASAPI がリサンプリング）
 - 接続ステートマシン（idle → connecting → streaming → disconnecting）
 - 予期しない切断時の自動再接続ロジック
 - コーデック固有のフレーミングによるメディアパケット送信
@@ -130,9 +133,12 @@ A2DPWB.exe
 **役割**:
 - WinUSB HCI トランスポートで BTstack を初期化
 - 専用スレッドで BTstack イベントループを実行
-- ベンダーコーデックストリームエンドポイント (LDAC, aptX HD, aptX LL) を登録
+- ストリームエンドポイントを登録: ベンダーコーデック (LDAC, aptX HD, aptX, aptX LL) と SBC、AAC
+- SDP レコード (A2DP Source, AVRCP Controller, AVRCP Target) を登録
+- リモートの対応コーデックを解析（両方の Vendor ID の aptX LL、および検出・ログ出力のみの aptX Adaptive を含む）
 - 非同期→同期ラッパーで A2DP 接続ライフサイクルを管理
-- SSP ペアリング（Just Works モード）を処理
+- SSP ペアリング（Just Works、General Bonding、リンクキー永続化）を処理
+- 接続タイムアウト後に中途半端な接続を破棄し、再試行できるようにする
 - WASAPI コールバック向けスレッドセーフなメディア送信を提供
 - Realtek チップセットファームウェアロード
 
@@ -140,7 +146,8 @@ A2DPWB.exe
 - `a2dp_source_create_stream_endpoint()` -- コーデックエンドポイント登録
 - `a2dp_source_establish_stream()` -- A2DP シンクに接続
 - `a2dp_source_set_config_other()` -- ベンダー固有コーデック設定
-- `a2dp_source_stream_send_media_payload_rtp()` -- エンコード済み音声送信
+- `a2dp_source_stream_send_media_payload_rtp()` -- RTP ヘッダー付きでエンコード済み音声を送信 (LDAC, aptX HD, AAC, SBC)
+- `a2dp_source_stream_send_media_packet()` -- RTP ヘッダーなしでメディアパケットを送信 (aptX, aptX LL)
 
 ### WASAPI Capture (`wasapi_capture.cpp`)
 
@@ -154,12 +161,15 @@ Windows Audio Session API を使用してシステム音声出力をリアルタ
 | エンコーダー | ライブラリ | ビットレート | 機能 |
 |:-------------|:-----------|:-------------|:-----|
 | LDAC | libldac (AOSP) | 330/660/990 kbps | HQ/SQ/MQ モード、ABR |
-| aptX HD | libopenaptx | 576 kbps | 24-bit、固定レート |
-| aptX LL | libopenaptx | 352 kbps | 約 32 ms レイテンシー |
+| aptX HD | libopenaptx | 576 kbps | 24-bit 入力、固定レート、RTP ヘッダーあり |
+| aptX LL | libopenaptx | 352 kbps | 約 32 ms レイテンシー、RTP ヘッダーなし、パケットは約 7.5 ms 以下 |
+| aptX | libopenaptx | 352/384 kbps (44.1/48 kHz) | 16-bit ステレオ、RTP ヘッダーなし |
 | AAC | fdk-aac | 最大 256 kbps | AAC-LC、LATM トランスポート |
 | SBC | BTstack Bluedroid | 最大約 345 kbps | A2DP 必須ベースライン |
 
 すべてのエンコーダーは `AudioEncoder` インターフェースの `encode()` と `get_frame_size()` メソッドを実装しています。
+
+libopenaptx は 4 ステレオサンプル単位のパック済み 24-bit リトルエンディアン PCM を入力として受け取ります。`aptx_pcm_pack.h` はキャプチャした 16-bit または 32-bit（MSB 詰め）のサンプルをこの形式に変換し、aptX・aptX HD・aptX LL エンコーダーに渡します。モノラル入力は両チャネルに複製されます。
 
 ## ベンダーコーデック情報要素
 
@@ -168,10 +178,22 @@ Windows Audio Session API を使用してシステム音声出力をリアルタ
 | コーデック | Vendor ID | Codec ID |
 |:-----------|:----------|:---------|
 | LDAC | Sony (0x0000012D) | 0x00AA |
+| aptX | APT (0x0000004F) | 0x0001 |
 | aptX HD | Qualcomm (0x000000D7) | 0x0024 |
-| aptX Low Latency | CSR (0x0000000A) | 0x0002 |
+| aptX Low Latency | CSR (0x0000000A) または Qualcomm (0x000000D7) | 0x0002 |
+| aptX Adaptive | Qualcomm (0x000000D7) | 0x00AD（検出のみ、選択されない） |
 
 AAC と SBC は A2DP 仕様で定義された標準コーデック ID を使用します。
+
+コーデック情報要素のサイズ（6 バイトの Vendor ID / Codec ID を含む）:
+
+- **aptX**: 7 バイト（バイト 6 = サンプルレート / チャネルモード）
+- **aptX HD**: 11 バイト（バイト 6 は aptX と同じ、加えて予約 4 バイト）。ステレオ必須
+- **aptX LL**: 8 バイト。シンクが拡張（"new caps"）フラグを立てている場合は 17 バイト。A2DPWB は aptX LL エンドポイントを 1 つだけ登録し、シンクが使用した Vendor ID でストリームを設定します
+
+**RTP ヘッダーの有無**: LDAC・aptX HD・AAC・SBC のメディアパケットには 12 バイトの RTP ヘッダーが付きます。aptX と aptX LL は（Android や PipeWire と同様に）RTP ヘッダー**なし**で送信するため、L2CAP MTU 全体を aptX フレームに使えます。
+
+**aptX Adaptive** にはオープンソースのエンコーダーがない（libopenaptx も未実装）ため、A2DPWB は登録も選択もしません。シンクが通知した場合はログに記録するだけで、シンクがクラシック aptX を別途通知していればそちらを使用します。
 
 ## ビルドシステム
 
@@ -184,8 +206,8 @@ AAC と SBC は A2DP 仕様で定義された標準コーデック ID を使用�
 ## 重要な注意事項
 
 - **アダプター互換性**: Intel、CSR、Realtek USB アダプターでテスト済み。Realtek アダプターは起動時にファームウェアアップロードが必要
-- **ペアリング**: SSP Just Works を使用。リンクキーはローカルファイルに永続化
+- **ペアリング**: SSP Just Works（General Bonding）を使用。リンクキーはローカルファイルに永続化
 - **セカンドアダプター推奨**: Windows には内蔵 Bluetooth、A2DPWB には専用 USB アダプターを使用
 - 一部の Bluetooth アダプターのファームウェアは達成可能なビットレートを制限する場合がある
 - USB Bluetooth 5.0 以上のアダプターは LDAC に適している
-- 自動コーデック選択の優先順位: LDAC > aptX HD > aptX LL > AAC > SBC
+- 自動コーデック選択の優先順位: LDAC > aptX HD > aptX LL > aptX > AAC > SBC

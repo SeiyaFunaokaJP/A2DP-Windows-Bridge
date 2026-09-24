@@ -17,8 +17,8 @@ nav_order: 5
 
 ## Overview
 
-A2DP Windows Bridge (A2DPWB) enables LDAC, aptX HD, aptX Low Latency, AAC, and
-SBC Bluetooth audio on Windows. Windows natively only supports SBC and AAC for
+A2DP Windows Bridge (A2DPWB) enables LDAC, aptX HD, aptX Low Latency, aptX,
+AAC, and SBC Bluetooth audio on Windows. Windows natively only supports SBC and AAC for
 Bluetooth A2DP — this tool adds high-quality codecs without requiring a kernel
 driver.
 
@@ -77,6 +77,8 @@ A2DPWB.exe
 │   │   ├── ldac_encoder        LDAC (libldac, ABR support)
 │   │   ├── aptxhd_encoder      aptX HD (libopenaptx)
 │   │   ├── aptxll_encoder      aptX Low Latency (libopenaptx)
+│   │   ├── aptx_encoder        aptX classic (libopenaptx)
+│   │   ├── aptx_pcm_pack.h     Shared PCM → packed 24-bit helper for aptX encoders
 │   │   ├── aac_encoder         AAC-LC (fdk-aac, LATM transport)
 │   │   └── a2dp_sbc_encoder    SBC (BTstack Bluedroid)
 │   │
@@ -105,7 +107,7 @@ System Audio Output
  WASAPI Loopback Capture (PCM 16-bit, 44.1/48 kHz)
        │
        ▼
- Audio Encoder (LDAC / aptX HD / aptX LL / AAC / SBC)
+ Audio Encoder (LDAC / aptX HD / aptX LL / aptX / AAC / SBC)
        │
        ▼
  A2DP Service → BtStackTransport::send_media()
@@ -127,6 +129,8 @@ System Audio Output
 Central connection lifecycle manager. Coordinates:
 - Codec negotiation (auto-select or user-specified)
 - Stream endpoint registration for all supported codecs
+- aptX-family sample rate selection (44.1 / 48 kHz from the rates the remote
+  advertises; WASAPI resamples the capture)
 - Connection state machine (idle → connecting → streaming → disconnecting)
 - Auto-reconnect logic on unexpected disconnection
 - Media packet sending with codec-specific framing
@@ -139,9 +143,14 @@ API.
 **Responsibilities**:
 - Initialize BTstack with WinUSB HCI transport
 - Run BTstack event loop in a dedicated thread
-- Register vendor codec stream endpoints (LDAC, aptX HD, aptX LL)
+- Register stream endpoints: vendor codecs (LDAC, aptX HD, aptX, aptX LL)
+  plus SBC and AAC
+- Register SDP records (A2DP Source, AVRCP Controller, AVRCP Target)
+- Parse remote capabilities, including aptX LL under both vendor IDs and
+  aptX Adaptive (detected and logged only)
 - Handle A2DP connection lifecycle via async-to-sync wrappers
-- Manage SSP pairing (Just Works mode)
+- Manage SSP pairing (Just Works, General Bonding; link keys persisted)
+- Tear down a half-open connection after a connect timeout so retries work
 - Provide thread-safe media sending for WASAPI callback
 - Realtek chipset firmware loading
 
@@ -149,7 +158,10 @@ API.
 - `a2dp_source_create_stream_endpoint()` — Register codec endpoints
 - `a2dp_source_establish_stream()` — Connect to A2DP sink
 - `a2dp_source_set_config_other()` — Configure vendor-specific codec
-- `a2dp_source_stream_send_media_payload_rtp()` — Send encoded audio
+- `a2dp_source_stream_send_media_payload_rtp()` — Send encoded audio with an
+  RTP header (LDAC, aptX HD, AAC, SBC)
+- `a2dp_source_stream_send_media_packet()` — Send raw media packets without
+  an RTP header (aptX, aptX LL)
 
 ### WASAPI Capture (`wasapi_capture.cpp`)
 
@@ -163,13 +175,19 @@ Captures system audio output in real-time using Windows Audio Session API.
 | Encoder | Library | Bitrate | Features |
 |---------|---------|---------|----------|
 | LDAC | libldac (AOSP) | 330/660/990 kbps | HQ/SQ/MQ modes, ABR |
-| aptX HD | libopenaptx | 576 kbps | 24-bit, fixed rate |
-| aptX LL | libopenaptx | 352 kbps | ~32 ms latency |
+| aptX HD | libopenaptx | 576 kbps | 24-bit input, fixed rate, RTP header |
+| aptX LL | libopenaptx | 352 kbps | ~32 ms latency, no RTP header, packets ≤ ~7.5 ms |
+| aptX | libopenaptx | 352/384 kbps (44.1/48 kHz) | 16-bit stereo, no RTP header |
 | AAC | fdk-aac | up to 256 kbps | AAC-LC, LATM transport |
 | SBC | BTstack Bluedroid | up to ~345 kbps | Mandatory A2DP baseline |
 
 All encoders implement the `AudioEncoder` interface with `encode()` and
 `get_frame_size()` methods.
+
+libopenaptx expects groups of 4 stereo samples as packed 24-bit little-endian
+PCM. `aptx_pcm_pack.h` converts the capture's 16-bit or 32-bit (MSB-aligned)
+samples into that format for the aptX, aptX HD and aptX LL encoders; mono input
+is duplicated to both channels.
 
 ## Vendor Codec Information Elements
 
@@ -178,10 +196,29 @@ Non-standard codecs are registered as Vendor Specific in AVDTP:
 | Codec | Vendor ID | Codec ID |
 |-------|-----------|----------|
 | LDAC | Sony (0x0000012D) | 0x00AA |
+| aptX | APT (0x0000004F) | 0x0001 |
 | aptX HD | Qualcomm (0x000000D7) | 0x0024 |
-| aptX Low Latency | CSR (0x0000000A) | 0x0002 |
+| aptX Low Latency | CSR (0x0000000A) or Qualcomm (0x000000D7) | 0x0002 |
+| aptX Adaptive | Qualcomm (0x000000D7) | 0x00AD (detected only, never selected) |
 
 AAC and SBC use standard A2DP codec IDs defined in the A2DP specification.
+
+Codec information element sizes (including the 6-byte vendor/codec ID):
+
+- **aptX**: 7 bytes (byte 6 = sample rate / channel mode)
+- **aptX HD**: 11 bytes (byte 6 as aptX, plus 4 reserved bytes); stereo is
+  required
+- **aptX LL**: 8 bytes, or 17 bytes when the sink sets the extended
+  ("new caps") flag. A2DPWB registers one aptX LL endpoint and configures the
+  stream with the vendor ID the sink used
+
+**RTP vs no RTP**: LDAC, aptX HD, AAC and SBC media packets carry the 12-byte
+RTP header. aptX and aptX LL are sent **without** an RTP header (as Android and
+PipeWire do), so the whole L2CAP MTU is available for aptX frames.
+
+**aptX Adaptive** has no open-source encoder (libopenaptx does not implement
+it), so A2DPWB never registers or selects it. When a sink lists it, A2DPWB
+only logs it; classic aptX is used if the sink lists that separately.
 
 ## Build System
 
@@ -195,9 +232,10 @@ AAC and SBC use standard A2DP codec IDs defined in the A2DP specification.
 
 - **Adapter compatibility**: Tested with Intel, CSR, and Realtek USB adapters.
   Realtek adapters require firmware upload at startup
-- **Pairing**: Uses SSP Just Works. Link keys are persisted to a local file
+- **Pairing**: Uses SSP Just Works with General Bonding. Link keys are persisted
+  to a local file
 - **Second adapter recommended**: Keep built-in Bluetooth for Windows, use
   dedicated USB adapter for A2DPWB
 - Some Bluetooth adapters' firmware limits achievable bitrate
 - USB Bluetooth 5.0+ adapters generally work well for LDAC
-- Auto codec selection priority: LDAC > aptX HD > aptX LL > AAC > SBC
+- Auto codec selection priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC

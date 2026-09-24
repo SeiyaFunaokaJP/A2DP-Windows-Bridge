@@ -1,7 +1,7 @@
 # A2DP Windows Bridge (A2DPWB)
 
 Bluetooth A2DP audio streaming for Windows with full codec support.
-Streams system audio via LDAC, aptX HD, aptX Low Latency, AAC, or SBC using a USB Bluetooth adapter in WinUSB mode — no kernel driver or test signing required.
+Streams system audio via LDAC, aptX HD, aptX Low Latency, aptX, AAC, or SBC using a USB Bluetooth adapter in WinUSB mode — no kernel driver or test signing required.
 
 **[Download](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/latest)** | **[Documentation](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/)**
 
@@ -12,8 +12,11 @@ Streams system audio via LDAC, aptX HD, aptX Low Latency, AAC, or SBC using a US
 | LDAC | 330/660/990 kbps | 44.1–96 kHz | 16/24/32 bit | ~200 ms |
 | aptX HD | 576 kbps | 44.1/48 kHz | 24 bit | ~150 ms |
 | aptX Low Latency | 352 kbps | 44.1/48 kHz | 16 bit | ~32 ms |
+| aptX | 352/384 kbps | 44.1/48 kHz | 16 bit | -- |
 | AAC | 128/192/256 kbps | 44.1/48 kHz | 16 bit | ~150 ms |
 | SBC | up to ~345 kbps | 44.1/48 kHz | 16 bit | ~150 ms |
+
+> **aptX Adaptive is not supported.** There is no open-source aptX Adaptive encoder, so A2DPWB never selects it. If your headphones also list classic aptX (many aptX Adaptive models do), A2DPWB uses aptX directly; otherwise Auto picks AAC or SBC. See [aptX family and aptX Adaptive](#aptx-family-and-aptx-adaptive) below.
 
 ## Architecture
 
@@ -30,7 +33,7 @@ Streams system audio via LDAC, aptX HD, aptX Low Latency, AAC, or SBC using a US
 |                                               |
 |  +- Core -------------------------------------+|
 |  | WASAPI Capture (Loopback / Virtual Device) ||
-|  | Encoder (LDAC / aptX HD / aptX LL / AAC / SBC) |
+|  | Encoder (LDAC / aptX HD / aptX LL / aptX / AAC / SBC) |
 |  | A2DP Service (connection lifecycle)        ||
 |  | BTstack (HCI / L2CAP / AVDTP / A2DP)      ||
 |  +--------------------------------------------+|
@@ -48,7 +51,7 @@ Streams system audio via LDAC, aptX HD, aptX Low Latency, AAC, or SBC using a US
 | `app/resources/` | Application icon, manifest, resource script |
 | `extern/btstack/` | BTstack — user-mode Bluetooth stack (git submodule) |
 | `extern/libldac/` | AOSP libldac — LDAC encoder (git submodule) |
-| `extern/libopenaptx/` | libopenaptx — aptX / aptX HD encoder (git submodule) |
+| `extern/libopenaptx/` | libopenaptx — aptX / aptX HD / aptX LL encoder (git submodule) |
 | `extern/fdk-aac/` | Fraunhofer FDK AAC — AAC-LC encoder (git submodule) |
 | `extern/json/` | nlohmann/json — JSON parser for settings, profiles, localization |
 
@@ -110,7 +113,7 @@ A2DPWB.exe
 The graphical interface provides:
 - Bluetooth adapter selection (WinUSB-attached adapters)
 - Audio device selection (WASAPI loopback capture source)
-- Codec selection (Auto / LDAC / aptX HD / aptX LL / AAC / SBC)
+- Codec selection (Auto / LDAC / aptX HD / aptX LL / aptX / SBC / AAC)
 - LDAC quality mode (HQ 990 kbps / SQ 660 kbps / MQ 330 kbps)
 - LDAC ABR (Adaptive Bit Rate) toggle
 - Connection profile management (save / load device + codec settings)
@@ -126,6 +129,7 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxhd
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxll
+A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aptx
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aac
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c sbc
 
@@ -149,9 +153,23 @@ A2DPWB.exe --cli -l
 
 > **Note**: Both capture modes (system loopback and virtual device) use WASAPI shared mode. The capture sample rate depends on the device's format configured in Windows Sound settings (typically 48 kHz). To use LDAC at 96 kHz, change the device format to 96 kHz in Sound settings > Advanced.
 
+Auto-select priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
+
+### aptX family and aptX Adaptive
+
+A2DPWB encodes aptX, aptX HD and aptX Low Latency with libopenaptx. For these codecs it picks 44.1 or 48 kHz from the rates the headphones advertise and lets WASAPI resample, so no Sound settings change is needed.
+
+**aptX Adaptive is not supported**: no open-source aptX Adaptive encoder exists, so A2DPWB only detects and logs it. A2DPWB does not "fall back" from Adaptive to aptX — the headphones advertise a list of codecs, and aptX Adaptive is simply never a candidate:
+
+- If the headphones also list **classic aptX** (common, as aptX Adaptive is marketed as backward compatible), A2DPWB selects aptX directly.
+- If they list **only aptX Adaptive**, aptX is not possible; Auto picks AAC or SBC.
+- An explicitly requested codec the headphones don't list stops the connection with an error in the **GUI**, while the **CLI** (`-c <codec>`) falls back to the Auto priority order.
+
+To see exactly which codecs your headphones offer, enable debug mode and check the `Capability discovery complete (...)` line in `debug.log`. See the [Usage guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/usage#aptx-compatibility) for details.
+
 ## Features
 
-- **Multi-codec support**: LDAC, aptX HD, aptX Low Latency, AAC, SBC with automatic negotiation
+- **Multi-codec support**: LDAC, aptX HD, aptX Low Latency, aptX, AAC, SBC with automatic negotiation
 - **Two capture modes**: System loopback (all system audio) or virtual audio device (per-app routing via VB-CABLE etc.)
 - **LDAC ABR**: Adaptive Bit Rate for unstable connections
 - **Auto-reconnect**: Reconnects on Bluetooth disconnection (up to 10 attempts)
@@ -173,7 +191,7 @@ Third-party libraries are used under their respective licenses. See [THIRD_PARTY
 
 - [BTstack](https://github.com/bluekitchen/btstack) — Open-source Bluetooth stack with WinUSB support
 - [libldac (AOSP)](https://android.googlesource.com/platform/external/libldac) — LDAC encoder library
-- [libopenaptx](https://github.com/pali/libopenaptx) — Open-source aptX / aptX HD encoder
+- [libopenaptx](https://github.com/pali/libopenaptx) — Open-source aptX / aptX HD encoder (also used for aptX LL)
 - [fdk-aac](https://github.com/mstorsjo/fdk-aac) — Fraunhofer FDK AAC codec library
 - [wxWidgets](https://www.wxwidgets.org/) — Cross-platform GUI library
 - [nlohmann/json](https://github.com/nlohmann/json) — JSON for Modern C++

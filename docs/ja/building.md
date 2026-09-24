@@ -56,7 +56,7 @@ A2DP-Windows-Bridge/
 ├── extern/                 サードパーティライブラリ（git サブモジュール）
 │   ├── btstack/            BTstack Bluetooth スタック
 │   ├── libldac/            AOSP LDAC エンコーダー
-│   ├── libopenaptx/        aptX / aptX HD エンコーダー
+│   ├── libopenaptx/        aptX / aptX HD / aptX LL エンコーダー
 │   ├── fdk-aac/            Fraunhofer AAC エンコーダー
 │   └── json/               nlohmann/json（ヘッダーオンリー）
 ├── CMakeLists.txt          ルートビルド設定

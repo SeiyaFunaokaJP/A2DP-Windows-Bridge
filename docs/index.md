@@ -9,7 +9,7 @@ nav_order: 1
 Bluetooth A2DP audio streaming for Windows with full codec support.
 {: .fs-6 .fw-300 }
 
-Streams system audio via **LDAC, aptX HD, aptX Low Latency, AAC, SBC** using a USB Bluetooth adapter in WinUSB mode -- no kernel driver or test signing required.
+Streams system audio via **LDAC, aptX HD, aptX Low Latency, aptX, AAC, SBC** using a USB Bluetooth adapter in WinUSB mode -- no kernel driver or test signing required.
 
 [Get Started](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [GitHub](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge){: .btn .fs-5 .mb-4 .mb-md-0 }
@@ -23,8 +23,12 @@ Streams system audio via **LDAC, aptX HD, aptX Low Latency, AAC, SBC** using a U
 | LDAC | 330/660/990 kbps | 44.1--96 kHz | 16/24/32 bit | ~200 ms |
 | aptX HD | 576 kbps | 44.1/48 kHz | 24 bit | ~150 ms |
 | aptX Low Latency | 352 kbps | 44.1/48 kHz | 16 bit | ~32 ms |
+| aptX | 352/384 kbps | 44.1/48 kHz | 16 bit | -- |
 | AAC | 128/192/256 kbps | 44.1/48 kHz | 16 bit | ~150 ms |
 | SBC | up to ~345 kbps | 44.1/48 kHz | 16 bit | ~150 ms |
+
+{: .note }
+**aptX Adaptive is not supported** (there is no open-source encoder). If your headphones also list classic aptX, A2DPWB uses aptX directly; otherwise Auto picks AAC or SBC. See [aptX Family and aptX Adaptive Compatibility](usage#aptx-compatibility).
 
 ## Audio Capture Modes
 
@@ -49,7 +53,7 @@ Audio Source
 WASAPI Loopback Capture (PCM)
   |
   v
-Audio Encoder (LDAC / aptX HD / aptX LL / AAC / SBC)
+Audio Encoder (LDAC / aptX HD / aptX LL / aptX / AAC / SBC)
   |
   v
 BTstack (A2DP Source -> AVDTP -> L2CAP -> HCI)
@@ -62,7 +66,7 @@ A2DPWB bypasses the Windows Bluetooth stack entirely. It communicates directly w
 
 ## Features
 
-- **Multi-codec**: LDAC, aptX HD, aptX Low Latency, AAC, SBC with automatic negotiation
+- **Multi-codec**: LDAC, aptX HD, aptX Low Latency, aptX, AAC, SBC with automatic negotiation
 - **Two capture modes**: System loopback or virtual audio device routing
 - **LDAC ABR**: Adaptive Bit Rate for unstable connections
 - **Auto-reconnect**: Reconnects on disconnection (up to 10 attempts)
