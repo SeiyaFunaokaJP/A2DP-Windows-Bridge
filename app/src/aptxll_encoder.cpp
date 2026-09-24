@@ -1,13 +1,17 @@
 /*
  * aptX Low Latency Encoder Wrapper - Implementation
  *
- * Uses libopenaptx to encode 16-bit PCM audio to standard aptX.
+ * Uses libopenaptx to encode PCM audio to standard aptX.
  * aptX LL uses the same encoding as standard aptX (4 stereo samples -> 4 bytes)
  * but signals low-latency mode in the A2DP codec configuration so that the
  * sink device uses a smaller buffer/latency target (~32ms vs ~150ms).
+ * libopenaptx wants packed 24-bit LE input (LLLRRR x4 = 24 bytes per group);
+ * see aptx_pcm_pack.h.
  *
- * Input:  signed 16-bit PCM, interleaved stereo
- * Output: aptX encoded frames for AVDTP media transport
+ * Input:  interleaved PCM, stereo or mono (duplicated to L/R); signed 16-bit
+ *         by default, or 32-bit MSB-aligned after set_bit_depth(24|32)
+ * Output: raw aptX stream. Like classic aptX, aptX LL media packets carry NO
+ *         RTP header (PipeWire a2dp-codec-aptx.c: RTP only for aptX HD).
  *
  * SPDX-License-Identifier: MIT
  */
@@ -15,6 +19,8 @@
 #include "aptxll_encoder.h"
 #include <cstdio>
 #include <cstring>
+
+#include "aptx_pcm_pack.h"
 
 extern "C" {
 #include "openaptx.h"
@@ -26,13 +32,17 @@ extern "C" {
  *   - Output: 4 bytes per 4 stereo samples (16-bit aptX)
  *   - Fixed bitrate: 352 kbps at 44.1 kHz stereo
  */
-static constexpr uint32_t APTX_SAMPLES_PER_FRAME = 4;
 static constexpr uint32_t APTX_ENCODED_BYTES_PER_FRAME = 4; /* 16-bit: 2 bytes/ch */
 
 AptxLlEncoder::AptxLlEncoder() = default;
 
 AptxLlEncoder::~AptxLlEncoder() {
     shutdown();
+}
+
+void AptxLlEncoder::set_bit_depth(int bits) {
+    /* 24 or 32: 32-bit MSB-aligned container (see aptx_pcm_pack.h); else 16-bit */
+    bytes_per_sample_ = (bits == 24 || bits == 32) ? 4u : 2u;
 }
 
 bool AptxLlEncoder::init(uint16_t mtu, EncoderQuality quality,
@@ -43,7 +53,7 @@ bool AptxLlEncoder::init(uint16_t mtu, EncoderQuality quality,
         shutdown();
     }
 
-    if (channels != 2) {
+    if (channels != 1 && channels != 2) {
         fprintf(stderr, "AptxLlEncoder: Only stereo (2 channels) is supported\n");
         return false;
     }
@@ -72,21 +82,14 @@ bool AptxLlEncoder::init(uint16_t mtu, EncoderQuality quality,
 }
 
 bool AptxLlEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
-                            uint8_t *out_data, uint32_t *out_size,
-                            uint32_t *out_frames) {
+                         uint8_t *out_data, uint32_t *out_size,
+                         uint32_t *out_frames) {
     if (!initialized_ || !ctx_) {
         return false;
     }
 
-    /*
-     * Standard aptX expects int32_t samples (16-bit sign-extended to 32-bit).
-     * Input layout (interleaved stereo): L0 R0 L1 R1 L2 R2 L3 R3
-     * aptX processes 4 samples per channel per frame.
-     */
-    uint32_t samples_per_frame = APTX_SAMPLES_PER_FRAME * channels_;
-    uint32_t bytes_per_sample = sizeof(int16_t);
-    uint32_t bytes_per_frame_input = samples_per_frame * bytes_per_sample;
-
+    /* One aptX group = 4 sample-frames of the (interleaved) input */
+    uint32_t bytes_per_frame_input = APTX_GROUP_SAMPLES * channels_ * bytes_per_sample_;
     uint32_t num_frames = pcm_bytes / bytes_per_frame_input;
     if (num_frames == 0) {
         *out_size = 0;
@@ -94,9 +97,8 @@ bool AptxLlEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
         return true;
     }
 
-    /* Limit output to fit MTU (leave room for RTP + media payload header) */
-    uint32_t max_payload = mtu_ > 15 ? mtu_ - 15 : mtu_;
-    uint32_t max_frames = max_payload / APTX_ENCODED_BYTES_PER_FRAME;
+    /* mtu_ is the media MTU (RTP header already subtracted); conservative for no-RTP aptX LL */
+    uint32_t max_frames = mtu_ / APTX_ENCODED_BYTES_PER_FRAME;
     if (num_frames > max_frames && max_frames > 0) {
         num_frames = max_frames;
     }
@@ -108,30 +110,20 @@ bool AptxLlEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
         return false;
     }
 
-    const int16_t *pcm16 = reinterpret_cast<const int16_t *>(pcm_data);
     uint32_t out_offset = 0;
-
     for (uint32_t f = 0; f < num_frames; f++) {
-        /* Prepare 4 stereo samples as int32_t[4][2] (sign-extended from 16-bit) */
-        int32_t samples[4][2];
-        for (uint32_t s = 0; s < APTX_SAMPLES_PER_FRAME; s++) {
-            uint32_t idx = (f * APTX_SAMPLES_PER_FRAME + s) * channels_;
-            samples[s][0] = static_cast<int32_t>(pcm16[idx + 0]);   /* Left */
-            samples[s][1] = static_cast<int32_t>(pcm16[idx + 1]);   /* Right */
-        }
+        /* libopenaptx wants packed 24-bit LE LLLRRR x4 (24 bytes) */
+        uint8_t packed[APTX_GROUP_PACKED_BYTES];
+        aptx_pack_group(pcm_data, f, channels_, bytes_per_sample_, packed);
 
-        /* Encode one aptX frame (4 stereo samples -> 4 bytes) */
         size_t written = 0;
         size_t processed = aptx_encode(
             static_cast<struct aptx_context *>(ctx_),
-            reinterpret_cast<const unsigned char *>(samples),
-            sizeof(samples),
-            out_data + out_offset,
-            APTX_ENCODED_BYTES_PER_FRAME,
-            &written
-        );
+            packed, sizeof(packed),
+            out_data + out_offset, APTX_ENCODED_BYTES_PER_FRAME,
+            &written);
 
-        if (processed == 0) {
+        if (processed != sizeof(packed) || written != APTX_ENCODED_BYTES_PER_FRAME) {
             fprintf(stderr, "AptxLlEncoder: Encode failed at frame %u\n", f);
             return false;
         }

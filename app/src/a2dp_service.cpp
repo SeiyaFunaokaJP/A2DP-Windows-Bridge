@@ -235,6 +235,16 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
                 pcm_data = g_ctx.pcm_buffer.data();
             } else if (bits_per_sample == 16 && bps == 2) {
                 pcm_data = read_buf.data();
+            } else if (bits_per_sample == 16 && bps == 4) {
+                /* int16 capture feeding a 32-bit (MSB-aligned) encoder */
+                uint32_t buf_bytes = total_samples * 4u;
+                if (g_ctx.pcm_buffer.size() < buf_bytes)
+                    g_ctx.pcm_buffer.resize(buf_bytes);
+                const int16_t *src = reinterpret_cast<const int16_t *>(read_buf.data());
+                int32_t *dst = reinterpret_cast<int32_t *>(g_ctx.pcm_buffer.data());
+                for (uint32_t i = 0; i < total_samples; i++)
+                    dst[i] = static_cast<int32_t>(src[i]) * 65536;
+                pcm_data = g_ctx.pcm_buffer.data();
             } else {
                 break;
             }
@@ -1102,6 +1112,10 @@ void A2dpService::streaming_thread_func_inner() {
     bool use_24bit = false;
     if (selected_codec == AudioCodec::LDAC && bit_depth_index != 1) {
         static_cast<LdacEncoder *>(encoder.get())->set_bit_depth(24);
+        use_24bit = true;
+    } else if (selected_codec == AudioCodec::AptxHD && bit_depth_index != 1) {
+        /* aptX HD carries 24-bit PCM: feed it int32 (top 24 bits encoded) */
+        static_cast<AptxHdEncoder *>(encoder.get())->set_bit_depth(24);
         use_24bit = true;
     }
     LOG_INFO("A2dpService: encoder config: bit_depth_index=%d use_24bit=%d mtu=%u",

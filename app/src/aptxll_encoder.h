@@ -18,6 +18,10 @@ public:
     AptxLlEncoder();
     ~AptxLlEncoder() override;
 
+    /* Input sample format: 16 (default) = int16; 24 or 32 = int32 container,
+     * MSB-aligned full scale (top 24 bits are encoded). Call before encode(). */
+    void set_bit_depth(int bits);
+
     AudioCodec codec_type() const override { return AudioCodec::AptxLL; }
     const char *codec_name() const override { return "aptX Low Latency"; }
 
@@ -39,6 +43,7 @@ private:
     uint16_t mtu_ = 0;
     uint32_t sample_rate_ = 0;
     uint32_t channels_ = 0;
+    uint32_t bytes_per_sample_ = 2;  /* 2 = int16, 4 = int32 MSB-aligned */
 };
 
 #endif /* APTXLL_ENCODER_H */

@@ -564,7 +564,13 @@ static int run_streaming(const uint8_t target_addr[6],
         encoder = std::move(ldac);
         break;
     }
-    case AudioCodec::AptxHD: encoder = std::make_unique<AptxHdEncoder>(); break;
+    case AudioCodec::AptxHD: {
+        /* aptX HD carries 24-bit PCM: feed it int32 like LDAC */
+        auto hd = std::make_unique<AptxHdEncoder>();
+        hd->set_bit_depth(32);
+        encoder = std::move(hd);
+        break;
+    }
     case AudioCodec::AptxLL: encoder = std::make_unique<AptxLlEncoder>(); break;
     case AudioCodec::SBC:    encoder = std::make_unique<SbcEncoder>(); break;
 #ifdef AAC_ENCODER_AVAILABLE
@@ -586,7 +592,8 @@ static int run_streaming(const uint8_t target_addr[6],
     }
 
     /* Set sample width for audio callback based on encoder bit depth */
-    g_encoder_sample_bytes = (selected_codec == AudioCodec::LDAC) ? 4 : 2;
+    g_encoder_sample_bytes = (selected_codec == AudioCodec::LDAC ||
+                              selected_codec == AudioCodec::AptxHD) ? 4 : 2;
 
     if (enable_abr && selected_codec == AudioCodec::LDAC) {
         LdacEncoder *ldac = static_cast<LdacEncoder *>(encoder.get());
