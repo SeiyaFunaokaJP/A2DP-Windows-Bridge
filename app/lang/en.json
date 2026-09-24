@@ -70,6 +70,7 @@
   "error.invalid_address": "Invalid Bluetooth address",
   "error.invalid_address_format": "Invalid address format. Use XX:XX:XX:XX:XX:XX (hex digits separated by colons).",
   "error.codec_not_supported": "Device does not support %s",
+  "error.codec_adaptive_only": "Device does not support %s (it only offers aptX Adaptive, which A2DPWB cannot encode). Use Auto, AAC or SBC",
   "error.no_compatible_codec": "No compatible codec on device",
   "error.wasapi_init": "Failed to initialize WASAPI capture",
   "error.codec_configure": "Failed to configure codec stream",

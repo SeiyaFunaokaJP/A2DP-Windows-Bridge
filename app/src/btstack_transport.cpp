@@ -48,6 +48,9 @@ extern "C" {
 #define APTXLL_CODEC_ID     0x0002u      /* aptX Low Latency */
 #define APTX_VENDOR_ID      0x0000004Fu  /* APT Ltd. (now Qualcomm) */
 #define APTX_CODEC_ID       0x0001u      /* aptX (classic) */
+/* aptX Adaptive: no open-source encoder; detected for logging only */
+#define APTXAD_VENDOR_ID    0x000000D7u  /* Qualcomm Technologies International, Ltd */
+#define APTXAD_CODEC_ID     0x00ADu      /* aptX Adaptive */
 
 /* Singleton for static callback dispatch */
 BtStackTransport *BtStackTransport::instance_ = nullptr;
@@ -1662,6 +1665,12 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
                         "flags=0x%02x, len=%u)%s\n",
                         remote_seid, (unsigned)vid, ll_caps, ll_flags, info_len,
                         usable ? "" : " - no stereo, ignored");
+            } else if (vid == APTXAD_VENDOR_ID && cid == APTXAD_CODEC_ID) {
+                remote_caps_.aptx_adaptive = true;
+                remote_caps_.aptx_adaptive_seid = remote_seid;
+                fprintf(stderr, "BTstack: Remote supports aptX Adaptive (SEID=%u) — never selected "
+                        "(no open encoder); classic aptX is used only if the remote lists it\n",
+                        remote_seid);
             } else if (vid == APTX_VENDOR_ID && cid == APTX_CODEC_ID) {
                 uint8_t aptx_caps = (info_len >= 7) ? info[6] : 0;
                 /* Stereo is the only mode we send; skip mono-only sinks */
@@ -1673,6 +1682,9 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
                 fprintf(stderr, "BTstack: Remote supports aptX (SEID=%u, caps=0x%02x)%s\n",
                         remote_seid, aptx_caps,
                         remote_caps_.aptx ? "" : " - no stereo, ignored");
+            } else {
+                fprintf(stderr, "BTstack: Remote vendor codec vid=0x%08X cid=0x%04X (SEID=%u) — unsupported\n",
+                        (unsigned)vid, (unsigned)cid, remote_seid);
             }
         }
         break;
@@ -1699,9 +1711,9 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
     case A2DP_SUBEVENT_SIGNALING_CAPABILITIES_COMPLETE: {
         /* All SEP capabilities have been discovered */
         fprintf(stderr, "BTstack: Capability discovery complete (LDAC=%d, aptXHD=%d, aptXLL=%d, aptX=%d, "
-               "SBC=%d, AAC=%d)\n",
+               "aptXAdaptive=%d [not encodable], SBC=%d, AAC=%d)\n",
                remote_caps_.ldac, remote_caps_.aptx_hd, remote_caps_.aptx_ll, remote_caps_.aptx,
-               remote_caps_.sbc, remote_caps_.aac);
+               remote_caps_.aptx_adaptive, remote_caps_.sbc, remote_caps_.aac);
         connected_.store(true);
         connect_result_.store(true);
         signal_event(connect_event_, true);

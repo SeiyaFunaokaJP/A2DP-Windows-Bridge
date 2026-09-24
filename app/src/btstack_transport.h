@@ -175,6 +175,10 @@ public:
         uint32_t aptxll_vendor_id = 0;
         uint8_t aptxll_info[17] = {};
         uint8_t aptxll_info_len = 0;
+        /* aptX Adaptive (0xD7 / 0x00AD): detected for logging only — there
+         * is no open-source encoder */
+        bool aptx_adaptive = false;
+        uint8_t aptx_adaptive_seid = 0;
     };
 
     /* Get discovered remote capabilities (valid after connect_a2dp) */

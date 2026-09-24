@@ -960,8 +960,15 @@ void A2dpService::streaming_thread_func_inner() {
         case AudioCodec::AAC:    if (caps.aac)     { selected_codec = AudioCodec::AAC;    found = true; } break;
         }
         if (!found) {
-            char msg[128];
-            snprintf(msg, sizeof(msg), L("error.codec_not_supported"), codec_name_for(requested_codec));
+            char msg[256];
+            bool aptx_family = (requested_codec == AudioCodec::Aptx ||
+                                requested_codec == AudioCodec::AptxHD ||
+                                requested_codec == AudioCodec::AptxLL);
+            if (aptx_family && caps.aptx_adaptive)
+                /* Sink offers only aptX Adaptive, which has no open encoder */
+                snprintf(msg, sizeof(msg), L("error.codec_adaptive_only"), codec_name_for(requested_codec));
+            else
+                snprintf(msg, sizeof(msg), L("error.codec_not_supported"), codec_name_for(requested_codec));
             notify_state(State::Error, msg);
             transport->disconnect();
             running_.store(false);
@@ -983,9 +990,10 @@ void A2dpService::streaming_thread_func_inner() {
     }
 
     g_ctx.active_codec = selected_codec;
-    LOG_INFO("A2dpService: codec selected: %s (caps: ldac=%d aptxhd=%d aptxll=%d aptx=%d aac=%d sbc=%d)",
+    LOG_INFO("A2dpService: codec selected: %s (caps: ldac=%d aptxhd=%d aptxll=%d aptx=%d "
+             "aptx_adaptive=%d[unsupported] aac=%d sbc=%d)",
              codec_name_for(selected_codec), caps.ldac, caps.aptx_hd, caps.aptx_ll, caps.aptx,
-             caps.aac, caps.sbc);
+             caps.aptx_adaptive, caps.aac, caps.sbc);
 
     /* Initialize audio capture */
     notify_state(State::Connecting, L("status.initializing_audio"));

@@ -411,6 +411,9 @@ static bool find_best_btstack_codec(const BtStackTransport::RemoteCodecCaps &cap
         }
         printf("Requested codec %s not available, falling back...\n",
                codec_name_str(requested_codec));
+        if (caps.aptx_adaptive)
+            printf("  (device offers aptX Adaptive, which A2DPWB never selects; "
+                   "classic aptX is used only if the device lists it too)\n");
     }
 
     /* Priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC */
