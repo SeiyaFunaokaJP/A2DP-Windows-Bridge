@@ -60,6 +60,31 @@ AboutDialog::AboutDialog(wxWindow *parent)
     license->SetForegroundColour(TM().get(ThemeColor::AboutLicense));
     vbox->Add(license, 0, wxLEFT | wxRIGHT, 16);
 
+    /* The binary links BTstack (non-commercial clause) and LGPL/Apache/FDK
+     * code whose licenses require these notices to be shown/referenced. */
+    vbox->AddSpacer(4);
+    auto *binary_license = new wxStaticText(this, wxID_ANY,
+        wxString::FromUTF8(L("help.binary_license")));
+    binary_license->SetForegroundColour(TM().get(ThemeColor::AboutLicense));
+    binary_license->Wrap(FromDIP(360));
+    vbox->Add(binary_license, 0, wxLEFT | wxRIGHT, 16);
+
+    vbox->AddSpacer(4);
+    auto *third_party = new wxStaticText(this, wxID_ANY,
+        wxString::FromUTF8(L("help.third_party")));
+    third_party->SetForegroundColour(TM().get(ThemeColor::AboutLicense));
+    third_party->Wrap(FromDIP(360));
+    vbox->Add(third_party, 0, wxLEFT | wxRIGHT, 16);
+
+    vbox->AddSpacer(4);
+    auto *licenses_link = new wxHyperlinkCtrl(this, wxID_ANY,
+        wxString::FromUTF8(L("help.third_party_link")),
+        "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md");
+    licenses_link->SetNormalColour(TM().get(ThemeColor::AboutTitle));
+    licenses_link->SetHoverColour(TM().get(ThemeColor::AboutTitle));
+    licenses_link->SetVisitedColour(TM().get(ThemeColor::AboutTitle));
+    vbox->Add(licenses_link, 0, wxLEFT | wxRIGHT, 16);
+
     vbox->AddSpacer(12);
     auto *ok_btn = new wxButton(this, wxID_OK, wxString::FromUTF8(L("modal.ok")));
     vbox->Add(ok_btn, 0, wxALIGN_CENTER | wxBOTTOM, 16);
