@@ -91,12 +91,13 @@ if(EXISTS ${BTSTACK_ROOT}/src/hci.c)
     file(GLOB BTSTACK_CLASSIC_SRC ${BTSTACK_ROOT}/src/classic/*.c)
     # Windows platform sources (run loop, WinUSB HCI transport, TLV storage)
     file(GLOB BTSTACK_WINDOWS_SRC ${BTSTACK_ROOT}/platform/windows/*.c)
-    # 3rd-party dependencies
+    # PBAP client (phonebook access) is unused by the app and is the only
+    # classic source that needs 3rd-party md5 / yxml.
+    list(REMOVE_ITEM BTSTACK_CLASSIC_SRC ${BTSTACK_ROOT}/src/classic/pbap_client.c)
+    # 3rd-party dependencies. rijndael backs ENABLE_SOFTWARE_AES128 (SSP).
+    # micro-ecc is not needed: no LE Secure Connections / ENABLE_MICRO_ECC_P256.
     set(BTSTACK_3RDPARTY_SRC
         ${BTSTACK_ROOT}/3rd-party/rijndael/rijndael.c
-        ${BTSTACK_ROOT}/3rd-party/micro-ecc/uECC.c
-        ${BTSTACK_ROOT}/3rd-party/md5/md5.c
-        ${BTSTACK_ROOT}/3rd-party/yxml/yxml.c
     )
 
     # Chipset drivers (Realtek for TP-Link UB500 etc.)
@@ -117,8 +118,7 @@ if(EXISTS ${BTSTACK_ROOT}/src/hci.c)
         ${BTSTACK_ROOT}/platform/posix
         ${BTSTACK_ROOT}/chipset/realtek
         ${BTSTACK_ROOT}/3rd-party/rijndael
-        ${BTSTACK_ROOT}/3rd-party/micro-ecc
-        ${BTSTACK_ROOT}/3rd-party/md5
+        # yxml.h only: btstack.h -> classic/pbap_client.h includes it (no yxml.c)
         ${BTSTACK_ROOT}/3rd-party/yxml
         ${BTSTACK_ROOT}/3rd-party/bluedroid/encoder/include
         ${BTSTACK_ROOT}/3rd-party/bluedroid/decoder/include

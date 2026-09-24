@@ -24,6 +24,11 @@ set(wxUSE_HTML OFF CACHE BOOL "" FORCE)
 set(wxUSE_HELP OFF CACHE BOOL "" FORCE)
 set(wxUSE_WXHTML_HELP OFF CACHE BOOL "" FORCE)
 set(wxBUILD_COMPATIBILITY "3.0" CACHE STRING "" FORCE)
+# Built-in third-party libraries the app does not need (only an .ico resource
+# is loaded; no wxRegEx). Keeps libjpeg / libtiff / PCRE2 out of the build.
+set(wxUSE_LIBJPEG OFF CACHE STRING "" FORCE)
+set(wxUSE_LIBTIFF OFF CACHE STRING "" FORCE)
+set(wxUSE_REGEX OFF CACHE STRING "" FORCE)
 FetchContent_MakeAvailable(wxWidgets)
 
 # --- Main application ---
