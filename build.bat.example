@@ -21,8 +21,13 @@ if errorlevel 1 goto :fail
 %CMAKE_EXE% --build build --target A2DPWB --config Release
 if errorlevel 1 goto :fail
 
+REM Release package: build\dist\A2DPWB-<version>-win64.zip
+%CMAKE_EXE% --build build --target A2DPWB_dist --config Release
+if errorlevel 1 goto :fail
+
 echo.
 echo Build succeeded.
+for %%F in (build\dist\A2DPWB-*-win64.zip) do echo Package: %%~fF
 pause
 exit /b 0
 
