@@ -7,6 +7,7 @@
 #include "wx_profile_dialog.h"
 #include "wx_settings_dialog.h"
 #include "wx_advanced_dialog.h"
+#include "wx_link_quality_dialog.h"
 #include "wx_about_dialog.h"
 #include "wx_firmware_dialog.h"
 #include "wx_zadig_dialog.h"
@@ -157,6 +158,7 @@ void MainFrame::create_menu_bar() {
     /* Profile menu (was File) */
     auto *file_menu = new wxMenu();
     file_menu->Append(ID_NEW_PROFILE, wxString::FromUTF8(L("profile.new")));
+    file_menu->Append(ID_OPEN_LINK_QUALITY, wxString::FromUTF8(L("menu.file.link_quality")));
     file_menu->AppendSeparator();
     file_menu->Append(ID_OPEN_FIRMWARE, wxString::FromUTF8(L("firmware.title")));
     file_menu->AppendSeparator();
@@ -251,6 +253,7 @@ void MainFrame::create_menu_bar() {
     Bind(wxEVT_MENU, &MainFrame::OnToggleUpdateCheck, this, ID_SETTING_UPDATE_CHECK);
     Bind(wxEVT_MENU, &MainFrame::OnToggleDebugMode, this, ID_SETTING_DEBUG);
     Bind(wxEVT_MENU, &MainFrame::OnOpenAdvanced, this, ID_OPEN_ADVANCED);
+    Bind(wxEVT_MENU, &MainFrame::OnOpenLinkQuality, this, ID_OPEN_LINK_QUALITY);
 
     Bind(wxEVT_MENU, &MainFrame::OnOpenFirmware, this, ID_OPEN_FIRMWARE);
     Bind(wxEVT_BUTTON, &MainFrame::OnOpenFirmware, this, ID_OPEN_FIRMWARE);
@@ -306,6 +309,8 @@ void MainFrame::create_ui() {
                 wxTheClipboard->SetData(new wxTextDataObject(wxString::FromUTF8(current_status_text_)));
                 wxTheClipboard->Close();
             }
+        } else if (current_state_ == A2dpService::State::Streaming) {
+            LinkQualityDialog::ShowFor(this);
         }
     });
     status_sizer->Add(stream_info_label_, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, 12);
@@ -819,6 +824,10 @@ void MainFrame::OnOpenAdvanced(wxCommandEvent &) {
     AdvancedDialog dlg(this, &settings_);
     if (dlg.ShowModal() == wxID_OK)
         service_.set_media_payload_limit(settings_.max_media_payload);
+}
+
+void MainFrame::OnOpenLinkQuality(wxCommandEvent &) {
+    LinkQualityDialog::ShowFor(this);
 }
 
 void MainFrame::update_title() {

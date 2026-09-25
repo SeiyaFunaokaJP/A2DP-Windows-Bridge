@@ -36,6 +36,7 @@ enum {
     ID_SETTING_UPDATE_CHECK,
     ID_SETTING_DEBUG,
     ID_OPEN_ADVANCED,
+    ID_OPEN_LINK_QUALITY,
     ID_DEBUG_CAPTURE_START,
     ID_DEBUG_CAPTURE_STOP,
     ID_DEBUG_OPEN_LOG,
@@ -73,6 +74,8 @@ public:
     ProfileManager &profiles() { return profile_mgr_; }
     AppSettings &settings() { return settings_; }
     int selected_profile() const { return selected_profile_; }
+    A2dpService::State state() const { return current_state_; }
+    const A2dpService::StreamInfo &stream_info() const { return current_stream_info_; }
 
 private:
     /* ---- Initialization ---- */
@@ -102,6 +105,7 @@ private:
     void OnToggleUpdateCheck(wxCommandEvent &evt);
     void OnToggleDebugMode(wxCommandEvent &evt);
     void OnOpenAdvanced(wxCommandEvent &evt);
+    void OnOpenLinkQuality(wxCommandEvent &evt);
     void OnDebugCaptureStart(wxCommandEvent &evt);
     void OnDebugCaptureStop(wxCommandEvent &evt);
     void OnDebugOpenLog(wxCommandEvent &evt);

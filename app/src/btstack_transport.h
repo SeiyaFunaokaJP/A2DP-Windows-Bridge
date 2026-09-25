@@ -13,6 +13,7 @@
 
 #include "audio_encoder.h"
 #include "media_payload_limit.h"
+#include "link_stats.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -337,7 +338,7 @@ private:
         uint8_t  frames = 0;
         bool     no_rtp = false;   /* send without RTP header (aptX, aptX LL) */
     };
-    static const int MEDIA_QUEUE_CAPACITY = 64;
+    static const int MEDIA_QUEUE_CAPACITY = static_cast<int>(MEDIA_QUEUE_PACKETS);
     MediaPacket media_queue_[MEDIA_QUEUE_CAPACITY];
     int media_queue_head_ = 0;   /* write position (WASAPI thread) */
     int media_queue_tail_ = 0;   /* read position (BTstack thread) */

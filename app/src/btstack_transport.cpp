@@ -35,6 +35,7 @@ extern "C" {
 
 #include "bt_adapter_enum.h"
 #include "hci_capture.h"
+#include "link_stats.h"
 #include "btstack_uart_tcp_windows.h"
 
 /*
@@ -1211,6 +1212,7 @@ bool BtStackTransport::reconnect() {
     connected_.store(false);
     streaming_.store(false);
     media_queue_count_.store(0);
+    link_stats().queue_depth.store(0, std::memory_order_relaxed);
     media_queue_head_ = 0;
     media_queue_tail_ = 0;
     a2dp_cid_ = 0;
@@ -1363,6 +1365,7 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
         /* Drop if queue is full */
         if (media_queue_count_.load() >= MEDIA_QUEUE_CAPACITY) {
             send_failure_count_.fetch_add(1);
+            link_stats().queue_drops.fetch_add(1, std::memory_order_relaxed);
             return false;
         }
 
@@ -1376,6 +1379,7 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
         if (size + header > sizeof(slot.data)) {
             /* get_media_mtu() keeps encoders below this; report if it happens anyway */
             send_failure_count_.fetch_add(1);
+            link_stats().send_errors.fetch_add(1, std::memory_order_relaxed);
             if (!oversize_logged_.exchange(true))
                 fprintf(stderr, "BTstack: media payload of %u bytes exceeds the %u-byte queue slot, dropped\n",
                         size + header, (unsigned)sizeof(slot.data));
@@ -1395,7 +1399,8 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
          * codec_start_encode() writes RTP only for aptX HD) */
         slot.no_rtp = (codec == AudioCodec::Aptx || codec == AudioCodec::AptxLL);
         media_queue_head_ = (media_queue_head_ + 1) % MEDIA_QUEUE_CAPACITY;
-        media_queue_count_.fetch_add(1);
+        int depth = media_queue_count_.fetch_add(1) + 1;
+        link_stats().queue_depth.store(static_cast<uint32_t>(depth), std::memory_order_relaxed);
     }
     /* --- send_mutex released --- */
 
@@ -1574,6 +1579,7 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                 streaming_.store(false);
                 connected_.store(false);
                 media_queue_count_.store(0);
+                link_stats().queue_depth.store(0, std::memory_order_relaxed);
                 disconnect_occurred_.store(true);
                 fprintf(stderr, "BTstack: Connection lost — ready for reconnect\n");
             }
@@ -1810,7 +1816,8 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
                 if (media_queue_count_.load() > 0) {
                     pkt = media_queue_[media_queue_tail_];
                     media_queue_tail_ = (media_queue_tail_ + 1) % MEDIA_QUEUE_CAPACITY;
-                    media_queue_count_.fetch_sub(1);
+                    int depth = media_queue_count_.fetch_sub(1) - 1;
+                    link_stats().queue_depth.store(static_cast<uint32_t>(depth), std::memory_order_relaxed);
                     have_packet = true;
                 }
             }
@@ -1827,11 +1834,18 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
                               a2dp_cid_, local_seid_, 0 /* marker */,
                               pkt.timestamp,
                               pkt.data, (uint16_t)pkt.size);
+                    LinkStats &stats = link_stats();
                     if (status != ERROR_CODE_SUCCESS) {
                         send_failure_count_.fetch_add(1);
+                        stats.send_errors.fetch_add(1, std::memory_order_relaxed);
+                    } else {
+                        stats.packets_sent.fetch_add(1, std::memory_order_relaxed);
+                        stats.bytes_sent.fetch_add(pkt.size + (pkt.no_rtp ? 0 : RTP_HEADER_SIZE),
+                                                   std::memory_order_relaxed);
                     }
                 } else {
                     send_failure_count_.fetch_add(1);
+                    link_stats().send_errors.fetch_add(1, std::memory_order_relaxed);
                 }
             }
             /* Chain next CAN_SEND_NOW if queue still has data.
@@ -1881,6 +1895,7 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
         connected_.store(false);
         streaming_.store(false);
         media_queue_count_.store(0);
+        link_stats().queue_depth.store(0, std::memory_order_relaxed);
         a2dp_cid_ = 0;
         if (avrcp_cid_) {
             avrcp_disconnect(avrcp_cid_);

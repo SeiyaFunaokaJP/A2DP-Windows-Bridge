@@ -11,6 +11,7 @@
 #include "bt_adapter_enum.h"
 #include "btstack_transport.h"
 #include "hci_capture.h"
+#include "link_stats.h"
 #include "capture_mode.h"
 #include "config_path.h"
 #include "debug_log.h"
@@ -158,8 +159,11 @@ static void service_audio_callback(
     g_ctx.ring.sample_rate = sample_rate;
     g_ctx.ring.bits_per_sample = bits_per_sample;
 
+    LinkStats &stats = link_stats();
+    stats.capture_frames.fetch_add(frames, std::memory_order_relaxed);
     if (g_ctx.ring.available_write() < byte_size) {
         ring_overflow_count.fetch_add(1, std::memory_order_relaxed);
+        stats.capture_dropped_frames.fetch_add(frames, std::memory_order_relaxed);
         return;
     }
     g_ctx.ring.write(data, byte_size);
