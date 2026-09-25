@@ -424,6 +424,57 @@ notices) apply, in the same way as for `A2DPWB.exe`.
 
 ---
 
+## 13. Test environment: tools/emu (Python)
+
+`tools/emu/` runs A2DPWB against a virtual Bluetooth sink (see
+[docs/building.md](docs/building.md)). It is test tooling only:
+
+- **Nothing from it is linked into or shipped with `A2DPWB.exe`** or the
+  release zip. A2DPWB only talks to the virtual controller over a local TCP
+  socket (development CLI option `--hci-tcp`).
+- The packages are **not included in this repository**. `setup_env.py`
+  downloads them from PyPI into `tools/emu/.venv` (git-ignored), at the exact
+  versions pinned in `tools/emu/requirements.txt`. Their licenses apply to
+  that local environment.
+- The repository's own tools/emu scripts are MIT (§11). `emu_sink.py`
+  subclasses Bumble's `Controller` but does not copy Bumble code.
+
+This is the complete set that `setup_env.py` installs (`pip freeze` of
+`tools/emu/.venv` equals `requirements.txt`). It follows Bumble 0.0.234's own
+`Requires-Dist`; later Bumble versions have different dependencies.
+
+| Package | Pinned version | License (SPDX) | Determined from | Required by |
+|---------|----------------|----------------|-----------------|-------------|
+| [Bumble](https://github.com/google/bumble) | 0.0.234 | Apache-2.0 | metadata `License-Expression`; Apache License 2.0 text in the wheel; sources state "Copyright Google LLC" | tools/emu (virtual controllers, link, A2DP sink) |
+| cffi | 2.1.1 | MIT-0 | metadata `License-Expression` | cryptography |
+| click | 8.5.0 | BSD-3-Clause | metadata `License-Expression` | Bumble |
+| cryptography | 50.0.1 | Apache-2.0 OR BSD-3-Clause | metadata `License-Expression` | Bumble |
+| importlib_resources | 7.1.0 | Apache-2.0 | metadata `License-Expression` | libusb-package |
+| libusb-package | 1.0.26.4 | Apache-2.0 (Python code); the bundled `libusb-1.0.dll` is LGPL-2.1 per the package ("licensed with LGPLv2.1"; upstream libusb sources say version 2.1 or later) | metadata `License: Apache 2.0`; Apache LICENSE file in the wheel; "License" section of the package description | Bumble (USB transport, not used by tools/emu) |
+| libusb1 | 3.4.0 | LGPL-2.1-or-later | metadata `License-Expression`; COPYING / COPYING.LESSER in the wheel | Bumble (USB transport, not used by tools/emu) |
+| platformdirs | 4.11.12 | MIT | metadata `License-Expression` | Bumble |
+| prompt_toolkit | 3.0.53 | BSD-3-Clause \* | LICENSE file in the wheel (metadata: classifier "BSD License" only) | Bumble |
+| pycparser | 3.0 | BSD-3-Clause | metadata `License-Expression` | cffi |
+| pyee | 14.0.0 | MIT | metadata `License: MIT` | Bumble |
+| pyserial | 3.5 | BSD \*\* | metadata `License: BSD` only; the wheel ships no license file | Bumble, pyserial-asyncio |
+| pyserial-asyncio | 0.6 | BSD-3-Clause \* | LICENSE.txt in the wheel (metadata: `License: BSD`) | Bumble |
+| pyusb | 1.3.1 | BSD-3-Clause \* | LICENSE file in the wheel (metadata: classifier "BSD License" only) | Bumble |
+| typing_extensions | 4.16.0 | PSF-2.0 | metadata `License-Expression` | cryptography, pyee |
+| wcwidth | 0.9.1 | MIT \* | LICENSE file in the wheel (metadata: classifier "MIT License" only) | prompt_toolkit |
+| websockets | 17.1 | BSD-3-Clause | metadata `License-Expression` | Bumble |
+
+\* The package metadata gives no SPDX expression; the SPDX identifier was
+determined from the license text shipped in the wheel (BSD-3-Clause: the three
+conditions including "Neither the name ..."; MIT: the MIT permission notice).
+
+\*\* Not normalized to an SPDX identifier: the metadata only says "BSD" and
+the wheel contains no license text. The upstream pySerial repository's
+LICENSE.txt is BSD-3-Clause.
+
+When changing `requirements.txt`, re-check and update this table.
+
+---
+
 ## License Compatibility Matrix
 
 | Component | License | Compatible with MIT? | Notes |

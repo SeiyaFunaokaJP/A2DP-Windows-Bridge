@@ -75,6 +75,10 @@ fdk-aac のライセンスでは、バイナリを再配布する際にライセ
 
 `a2dpwb_decode`（[使い方](usage#verify-stream)を参照）はソースからのみビルドするツールで、リリース zip には含まれません。上記の固定バージョンの Bluedroid SBC デコーダー（Apache-2.0）、fdk-aac（FDK AAC License）、libopenaptx 0.2.0（LGPL-2.1+）をリンクし、BTstack と libldac は**リンクしません**。詳しくは THIRD_PARTY_LICENSES.md の §12 を参照してください。
 
+### テスト環境 tools/emu
+
+`tools/emu`（[ビルド](building)を参照）は、[Bumble](https://github.com/google/bumble) 0.0.234（Apache-2.0）とその依存パッケージを使います。これらは `setup_env.py` が固定バージョンで、git の管理外のローカル環境にダウンロードするもので、A2DPWB にリンクも同梱もされません。パッケージ一覧とライセンスは THIRD_PARTY_LICENSES.md の §13 を参照してください。
+
 ### Bluetooth 認証
 
 商用 Bluetooth 製品は Bluetooth SIG が管理する [Bluetooth 認証プロセス](https://www.bluetooth.com/)を受ける必要があります。

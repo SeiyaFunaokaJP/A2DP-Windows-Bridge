@@ -29,11 +29,13 @@ extern "C" {
 #include "btstack_link_key_db_file.h"
 #include "hci_dump.h"
 #include "hci_dump_windows_stdout.h"
+#include "hci_transport_h4.h"
 #include "btstack_chipset_realtek.h"
 }
 
 #include "bt_adapter_enum.h"
 #include "hci_capture.h"
+#include "btstack_uart_tcp_windows.h"
 
 /*
  * Vendor codec IDs (duplicated from avdtp.h to avoid enum conflicts
@@ -357,8 +359,17 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     hci_transport_usb_add_device(0x8087, 0x0029);  /* Intel AX200/AX201 */
     hci_transport_usb_add_device(0x8087, 0x0032);  /* Intel AX210 */
 
-    /* Initialize HCI with WinUSB transport */
-    hci_init(hci_transport_usb_instance(), nullptr);
+    if (!self->hci_tcp_.empty()) {
+        /* Development / testing: H4 over TCP to a virtual controller (tools/emu) */
+        static hci_transport_config_uart_t tcp_config = {
+            HCI_TRANSPORT_CONFIG_UART, 115200, 0, 0, nullptr, BTSTACK_UART_PARITY_OFF};
+        tcp_config.device_name = self->hci_tcp_.c_str();
+        fprintf(stderr, "BTstack: H4 over TCP -> %s\n", tcp_config.device_name);
+        hci_init(hci_transport_h4_instance_for_uart(btstack_uart_tcp_windows_instance()), &tcp_config);
+    } else {
+        /* Initialize HCI with WinUSB transport */
+        hci_init(hci_transport_usb_instance(), nullptr);
+    }
 
     /* Realtek chipset initialization — only when a Realtek PID is configured.
      * set_product_id() must be called before init() with the detected PID.

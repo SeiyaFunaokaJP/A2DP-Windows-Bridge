@@ -52,6 +52,9 @@ public:
      * Debug mode only; capture itself is started / stopped via hci_capture. */
     void set_hci_capture_enabled(bool enabled) { hci_capture_enabled_ = enabled; }
 
+    /* Development / testing: use H4 over TCP ("host:port") to a virtual
+     * controller instead of a WinUSB adapter (call before init) */
+    void set_hci_tcp(const std::string &host_port) { hci_tcp_ = host_port; }
 
     /* Set directory for persistent link key storage (call before init) */
     void set_link_key_dir(const std::string &path) { link_key_dir_ = path; }
@@ -293,6 +296,7 @@ private:
     /* Configuration */
     bool hci_dump_enabled_ = true;
     bool hci_capture_enabled_ = false; /* debug mode: hci_capture installed as HCI dump */
+    std::string hci_tcp_;           /* non-empty: H4 over TCP instead of WinUSB */
     std::string link_key_dir_;      /* directory for persistent link keys (empty = memory-only) */
     std::string firmware_dir_;      /* directory for firmware files (empty = exe dir fallback) */
     std::string fw_stem_;           /* firmware stem for unknown chips (e.g. "rtl8761bu") */
