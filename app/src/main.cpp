@@ -40,11 +40,14 @@
 #include "bt_device.h"
 #include "btstack_transport.h"
 #include "config_path.h"
+#include "media_payload_limit.h"
 #include "wx_app.h"
 
 /* Global state */
 static std::atomic<bool> g_running{true};
 
+/* --max-packet: advanced max media packet size (media_payload_limit.h) */
+static uint16_t g_max_packet = MEDIA_PAYLOAD_LIMIT_DEFAULT;
 static std::mutex g_encode_mutex;
 
 /* Audio buffer for float32->PCM conversion (sized per encoder sample width) */
@@ -369,6 +372,8 @@ static void print_usage(const char *prog) {
     printf("  --audio-device <id>  Audio device ID for virtual mode\n");
     printf("  -l           List available Bluetooth audio devices and exit\n");
     printf("  -u <path>    USB device path for BTstack (optional)\n");
+    printf("  --max-packet <bytes>  Advanced: max media packet size, %u-%u (recommended: %u)\n",
+           MEDIA_PAYLOAD_LIMIT_MIN, MEDIA_PAYLOAD_LIMIT_MAX, MEDIA_PAYLOAD_LIMIT_DEFAULT);
     printf("  -h           Show this help\n");
     printf("\nCodec priority (auto mode): LDAC > aptX HD > aptX LL > aptX > AAC > SBC\n");
 }
@@ -441,6 +446,7 @@ static int run_streaming(const uint8_t target_addr[6],
     BtStackTransport transport;
     transport.set_link_key_dir(get_config_dir());
 
+    transport.set_media_payload_limit(g_max_packet);
     /* --- Step 2: Initialize BTstack --- */
     printf("\n[2/5] Initializing BTstack (WinUSB transport)...\n");
     if (!transport.init(usb_path)) {
@@ -837,6 +843,12 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(argv[i], "--audio-device") == 0 && i + 1 < argc) {
             cli_audio_device = argv[++i];
+        } else if (strcmp(argv[i], "--max-packet") == 0 && i + 1 < argc) {
+            unsigned long v = strtoul(argv[++i], nullptr, 10);
+            g_max_packet = clamp_media_payload_limit(static_cast<uint32_t>(v > 0xFFFF ? 0xFFFF : v));
+            if (g_max_packet != v)
+                printf("--max-packet %lu is outside %u-%u, using %u\n", v,
+                       MEDIA_PAYLOAD_LIMIT_MIN, MEDIA_PAYLOAD_LIMIT_MAX, g_max_packet);
         } else if (strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;

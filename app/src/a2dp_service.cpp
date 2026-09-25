@@ -925,6 +925,7 @@ void A2dpService::streaming_thread_func_inner() {
 
     BtStackTransport *transport = transport_.get();
     LOG_INFO("A2dpService: BTstack initialized successfully");
+    transport->set_media_payload_limit(media_payload_limit_.load());
 
     if (stop_requested_.load()) { running_.store(false); notify_state(State::Idle, L("status.ready")); return; }
 

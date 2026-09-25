@@ -1410,14 +1410,7 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
 uint16_t BtStackTransport::get_media_mtu() const {
     /* media_mtu_ is cached by STREAM_ESTABLISHED handler on the BTstack thread */
     uint16_t mtu = media_mtu_;
-    if (mtu == 0) mtu = 679;
-    /* Media payloads are queued in MAX_MEDIA_PACKET_SIZE-byte slots including
-     * the 1-byte SBC / LDAC media payload header. Callers size packets (and
-     * the SBC / LDAC encoders) from this value, so a remote L2CAP MTU above
-     * the slot size (e.g. 1679 or 1691) must not produce larger payloads:
-     * send_media() would drop them. */
-    const uint16_t max_payload = static_cast<uint16_t>(MAX_MEDIA_PACKET_SIZE - 1);
-    return (mtu > max_payload) ? max_payload : mtu;
+    return (mtu > 0) ? mtu : 679;
 }
 
 bool BtStackTransport::is_connected() const {
@@ -1769,9 +1762,14 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
             remote_seid_ = a2dp_subevent_stream_established_get_remote_seid(packet);
             /* Cache media MTU on the BTstack thread (safe to call here) */
             int max = a2dp_max_media_payload_size(a2dp_cid_, local_seid_);
-            media_mtu_ = (max > 0) ? (uint16_t)max : 679;
-            fprintf(stderr, "BTstack: Stream established (local=%u, remote=%u, mtu=%u)\n",
-                   local_seid_, remote_seid_, media_mtu_);
+            uint16_t remote_mtu = (max > 0) ? (uint16_t)max : 679;
+            /* Callers size packets and the SBC / LDAC encoders from
+             * get_media_mtu(); the limit also keeps every payload within a
+             * MAX_MEDIA_PACKET_SIZE queue slot (send_media() drops larger ones) */
+            uint16_t limit = media_payload_limit_.load();
+            media_mtu_ = (remote_mtu > limit) ? limit : remote_mtu;
+            fprintf(stderr, "BTstack: Stream established (local=%u, remote=%u, mtu=%u, used=%u, limit=%u)\n",
+                   local_seid_, remote_seid_, remote_mtu, media_mtu_, limit);
             stream_result_.store(true);
         }
         signal_event(stream_event_, stream_result_.load());

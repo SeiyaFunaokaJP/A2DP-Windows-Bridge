@@ -12,6 +12,7 @@
 #define A2DP_SERVICE_H
 
 #include "audio_encoder.h"
+#include "media_payload_limit.h"
 #include "audio_device_enum.h"
 #include "bt_device.h"
 #include "profile_manager.h"
@@ -106,6 +107,10 @@ public:
     /* ---- Debug ---- */
     void set_debug_mode(bool enabled) { debug_mode_ = enabled; }
 
+    /* ---- Advanced ---- */
+    /* Max media packet size (BtStackTransport::set_media_payload_limit); applies from the next connection */
+    void set_media_payload_limit(uint16_t limit) { media_payload_limit_.store(limit); }
+
     /* Force BTstack shutdown so next connect reinitializes with new settings */
     void reset_btstack();
 
@@ -167,6 +172,9 @@ private:
 
     /* ---- Debug ---- */
     bool debug_mode_ = false;
+
+    /* ---- Advanced ---- */
+    std::atomic<uint16_t> media_payload_limit_{MEDIA_PAYLOAD_LIMIT_DEFAULT};
 
     /* ---- Firmware ---- */
     bool firmware_present_ = false;

@@ -6,6 +6,7 @@
 #include "wx_main_frame.h"
 #include "wx_profile_dialog.h"
 #include "wx_settings_dialog.h"
+#include "wx_advanced_dialog.h"
 #include "wx_about_dialog.h"
 #include "wx_firmware_dialog.h"
 #include "wx_zadig_dialog.h"
@@ -59,6 +60,7 @@ MainFrame::MainFrame()
     service_.set_bt_chip_pid(settings_.bt_chip_pid);
     service_.set_bt_chip_fw_stem(settings_.bt_chip_fw_stem);
     service_.set_debug_mode(settings_.debug_mode);
+    service_.set_media_payload_limit(settings_.max_media_payload);
     /* Debug mode changes apply after a restart; the Debug menu follows the boot state */
     debug_active_ = settings_.debug_mode;
     service_.check_firmware_present();
@@ -205,6 +207,7 @@ void MainFrame::create_menu_bar() {
     settings_menu->AppendSeparator();
     settings_menu->AppendCheckItem(ID_SETTING_DEBUG, wxString::FromUTF8(L("settings.debug_mode")));
     settings_menu->Check(ID_SETTING_DEBUG, settings_.debug_mode);
+    settings_menu->Append(ID_OPEN_ADVANCED, wxString::FromUTF8(L("settings.advanced")));
     menu_bar->Append(settings_menu, wxString::FromUTF8(L("menu.settings")));
 
     /* Debug menu: only when the app was started in debug mode */
@@ -247,6 +250,7 @@ void MainFrame::create_menu_bar() {
     Bind(wxEVT_MENU, &MainFrame::OnToggleMinimizeToTray, this, ID_SETTING_TRAY);
     Bind(wxEVT_MENU, &MainFrame::OnToggleUpdateCheck, this, ID_SETTING_UPDATE_CHECK);
     Bind(wxEVT_MENU, &MainFrame::OnToggleDebugMode, this, ID_SETTING_DEBUG);
+    Bind(wxEVT_MENU, &MainFrame::OnOpenAdvanced, this, ID_OPEN_ADVANCED);
 
     Bind(wxEVT_MENU, &MainFrame::OnOpenFirmware, this, ID_OPEN_FIRMWARE);
     Bind(wxEVT_BUTTON, &MainFrame::OnOpenFirmware, this, ID_OPEN_FIRMWARE);
@@ -809,6 +813,12 @@ void MainFrame::OnTrayBalloonClick(wxTaskBarIconEvent &) {
         return;
     open_url(pending_update_url_);
     pending_update_url_.clear();
+}
+
+void MainFrame::OnOpenAdvanced(wxCommandEvent &) {
+    AdvancedDialog dlg(this, &settings_);
+    if (dlg.ShowModal() == wxID_OK)
+        service_.set_media_payload_limit(settings_.max_media_payload);
 }
 
 void MainFrame::update_title() {

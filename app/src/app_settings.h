@@ -9,6 +9,8 @@
 #include <string>
 #include <cstdint>
 
+#include "media_payload_limit.h"
+
 class AppSettings {
 public:
     /* Load settings from %APPDATA%\A2DPWB\settings.json */
@@ -32,6 +34,9 @@ public:
 
     /* Debug */
     bool debug_mode = false;
+
+    /* Advanced: max media packet size in bytes (media_payload_limit.h) */
+    uint16_t max_media_payload = MEDIA_PAYLOAD_LIMIT_DEFAULT;
 
     /* Bluetooth adapter — Realtek chip type for firmware loading.
      * 0 = auto (works for VID=0x0BDA adapters).

@@ -170,6 +170,12 @@ BTstack: Capability discovery complete (LDAC=0, aptXHD=0, aptXLL=0, aptX=1, aptX
 - `aptX=0`, `aptXHD=0`, `aptXLL=0` with `aptXAdaptive=1` -- the headphones offer only aptX Adaptive; use Auto, AAC or SBC.
 - `Remote vendor codec ... — unsupported` -- another vendor codec that A2DPWB does not implement.
 
+### Max Media Packet Size (Advanced)
+
+**Settings > Advanced Settings...** (CLI: `--max-packet <bytes>`) sets the upper limit for the audio data in each Bluetooth packet, from 679 to 1679 bytes. The headphones' own limit (MTU) always applies too; A2DPWB uses the smaller of the two. The change applies from the next connection.
+
+**1023 (default) is recommended.** It fits one Bluetooth baseband packet (3-DH5). Larger values save only 1-2% overhead, and each lost packet then loses more audio. 679 fits one 2-DH5 packet and is the minimum LDAC accepts.
+
 ### Verifying the Media Stream (a2dpwb_decode) {#verify-stream}
 
 Most headphones cannot show which codec is in use. In debug mode, the GUI has a **Debug** menu with **Start HCI Capture** / **Stop HCI Capture**. A capture is an HCI packet log (`hci_<date>_<time>.pklg` in the config folder) with the codec negotiation and every media packet sent. At LDAC 990 kbps it grows by roughly 0.5 GB per hour, so capture only as long as you need.
