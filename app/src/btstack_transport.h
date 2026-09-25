@@ -310,6 +310,7 @@ private:
 
     /* Media send failure tracking (for ABR) */
     std::atomic<uint32_t> send_failure_count_{0};
+    std::atomic<bool> oversize_logged_{false};  /* oversized payload reported once */
 
     /* Media packet queue: WASAPI thread writes, BTstack thread reads.
      * Ring buffer avoids dropping frames when multiple LDAC frames are

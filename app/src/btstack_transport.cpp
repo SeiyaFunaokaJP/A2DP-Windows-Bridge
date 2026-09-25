@@ -1357,37 +1357,26 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
 
         MediaPacket &slot = media_queue_[media_queue_head_];
 
-        /* Build the media payload */
-        if (codec == AudioCodec::LDAC) {
-            if (size + 1 > sizeof(slot.data)) {
-                send_failure_count_.fetch_add(1);
-                return false;
-            }
-            uint8_t cs = (channels_ >= 2) ? 0x04 : 0x00; /* CS: 10=Stereo, 00=Mono */
-            slot.data[0] = ((frames & 0x0F) << 4) | cs;
-            memcpy(slot.data + 1, data, size);
-            slot.size = size + 1;
-        } else if (codec == AudioCodec::SBC) {
-            if (size + 1 > sizeof(slot.data)) {
-                send_failure_count_.fetch_add(1);
-                return false;
-            }
-            /* SBC media payload header: 1 byte, frame count in lower 4 bits, no fragmentation */
-            slot.data[0] = frames & 0x0F;
-            memcpy(slot.data + 1, data, size);
-            slot.size = size + 1;
-        } else {
-            /* aptX, aptX HD, aptX LL, AAC: raw payload, no additional header.
-             * Classic aptX and aptX LL additionally go out without an RTP
-             * header (slot.no_rtp), matching Android (A2DP_APTX_OFFSET) and
-             * PipeWire. */
-            if (size > sizeof(slot.data)) {
-                send_failure_count_.fetch_add(1);
-                return false;
-            }
-            memcpy(slot.data, data, size);
-            slot.size = size;
+        /* Build the media payload. SBC and LDAC start with a 1-byte media
+         * payload header; aptX, aptX HD, aptX LL and AAC carry the raw payload.
+         * Classic aptX and aptX LL additionally go out without an RTP header
+         * (slot.no_rtp), matching Android (A2DP_APTX_OFFSET) and PipeWire. */
+        uint32_t header = (codec == AudioCodec::LDAC || codec == AudioCodec::SBC) ? 1 : 0;
+        if (size + header > sizeof(slot.data)) {
+            /* get_media_mtu() keeps encoders below this; report if it happens anyway */
+            send_failure_count_.fetch_add(1);
+            if (!oversize_logged_.exchange(true))
+                fprintf(stderr, "BTstack: media payload of %u bytes exceeds the %u-byte queue slot, dropped\n",
+                        size + header, (unsigned)sizeof(slot.data));
+            return false;
         }
+        if (header) {
+            /* Frame count in the low 4 bits, no fragmentation: A2DP spec (SBC),
+             * AOSP A2DP_LDAC_HDR_NUM_MSK and PipeWire struct rtp_payload (LDAC) */
+            slot.data[0] = frames & 0x0F;
+        }
+        memcpy(slot.data + header, data, size);
+        slot.size = size + header;
 
         slot.timestamp = timestamp;
         slot.frames = frames;
@@ -1421,7 +1410,14 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
 uint16_t BtStackTransport::get_media_mtu() const {
     /* media_mtu_ is cached by STREAM_ESTABLISHED handler on the BTstack thread */
     uint16_t mtu = media_mtu_;
-    return (mtu > 0) ? mtu : 679;
+    if (mtu == 0) mtu = 679;
+    /* Media payloads are queued in MAX_MEDIA_PACKET_SIZE-byte slots including
+     * the 1-byte SBC / LDAC media payload header. Callers size packets (and
+     * the SBC / LDAC encoders) from this value, so a remote L2CAP MTU above
+     * the slot size (e.g. 1679 or 1691) must not produce larger payloads:
+     * send_media() would drop them. */
+    const uint16_t max_payload = static_cast<uint16_t>(MAX_MEDIA_PACKET_SIZE - 1);
+    return (mtu > max_payload) ? max_payload : mtu;
 }
 
 bool BtStackTransport::is_connected() const {
