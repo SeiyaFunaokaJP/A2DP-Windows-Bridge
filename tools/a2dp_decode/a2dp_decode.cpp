@@ -421,10 +421,16 @@ private:
         } else {
             if (seq != (uint16_t)(last_seq_ + 1)) { seq_gaps_++; issue("RTP: sequence number gap"); }
             if ((int32_t)(ts - last_ts_) < 0) issue("RTP: timestamp went backwards");
+            /* samples_ already includes the previous packet (skipped while a
+             * decoder is still producing no audio, e.g. AAC before sync) */
+            uint64_t prev_samples = samples_ - samples_at_last_ts_;
+            if (prev_samples > 0 && (uint32_t)(ts - last_ts_) != (uint32_t)prev_samples)
+                issue("RTP: timestamp step differs from the samples in the previous packet");
             if ((p[1] & 0x7F) != rtp_pt_) issue("RTP: payload type changed");
         }
         last_seq_ = seq;
         last_ts_ = ts;
+        samples_at_last_ts_ = samples_;
         *pl = p + h;
         *pn = n - h - pad;
         return true;
@@ -560,6 +566,7 @@ private:
     bool have_seq_ = false;
     uint16_t last_seq_ = 0;
     uint32_t first_ts_ = 0, last_ts_ = 0;
+    uint64_t samples_at_last_ts_ = 0;
     uint8_t rtp_pt_ = 0;
     uint64_t seq_gaps_ = 0;
 
