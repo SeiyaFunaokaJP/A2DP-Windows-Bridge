@@ -315,6 +315,11 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
 
             uint32_t accum_size = 0;
             uint32_t accum_frames = 0;
+            /* g_ctx.timestamp counts the samples of the codec frames produced so
+             * far, i.e. the RTP timestamp of the next frame. Advancing it per
+             * encode call instead jitters for encoders that buffer input (LDAC
+             * emits whole packets on irregular calls). */
+            uint32_t pcm_frames_per_codec_frame = encoder->get_pcm_frames_per_codec_frame();
             uint32_t first_ts = g_ctx.timestamp;
 
             while (offset + bytes_per_encode <= pcm_bytes) {
@@ -337,9 +342,9 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
                         accum_size += out_size;
                         accum_frames += out_frames;
                     }
+                    g_ctx.timestamp += out_frames * pcm_frames_per_codec_frame;
                 }
 
-                g_ctx.timestamp += pcm_frames_per_encode;
                 offset += bytes_per_encode;
             }
 

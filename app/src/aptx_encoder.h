@@ -34,6 +34,8 @@ public:
                 uint32_t *out_frames) override;
 
     uint32_t get_pcm_frames_per_encode() const override;
+    /* out_frames counts aptX groups of 4 samples */
+    uint32_t get_pcm_frames_per_codec_frame() const override { return 4; }
 
     /* 4 bytes out per 4 stereo sample-frames: sample_rate * 2ch * 16bit / 4 */
     uint32_t get_bitrate_kbps() const override { return sample_rate_ * 8 / 1000; }

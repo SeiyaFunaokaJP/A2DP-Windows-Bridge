@@ -292,6 +292,9 @@ static void audio_callback(
     static thread_local uint8_t accum[2048];
     uint32_t accum_size = 0;
     uint32_t accum_frames = 0;
+    /* g_timestamp counts the samples of the codec frames produced so far
+     * (RTP timestamp of the next frame); see a2dp_service.cpp */
+    uint32_t pcm_frames_per_codec_frame = encoder->get_pcm_frames_per_codec_frame();
     uint32_t first_ts = g_timestamp;
 
     while (offset + bytes_per_encode <= pcm_bytes) {
@@ -319,9 +322,9 @@ static void audio_callback(
                 accum_size += out_size;
                 accum_frames += out_frames;
             }
+            g_timestamp += out_frames * pcm_frames_per_codec_frame;
         }
 
-        g_timestamp += pcm_frames_per_encode;
         offset += bytes_per_encode;
     }
 
