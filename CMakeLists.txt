@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(a2dpwb VERSION 1.0.6 LANGUAGES C CXX)
+project(a2dpwb VERSION 1.0.7 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -149,17 +149,9 @@ endif()
 set(SBC_ENCODER_DIR ${BTSTACK_ROOT}/3rd-party/bluedroid/encoder)
 set(SBC_DECODER_DIR ${BTSTACK_ROOT}/3rd-party/bluedroid/decoder)
 if(EXISTS ${SBC_ENCODER_DIR}/srce/sbc_encoder.c)
-    add_library(sbc_codec STATIC
-        ${SBC_ENCODER_DIR}/srce/sbc_analysis.c
-        ${SBC_ENCODER_DIR}/srce/sbc_dct.c
-        ${SBC_ENCODER_DIR}/srce/sbc_dct_coeffs.c
-        ${SBC_ENCODER_DIR}/srce/sbc_enc_bit_alloc_mono.c
-        ${SBC_ENCODER_DIR}/srce/sbc_enc_bit_alloc_ste.c
-        ${SBC_ENCODER_DIR}/srce/sbc_enc_coeffs.c
-        ${SBC_ENCODER_DIR}/srce/sbc_encoder.c
-        ${SBC_ENCODER_DIR}/srce/sbc_packing.c
-        ${BTSTACK_ROOT}/src/classic/btstack_sbc_encoder_bluedroid.c
-        # Decoder (required by btstack_sbc_bluedroid.c in btstack lib)
+    # Decoder on its own: pure Bluedroid (Apache-2.0) with no BTstack glue, so
+    # tools/a2dp_decode can use it without taking on the BTstack license.
+    add_library(sbc_decoder STATIC
         ${SBC_DECODER_DIR}/srce/alloc.c
         ${SBC_DECODER_DIR}/srce/bitalloc.c
         ${SBC_DECODER_DIR}/srce/bitalloc-sbc.c
@@ -175,17 +167,33 @@ if(EXISTS ${SBC_ENCODER_DIR}/srce/sbc_encoder.c)
         ${SBC_DECODER_DIR}/srce/synthesis-dct8.c
         ${SBC_DECODER_DIR}/srce/synthesis-sbc.c
     )
+    target_include_directories(sbc_decoder PUBLIC ${SBC_DECODER_DIR}/include)
+
+    add_library(sbc_codec STATIC
+        ${SBC_ENCODER_DIR}/srce/sbc_analysis.c
+        ${SBC_ENCODER_DIR}/srce/sbc_dct.c
+        ${SBC_ENCODER_DIR}/srce/sbc_dct_coeffs.c
+        ${SBC_ENCODER_DIR}/srce/sbc_enc_bit_alloc_mono.c
+        ${SBC_ENCODER_DIR}/srce/sbc_enc_bit_alloc_ste.c
+        ${SBC_ENCODER_DIR}/srce/sbc_enc_coeffs.c
+        ${SBC_ENCODER_DIR}/srce/sbc_encoder.c
+        ${SBC_ENCODER_DIR}/srce/sbc_packing.c
+        ${BTSTACK_ROOT}/src/classic/btstack_sbc_encoder_bluedroid.c
+    )
     target_include_directories(sbc_codec PUBLIC
         ${SBC_ENCODER_DIR}/include
-        ${SBC_DECODER_DIR}/include
         ${BTSTACK_ROOT}/src
         ${BTSTACK_ROOT}/src/classic
         ${CMAKE_SOURCE_DIR}/app/src
     )
+    # Decoder is required by btstack_sbc_bluedroid.c in the btstack lib
+    target_link_libraries(sbc_codec PUBLIC sbc_decoder)
     if(MSVC)
         target_compile_options(sbc_codec PRIVATE /W1 /utf-8)
+        target_compile_options(sbc_decoder PRIVATE /W1 /utf-8)
     else()
         target_compile_options(sbc_codec PRIVATE -w)
+        target_compile_options(sbc_decoder PRIVATE -w)
     endif()
     message(STATUS "SBC encoder: Found and configured (Bluedroid)")
 else()
@@ -206,3 +214,9 @@ endif()
 
 # --- User-mode application ---
 add_subdirectory(app)
+
+# --- Developer tools (not part of the release package) ---
+option(A2DPWB_BUILD_TOOLS "Build developer tools (a2dpwb_decode)" ON)
+if(A2DPWB_BUILD_TOOLS)
+    add_subdirectory(tools/a2dp_decode)
+endif()

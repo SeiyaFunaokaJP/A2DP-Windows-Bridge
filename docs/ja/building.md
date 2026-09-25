@@ -59,6 +59,9 @@ A2DP-Windows-Bridge/
 │   ├── libopenaptx/        aptX / aptX HD / aptX LL エンコーダー
 │   ├── fdk-aac/            Fraunhofer AAC エンコーダー
 │   └── json/               nlohmann/json（ヘッダーオンリー）
+├── tools/
+│   ├── a2dp_decode/        a2dpwb_decode: HCI キャプチャ（.pklg）のメディアストリームを検証・デコード
+│   └── emu/                仮想 Bluetooth シンクを相手にしたエンドツーエンドテスト（Python）
 ├── CMakeLists.txt          ルートビルド設定
 └── build.bat               ビルドヘルパースクリプト
 ```
@@ -67,12 +70,47 @@ A2DP-Windows-Bridge/
 
 | CMake オプション | 既定値 | 説明 |
 |:-----------------|:-------|:-----|
-| `BUILD_TESTS` | `ON` | テストプログラムをビルド |
 | `LDAC_SOFT_FLOAT` | `OFF` | libldac にソフトウェア浮動小数点を使用 |
+| `A2DPWB_BUILD_TOOLS` | `ON` | 開発者向けツール（`a2dpwb_decode`。[使い方](usage#verify-stream)を参照）をビルド。リリースパッケージには含まれません |
 
 ```bash
-cmake -B build -A x64 -DBUILD_TESTS=OFF
+cmake -B build -A x64 -DA2DPWB_BUILD_TOOLS=OFF
 ```
+
+## 実機なしでのテスト（tools/emu）
+
+`tools/emu` は、アダプターやヘッドホンなしで、A2DPWB から同じ PC 上の仮想 Bluetooth シンクへ全コーデックをストリーミングしてテストします。Windows だけで完結し、ビルドに必要なものに加えて **Python 3.11 以降** が必要です。
+
+```bash
+python tools/emu/setup_env.py     # 初回のみ: バージョン固定のパッケージで tools/emu/.venv を作成
+python tools/emu/run_test.py      # Release ビルド後に実行。全コーデックで約 35 秒
+```
+
+仕組み:
+
+- `emu_sink.py` は、[Bumble](https://github.com/google/bumble) の仮想コントローラ 2 台を同じプロセス内の仮想リンクでつなぎます。1 台は A2DPWB 用に H4 over TCP（`127.0.0.1`）で公開し、もう 1 台は Bumble の A2DP シンクが使います。シンクは SBC・AAC・aptX・aptX HD・aptX LL・LDAC を提供し、HCI 通信を記録します。
+- `run_test.py` は、コーデックごとに開発用オプション付きで `A2DPWB.exe --cli` を実行します。`--hci-tcp`（WinUSB の代わりに仮想コントローラ）、`--test-tone`（システム音声の代わりに左 1 kHz / 右 1.5 kHz）、`--duration`、`--hci-capture` です。環境変数 `A2DPWB_CONFIG_DIR` で A2DPWB に別の設定フォルダーを使わせるので、仮想シンクとのペアリングが実際のリンクキーに影響することはありません。
+- 送信側と受信側の HCI キャプチャを `a2dpwb_decode` で検証します（受信側は `--received`）。
+
+次をすべて満たしたコーデックを合格とします。
+
+- 指定したコーデックで交渉された
+- 送信側・受信側とも `a2dpwb_decode` が問題を検出しない
+- A2DPWB が送信したメディアパケットとフレームをシンクがすべて受信し、指定した時間の 90% 以上の音声が送信された
+- LDAC 以外（オープンソースのデコーダーがないため）は、デコードした音声が両側で完全に一致し、テストトーンである
+
+| オプション | 説明 |
+|:-----------|:-----|
+| `--codecs sbc aac ...` | 指定したコーデックだけをテスト（`sbc aac aptx aptxhd aptxll ldac`。既定: すべて） |
+| `--duration <秒>` | コーデックごとのストリーミング時間（既定 5 秒） |
+| `--max-packet <バイト数>` | A2DPWB に渡す最大メディアパケットサイズ（[使い方](usage)を参照） |
+| `--build-dir`、`--config` | `A2DPWB.exe` / `a2dpwb_decode.exe` の場所（既定 `build`、`Release`） |
+| `--out <フォルダー>` | 出力先（既定 `tools/emu/out`） |
+
+コーデックごとに `tools/emu/out/<codec>/` へ、キャプチャ（`a2dpwb.pklg`、`sink.pklg`）、ログ、`a2dpwb_decode` のレポート、デコードした WAV を出力します。すべて合格すると終了コード 0 になります。
+
+{: .note }
+仮想リンクには電波がありません。エンコード、パケット化、AVDTP / L2CAP のシグナリング、独立した Bluetooth スタック（Bumble）との相互接続性は検証できますが、電波の状態、実機でのタイミング、実際のヘッドホンでの再生は検証できません。Bumble 関連のパッケージはテスト用で、A2DPWB には含まれません（THIRD_PARTY_LICENSES.md §13 を参照）。
 
 ## 依存関係
 

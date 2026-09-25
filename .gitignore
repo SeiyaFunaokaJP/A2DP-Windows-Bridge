@@ -76,3 +76,6 @@ AGENTS.md
 .codeium/
 .continue/
 .copilot/
+# tools/emu (virtual Bluetooth test): Python environment and test output
+tools/emu/.venv/
+tools/emu/out/

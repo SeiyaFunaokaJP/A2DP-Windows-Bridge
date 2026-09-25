@@ -6,6 +6,7 @@
 #include "wx_main_frame.h"
 #include "wx_profile_dialog.h"
 #include "wx_settings_dialog.h"
+#include "wx_advanced_dialog.h"
 #include "wx_about_dialog.h"
 #include "wx_firmware_dialog.h"
 #include "wx_zadig_dialog.h"
@@ -14,6 +15,7 @@
 #include "theme_manager.h"
 #include "system_integration.h"
 #include "update_checker.h"
+#include "hci_capture.h"
 
 #include <wx/scrolwin.h>
 #include <wx/statline.h>
@@ -58,6 +60,9 @@ MainFrame::MainFrame()
     service_.set_bt_chip_pid(settings_.bt_chip_pid);
     service_.set_bt_chip_fw_stem(settings_.bt_chip_fw_stem);
     service_.set_debug_mode(settings_.debug_mode);
+    service_.set_media_payload_limit(settings_.max_media_payload);
+    /* Debug mode changes apply after a restart; the Debug menu follows the boot state */
+    debug_active_ = settings_.debug_mode;
     service_.check_firmware_present();
     /* Set icon */
     SetIcon(wxIcon(wxT("APP_ICON"), wxBITMAP_TYPE_ICO_RESOURCE));
@@ -196,7 +201,33 @@ void MainFrame::create_menu_bar() {
     settings_menu->Check(ID_SETTING_START_WIN, settings_.start_with_windows);
     settings_menu->AppendCheckItem(ID_SETTING_TRAY, wxString::FromUTF8(L("settings.minimize_to_tray")));
     settings_menu->Check(ID_SETTING_TRAY, settings_.minimize_to_tray);
+    settings_menu->AppendCheckItem(ID_SETTING_UPDATE_CHECK, wxString::FromUTF8(L("settings.check_updates_on_startup")));
+    settings_menu->Check(ID_SETTING_UPDATE_CHECK, settings_.check_updates_on_startup);
+
+    settings_menu->AppendSeparator();
+    settings_menu->AppendCheckItem(ID_SETTING_DEBUG, wxString::FromUTF8(L("settings.debug_mode")));
+    settings_menu->Check(ID_SETTING_DEBUG, settings_.debug_mode);
+    settings_menu->Append(ID_OPEN_ADVANCED, wxString::FromUTF8(L("settings.advanced")));
     menu_bar->Append(settings_menu, wxString::FromUTF8(L("menu.settings")));
+
+    /* Debug menu: only when the app was started in debug mode */
+    if (debug_active_) {
+        auto *debug_menu = new wxMenu();
+        debug_menu->Append(ID_DEBUG_CAPTURE_START, wxString::FromUTF8(L("debug.capture_start")));
+        debug_menu->Append(ID_DEBUG_CAPTURE_STOP, wxString::FromUTF8(L("debug.capture_stop")));
+        debug_menu->AppendSeparator();
+        debug_menu->Append(ID_DEBUG_OPEN_LOG, wxString::FromUTF8(L("debug.open_log")));
+        debug_menu->Append(ID_OPEN_CONFIG, wxString::FromUTF8(L("menu.file.open_config")));
+        menu_bar->Append(debug_menu, wxString::FromUTF8(L("menu.debug")));
+
+        Bind(wxEVT_MENU, &MainFrame::OnDebugCaptureStart, this, ID_DEBUG_CAPTURE_START);
+        Bind(wxEVT_MENU, &MainFrame::OnDebugCaptureStop, this, ID_DEBUG_CAPTURE_STOP);
+        Bind(wxEVT_MENU, &MainFrame::OnDebugOpenLog, this, ID_DEBUG_OPEN_LOG);
+        Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent &e) { e.Enable(!hci_capture::active()); },
+             ID_DEBUG_CAPTURE_START);
+        Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent &e) { e.Enable(hci_capture::active()); },
+             ID_DEBUG_CAPTURE_STOP);
+    }
 
     /* Help menu */
     auto *help_menu = new wxMenu();
@@ -217,6 +248,9 @@ void MainFrame::create_menu_bar() {
     Bind(wxEVT_MENU, &MainFrame::OnExit, this, wxID_EXIT);
     Bind(wxEVT_MENU, &MainFrame::OnToggleStartWithWindows, this, ID_SETTING_START_WIN);
     Bind(wxEVT_MENU, &MainFrame::OnToggleMinimizeToTray, this, ID_SETTING_TRAY);
+    Bind(wxEVT_MENU, &MainFrame::OnToggleUpdateCheck, this, ID_SETTING_UPDATE_CHECK);
+    Bind(wxEVT_MENU, &MainFrame::OnToggleDebugMode, this, ID_SETTING_DEBUG);
+    Bind(wxEVT_MENU, &MainFrame::OnOpenAdvanced, this, ID_OPEN_ADVANCED);
 
     Bind(wxEVT_MENU, &MainFrame::OnOpenFirmware, this, ID_OPEN_FIRMWARE);
     Bind(wxEVT_BUTTON, &MainFrame::OnOpenFirmware, this, ID_OPEN_FIRMWARE);
@@ -666,6 +700,23 @@ void MainFrame::OnToggleMinimizeToTray(wxCommandEvent &) {
     settings_.save();
 }
 
+void MainFrame::OnToggleUpdateCheck(wxCommandEvent &) {
+    settings_.check_updates_on_startup = !settings_.check_updates_on_startup;
+    settings_.save();
+}
+
+void MainFrame::OnToggleDebugMode(wxCommandEvent &) {
+    /* debug.log is opened in A2dpBridgeApp::OnInit and the HCI dump when
+     * BTstack is first initialized, so the change applies after a restart. */
+    settings_.debug_mode = !settings_.debug_mode;
+    settings_.save();
+    wxMessageBox(
+        wxString::FromUTF8(L(settings_.debug_mode ? "settings.debug_mode_enabled"
+                                                  : "settings.debug_mode_disabled")),
+        wxString::FromUTF8(L("settings.debug_mode")),
+        wxOK | wxICON_INFORMATION, this);
+}
+
 void MainFrame::OnOpenFirmware(wxCommandEvent &) {
     FirmwareDialog dlg(this, &service_, &settings_);
     dlg.ShowModal();
@@ -762,6 +813,54 @@ void MainFrame::OnTrayBalloonClick(wxTaskBarIconEvent &) {
         return;
     open_url(pending_update_url_);
     pending_update_url_.clear();
+}
+
+void MainFrame::OnOpenAdvanced(wxCommandEvent &) {
+    AdvancedDialog dlg(this, &settings_);
+    if (dlg.ShowModal() == wxID_OK)
+        service_.set_media_payload_limit(settings_.max_media_payload);
+}
+
+void MainFrame::update_title() {
+    wxString title = wxString::Format("A2DPWB v%s", APP_VERSION);
+    if (hci_capture::active())
+        title += wxString::FromUTF8(L("debug.capture_title_suffix"));
+    SetTitle(title);
+}
+
+void MainFrame::OnDebugCaptureStart(wxCommandEvent &) {
+    char stamp[32];
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    snprintf(stamp, sizeof(stamp), "%04u%02u%02u_%02u%02u%02u", st.wYear, st.wMonth, st.wDay,
+             st.wHour, st.wMinute, st.wSecond);
+    std::string path = service_.get_config_dir() + "\\hci_" + stamp + ".pklg";
+    if (!hci_capture::start(path)) {
+        wxMessageBox(wxString::Format(wxString::FromUTF8(L("debug.capture_failed")),
+                                      wxString::FromUTF8(path.c_str())),
+                     wxString::FromUTF8(L("menu.debug")), wxOK | wxICON_ERROR, this);
+    }
+    update_title();
+}
+
+void MainFrame::OnDebugCaptureStop(wxCommandEvent &) {
+    hci_capture::stop();
+    update_title();
+    std::string path = hci_capture::path();
+    double mb = hci_capture::bytes_written() / (1024.0 * 1024.0);
+    int answer = wxMessageBox(
+        wxString::Format(wxString::FromUTF8(L("debug.capture_saved")),
+                         wxString::FromUTF8(path.c_str()), mb),
+        wxString::FromUTF8(L("menu.debug")), wxYES_NO | wxICON_INFORMATION, this);
+    if (answer == wxYES) {
+        std::string args = "/select,\"" + path + "\"";
+        ShellExecuteA(nullptr, "open", "explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+    }
+}
+
+void MainFrame::OnDebugOpenLog(wxCommandEvent &) {
+    std::string log = service_.get_config_dir() + "\\debug.log";
+    ShellExecuteA(nullptr, "open", log.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 void MainFrame::OnOpenAbout(wxCommandEvent &) {

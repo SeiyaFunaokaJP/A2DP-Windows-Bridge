@@ -58,6 +58,9 @@ A2DP-Windows-Bridge/
 │   ├── libopenaptx/        aptX / aptX HD / aptX LL encoder
 │   ├── fdk-aac/            Fraunhofer AAC encoder
 │   └── json/               nlohmann/json (header-only)
+├── tools/
+│   ├── a2dp_decode/        a2dpwb_decode: checks / decodes the media stream in an HCI capture (.pklg)
+│   └── emu/                End-to-end test against a virtual Bluetooth sink (Python)
 ├── CMakeLists.txt          Root build config
 └── build.bat               Build helper script
 ```
@@ -66,12 +69,47 @@ A2DP-Windows-Bridge/
 
 | CMake Option | Default | Description |
 |:-------------|:--------|:------------|
-| `BUILD_TESTS` | `ON` | Build test programs |
 | `LDAC_SOFT_FLOAT` | `OFF` | Use software floating point for libldac |
+| `A2DPWB_BUILD_TOOLS` | `ON` | Build developer tools (`a2dpwb_decode`, see [Usage](usage#verify-stream)). Not part of the release package |
 
 ```bash
-cmake -B build -A x64 -DBUILD_TESTS=OFF
+cmake -B build -A x64 -DA2DPWB_BUILD_TOOLS=OFF
 ```
+
+## Testing Without Hardware (tools/emu)
+
+`tools/emu` streams every codec from A2DPWB to a virtual Bluetooth sink on the same PC, with no adapter or headphones. It runs on Windows only and needs **Python 3.11 or later** in addition to the build requirements.
+
+```bash
+python tools/emu/setup_env.py     # once: creates tools/emu/.venv with pinned packages
+python tools/emu/run_test.py      # after a Release build; about 35 s for all codecs
+```
+
+How it works:
+
+- `emu_sink.py` runs two [Bumble](https://github.com/google/bumble) virtual controllers on an in-process link. One is served as H4 over TCP (`127.0.0.1`) for A2DPWB. The other is used by a Bumble A2DP sink that offers SBC, AAC, aptX, aptX HD, aptX LL and LDAC, and records its HCI traffic.
+- `run_test.py` runs `A2DPWB.exe --cli` for each codec with development options: `--hci-tcp` (virtual controller instead of WinUSB), `--test-tone` (1 kHz left / 1.5 kHz right instead of system audio), `--duration`, `--hci-capture`. The environment variable `A2DPWB_CONFIG_DIR` points A2DPWB at a separate config folder, so pairing with the virtual sink never touches your real link keys.
+- Both HCI captures are then checked with `a2dpwb_decode` (the sink side with `--received`).
+
+A codec passes when all of these hold:
+
+- the requested codec was negotiated
+- `a2dpwb_decode` finds no problem on the sent side or the received side
+- the sink received every media packet and frame A2DPWB sent, and at least 90% of the requested audio duration was sent
+- except LDAC (no open-source decoder): the decoded audio is identical on both sides and is the test tone
+
+| Option | Description |
+|:-------|:------------|
+| `--codecs sbc aac ...` | Test only these codecs (`sbc aac aptx aptxhd aptxll ldac`, default: all) |
+| `--duration <s>` | Seconds of streaming per codec (default 5) |
+| `--max-packet <bytes>` | Passed to A2DPWB (max media packet size, see [Usage](usage)) |
+| `--build-dir`, `--config` | Where to find `A2DPWB.exe` / `a2dpwb_decode.exe` (default `build`, `Release`) |
+| `--out <dir>` | Output folder (default `tools/emu/out`) |
+
+For each codec, `tools/emu/out/<codec>/` holds the captures (`a2dpwb.pklg`, `sink.pklg`), logs, the `a2dpwb_decode` reports and the decoded WAV files. The exit code is 0 when every codec passed.
+
+{: .note }
+The virtual link has no radio: it checks encoding, packetization, AVDTP / L2CAP signalling and interoperability with an independent Bluetooth stack (Bumble), but not radio conditions, timing on real hardware or how real headphones play the audio. The Bumble packages are test tooling only and are not part of A2DPWB (see THIRD_PARTY_LICENSES.md §13).
 
 ## Dependencies
 

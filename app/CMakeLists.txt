@@ -46,6 +46,8 @@ add_executable(A2DPWB WIN32
     src/bt_device.cpp
     src/bt_adapter_enum.cpp
     src/btstack_transport.cpp
+    src/hci_capture.cpp
+    src/btstack_uart_tcp_windows.c
     src/btstack_link_key_db_file.c
     src/config_path.cpp
     src/a2dp_service.cpp
@@ -53,6 +55,7 @@ add_executable(A2DPWB WIN32
     src/wx_main_frame.cpp
     src/wx_profile_dialog.cpp
     src/wx_settings_dialog.cpp
+    src/wx_advanced_dialog.cpp
     src/wx_about_dialog.cpp
     src/wx_firmware_dialog.cpp
     src/wx_zadig_dialog.cpp

@@ -10,6 +10,7 @@
 #include "audio_device_enum.h"
 #include "bt_adapter_enum.h"
 #include "btstack_transport.h"
+#include "hci_capture.h"
 #include "capture_mode.h"
 #include "config_path.h"
 #include "debug_log.h"
@@ -428,6 +429,7 @@ A2dpService::~A2dpService() {
      * winding down after the stop_streaming poll timed out. */
     if (worker_thread_.joinable())
         worker_thread_.join();
+    hci_capture::stop();
 }
 
 std::string A2dpService::get_config_dir() const {
@@ -640,9 +642,7 @@ bool A2dpService::ensure_btstack_init() {
 
     transport_ = std::make_unique<BtStackTransport>();
     transport_->set_hci_dump_enabled(false);
-    if (debug_mode_) {
-        transport_->set_hci_dump_file(get_config_dir() + "\\hci_dump.pklg");
-    }
+    transport_->set_hci_capture_enabled(debug_mode_);
     transport_->set_firmware_dir(get_config_dir());
     transport_->set_link_key_dir(get_config_dir());
 
@@ -925,6 +925,7 @@ void A2dpService::streaming_thread_func_inner() {
 
     BtStackTransport *transport = transport_.get();
     LOG_INFO("A2dpService: BTstack initialized successfully");
+    transport->set_media_payload_limit(media_payload_limit_.load());
 
     if (stop_requested_.load()) { running_.store(false); notify_state(State::Idle, L("status.ready")); return; }
 

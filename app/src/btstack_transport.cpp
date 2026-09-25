@@ -29,11 +29,13 @@ extern "C" {
 #include "btstack_link_key_db_file.h"
 #include "hci_dump.h"
 #include "hci_dump_windows_stdout.h"
-#include "hci_dump_windows_fs.h"
+#include "hci_transport_h4.h"
 #include "btstack_chipset_realtek.h"
 }
 
 #include "bt_adapter_enum.h"
+#include "hci_capture.h"
+#include "btstack_uart_tcp_windows.h"
 
 /*
  * Vendor codec IDs (duplicated from avdtp.h to avoid enum conflicts
@@ -321,16 +323,10 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     /* Initialize BTstack run loop */
     btstack_run_loop_init(btstack_run_loop_windows_get_instance());
 
-    /* HCI dump: file dump takes priority over stdout dump */
-    if (!self->hci_dump_file_.empty()) {
-        int err = hci_dump_windows_fs_open(self->hci_dump_file_.c_str(), HCI_DUMP_PACKETLOGGER);
-        if (err == 0) {
-            hci_dump_init(hci_dump_windows_fs_get_instance());
-            fprintf(stderr, "BTstack: HCI dump → %s\n", self->hci_dump_file_.c_str());
-        } else {
-            fprintf(stderr, "BTstack: Failed to open HCI dump file: %s (err=%d)\n",
-                    self->hci_dump_file_.c_str(), err);
-        }
+    /* HCI dump: on-demand capture (debug mode) takes priority over stdout dump */
+    if (self->hci_capture_enabled_) {
+        hci_capture::reset_tracking();
+        hci_dump_init(hci_capture::instance());
     } else if (self->hci_dump_enabled_) {
         hci_dump_init(hci_dump_windows_stdout_get_instance());
     }
@@ -363,8 +359,17 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     hci_transport_usb_add_device(0x8087, 0x0029);  /* Intel AX200/AX201 */
     hci_transport_usb_add_device(0x8087, 0x0032);  /* Intel AX210 */
 
-    /* Initialize HCI with WinUSB transport */
-    hci_init(hci_transport_usb_instance(), nullptr);
+    if (!self->hci_tcp_.empty()) {
+        /* Development / testing: H4 over TCP to a virtual controller (tools/emu) */
+        static hci_transport_config_uart_t tcp_config = {
+            HCI_TRANSPORT_CONFIG_UART, 115200, 0, 0, nullptr, BTSTACK_UART_PARITY_OFF};
+        tcp_config.device_name = self->hci_tcp_.c_str();
+        fprintf(stderr, "BTstack: H4 over TCP -> %s\n", tcp_config.device_name);
+        hci_init(hci_transport_h4_instance_for_uart(btstack_uart_tcp_windows_instance()), &tcp_config);
+    } else {
+        /* Initialize HCI with WinUSB transport */
+        hci_init(hci_transport_usb_instance(), nullptr);
+    }
 
     /* Realtek chipset initialization — only when a Realtek PID is configured.
      * set_product_id() must be called before init() with the detected PID.
@@ -1363,37 +1368,26 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
 
         MediaPacket &slot = media_queue_[media_queue_head_];
 
-        /* Build the media payload */
-        if (codec == AudioCodec::LDAC) {
-            if (size + 1 > sizeof(slot.data)) {
-                send_failure_count_.fetch_add(1);
-                return false;
-            }
-            uint8_t cs = (channels_ >= 2) ? 0x04 : 0x00; /* CS: 10=Stereo, 00=Mono */
-            slot.data[0] = ((frames & 0x0F) << 4) | cs;
-            memcpy(slot.data + 1, data, size);
-            slot.size = size + 1;
-        } else if (codec == AudioCodec::SBC) {
-            if (size + 1 > sizeof(slot.data)) {
-                send_failure_count_.fetch_add(1);
-                return false;
-            }
-            /* SBC media payload header: 1 byte, frame count in lower 4 bits, no fragmentation */
-            slot.data[0] = frames & 0x0F;
-            memcpy(slot.data + 1, data, size);
-            slot.size = size + 1;
-        } else {
-            /* aptX, aptX HD, aptX LL, AAC: raw payload, no additional header.
-             * Classic aptX and aptX LL additionally go out without an RTP
-             * header (slot.no_rtp), matching Android (A2DP_APTX_OFFSET) and
-             * PipeWire. */
-            if (size > sizeof(slot.data)) {
-                send_failure_count_.fetch_add(1);
-                return false;
-            }
-            memcpy(slot.data, data, size);
-            slot.size = size;
+        /* Build the media payload. SBC and LDAC start with a 1-byte media
+         * payload header; aptX, aptX HD, aptX LL and AAC carry the raw payload.
+         * Classic aptX and aptX LL additionally go out without an RTP header
+         * (slot.no_rtp), matching Android (A2DP_APTX_OFFSET) and PipeWire. */
+        uint32_t header = (codec == AudioCodec::LDAC || codec == AudioCodec::SBC) ? 1 : 0;
+        if (size + header > sizeof(slot.data)) {
+            /* get_media_mtu() keeps encoders below this; report if it happens anyway */
+            send_failure_count_.fetch_add(1);
+            if (!oversize_logged_.exchange(true))
+                fprintf(stderr, "BTstack: media payload of %u bytes exceeds the %u-byte queue slot, dropped\n",
+                        size + header, (unsigned)sizeof(slot.data));
+            return false;
         }
+        if (header) {
+            /* Frame count in the low 4 bits, no fragmentation: A2DP spec (SBC),
+             * AOSP A2DP_LDAC_HDR_NUM_MSK and PipeWire struct rtp_payload (LDAC) */
+            slot.data[0] = frames & 0x0F;
+        }
+        memcpy(slot.data + header, data, size);
+        slot.size = size + header;
 
         slot.timestamp = timestamp;
         slot.frames = frames;
@@ -1779,9 +1773,14 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
             remote_seid_ = a2dp_subevent_stream_established_get_remote_seid(packet);
             /* Cache media MTU on the BTstack thread (safe to call here) */
             int max = a2dp_max_media_payload_size(a2dp_cid_, local_seid_);
-            media_mtu_ = (max > 0) ? (uint16_t)max : 679;
-            fprintf(stderr, "BTstack: Stream established (local=%u, remote=%u, mtu=%u)\n",
-                   local_seid_, remote_seid_, media_mtu_);
+            uint16_t remote_mtu = (max > 0) ? (uint16_t)max : 679;
+            /* Callers size packets and the SBC / LDAC encoders from
+             * get_media_mtu(); the limit also keeps every payload within a
+             * MAX_MEDIA_PACKET_SIZE queue slot (send_media() drops larger ones) */
+            uint16_t limit = media_payload_limit_.load();
+            media_mtu_ = (remote_mtu > limit) ? limit : remote_mtu;
+            fprintf(stderr, "BTstack: Stream established (local=%u, remote=%u, mtu=%u, used=%u, limit=%u)\n",
+                   local_seid_, remote_seid_, remote_mtu, media_mtu_, limit);
             stream_result_.store(true);
         }
         signal_event(stream_event_, stream_result_.load());

@@ -12,6 +12,7 @@
 #define BTSTACK_TRANSPORT_H
 
 #include "audio_encoder.h"
+#include "media_payload_limit.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -28,8 +29,11 @@ public:
      * subtracted from get_media_mtu(). Codecs sent without RTP (aptX, aptX LL)
      * may use get_media_mtu() + RTP_HEADER_SIZE bytes of payload. */
     static constexpr uint32_t RTP_HEADER_SIZE = 12;
-    /* Capacity of one queued media packet (MediaPacket::data) */
-    static constexpr uint32_t MAX_MEDIA_PACKET_SIZE = 1024;
+    /* Capacity of one queued media packet (MediaPacket::data): the largest
+     * L2CAP payload with HCI_ACL_PAYLOAD_SIZE (1691 + 4-byte L2CAP header) */
+    static constexpr uint32_t MAX_MEDIA_PACKET_SIZE = 1691;
+    static_assert(MEDIA_PAYLOAD_LIMIT_MAX + RTP_HEADER_SIZE <= MAX_MEDIA_PACKET_SIZE,
+                  "media payload limit must fit a queue slot (aptX: payload + RTP header size)");
 
     BtStackTransport();
     ~BtStackTransport();
@@ -44,8 +48,13 @@ public:
     /* Disable HCI packet dump to stdout (call before init for GUI mode) */
     void set_hci_dump_enabled(bool enabled) { hci_dump_enabled_ = enabled; }
 
-    /* Set file path for HCI packet dump (.pklg format, readable by Wireshark) */
-    void set_hci_dump_file(const std::string &path) { hci_dump_file_ = path; }
+    /* Install the on-demand HCI capture (hci_capture.h) as the HCI dump.
+     * Debug mode only; capture itself is started / stopped via hci_capture. */
+    void set_hci_capture_enabled(bool enabled) { hci_capture_enabled_ = enabled; }
+
+    /* Development / testing: use H4 over TCP ("host:port") to a virtual
+     * controller instead of a WinUSB adapter (call before init) */
+    void set_hci_tcp(const std::string &host_port) { hci_tcp_ = host_port; }
 
     /* Set directory for persistent link key storage (call before init) */
     void set_link_key_dir(const std::string &path) { link_key_dir_ = path; }
@@ -119,8 +128,14 @@ public:
                     uint32_t timestamp, uint8_t frames,
                     AudioCodec codec);
 
-    /* Get the negotiated media channel MTU */
+    /* Media payload size to use (RTP header excluded): the remote's media
+     * channel MTU, limited by set_media_payload_limit(), fixed when the
+     * stream is established */
     uint16_t get_media_mtu() const;
+
+    /* Upper limit for get_media_mtu(), clamped to MEDIA_PAYLOAD_LIMIT_MIN..MAX.
+     * Applies to streams established afterwards. */
+    void set_media_payload_limit(uint32_t limit) { media_payload_limit_.store(clamp_media_payload_limit(limit)); }
 
     /* Check if connected and stream is active */
     bool is_connected() const;
@@ -248,6 +263,7 @@ private:
     uint8_t local_seid_ = 0;       /* Currently active local SEID */
     uint8_t remote_seid_ = 0;      /* Currently active remote SEID */
     uint16_t media_mtu_ = 0;
+    std::atomic<uint16_t> media_payload_limit_{MEDIA_PAYLOAD_LIMIT_DEFAULT};
 
     /* Stream endpoint SEIDs */
     uint8_t ldac_local_seid_ = 0;
@@ -279,7 +295,8 @@ private:
 
     /* Configuration */
     bool hci_dump_enabled_ = true;
-    std::string hci_dump_file_;     /* .pklg file path (empty = no file dump) */
+    bool hci_capture_enabled_ = false; /* debug mode: hci_capture installed as HCI dump */
+    std::string hci_tcp_;           /* non-empty: H4 over TCP instead of WinUSB */
     std::string link_key_dir_;      /* directory for persistent link keys (empty = memory-only) */
     std::string firmware_dir_;      /* directory for firmware files (empty = exe dir fallback) */
     std::string fw_stem_;           /* firmware stem for unknown chips (e.g. "rtl8761bu") */
@@ -308,6 +325,7 @@ private:
 
     /* Media send failure tracking (for ABR) */
     std::atomic<uint32_t> send_failure_count_{0};
+    std::atomic<bool> oversize_logged_{false};  /* oversized payload reported once */
 
     /* Media packet queue: WASAPI thread writes, BTstack thread reads.
      * Ring buffer avoids dropping frames when multiple LDAC frames are

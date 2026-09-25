@@ -47,6 +47,12 @@ void AppSettings::load()
     /* Debug */
     debug_mode = j.value("debug_mode", debug_mode);
 
+    /* Advanced */
+    {
+        int v = j.value("max_media_payload", static_cast<int>(max_media_payload));
+        max_media_payload = clamp_media_payload_limit(v > 0 ? static_cast<uint32_t>(v) : 0u);
+    }
+
     /* Bluetooth adapter */
     bt_chip_pid = static_cast<uint16_t>(j.value("bt_chip_pid", static_cast<int>(bt_chip_pid)));
     bt_chip_fw_stem = j.value("bt_chip_fw_stem", bt_chip_fw_stem);
@@ -74,6 +80,9 @@ void AppSettings::save() const
 
     /* Debug */
     j["debug_mode"] = debug_mode;
+
+    /* Advanced */
+    j["max_media_payload"] = static_cast<int>(max_media_payload);
 
     /* Bluetooth adapter */
     j["bt_chip_pid"] = static_cast<int>(bt_chip_pid);

@@ -22,8 +22,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <atomic>
+#include <chrono>
+#include <cmath>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <thread>
 #include <vector>
 #include <windows.h>
 
@@ -40,10 +44,24 @@
 #include "bt_device.h"
 #include "btstack_transport.h"
 #include "config_path.h"
+#include "hci_capture.h"
+#include "media_payload_limit.h"
 #include "wx_app.h"
 
 /* Global state */
 static std::atomic<bool> g_running{true};
+
+/* Development / testing options (tools/emu). Not shown in the normal help. */
+struct CliDevOptions {
+    std::string hci_tcp;      /* --hci-tcp <host:port>: virtual controller instead of WinUSB */
+    std::string hci_capture;  /* --hci-capture <path>: HCI capture (.pklg) of the whole run */
+    bool test_tone = false;   /* --test-tone: 1 kHz (L) / 1.5 kHz (R) sine at 48 kHz instead of WASAPI */
+    uint32_t duration_s = 0;  /* --duration <seconds>: stop streaming after this time (0 = Ctrl+C) */
+};
+static CliDevOptions g_dev;
+
+/* --max-packet: advanced max media packet size (media_payload_limit.h) */
+static uint16_t g_max_packet = MEDIA_PAYLOAD_LIMIT_DEFAULT;
 static std::mutex g_encode_mutex;
 
 /* Audio buffer for float32->PCM conversion (sized per encoder sample width) */
@@ -341,6 +359,37 @@ static void audio_callback(
     }
 }
 
+/* --test-tone: feeds audio_callback like WASAPI does (float32 stereo in 10 ms
+ * blocks, paced in real time), so emulator tests get a known signal. */
+static const uint32_t TEST_TONE_RATE = 48000;
+static std::atomic<bool> g_tone_running{false};
+static std::thread g_tone_thread;
+
+static void start_test_tone() {
+    g_tone_running.store(true);
+    g_tone_thread = std::thread([]() {
+        const uint32_t block = TEST_TONE_RATE / 100;
+        const double two_pi = 6.283185307179586;
+        std::vector<float> buf(block * 2);
+        uint64_t n = 0;
+        auto next = std::chrono::steady_clock::now();
+        while (g_tone_running.load()) {
+            for (uint32_t i = 0; i < block; i++, n++) {
+                buf[2 * i]     = (float)(0.5 * sin(two_pi * 1000.0 * (double)n / TEST_TONE_RATE));
+                buf[2 * i + 1] = (float)(0.5 * sin(two_pi * 1500.0 * (double)n / TEST_TONE_RATE));
+            }
+            audio_callback(reinterpret_cast<const uint8_t *>(buf.data()), block, 2, TEST_TONE_RATE, 32);
+            next += std::chrono::milliseconds(10);
+            std::this_thread::sleep_until(next);
+        }
+    });
+}
+
+static void stop_test_tone() {
+    g_tone_running.store(false);
+    if (g_tone_thread.joinable()) g_tone_thread.join();
+}
+
 /* Console Ctrl+C handler */
 static BOOL WINAPI console_handler(DWORD ctrl_type) {
     if (ctrl_type == CTRL_C_EVENT || ctrl_type == CTRL_BREAK_EVENT) {
@@ -368,6 +417,8 @@ static void print_usage(const char *prog) {
     printf("  --audio-device <id>  Audio device ID for virtual mode\n");
     printf("  -l           List available Bluetooth audio devices and exit\n");
     printf("  -u <path>    USB device path for BTstack (optional)\n");
+    printf("  --max-packet <bytes>  Advanced: max media packet size, %u-%u (recommended: %u)\n",
+           MEDIA_PAYLOAD_LIMIT_MIN, MEDIA_PAYLOAD_LIMIT_MAX, MEDIA_PAYLOAD_LIMIT_DEFAULT);
     printf("  -h           Show this help\n");
     printf("\nCodec priority (auto mode): LDAC > aptX HD > aptX LL > aptX > AAC > SBC\n");
 }
@@ -440,8 +491,20 @@ static int run_streaming(const uint8_t target_addr[6],
     BtStackTransport transport;
     transport.set_link_key_dir(get_config_dir());
 
+    transport.set_media_payload_limit(g_max_packet);
+    if (!g_dev.hci_tcp.empty()) transport.set_hci_tcp(g_dev.hci_tcp);
+    if (!g_dev.hci_tcp.empty() || !g_dev.hci_capture.empty()) transport.set_hci_dump_enabled(false);
+    if (!g_dev.hci_capture.empty()) {
+        transport.set_hci_capture_enabled(true);
+        if (!hci_capture::start(g_dev.hci_capture)) {
+            fprintf(stderr, "Cannot create HCI capture file %s\n", g_dev.hci_capture.c_str());
+            return 1;
+        }
+    }
+
     /* --- Step 2: Initialize BTstack --- */
-    printf("\n[2/5] Initializing BTstack (WinUSB transport)...\n");
+    printf("\n[2/5] Initializing BTstack (%s transport)...\n",
+           g_dev.hci_tcp.empty() ? "WinUSB" : "H4 over TCP");
     if (!transport.init(usb_path)) {
         fprintf(stderr,
             "Failed to initialize BTstack.\n"
@@ -490,7 +553,9 @@ static int run_streaming(const uint8_t target_addr[6],
     WasapiCapture wasapi_capture;
     std::wstring saved_default_device;
 
-    switch (capture_mode) {
+    if (g_dev.test_tone) {
+        printf("Capture mode: test tone (1 kHz left / 1.5 kHz right, %u Hz)\n", TEST_TONE_RATE);
+    } else switch (capture_mode) {
     case CaptureMode::SystemLoopback:
         printf("Capture mode: System Loopback\n");
         if (!wasapi_capture.init()) {
@@ -523,8 +588,8 @@ static int run_streaming(const uint8_t target_addr[6],
         break;
     }
 
-    uint32_t sample_rate = wasapi_capture.get_sample_rate();
-    uint32_t channels = wasapi_capture.get_channels();
+    uint32_t sample_rate = g_dev.test_tone ? TEST_TONE_RATE : wasapi_capture.get_sample_rate();
+    uint32_t channels = g_dev.test_tone ? 2 : wasapi_capture.get_channels();
 
     /* Warn if system sample rate is above 48kHz — LDAC frame size is fixed at
      * 128 samples, so higher rates halve the bits per frame and degrade quality.
@@ -631,7 +696,11 @@ static int run_streaming(const uint8_t target_addr[6],
     g_transport.store(&transport);
     g_timestamp = 0;
 
-    bool cli_capture_started = wasapi_capture.start(audio_callback);
+    bool cli_capture_started = true;
+    if (g_dev.test_tone)
+        start_test_tone();
+    else
+        cli_capture_started = wasapi_capture.start(audio_callback);
     if (!cli_capture_started) {
         fprintf(stderr, "Failed to start audio capture\n");
         if (!saved_default_device.empty())
@@ -645,8 +714,15 @@ static int run_streaming(const uint8_t target_addr[6],
     const uint32_t RECONNECT_DELAY_MS = 3000;
     const int MAX_RECONNECT_ATTEMPTS = 10;
 
+    auto stream_start = std::chrono::steady_clock::now();
     while (g_running.load()) {
         Sleep(200);
+
+        if (g_dev.duration_s > 0 &&
+            std::chrono::steady_clock::now() - stream_start >= std::chrono::seconds(g_dev.duration_s)) {
+            printf("\n--duration %u s reached\n", g_dev.duration_s);
+            break;
+        }
 
         /* Check if connection was lost */
         if (transport.check_disconnected()) {
@@ -693,6 +769,7 @@ static int run_streaming(const uint8_t target_addr[6],
 
     /* Cleanup */
     printf("\nShutting down...\n");
+    stop_test_tone();
     wasapi_capture.stop();
     g_encoder.store(nullptr);
     g_transport.store(nullptr);
@@ -707,6 +784,7 @@ static int run_streaming(const uint8_t target_addr[6],
     }
 
     encoder->shutdown();
+    hci_capture::stop();
     printf("Done.\n");
     return 0;
 }
@@ -836,13 +914,30 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(argv[i], "--audio-device") == 0 && i + 1 < argc) {
             cli_audio_device = argv[++i];
+        } else if (strcmp(argv[i], "--max-packet") == 0 && i + 1 < argc) {
+            unsigned long v = strtoul(argv[++i], nullptr, 10);
+            g_max_packet = clamp_media_payload_limit(static_cast<uint32_t>(v > 0xFFFF ? 0xFFFF : v));
+            if (g_max_packet != v)
+                printf("--max-packet %lu is outside %u-%u, using %u\n", v,
+                       MEDIA_PAYLOAD_LIMIT_MIN, MEDIA_PAYLOAD_LIMIT_MAX, g_max_packet);
+        } else if (strcmp(argv[i], "--hci-tcp") == 0 && i + 1 < argc) {
+            g_dev.hci_tcp = argv[++i];
+        } else if (strcmp(argv[i], "--hci-capture") == 0 && i + 1 < argc) {
+            g_dev.hci_capture = argv[++i];
+        } else if (strcmp(argv[i], "--test-tone") == 0) {
+            g_dev.test_tone = true;
+        } else if (strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
+            g_dev.duration_s = static_cast<uint32_t>(strtoul(argv[++i], nullptr, 10));
         } else if (strcmp(argv[i], "-h") == 0) {
             print_usage(argv[0]);
             return 0;
         }
     }
 
-    printf("Transport: BTstack (WinUSB)\n");
+    if (g_dev.hci_tcp.empty())
+        printf("Transport: BTstack (WinUSB)\n");
+    else
+        printf("Transport: BTstack (H4 over TCP to %s - development / testing)\n", g_dev.hci_tcp.c_str());
 
     SetConsoleCtrlHandler(console_handler, TRUE);
 
