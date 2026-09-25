@@ -626,7 +626,20 @@ void A2dpService::check_firmware_present() {
         fw_path = cfg_dir + "\\" + bt_chip_fw_stem_ + "_fw.bin";
         cfg_path = cfg_dir + "\\" + bt_chip_fw_stem_ + "_config.bin";
     } else {
-        firmware_present_ = false;
+        /* No Realtek chip selected. An adapter of another known vendor needs
+         * no rtl_bt files (Intel/Broadcom firmware is picked up at HCI init,
+         * experimental), so don't raise the Realtek warning for it. A
+         * Realtek or unrecognised adapter still gets the warning. */
+        bool realtek_seen = false;
+        BtChipVendor other = BtChipVendor::Unknown;
+        for (const auto &a : BtAdapterEnumerator::enumerate()) {
+            if (a.vendor == BtChipVendor::Realtek) realtek_seen = true;
+            else if (a.vendor == BtChipVendor::Intel || a.vendor == BtChipVendor::Broadcom ||
+                     a.vendor == BtChipVendor::Csr) other = a.vendor;
+        }
+        if (realtek_seen) other_vendor_ = BtChipVendor::Unknown;
+        else if (other != BtChipVendor::Unknown) other_vendor_ = other;
+        firmware_present_ = (other_vendor_ != BtChipVendor::Unknown);
         return;
     }
 

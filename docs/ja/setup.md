@@ -94,8 +94,10 @@ Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU �
 
 | チップセット | 製品例 | 備考 |
 |:-------------|:-------|:-----|
-| Intel | Intel AX200/AX210 | そのまま動作、ファームウェア不要 |
+| Realtek | TP-Link UB500、RTL8761BU | ファームウェアのダウンロードが必要（上記参照）。最も検証済み |
 | CSR | CSR8510 汎用ドングル | そのまま動作、ファームウェア不要 |
-| Realtek | TP-Link UB500、RTL8761BU | ファームウェアのダウンロードが必要（上記参照） |
+| Broadcom | ASUS BT400 (BCM20702) | *試験的。* ROM ファームウェアで動作。設定フォルダに PatchRAM `.hcd`（例: `BCM20702A1-0b05-17cb.hcd`）があれば起動時に適用 |
+| Intel | Intel 8265 / 9260 / AX200 / AX201 | *試験的。* ブートローダーモード（コールドブート後など）では linux-firmware `intel/` の対応する `ibt-*.sfi` + `ibt-*.ddc` を設定フォルダに配置する必要あり。AX210 以降（TLV ブートローダー）は未対応 |
+| MediaTek、Qualcomm | MT7921/MT7922、QCA61x4 | 未対応: A2DPWB にないファームウェアローダーが必要 |
 
 USB Bluetooth 5.0 以上のアダプターは、LDAC のような高ビットレートコーデックに最適です。

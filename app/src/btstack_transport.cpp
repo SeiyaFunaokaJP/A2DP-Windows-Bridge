@@ -31,6 +31,8 @@ extern "C" {
 #include "hci_dump_windows_stdout.h"
 #include "hci_transport_h4.h"
 #include "btstack_chipset_realtek.h"
+#include "btstack_chipset_bcm.h"
+#include "btstack_chipset_intel_firmware.h"
 }
 
 #include "bt_adapter_enum.h"
@@ -285,6 +287,7 @@ bool BtStackTransport::init(const char *usb_path) {
     }
     instance_ = this;
     running_.store(true);
+    init_failed_.store(false);
 
     /* Launch BTstack run loop in a dedicated thread */
     thread_handle_ = CreateThread(nullptr, 0,
@@ -305,12 +308,14 @@ bool BtStackTransport::init(const char *usb_path) {
                 fflush(stderr);
                 return true;
             }
+            if (init_failed_.load()) break;
             Sleep(poll_interval);
             elapsed += poll_interval;
         }
     }
 
-    fprintf(stderr, "BTstack: HCI initialization timed out\n");
+    fprintf(stderr, init_failed_.load() ? "BTstack: HCI initialization failed\n"
+                                        : "BTstack: HCI initialization timed out\n");
     shutdown();
     return false;
 }
@@ -360,11 +365,76 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     hci_transport_usb_add_device(0x8087, 0x0029);  /* Intel AX200/AX201 */
     hci_transport_usb_add_device(0x8087, 0x0032);  /* Intel AX210 */
 
-    if (!self->hci_tcp_.empty()) {
+    /* Resolve firmware directory: explicit setting → exe dir fallback.
+     * Stored in a member so the c_str() handed to BTstack survives
+     * subsequent chipset_init() calls (hci_power_control_on() invokes
+     * chipset_init again after hci_set_chipset). */
+    self->resolved_fw_dir_.clear();
+    if (!self->firmware_dir_.empty()) {
+        self->resolved_fw_dir_ = self->firmware_dir_;
+    } else {
+        char exe_dir[MAX_PATH];
+        if (GetModuleFileNameA(NULL, exe_dir, MAX_PATH)) {
+            char *last_sep = strrchr(exe_dir, '\\');
+            if (!last_sep) last_sep = strrchr(exe_dir, '/');
+            if (last_sep) *last_sep = '\0';
+            self->resolved_fw_dir_ = exe_dir;
+        }
+    }
+
+    /* Non-Realtek controllers (experimental): see which WinUSB adapters are
+     * present. Only an adapter bound to WinUSB passes the class check, so an
+     * Intel adapter still on the Intel driver does not count. */
+    self->usb_adapters_.clear();
+    self->intel_loader_ = false;
+    self->bcm_checked_ = false;
+    self->bcm_hcd_path_.clear();
+    if (self->hci_tcp_.empty() && self->product_id_ == 0) {
+        self->usb_adapters_ = BtAdapterEnumerator::enumerate();
+        for (const auto &a : self->usb_adapters_) {
+            if (a.vendor == BtChipVendor::Intel) self->intel_loader_ = true;
+            if (a.vendor == BtChipVendor::MediaTek || a.vendor == BtChipVendor::Qualcomm) {
+                fprintf(stderr, "BTstack: WARNING %s adapter %04X:%04X — firmware loading "
+                        "for this vendor is not implemented; it may not work\n",
+                        BtAdapterEnumerator::vendor_name(a.vendor), a.vid, a.pid);
+            }
+        }
+    }
+
+    if (self->intel_loader_) {
+        /* Intel controllers boot into a bootloader and need ibt-*.sfi/.ddc
+         * uploaded before regular HCI init. The loader sends HCI Reset first
+         * and finishes at once if the controller is already operational
+         * (e.g. the Intel driver loaded it before the switch to WinUSB). */
+        const std::string &fw_dir = self->resolved_fw_dir_;
+        btstack_chipset_intel_set_firmware_path(fw_dir.empty() ? "." : fw_dir.c_str());
+        fprintf(stderr, "BTstack: Intel adapter — checking bootloader firmware "
+                "(experimental), folder %s\n", fw_dir.c_str());
+        fflush(stderr);
+        btstack_chipset_intel_download_firmware(hci_transport_usb_instance(),
+                                                &BtStackTransport::intel_firmware_done);
+    } else {
+        self->setup_hci_and_power_on();
+    }
+
+    /* Run the event loop (blocks until shutdown) */
+    btstack_run_loop_execute();
+
+    /* Run loop has exited. Do NOT call hci_power_control/hci_close here —
+     * they need the run loop to process HCI commands and will block.
+     * Global cleanup (deinit) is handled by shutdown() after this thread exits. */
+    fprintf(stderr, "BTstack: run loop exited, thread finishing\n");
+    fflush(stderr);
+
+    return 0;
+}
+
+void BtStackTransport::setup_hci_and_power_on() {
+    if (!hci_tcp_.empty()) {
         /* Development / testing: H4 over TCP to a virtual controller (tools/emu) */
         static hci_transport_config_uart_t tcp_config = {
             HCI_TRANSPORT_CONFIG_UART, 115200, 0, 0, nullptr, BTSTACK_UART_PARITY_OFF};
-        tcp_config.device_name = self->hci_tcp_.c_str();
+        tcp_config.device_name = hci_tcp_.c_str();
         fprintf(stderr, "BTstack: H4 over TCP -> %s\n", tcp_config.device_name);
         hci_init(hci_transport_h4_instance_for_uart(btstack_uart_tcp_windows_instance()), &tcp_config);
     } else {
@@ -375,26 +445,9 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     /* Realtek chipset initialization — only when a Realtek PID is configured.
      * set_product_id() must be called before init() with the detected PID.
      * For non-Realtek adapters (PID==0), skip chipset-specific init. */
-    if (self->product_id_ != 0) {
-        fprintf(stderr, "BTstack: Realtek adapter PID=0x%04X\n", self->product_id_);
-        btstack_chipset_realtek_set_product_id(self->product_id_);
-
-        /* Resolve firmware directory: explicit setting → exe dir fallback.
-         * Stored in a member so the c_str() handed to BTstack survives
-         * subsequent chipset_init() calls (hci_power_control_on() invokes
-         * chipset_init again after hci_set_chipset). */
-        self->resolved_fw_dir_.clear();
-        if (!self->firmware_dir_.empty()) {
-            self->resolved_fw_dir_ = self->firmware_dir_;
-        } else {
-            char exe_dir[MAX_PATH];
-            if (GetModuleFileNameA(NULL, exe_dir, MAX_PATH)) {
-                char *last_sep = strrchr(exe_dir, '\\');
-                if (!last_sep) last_sep = strrchr(exe_dir, '/');
-                if (last_sep) *last_sep = '\0';
-                self->resolved_fw_dir_ = exe_dir;
-            }
-        }
+    if (product_id_ != 0) {
+        fprintf(stderr, "BTstack: Realtek adapter PID=0x%04X\n", product_id_);
+        btstack_chipset_realtek_set_product_id(product_id_);
 
         /* BTstack's chipset_init() unconditionally rebuilds firmware/config paths
          * as "${folder}/${patch_name}" when product_id is set, ignoring any
@@ -402,21 +455,21 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
          * (e.g. "rtl8761bu_fw"), but our distribution and linux-firmware use
          * .bin. Use folder-based lookup and materialise no-extension aliases
          * (hard-link, falling back to copy) from the .bin files we ship. */
-        const std::string &fw_dir = self->resolved_fw_dir_;
+        const std::string &fw_dir = resolved_fw_dir_;
         if (!fw_dir.empty()) {
             btstack_chipset_realtek_set_firmware_folder_path(fw_dir.c_str());
             btstack_chipset_realtek_set_config_folder_path(fw_dir.c_str());
             fprintf(stderr, "BTstack: Firmware search path: %s\n", fw_dir.c_str());
 
-            const char *fw_name = BtAdapterEnumerator::realtek_fw_name(self->product_id_);
-            const char *cfg_name = BtAdapterEnumerator::realtek_cfg_name(self->product_id_);
+            const char *fw_name = BtAdapterEnumerator::realtek_fw_name(product_id_);
+            const char *cfg_name = BtAdapterEnumerator::realtek_cfg_name(product_id_);
             std::string fw_stem, cfg_stem;
             if (fw_name && cfg_name) {
                 fw_stem = fw_name;
                 cfg_stem = cfg_name;
-            } else if (!self->fw_stem_.empty()) {
-                fw_stem = self->fw_stem_ + "_fw";
-                cfg_stem = self->fw_stem_ + "_config";
+            } else if (!fw_stem_.empty()) {
+                fw_stem = fw_stem_ + "_fw";
+                cfg_stem = fw_stem_ + "_config";
             }
 
             auto ensure_alias = [&fw_dir](const std::string &stem) {
@@ -446,15 +499,15 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
          * immediately, which uses the product ID and folder path set above. */
         hci_set_chipset(btstack_chipset_realtek_instance());
     } else {
-        fprintf(stderr, "BTstack: No Realtek PID configured, skipping chipset init\n");
+        fprintf(stderr, "BTstack: No Realtek PID configured, skipping Realtek chipset init\n");
     }
 
     fprintf(stderr, "BTstack: hci_init done, powering on...\n");
     fflush(stderr);
 
     /* Link key storage: file-backed if path was set, otherwise memory-only */
-    if (!self->link_key_dir_.empty()) {
-        btstack_link_key_db_file_set_path(self->link_key_dir_.c_str());
+    if (!link_key_dir_.empty()) {
+        btstack_link_key_db_file_set_path(link_key_dir_.c_str());
         hci_set_link_key_db(btstack_link_key_db_file_instance());
     } else {
         hci_set_link_key_db(btstack_link_key_db_memory_instance());
@@ -524,30 +577,116 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     sdp_register_service(sdp_avrcp_target_service_buffer);
 
     /* Register vendor codec stream endpoints */
-    self->register_codec_endpoints();
+    register_codec_endpoints();
 
     /* Enable custom pre-init so Realtek chipset driver can send
      * vendor commands before HCI Reset (Phase 1: read LMP subversion).
      * Without this, Phase 1 runs during Phase 2's slot and the
      * firmware download (Phase 2) never executes. */
-    if (self->product_id_ != 0) {
+    if (product_id_ != 0) {
         hci_enable_custom_pre_init();
     }
 
     /* Power on HCI — record start time to measure firmware loading */
-    self->init_start_tick_ = GetTickCount();
+    init_start_tick_ = GetTickCount();
     hci_power_control(HCI_POWER_ON);
+}
 
-    /* Run the event loop (blocks until shutdown) */
-    btstack_run_loop_execute();
+void BtStackTransport::intel_firmware_done(int result) {
+    BtStackTransport *self = instance_;
+    if (!self) return;
+    if (result != 0) {
+        fprintf(stderr, "BTstack: Intel firmware download failed (%d). Place the matching "
+                "ibt-*.sfi and ibt-*.ddc (linux-firmware intel/) in %s. Newer TLV-mode "
+                "controllers (AX210 and later) are not supported by BTstack yet.\n",
+                result, self->resolved_fw_dir_.c_str());
+        fflush(stderr);
+        /* hci_init() never ran, so close the adapter here or the next
+         * attempt cannot open it. */
+        hci_transport_usb_instance()->close();
+        self->init_failed_.store(true);
+        return;
+    }
+    fprintf(stderr, "BTstack: Intel controller operational\n");
+    fflush(stderr);
+    self->setup_hci_and_power_on();
+}
 
-    /* Run loop has exited. Do NOT call hci_power_control/hci_close here —
-     * they need the run loop to process HCI commands and will block.
-     * Global cleanup (deinit) is handled by shutdown() after this thread exits. */
-    fprintf(stderr, "BTstack: run loop exited, thread finishing\n");
+std::string BtStackTransport::find_bcm_hcd() const {
+    const std::string &dir = resolved_fw_dir_;
+    if (dir.empty()) return {};
+
+    std::vector<std::string> files;
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA((dir + "\\*.hcd").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return {};
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) files.push_back(fd.cFileName);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+
+    /* linux-firmware brcm/ naming: <chip>-<vid>-<pid>.hcd, e.g.
+     * BCM20702A1-0b05-17cb.hcd. Prefer the one for a present adapter. */
+    for (const auto &a : usb_adapters_) {
+        if (a.vendor != BtChipVendor::Broadcom) continue;
+        char tag[16];
+        snprintf(tag, sizeof(tag), "-%04x-%04x.", a.vid, a.pid);
+        for (const auto &f : files) {
+            std::string lower = f;
+            for (auto &c : lower) c = (char)tolower((unsigned char)c);
+            if (lower.find(tag) != std::string::npos) return dir + "\\" + f;
+        }
+    }
+    /* A lone .hcd is taken as meant for this adapter */
+    if (files.size() == 1) return dir + "\\" + files[0];
+    fprintf(stderr, "BTstack: %zu .hcd files but none named for the adapter's "
+            "VID:PID — skipping PatchRAM\n", files.size());
+    return {};
+}
+
+void BtStackTransport::on_local_version(const uint8_t *packet) {
+    /* Command Complete: [3..4]=opcode [5]=status [6]=hci_ver [7..8]=hci_rev
+     * [9]=lmp_ver [10..11]=manufacturer [12..13]=lmp_subver */
+    if (packet[5] != 0) return;
+    uint8_t  hci_ver = packet[6];
+    uint16_t manufacturer = little_endian_read_16(packet, 10);
+    uint16_t lmp_subver = little_endian_read_16(packet, 12);
+    const char *company = BtAdapterEnumerator::company_name(manufacturer);
+    fprintf(stderr, "BTstack: Controller %s (company 0x%04X), HCI version %u, "
+            "LMP subversion 0x%04X\n",
+            company ? company : "unknown", manufacturer, hci_ver, lmp_subver);
+
+    switch (manufacturer) {
+    case 0x0046:  /* MediaTek */
+    case 0x001D:  /* Qualcomm */
+    case 0x0045:  /* Atheros */
+        fprintf(stderr, "BTstack: WARNING this vendor needs a firmware download that is "
+                "not implemented; the controller runs its ROM firmware only\n");
+        break;
+    default:
+        break;
+    }
     fflush(stderr);
 
-    return 0;
+    /* Broadcom (hci.c maps Cypress/Infineon to it before we see the event).
+     * The PatchRAM goes in during custom init, which follows this command;
+     * after the upload BTstack resets without re-reading the version, so
+     * this runs once per power-on. */
+    if (bcm_checked_ || product_id_ != 0 || !hci_tcp_.empty()) return;
+    if (manufacturer != BLUETOOTH_COMPANY_ID_BROADCOM_CORPORATION) return;
+    if (hci_get_state() != HCI_STATE_INITIALIZING) return;
+    bcm_checked_ = true;
+
+    bcm_hcd_path_ = find_bcm_hcd();
+    if (bcm_hcd_path_.empty()) {
+        fprintf(stderr, "BTstack: Broadcom controller — no usable .hcd in %s, "
+                "running ROM firmware\n", resolved_fw_dir_.c_str());
+        return;
+    }
+    fprintf(stderr, "BTstack: Broadcom PatchRAM %s (experimental)\n", bcm_hcd_path_.c_str());
+    fflush(stderr);
+    btstack_chipset_bcm_set_hcd_file_path(bcm_hcd_path_.c_str());
+    hci_set_chipset(btstack_chipset_bcm_instance());
 }
 
 void BtStackTransport::register_codec_endpoints() {
@@ -1475,7 +1614,9 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
             if (state == HCI_STATE_WORKING) {
                 uint32_t elapsed = GetTickCount() - init_start_tick_;
                 fprintf(stderr, "BTstack: HCI ready (took %lu ms)\n", (unsigned long)elapsed);
-                if (elapsed < 500) {
+                if (product_id_ == 0) {
+                    /* Not Realtek: nothing to infer from the timing */
+                } else if (elapsed < 500) {
                     fprintf(stderr, "BTstack: WARNING — HCI init < 500ms, "
                             "Realtek firmware likely NOT loaded\n");
                 } else {
@@ -1495,6 +1636,13 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
             }
             break;
         }
+
+        case HCI_EVENT_COMMAND_COMPLETE:
+            if (size >= 14 && hci_event_command_complete_get_command_opcode(packet) ==
+                                  HCI_OPCODE_HCI_READ_LOCAL_VERSION_INFORMATION) {
+                on_local_version(packet);
+            }
+            break;
 
         case HCI_EVENT_USER_CONFIRMATION_REQUEST:
             /* Auto-accept pairing (Just Works) */

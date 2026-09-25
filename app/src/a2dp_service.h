@@ -16,6 +16,7 @@
 #include "audio_device_enum.h"
 #include "bt_device.h"
 #include "profile_manager.h"
+#include "bt_adapter_enum.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -169,6 +170,9 @@ private:
     /* ---- Bluetooth adapter ---- */
     uint16_t bt_chip_pid_ = 0;  /* 0 = auto-detect */
     std::string bt_chip_fw_stem_;  /* Firmware stem for unknown chips (pid==0) */
+    /* Last seen non-Realtek adapter vendor (Intel/Broadcom/CSR). Kept because
+     * an adapter held open by BTstack drops out of later enumerations. */
+    BtChipVendor other_vendor_ = BtChipVendor::Unknown;
 
     /* ---- Debug ---- */
     bool debug_mode_ = false;

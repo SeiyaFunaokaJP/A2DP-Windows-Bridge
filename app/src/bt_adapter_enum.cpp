@@ -174,9 +174,10 @@ static bool is_bluetooth_class(const char *device_path)
     return is_bt;
 }
 
-static std::string build_display_name(uint16_t vid, uint16_t pid, uint16_t realtek_pid)
+static std::string build_display_name(uint16_t vid, uint16_t pid, uint16_t realtek_pid,
+                                      BtChipVendor vendor)
 {
-    char buf[64];
+    char buf[80];
     if (realtek_pid != 0) {
         const char *chip = BtAdapterEnumerator::realtek_chip_name(realtek_pid);
         if (chip) {
@@ -185,7 +186,21 @@ static std::string build_display_name(uint16_t vid, uint16_t pid, uint16_t realt
         }
     }
 
-    /* Non-Realtek or unknown — show VID:PID only */
+    const char *tag = nullptr;
+    switch (vendor) {
+    case BtChipVendor::Intel:
+    case BtChipVendor::Broadcom: tag = " [experimental]"; break;
+    case BtChipVendor::MediaTek:
+    case BtChipVendor::Qualcomm: tag = " [unsupported]"; break;
+    default: break;
+    }
+    if (vendor != BtChipVendor::Unknown && vendor != BtChipVendor::Realtek) {
+        snprintf(buf, sizeof(buf), "%s (0x%04X:0x%04X)%s",
+                 BtAdapterEnumerator::vendor_name(vendor), vid, pid, tag ? tag : "");
+        return buf;
+    }
+
+    /* Unknown — show VID:PID only */
     snprintf(buf, sizeof(buf), "0x%04X:0x%04X", vid, pid);
     return buf;
 }
@@ -222,6 +237,52 @@ const std::vector<RealtekChipInfo> &BtAdapterEnumerator::get_realtek_chips()
 const OemChipMapping *BtAdapterEnumerator::get_oem_table()
 {
     return oem_table;
+}
+
+BtChipVendor BtAdapterEnumerator::vendor_for_usb(uint16_t vid, uint16_t pid, uint16_t realtek_pid)
+{
+    if (realtek_pid != 0) return BtChipVendor::Realtek;
+    switch (vid) {
+    case 0x0BDA: return BtChipVendor::Realtek;
+    case 0x8087: return BtChipVendor::Intel;
+    case 0x0A5C: return BtChipVendor::Broadcom;
+    case 0x0A12: return BtChipVendor::Csr;
+    case 0x0E8D: return BtChipVendor::MediaTek;
+    case 0x0CF3: return BtChipVendor::Qualcomm;   /* Qualcomm Atheros */
+    default: break;
+    }
+    /* OEM adapters with a Broadcom chip under their own VID */
+    if (vid == 0x0B05 && pid == 0x17CB) return BtChipVendor::Broadcom;  /* ASUS BT400 */
+    return BtChipVendor::Unknown;
+}
+
+const char *BtAdapterEnumerator::vendor_name(BtChipVendor vendor)
+{
+    switch (vendor) {
+    case BtChipVendor::Realtek:  return "Realtek";
+    case BtChipVendor::Intel:    return "Intel";
+    case BtChipVendor::Broadcom: return "Broadcom";
+    case BtChipVendor::Csr:      return "CSR";
+    case BtChipVendor::MediaTek: return "MediaTek";
+    case BtChipVendor::Qualcomm: return "Qualcomm";
+    default:                     return "Unknown";
+    }
+}
+
+const char *BtAdapterEnumerator::company_name(uint16_t company_id)
+{
+    switch (company_id) {
+    case 0x0002: return "Intel";
+    case 0x000A: return "Qualcomm (CSR)";
+    case 0x000F: return "Broadcom";
+    case 0x001D: return "Qualcomm";
+    case 0x0045: return "Atheros";
+    case 0x0046: return "MediaTek";
+    case 0x005D: return "Realtek";
+    case 0x0131: return "Cypress";
+    case 0x0009: return "Infineon";
+    default:     return nullptr;
+    }
 }
 
 std::vector<FirmwareFileEntry> BtAdapterEnumerator::scan_firmware_files(const std::string &config_dir)
@@ -362,8 +423,9 @@ std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
             info.pid = pid;
             info.device_path = path;
             info.realtek_pid = realtek_pid;
+            info.vendor = vendor_for_usb(vid, pid, realtek_pid);
 
-            info.display_name = build_display_name(vid, pid, info.realtek_pid);
+            info.display_name = build_display_name(vid, pid, info.realtek_pid, info.vendor);
 
             /* Avoid duplicates */
             bool dup = false;
@@ -383,8 +445,8 @@ std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
 
     fprintf(stderr, "BtAdapterEnumerator: found %zu adapter(s)\n", result.size());
     for (const auto &a : result) {
-        fprintf(stderr, "  %s (vid=%04X pid=%04X rtk_pid=0x%04X)\n",
-                a.display_name.c_str(), a.vid, a.pid, a.realtek_pid);
+        fprintf(stderr, "  %s (vid=%04X pid=%04X rtk_pid=0x%04X vendor=%s)\n",
+                a.display_name.c_str(), a.vid, a.pid, a.realtek_pid, vendor_name(a.vendor));
     }
 
     return result;

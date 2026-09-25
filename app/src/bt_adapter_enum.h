@@ -15,10 +15,25 @@
 #include <string>
 #include <vector>
 
+/* Controller vendor, guessed from the USB VID:PID. Decides which firmware
+ * loader (if any) runs before HCI init. Only Realtek is well tested; Intel
+ * and Broadcom loaders are experimental; MediaTek and Qualcomm need
+ * loaders BTstack does not have. */
+enum class BtChipVendor : uint8_t {
+    Unknown,
+    Realtek,    /* rtl*_fw.bin + rtl*_config.bin (btstack_chipset_realtek) */
+    Intel,      /* ibt-*.sfi + ibt-*.ddc, legacy bootloader only (experimental) */
+    Broadcom,   /* optional *.hcd PatchRAM (experimental) */
+    Csr,        /* ROM firmware, nothing to load */
+    MediaTek,   /* needs WMT firmware download: not supported */
+    Qualcomm,   /* needs rampatch/NVM download: not supported */
+};
+
 struct BtAdapterInfo {
     uint16_t    vid;            /* USB Vendor ID */
     uint16_t    pid;            /* USB Product ID */
     uint16_t    realtek_pid;    /* Realtek PID for firmware lookup (0 if unknown) */
+    BtChipVendor vendor = BtChipVendor::Unknown;
     std::string display_name;   /* e.g. "2357:0604" or "Realtek RTL8761BU" */
     std::string device_path;    /* Full USB device path from SetupAPI */
 };
@@ -66,6 +81,17 @@ public:
 
     /* Get the list of known Realtek chip families (for UI dropdown). */
     static const std::vector<RealtekChipInfo> &get_realtek_chips();
+
+    /* Guess the controller vendor from a USB VID:PID (realtek_pid from
+     * enumerate(); nonzero means Realtek regardless of VID). */
+    static BtChipVendor vendor_for_usb(uint16_t vid, uint16_t pid, uint16_t realtek_pid);
+
+    /* Short vendor name for logs and the adapter list ("Intel", ...). */
+    static const char *vendor_name(BtChipVendor vendor);
+
+    /* Name for a Bluetooth SIG company ID from HCI Read Local Version
+     * (nullptr if not one we care about). */
+    static const char *company_name(uint16_t company_id);
 
     /* Get the OEM VID:PID mapping table (sentinel: vid==0).
      * Used by btstack_transport to register OEM devices with HCI. */

@@ -37,6 +37,13 @@ FirmwareDialog::FirmwareDialog(wxWindow *parent, A2dpService *service, AppSettin
     /* Enumerate USB Bluetooth adapters */
     auto adapters = BtAdapterEnumerator::enumerate();
     uint16_t detected_realtek_pid = 0;
+    bool realtek_seen = false;
+    for (const auto &a : adapters) {
+        if (a.vendor == BtChipVendor::Realtek) realtek_seen = true;
+        else if (a.vendor != BtChipVendor::Unknown && other_vendor_ == BtChipVendor::Unknown)
+            other_vendor_ = a.vendor;
+    }
+    if (realtek_seen) other_vendor_ = BtChipVendor::Unknown;
     if (adapters.empty()) {
         adapter_info_->SetLabel(wxString::FromUTF8(L("firmware.no_adapters")));
     } else {
@@ -103,8 +110,9 @@ FirmwareDialog::FirmwareDialog(wxWindow *parent, A2dpService *service, AppSettin
 
     if (chip_sel >= 0) {
         chip_ctrl_->SetSelection(chip_sel);
-    } else if (!fw_entries_.empty()) {
-        /* Default to first firmware entry if nothing matched */
+    } else if (!fw_entries_.empty() && other_vendor_ == BtChipVendor::Unknown) {
+        /* Default to first firmware entry if nothing matched (not for a
+         * non-Realtek adapter: a Realtek driver must not be forced on it) */
         chip_ctrl_->SetSelection(0);
         auto &first = fw_entries_[0];
         if (first.pid != settings->bt_chip_pid || first.stem != settings->bt_chip_fw_stem) {
@@ -116,9 +124,10 @@ FirmwareDialog::FirmwareDialog(wxWindow *parent, A2dpService *service, AppSettin
             service->check_firmware_present();
             chip_changed_ = true;
         }
-    } else {
+    } else if (fw_entries_.empty()) {
         chip_ctrl_->SetSelection(0);  /* placeholder or Custom */
     }
+    /* else: non-Realtek adapter with Realtek files around — leave unselected */
 
     chip_ctrl_->Bind(wxEVT_CHOICE, &FirmwareDialog::OnChipChanged, this);
     chip_row->Add(chip_ctrl_, 1, wxEXPAND);
@@ -234,7 +243,25 @@ void FirmwareDialog::UpdateFirmwareStatus() {
         cfg_name = settings_->bt_chip_fw_stem + "_config";
     }
 
-    if (fw_name.empty()) {
+    if (fw_name.empty() && other_vendor_ != BtChipVendor::Unknown) {
+        /* Non-Realtek adapter: no rtl_bt files; explain what (if anything)
+         * this vendor needs instead */
+        const char *key = "firmware.vendor_unsupported";
+        bool ok = true;
+        switch (other_vendor_) {
+        case BtChipVendor::Intel:    key = "firmware.vendor_intel"; break;
+        case BtChipVendor::Broadcom: key = "firmware.vendor_broadcom"; break;
+        case BtChipVendor::Csr:      key = "firmware.vendor_csr"; break;
+        default:                     ok = false; break;
+        }
+        status_text_->SetLabel(wxString::FromUTF8(L(key)));
+        status_text_->SetForegroundColour(TM().get(ok ? ThemeColor::FirmwareOk
+                                                      : ThemeColor::FirmwareWarning));
+        status_text_->Wrap(480);
+        download_btn_->Enable(other_vendor_ == BtChipVendor::Intel ||
+                              other_vendor_ == BtChipVendor::Broadcom);
+        manual_hint_->SetLabel("");
+    } else if (fw_name.empty()) {
         status_text_->SetLabel(wxString::FromUTF8(L("firmware.select_chip")));
         status_text_->SetForegroundColour(TM().get(ThemeColor::FirmwareWarning));
         download_btn_->Enable(false);
@@ -258,11 +285,21 @@ void FirmwareDialog::UpdateFirmwareStatus() {
 }
 
 void FirmwareDialog::OnDownload(wxCommandEvent &) {
-    /* Open the kernel.org firmware directory in the user's browser */
-    ShellExecuteA(nullptr, "open",
+    /* Open the firmware source for the adapter's vendor in the user's browser */
+    const char *url =
         "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/"
-        "linux-firmware.git/tree/rtl_bt",
-        nullptr, nullptr, SW_SHOWDEFAULT);
+        "linux-firmware.git/tree/rtl_bt";
+    bool realtek_selected = BtAdapterEnumerator::realtek_fw_name(settings_->bt_chip_pid) ||
+                            !settings_->bt_chip_fw_stem.empty();
+    if (!realtek_selected && other_vendor_ == BtChipVendor::Intel) {
+        url = "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/"
+              "linux-firmware.git/tree/intel";
+    } else if (!realtek_selected && other_vendor_ == BtChipVendor::Broadcom) {
+        /* linux-firmware carries no brcm .hcd; this collects them from
+         * the Windows drivers */
+        url = "https://github.com/winterheart/broadcom-bt-firmware";
+    }
+    ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWDEFAULT);
 }
 
 void FirmwareDialog::OnOpenFolder(wxCommandEvent &) {

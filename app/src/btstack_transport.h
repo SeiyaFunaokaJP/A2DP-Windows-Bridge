@@ -14,6 +14,7 @@
 #include "audio_encoder.h"
 #include "media_payload_limit.h"
 #include "link_stats.h"
+#include "bt_adapter_enum.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -222,6 +223,20 @@ private:
     /* BTstack run loop thread */
     static unsigned long __stdcall btstack_thread_proc(void *param);
 
+    /* hci_init() through hci_power_control(ON). Runs on the BTstack thread,
+     * directly or once a pre-HCI firmware loader (Intel) has finished. */
+    void setup_hci_and_power_on();
+
+    /* Intel bootloader firmware download finished (BTstack thread) */
+    static void intel_firmware_done(int result);
+
+    /* On HCI Read Local Version complete during init: log the controller and,
+     * for Broadcom, register the chipset driver with a PatchRAM (.hcd) file. */
+    void on_local_version(const uint8_t *packet);
+
+    /* Pick a Broadcom .hcd from the firmware folder (empty if none fits) */
+    std::string find_bcm_hcd() const;
+
     /* Register codec stream endpoints with BTstack */
     void register_codec_endpoints();
 
@@ -306,6 +321,14 @@ private:
     /* Resolved firmware folder path (must outlive BTstack: chipset_init() is
      * called repeatedly, including from hci_power_control_on()). */
     std::string resolved_fw_dir_;
+
+    /* Non-Realtek controller support (experimental). usb_adapters_ is the
+     * WinUSB adapter list taken at thread start (empty for TCP / Realtek). */
+    std::vector<BtAdapterInfo> usb_adapters_;
+    bool intel_loader_ = false;     /* ran the Intel bootloader firmware download */
+    bool bcm_checked_ = false;      /* Broadcom PatchRAM decided for this init */
+    std::string bcm_hcd_path_;      /* must outlive BTstack (chipset keeps the pointer) */
+    std::atomic<bool> init_failed_{false};  /* firmware loader gave up: stop waiting */
 
     /* Init timing (for firmware loading detection) */
     uint32_t init_start_tick_ = 0;
