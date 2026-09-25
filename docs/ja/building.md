@@ -59,6 +59,8 @@ A2DP-Windows-Bridge/
 │   ├── libopenaptx/        aptX / aptX HD / aptX LL エンコーダー
 │   ├── fdk-aac/            Fraunhofer AAC エンコーダー
 │   └── json/               nlohmann/json（ヘッダーオンリー）
+├── tools/
+│   └── a2dp_decode/        a2dpwb_decode: HCI キャプチャ（.pklg）のメディアストリームを検証・デコード
 ├── CMakeLists.txt          ルートビルド設定
 └── build.bat               ビルドヘルパースクリプト
 ```
@@ -67,11 +69,11 @@ A2DP-Windows-Bridge/
 
 | CMake オプション | 既定値 | 説明 |
 |:-----------------|:-------|:-----|
-| `BUILD_TESTS` | `ON` | テストプログラムをビルド |
 | `LDAC_SOFT_FLOAT` | `OFF` | libldac にソフトウェア浮動小数点を使用 |
+| `A2DPWB_BUILD_TOOLS` | `ON` | 開発者向けツール（`a2dpwb_decode`。[使い方](usage#verify-stream)を参照）をビルド。リリースパッケージには含まれません |
 
 ```bash
-cmake -B build -A x64 -DBUILD_TESTS=OFF
+cmake -B build -A x64 -DA2DPWB_BUILD_TOOLS=OFF
 ```
 
 ## 依存関係

@@ -58,6 +58,8 @@ A2DP-Windows-Bridge/
 │   ├── libopenaptx/        aptX / aptX HD / aptX LL encoder
 │   ├── fdk-aac/            Fraunhofer AAC encoder
 │   └── json/               nlohmann/json (header-only)
+├── tools/
+│   └── a2dp_decode/        a2dpwb_decode: checks / decodes the media stream in an HCI capture (.pklg)
 ├── CMakeLists.txt          Root build config
 └── build.bat               Build helper script
 ```
@@ -66,11 +68,11 @@ A2DP-Windows-Bridge/
 
 | CMake Option | Default | Description |
 |:-------------|:--------|:------------|
-| `BUILD_TESTS` | `ON` | Build test programs |
 | `LDAC_SOFT_FLOAT` | `OFF` | Use software floating point for libldac |
+| `A2DPWB_BUILD_TOOLS` | `ON` | Build developer tools (`a2dpwb_decode`, see [Usage](usage#verify-stream)). Not part of the release package |
 
 ```bash
-cmake -B build -A x64 -DBUILD_TESTS=OFF
+cmake -B build -A x64 -DA2DPWB_BUILD_TOOLS=OFF
 ```
 
 ## Dependencies

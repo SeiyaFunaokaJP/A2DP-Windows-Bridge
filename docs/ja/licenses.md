@@ -71,6 +71,10 @@ aptX（クラシック）、aptX HD、aptX Low Latency、aptX Adaptive は Qualc
 
 fdk-aac のライセンスでは、バイナリを再配布する際にライセンス全文を添付すること、およびバイナリの受領者に FDK AAC Codec（と改変部分）の完全なソースコードを無償で提供することが求められます。また、このライセンスは**特許ライセンスを一切許諾しません**。AAC は特許の対象となる場合があり（NOTICE では Via Licensing に言及）、必要な AAC 特許ライセンスの取得は利用者の責任となります。
 
+### 開発者向けツール a2dpwb_decode
+
+`a2dpwb_decode`（[使い方](usage#verify-stream)を参照）はソースからのみビルドするツールで、リリース zip には含まれません。上記の固定バージョンの Bluedroid SBC デコーダー（Apache-2.0）、fdk-aac（FDK AAC License）、libopenaptx 0.2.0（LGPL-2.1+）をリンクし、BTstack と libldac は**リンクしません**。詳しくは THIRD_PARTY_LICENSES.md の §12 を参照してください。
+
 ### Bluetooth 認証
 
 商用 Bluetooth 製品は Bluetooth SIG が管理する [Bluetooth 認証プロセス](https://www.bluetooth.com/)を受ける必要があります。

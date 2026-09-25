@@ -19,10 +19,10 @@ All versions below are the ones pinned in this repository (git submodules under
 | Library | Pinned version | License (SPDX) | Copyright | Usage |
 |---------|----------------|----------------|-----------|-------|
 | libldac (AOSP) | `android-15.0.0_r36-4-geeee1a3` (commit `eeee1a3`) | Apache-2.0 | Sony Corporation | LDAC audio encoding |
-| libopenaptx | 0.2.0 (tag `0.2.0`, commit `2459ed4`) | LGPL-2.1-or-later | Aurelien Jacobs, Pali Rohár | aptX / aptX HD / aptX LL audio encoding |
-| fdk-aac | `v2.0.3-158-gd8e6b1a` (commit `d8e6b1a`) | FDK-AAC | Fraunhofer-Gesellschaft | AAC-LC audio encoding |
+| libopenaptx | 0.2.0 (tag `0.2.0`, commit `2459ed4`) | LGPL-2.1-or-later | Aurelien Jacobs, Pali Rohár | aptX / aptX HD / aptX LL audio encoding (decoding in `a2dpwb_decode`, §12) |
+| fdk-aac | `v2.0.3-158-gd8e6b1a` (commit `d8e6b1a`) | FDK-AAC | Fraunhofer-Gesellschaft | AAC-LC audio encoding (decoding in `a2dpwb_decode`, §12) |
 | BTstack | `v1.8.1-6-g5bc5cbdbe` (commit `5bc5cbdbe`) | LicenseRef-BTstack (BSD-3-Clause-style **with a non-commercial clause**) | BlueKitchen GmbH | User-mode Bluetooth stack |
-| Bluedroid SBC codec (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/bluedroid/`) | Apache-2.0 | Broadcom Corporation; The Android Open Source Project; Open Interface North America, Inc. | SBC audio encoding (decoder also compiled) |
+| Bluedroid SBC codec (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/bluedroid/`) | Apache-2.0 | Broadcom Corporation; The Android Open Source Project; Open Interface North America, Inc. | SBC audio encoding (decoder also compiled; decoding in `a2dpwb_decode`, §12) |
 | rijndael (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/rijndael/`) | Public domain | Philip J. Erdelsky | AES (used by BTstack) |
 | wxWidgets | v3.2.6 (FetchContent tag `v3.2.6`) | LGPL-2.0-or-later WITH WxWindows-exception-3.1 | Julian Smart, Robert Roebling et al | GUI framework |
 | zlib (built-in copy in wxWidgets) | 1.2.13.1 (`1.2.13.1-motley`, from wxWidgets 3.2.6) | Zlib | Jean-loup Gailly and Mark Adler | Used by wxWidgets (PNG support) |
@@ -388,6 +388,39 @@ under the **MIT License**. See [`LICENSE`](LICENSE) in the project root.
 The distributed `A2DPWB.exe` is a combined work that also contains the
 libraries listed above. Because it includes BTstack, the binary may only be
 used and redistributed for personal, non-commercial purposes.
+
+---
+
+## 12. Developer tool: a2dpwb_decode
+
+`tools/a2dp_decode/` builds `a2dpwb_decode.exe`, which checks and decodes the
+media stream recorded in an A2DPWB debug-mode HCI dump. It is a developer tool:
+**it is not part of the release zip** and is only built from source
+(CMake option `A2DPWB_BUILD_TOOLS`).
+
+Its own source is MIT (§11). It statically links only these libraries, at the
+same pinned versions as above:
+
+| Library | Pinned version | License (SPDX) | Parts used | License verified in the pinned source |
+|---------|----------------|----------------|------------|---------------------------------------|
+| Bluedroid SBC decoder | as in BTstack `5bc5cbdbe` | Apache-2.0 | `3rd-party/bluedroid/decoder` (CMake target `sbc_decoder`) | Every `decoder/srce/*.c` and `decoder/include/*.h` carries the Apache-2.0 header |
+| fdk-aac | commit `d8e6b1a` | FDK-AAC | AAC decoder (`libAACdec`, `libMpegTPDec` and shared modules) | `NOTICE` covers "encoding and decoding"; every `libAACdec` / `libMpegTPDec` source carries the same license header |
+| libopenaptx | 0.2.0 (commit `2459ed4`) | LGPL-2.1-or-later | `aptx_decode_sync()` | `COPYING` is LGPL 2.1; `openaptx.c` / `openaptx.h` headers state LGPL 2.1 or later |
+
+It does **not** link BTstack (HCI / L2CAP / AVDTP parsing is its own code),
+so the BTstack non-commercial clause (§4) does not apply to it. The Bluedroid
+SBC decoder is built as its own library (`sbc_decoder`), separate from
+BTstack's SBC glue code, for this reason.
+
+It does not link libldac either. LDAC frame headers are parsed by the tool's
+own code, based on the frame header layout (sync word, sampling rate, channel
+config, frame length, frame status). No libldac code is copied.
+
+If you redistribute an `a2dpwb_decode.exe` binary, the obligations of §3
+(fdk-aac: license text, source code offer, no patent license; AAC decoding
+may also need a patent license), §2 (libopenaptx: LGPL-2.1 text, prominent
+notice, relinking via the source at the same commit) and §5 (Apache-2.0 text,
+notices) apply, in the same way as for `A2DPWB.exe`.
 
 ---
 

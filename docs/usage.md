@@ -170,6 +170,30 @@ BTstack: Capability discovery complete (LDAC=0, aptXHD=0, aptXLL=0, aptX=1, aptX
 - `aptX=0`, `aptXHD=0`, `aptXLL=0` with `aptXAdaptive=1` -- the headphones offer only aptX Adaptive; use Auto, AAC or SBC.
 - `Remote vendor codec ... — unsupported` -- another vendor codec that A2DPWB does not implement.
 
+### Verifying the Media Stream (a2dpwb_decode) {#verify-stream}
+
+Most headphones cannot show which codec is in use. In debug mode, the GUI has a **Debug** menu with **Start HCI Capture** / **Stop HCI Capture**. A capture is an HCI packet log (`hci_<date>_<time>.pklg` in the config folder) with the codec negotiation and every media packet sent. At LDAC 990 kbps it grows by roughly 0.5 GB per hour, so capture only as long as you need.
+
+You can start a capture before connecting or while already streaming. If it starts during a connection, A2DPWB first writes the connection setup packets it remembered (L2CAP channel setup and AVDTP signaling, including the codec negotiation), so the file can still be analysed. After stopping, A2DPWB shows the file path.
+
+Open the capture in Wireshark, or check it with the `a2dpwb_decode` developer tool (built from source, see [Building](building)):
+
+```
+a2dpwb_decode "%APPDATA%\A2DPWB\hci_20260925_120000.pklg" -o C:\temp\check
+```
+
+The tool follows the AVDTP signaling (SET_CONFIGURATION / RECONFIGURE and whether the headphones accepted it), extracts the media packets A2DPWB sent and checks them against the negotiated configuration:
+
+| Codec | What is checked | Output |
+|:------|:----------------|:-------|
+| SBC, AAC, aptX, aptX HD, aptX LL | Full decode with the reference decoders; frame parameters vs configuration; media payload header frame count | `<prefix>.<n>.<codec>.wav` to listen to |
+| LDAC | Frame headers only (sync word, sampling rate, channel mode, frame length), frame count, bitrate. No open-source LDAC decoder exists | Report only |
+
+For every stream it also reports RTP sequence gaps, how fast the RTP timestamp advances, the bitrate, and how many ACL packets the Bluetooth controller reported as completed. The last line is `RESULT: OK` or `RESULT: PROBLEMS FOUND` (exit code 0 or 1).
+
+{: .note }
+This shows what A2DPWB sent and that it is valid for the negotiated codec. Since a sink can only decode the codec that was negotiated, correct audio from the headphones together with a clean report is strong evidence that the codec is really in use.
+
 ## Troubleshooting
 
 ### Pairing Problems After Updating
