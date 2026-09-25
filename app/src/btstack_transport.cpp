@@ -29,11 +29,11 @@ extern "C" {
 #include "btstack_link_key_db_file.h"
 #include "hci_dump.h"
 #include "hci_dump_windows_stdout.h"
-#include "hci_dump_windows_fs.h"
 #include "btstack_chipset_realtek.h"
 }
 
 #include "bt_adapter_enum.h"
+#include "hci_capture.h"
 
 /*
  * Vendor codec IDs (duplicated from avdtp.h to avoid enum conflicts
@@ -321,16 +321,10 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     /* Initialize BTstack run loop */
     btstack_run_loop_init(btstack_run_loop_windows_get_instance());
 
-    /* HCI dump: file dump takes priority over stdout dump */
-    if (!self->hci_dump_file_.empty()) {
-        int err = hci_dump_windows_fs_open(self->hci_dump_file_.c_str(), HCI_DUMP_PACKETLOGGER);
-        if (err == 0) {
-            hci_dump_init(hci_dump_windows_fs_get_instance());
-            fprintf(stderr, "BTstack: HCI dump → %s\n", self->hci_dump_file_.c_str());
-        } else {
-            fprintf(stderr, "BTstack: Failed to open HCI dump file: %s (err=%d)\n",
-                    self->hci_dump_file_.c_str(), err);
-        }
+    /* HCI dump: on-demand capture (debug mode) takes priority over stdout dump */
+    if (self->hci_capture_enabled_) {
+        hci_capture::reset_tracking();
+        hci_dump_init(hci_capture::instance());
     } else if (self->hci_dump_enabled_) {
         hci_dump_init(hci_dump_windows_stdout_get_instance());
     }

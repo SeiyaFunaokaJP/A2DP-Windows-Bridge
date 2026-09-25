@@ -33,6 +33,11 @@ enum {
     ID_OPEN_CONFIG,
     ID_SETTING_START_WIN,
     ID_SETTING_TRAY,
+    ID_SETTING_UPDATE_CHECK,
+    ID_SETTING_DEBUG,
+    ID_DEBUG_CAPTURE_START,
+    ID_DEBUG_CAPTURE_STOP,
+    ID_DEBUG_OPEN_LOG,
 
     ID_REPORT_BUG,
     ID_TRAY_DISCONNECT,
@@ -93,6 +98,12 @@ private:
     void OnOpenSettings(wxCommandEvent &evt);
     void OnToggleStartWithWindows(wxCommandEvent &evt);
     void OnToggleMinimizeToTray(wxCommandEvent &evt);
+    void OnToggleUpdateCheck(wxCommandEvent &evt);
+    void OnToggleDebugMode(wxCommandEvent &evt);
+    void OnDebugCaptureStart(wxCommandEvent &evt);
+    void OnDebugCaptureStop(wxCommandEvent &evt);
+    void OnDebugOpenLog(wxCommandEvent &evt);
+    void update_title();
 
     void OnOpenFirmware(wxCommandEvent &evt);
     void OnOpenZadig(wxCommandEvent &evt);
@@ -112,6 +123,7 @@ private:
     A2dpService service_;
     ProfileManager profile_mgr_;
     AppSettings settings_;
+    bool debug_active_ = false;  /* debug mode as of startup (shows the Debug menu) */
     int selected_profile_ = -1;
 
     /* ---- Tray ---- */

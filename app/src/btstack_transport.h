@@ -44,8 +44,10 @@ public:
     /* Disable HCI packet dump to stdout (call before init for GUI mode) */
     void set_hci_dump_enabled(bool enabled) { hci_dump_enabled_ = enabled; }
 
-    /* Set file path for HCI packet dump (.pklg format, readable by Wireshark) */
-    void set_hci_dump_file(const std::string &path) { hci_dump_file_ = path; }
+    /* Install the on-demand HCI capture (hci_capture.h) as the HCI dump.
+     * Debug mode only; capture itself is started / stopped via hci_capture. */
+    void set_hci_capture_enabled(bool enabled) { hci_capture_enabled_ = enabled; }
+
 
     /* Set directory for persistent link key storage (call before init) */
     void set_link_key_dir(const std::string &path) { link_key_dir_ = path; }
@@ -279,7 +281,7 @@ private:
 
     /* Configuration */
     bool hci_dump_enabled_ = true;
-    std::string hci_dump_file_;     /* .pklg file path (empty = no file dump) */
+    bool hci_capture_enabled_ = false; /* debug mode: hci_capture installed as HCI dump */
     std::string link_key_dir_;      /* directory for persistent link keys (empty = memory-only) */
     std::string firmware_dir_;      /* directory for firmware files (empty = exe dir fallback) */
     std::string fw_stem_;           /* firmware stem for unknown chips (e.g. "rtl8761bu") */

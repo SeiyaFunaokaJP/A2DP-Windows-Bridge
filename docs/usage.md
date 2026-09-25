@@ -153,7 +153,7 @@ aptX, aptX HD and aptX LL support only 44.1 kHz and 48 kHz. A2DPWB picks one of 
 
 ### Checking What Your Headphones Offer
 
-1. Open **Settings** and enable **Debug mode (output debug.log)**, then restart A2DPWB.
+1. In the **Settings** menu, check **Debug Mode (debug.log / HCI Log)**, then restart A2DPWB.
 2. Connect to the headphones.
 3. Open `debug.log` in the config folder (`%APPDATA%\A2DPWB`). In CLI mode the same lines are written to standard error.
 

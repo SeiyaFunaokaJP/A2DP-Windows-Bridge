@@ -44,6 +44,7 @@
 
 /* Global state */
 static std::atomic<bool> g_running{true};
+
 static std::mutex g_encode_mutex;
 
 /* Audio buffer for float32->PCM conversion (sized per encoder sample width) */

@@ -46,6 +46,7 @@ add_executable(A2DPWB WIN32
     src/bt_device.cpp
     src/bt_adapter_enum.cpp
     src/btstack_transport.cpp
+    src/hci_capture.cpp
     src/btstack_link_key_db_file.c
     src/config_path.cpp
     src/a2dp_service.cpp
