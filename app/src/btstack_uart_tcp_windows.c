@@ -119,13 +119,14 @@ static int uart_init(const btstack_uart_config_t *config) {
     const char *name = config->device_name ? config->device_name : "";
     const char *colon = strrchr(name, ':');
     size_t host_len = colon ? (size_t)(colon - name) : 0;
-    if (!colon || host_len == 0 || host_len >= sizeof(tcp_host) || strlen(colon + 1) >= sizeof(tcp_port)) {
+    size_t port_len = colon ? strlen(colon + 1) : 0;
+    if (!colon || host_len == 0 || host_len >= sizeof(tcp_host) || port_len >= sizeof(tcp_port)) {
         fprintf(stderr, "HCI TCP: expected host:port, got '%s'\n", name);
         return -1;
     }
     memcpy(tcp_host, name, host_len);
     tcp_host[host_len] = '\0';
-    strcpy(tcp_port, colon + 1);
+    memcpy(tcp_port, colon + 1, port_len + 1);  /* includes the terminator */
     return 0;
 }
 
