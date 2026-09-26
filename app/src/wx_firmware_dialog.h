@@ -34,6 +34,10 @@ private:
     wxStaticText *manual_hint_ = nullptr;
     bool          chip_changed_ = false;
 
+    /* Detected non-Realtek adapter vendor (Unknown if none, or if a
+     * Realtek adapter is also present) */
+    BtChipVendor  other_vendor_ = BtChipVendor::Unknown;
+
     /* Firmware file entries from config directory scan */
     std::vector<FirmwareFileEntry> fw_entries_;
 };

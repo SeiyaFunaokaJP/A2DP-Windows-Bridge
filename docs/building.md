@@ -60,7 +60,8 @@ A2DP-Windows-Bridge/
 │   └── json/               nlohmann/json (header-only)
 ├── tools/
 │   ├── a2dp_decode/        a2dpwb_decode: checks / decodes the media stream in an HCI capture (.pklg)
-│   └── emu/                End-to-end test against a virtual Bluetooth sink (Python)
+│   ├── emu/                End-to-end test against a virtual Bluetooth sink (Python)
+│   └── linux_sink/         a2dpwb_sink: measuring A2DP receiver on Linux (Python, Bumble)
 ├── CMakeLists.txt          Root build config
 └── build.bat               Build helper script
 ```
@@ -110,6 +111,8 @@ For each codec, `tools/emu/out/<codec>/` holds the captures (`a2dpwb.pklg`, `sin
 
 {: .note }
 The virtual link has no radio: it checks encoding, packetization, AVDTP / L2CAP signalling and interoperability with an independent Bluetooth stack (Bumble), but not radio conditions, timing on real hardware or how real headphones play the audio. The Bumble packages are test tooling only and are not part of A2DPWB (see THIRD_PARTY_LICENSES.md §13).
+
+`emu_vhci.py` does the same towards the Linux Bluetooth stack: on Linux it attaches a virtual adapter to BlueZ through `/dev/vhci`, which the measuring receiver `tools/linux_sink` then takes like a real adapter - it can be tested without hardware, optionally with lost or held-back media packets (`--drop`, `--stall`). See `tools/linux_sink/README.md`.
 
 ## Dependencies
 

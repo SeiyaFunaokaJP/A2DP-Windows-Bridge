@@ -157,6 +157,8 @@ aptX, aptX HD and aptX LL support only 44.1 kHz and 48 kHz. A2DPWB picks one of 
 2. Connect to the headphones.
 3. Open `debug.log` in the config folder (`%APPDATA%\A2DPWB`). In CLI mode the same lines are written to standard error.
 
+In the GUI, **Debug > Debug Console...** (Ctrl+Shift+D) shows the same log live. Its **Connection Flow** list marks each stage of the latest connection attempt (adapter init, ACL / AVDTP connect, capability discovery, codec selection, WASAPI, stream configuration, encoder, stream start, audio sending, disconnects / reconnects) as OK, Warning or Failed; double-click a step to jump to the log line behind it. The log below can be filtered by level and text. **Copy Diagnostics** puts version, OS, adapter, profile, the flow, warnings / errors and the recent log on the clipboard, ready to paste into a bug report (Bluetooth addresses are masked to their vendor part by default).
+
 The capability lines show exactly which codecs the headphones list:
 
 ```
@@ -170,9 +172,9 @@ BTstack: Capability discovery complete (LDAC=0, aptXHD=0, aptXLL=0, aptX=1, aptX
 - `aptX=0`, `aptXHD=0`, `aptXLL=0` with `aptXAdaptive=1` -- the headphones offer only aptX Adaptive; use Auto, AAC or SBC.
 - `Remote vendor codec ... — unsupported` -- another vendor codec that A2DPWB does not implement.
 
-### Max Media Packet Size (Advanced)
+### Max Media Packet Size (per Profile)
 
-**Settings > Advanced Settings...** (CLI: `--max-packet <bytes>`) sets the upper limit for the audio data in each Bluetooth packet, from 679 to 1679 bytes. The headphones' own limit (MTU) always applies too; A2DPWB uses the smaller of the two. The change applies from the next connection.
+**Max media packet size** in each profile (**Edit Profile**; CLI: `--max-packet <bytes>`) sets the upper limit for the audio data in each Bluetooth packet, from 679 to 1679 bytes, so headphones that need a different value can have their own. The headphones' own limit (MTU) always applies too; A2DPWB uses the smaller of the two. The change applies from the next connection. Profiles saved by older versions take the value that was set globally before.
 
 **1023 (default) is recommended.** It fits one Bluetooth baseband packet (3-DH5). Larger values save only 1-2% overhead, and each lost packet then loses more audio. 679 fits one 2-DH5 packet and is the minimum LDAC accepts.
 
@@ -200,6 +202,37 @@ For every stream it also reports RTP sequence gaps, how fast the RTP timestamp a
 {: .note }
 This shows what A2DPWB sent and that it is valid for the negotiated codec. Since a sink can only decode the codec that was negotiated, correct audio from the headphones together with a clean report is strong evidence that the codec is really in use.
 
+### Link Quality Window and AFH {#link-quality}
+
+**Actions > Link Quality...** shows what A2DPWB sends while streaming: codec and bitrate, packets sent, packets dropped before sending (send queue full: the radio link could not keep up), audio the encoder could not keep up with, the send queue, and **Radio**: the RSSI of the connection, relative to the controller's golden receive range (0 = fine, negative = too weak; not an absolute level), and how many of the 79 Bluetooth channels the link hops on (AFH).
+
+Bluetooth avoids busy channels by itself (AFH), but it only learns about Wi-Fi from errors. A2DPWB also tells its controller which channels to avoid (AFH host channel classification), for every connection:
+
+| `afh` | |
+|:--|:--|
+| `auto` (default) | The 2.4 GHz Wi-Fi networks this PC hears strongly (Windows Wi-Fi scan, repeated while connected) |
+| `off` | Nothing: the controller decides alone |
+| `6,11` | These Wi-Fi channels |
+
+At least 20 Bluetooth channels always stay in use. Set it with `"afh"` in `settings.json` (config folder), in the Peer Receiver Test window (it is saved there), or with `--afh` in CLI mode. The Radio row shows which Wi-Fi channels are avoided. Whether it helps depends on the environment: measure with the peer receiver test.
+
+### Peer Receiver Test (tools/linux_sink) {#receiver}
+
+The link quality window shows what A2DPWB sends. To see what actually arrives, run `tools/linux_sink/a2dpwb_sink.py` on a second PC with Linux. It drives that PC's ordinary Bluetooth adapter - the built-in one is fine - directly (Bumble over the HCI user channel) as an A2DP sink for every codec including LDAC, measures every media packet that arrives and serves the statistics over the network:
+
+Copy the `tools/linux_sink` folder to the Linux PC (the folder alone is enough), then:
+
+```bash
+sh setup.sh      # once: decoder libraries, Python environment (Ubuntu / Debian, Python 3.11+)
+sudo sh run.sh   # start the receiver (root: it takes the Bluetooth adapter)
+```
+
+In debug mode, **Debug > Peer Receiver Test...** finds the receiver on the local network by itself. **Start** streams a steady test tone (or the system audio) to its Bluetooth adapter with the chosen codec, quality, sample rate and bit depth - no profile or pairing step needed - and the window shows what was sent next to what arrived: bitrate, lost and late packets (RTP sequence numbers), jitter and gaps, dropouts and skips of a modelled playout buffer, stream / decode errors and the RSSI at the receiver (relative to its golden receive range: 0 = fine, negative = too weak). Each step (find receiver, statistics, receiver settings, Bluetooth connection, codec, audio arrives) is shown as OK / NG, with a log that can be copied. In CLI mode, `--remote-sink auto` does the same: it finds the receiver, streams to it unless `-d` names another device, and prints its statistics every 5 seconds and at the end.
+
+Both sides count the packets of a stream from its first packet, and after **Stop** the final counts stay shown ("at stop"; the receiver's arrive about a second later), so the packets sent and received can be compared: they should be equal. Bluetooth retransmits lost radio packets inside the controllers, and A2DPWB does not give up on a packet while the link is up, so a poor radio link shows as gaps, jitter and dropouts at the receiver rather than as lost packets; when the link cannot keep up, packets are dropped before sending on the sending side. The number of retransmissions is not available to either side.
+
+The receiver's adapter is not available to its own Bluetooth stack while the tool runs. Discovery uses a UDP broadcast on port 51201, so both PCs must be on the same network segment (otherwise enter the address). See `tools/linux_sink/README.md` for all options and the statistics protocol.
+
 ## Troubleshooting
 
 ### Pairing Problems After Updating
@@ -209,3 +242,12 @@ A2DPWB pairs using SSP (Just Works) with **General Bonding**, and the link keys 
 ### Connection Timeouts
 
 A2DPWB registers SDP records (A2DP Source, AVRCP Controller / Target) so the headphones can identify it as an audio source. If a connection attempt times out, the half-open connection is torn down, so you can simply retry in the same session without restarting A2DPWB. Make sure the headphones are powered on, in range, and not connected to another device.
+
+A failed connection is tried again by itself (up to 3 attempts) when the link came up and then carried nothing, and when the headphones did not answer. If the headphones no longer know the pairing (reset, or paired with another PC), the stored key is dropped and pairing is done once more. The error then says what happened:
+
+| Message | Meaning |
+|:--|:--|
+| The device did not answer | Off, out of range, or not connectable (a new device: pairing mode) |
+| The connection came up but then carried nothing | Radio conditions: try again, or move the adapter / the device |
+| The device answered but then ended the connection itself | It does not accept a connection now: turning off, charging, or connected to another device |
+| Authentication failed, also after pairing again | Put the device into pairing mode, or remove its pairing list entry, and try again |

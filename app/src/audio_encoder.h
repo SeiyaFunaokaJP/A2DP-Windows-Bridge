@@ -66,6 +66,11 @@ public:
     /* Get the number of PCM frames consumed per encode call */
     virtual uint32_t get_pcm_frames_per_encode() const = 0;
 
+    /* PCM frames represented by one codec frame counted in out_frames. The
+     * RTP timestamp advances by this per frame actually sent, so it stays
+     * exact even when the encoder buffers input (LDAC). */
+    virtual uint32_t get_pcm_frames_per_codec_frame() const { return get_pcm_frames_per_encode(); }
+
     /* Get the current bitrate in kbps */
     virtual uint32_t get_bitrate_kbps() const = 0;
 

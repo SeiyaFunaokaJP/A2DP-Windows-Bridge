@@ -16,6 +16,7 @@
 #include "audio_device_enum.h"
 #include "bt_device.h"
 #include "profile_manager.h"
+#include "bt_adapter_enum.h"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -107,10 +108,6 @@ public:
     /* ---- Debug ---- */
     void set_debug_mode(bool enabled) { debug_mode_ = enabled; }
 
-    /* ---- Advanced ---- */
-    /* Max media packet size (BtStackTransport::set_media_payload_limit); applies from the next connection */
-    void set_media_payload_limit(uint16_t limit) { media_payload_limit_.store(limit); }
-
     /* Force BTstack shutdown so next connect reinitializes with new settings */
     void reset_btstack();
 
@@ -169,12 +166,12 @@ private:
     /* ---- Bluetooth adapter ---- */
     uint16_t bt_chip_pid_ = 0;  /* 0 = auto-detect */
     std::string bt_chip_fw_stem_;  /* Firmware stem for unknown chips (pid==0) */
+    /* Last seen non-Realtek adapter vendor (Intel/Broadcom/CSR). Kept because
+     * an adapter held open by BTstack drops out of later enumerations. */
+    BtChipVendor other_vendor_ = BtChipVendor::Unknown;
 
     /* ---- Debug ---- */
     bool debug_mode_ = false;
-
-    /* ---- Advanced ---- */
-    std::atomic<uint16_t> media_payload_limit_{MEDIA_PAYLOAD_LIMIT_DEFAULT};
 
     /* ---- Firmware ---- */
     bool firmware_present_ = false;

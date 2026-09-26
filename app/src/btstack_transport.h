@@ -13,10 +13,13 @@
 
 #include "audio_encoder.h"
 #include "media_payload_limit.h"
+#include "link_stats.h"
+#include "bt_adapter_enum.h"
 #include <cstdint>
 #include <string>
 #include <vector>
 #include <atomic>
+#include <functional>
 #include <mutex>
 
 /* BTstack forward declarations (avoid exposing full BTstack headers) */
@@ -72,6 +75,14 @@ public:
     /* Shut down BTstack and release USB adapter */
     void shutdown();
 
+    /* AFH host channel classification policy of the process: "auto",
+     * "off" or Wi-Fi channels to avoid such as "6,11" (afh.h). A2DPWB is the
+     * central of its links, so it applies to headphones and receivers alike.
+     * Takes effect within seconds, also on a running link. */
+    static void set_afh_policy(const std::string &policy);
+    static std::string afh_policy();
+    /* The radio state of the link is published as link_radio() (link_stats.h) */
+
     /* Discovered device info from GAP inquiry */
     struct DiscoveredDevice {
         uint8_t     address[6];  /* big-endian (BTstack format) */
@@ -96,6 +107,45 @@ public:
      * Blocks until connection + stream establishment completes or fails.
      */
     bool connect_a2dp(const uint8_t remote_addr[6]);
+
+    /* How the last connect_a2dp() failed */
+    enum class ConnectFailure {
+        None,
+        NoAnswer,   /* page timeout: the device did not answer */
+        LinkLost,   /* link up, then no answer on it (L2CAP RTX / connection timeout) */
+        Refused,    /* link up, then ended by the device itself (e.g. it is turning
+                     * off or does not accept connections now) */
+        AuthFailed, /* authentication / security refused, e.g. a stale link key */
+        Other       /* anything else, e.g. no A2DP service */
+    };
+    ConnectFailure last_connect_failure() const { return last_connect_failure_.load(); }
+
+    /*
+     * connect_a2dp(), tried again after a transient failure (NoAnswer /
+     * LinkLost) up to CONNECT_ATTEMPTS times in all: a link can fail right
+     * after it came up and work on the next attempt. After an authentication
+     * failure with a stored link key (the device was reset or paired
+     * elsewhere) the key is dropped and pairing is tried once more.
+     * cancelled() is polled between attempts; on_retry(attempt, attempts)
+     * reports each new attempt.
+     */
+    static constexpr int CONNECT_ATTEMPTS = 3;
+
+    bool connect_a2dp_retrying(const uint8_t remote_addr[6],
+                               const std::function<bool()> &cancelled,
+                               const std::function<void(int, int)> &on_retry);
+
+    /* HCI Disconnect of the ACL link to the last remote, if one exists, and
+     * wait for Disconnection Complete (up to timeout_ms). A link that came
+     * up and then went silent otherwise stays until the supervision timeout
+     * and the next attempt would reuse it. */
+    void drop_acl_link(uint32_t timeout_ms);
+
+    /* An AVDTP connection to the remote still known to BTstack before a new
+     * connect (e.g. left over when a stream was given up on) makes
+     * a2dp_source_establish_stream() fail with COMMAND_DISALLOWED: close it
+     * and wait for the release. */
+    void release_leftover_avdtp();
 
     /* Disconnect from the remote device */
     bool disconnect();
@@ -221,6 +271,20 @@ private:
     /* BTstack run loop thread */
     static unsigned long __stdcall btstack_thread_proc(void *param);
 
+    /* hci_init() through hci_power_control(ON). Runs on the BTstack thread,
+     * directly or once a pre-HCI firmware loader (Intel) has finished. */
+    void setup_hci_and_power_on();
+
+    /* Intel bootloader firmware download finished (BTstack thread) */
+    static void intel_firmware_done(int result);
+
+    /* On HCI Read Local Version complete during init: log the controller and,
+     * for Broadcom, register the chipset driver with a PatchRAM (.hcd) file. */
+    void on_local_version(const uint8_t *packet);
+
+    /* Pick a Broadcom .hcd from the firmware folder (empty if none fits) */
+    std::string find_bcm_hcd() const;
+
     /* Register codec stream endpoints with BTstack */
     void register_codec_endpoints();
 
@@ -238,6 +302,8 @@ private:
 
     /* Tear down a half-open AVDTP connection after a failed/timed-out connect */
     void abort_pending_connection();
+    /* LinkLost -> Refused when the device ended the link itself */
+    void classify_link_lost();
 
     /* Thread handle */
     void *thread_handle_ = nullptr;
@@ -248,12 +314,34 @@ private:
     void *stream_event_ = nullptr;
     void *start_event_ = nullptr;
     void *disconnect_event_ = nullptr;
+    void *acl_down_event_ = nullptr;     /* auto-reset; HCI Disconnection Complete */
     void *inquiry_event_ = nullptr;
     void *cancel_event_ = nullptr;       /* manual-reset; signaled to abort blocking waits */
 
     /* Result flags for sync operations */
     std::atomic<bool> init_result_{false};
     std::atomic<bool> connect_result_{false};
+    /* ACL handle the A2DP signaling runs on (0xFFFF = none). Disconnections
+     * of other links, e.g. a device used before that drops its idle link a
+     * moment later, must not end this stream. */
+    std::atomic<uint16_t> a2dp_con_handle_{0xFFFF};
+    std::atomic<ConnectFailure> last_connect_failure_{ConnectFailure::None};
+    /* ACL link to the device being connected (0xFFFF = none) and the reason
+     * it went down (0 = still up / none): tells a device that ends the link
+     * itself from a link lost on the radio */
+    std::atomic<uint16_t> target_acl_handle_{0xFFFF};
+    std::atomic<uint8_t> target_acl_down_reason_{0};
+
+    /* AFH classification and radio readings, on the BTstack thread */
+    void afh_start();
+    void afh_stop();
+    void afh_tick();
+    void on_radio_command_complete(uint8_t *packet, uint16_t size);
+    void *afh_timer_ = nullptr;          /* btstack_timer_source_t */
+    uint8_t afh_sent_map_[10] = {};
+    bool afh_sent_ = false;              /* a classification is in force at the controller */
+    int afh_policy_version_seen_ = -1;
+    int afh_ticks_ = 0;
     std::atomic<bool> stream_result_{false};
     std::atomic<bool> start_result_{false};
 
@@ -306,6 +394,14 @@ private:
      * called repeatedly, including from hci_power_control_on()). */
     std::string resolved_fw_dir_;
 
+    /* Non-Realtek controller support (experimental). usb_adapters_ is the
+     * WinUSB adapter list taken at thread start (empty for TCP / Realtek). */
+    std::vector<BtAdapterInfo> usb_adapters_;
+    bool intel_loader_ = false;     /* ran the Intel bootloader firmware download */
+    bool bcm_checked_ = false;      /* Broadcom PatchRAM decided for this init */
+    std::string bcm_hcd_path_;      /* must outlive BTstack (chipset keeps the pointer) */
+    std::atomic<bool> init_failed_{false};  /* firmware loader gave up: stop waiting */
+
     /* Init timing (for firmware loading detection) */
     uint32_t init_start_tick_ = 0;
 
@@ -337,7 +433,7 @@ private:
         uint8_t  frames = 0;
         bool     no_rtp = false;   /* send without RTP header (aptX, aptX LL) */
     };
-    static const int MEDIA_QUEUE_CAPACITY = 64;
+    static const int MEDIA_QUEUE_CAPACITY = static_cast<int>(MEDIA_QUEUE_PACKETS);
     MediaPacket media_queue_[MEDIA_QUEUE_CAPACITY];
     int media_queue_head_ = 0;   /* write position (WASAPI thread) */
     int media_queue_tail_ = 0;   /* read position (BTstack thread) */

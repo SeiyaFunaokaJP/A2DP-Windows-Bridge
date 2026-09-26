@@ -15,7 +15,10 @@
 #include <wx/taskbar.h>
 
 #include <atomic>
+#include <memory>
 #include <thread>
+
+class DebugLogModel;
 
 /* Custom event IDs */
 enum {
@@ -35,10 +38,12 @@ enum {
     ID_SETTING_TRAY,
     ID_SETTING_UPDATE_CHECK,
     ID_SETTING_DEBUG,
-    ID_OPEN_ADVANCED,
+    ID_OPEN_LINK_QUALITY,
     ID_DEBUG_CAPTURE_START,
     ID_DEBUG_CAPTURE_STOP,
     ID_DEBUG_OPEN_LOG,
+    ID_DEBUG_RECEIVER,
+    ID_DEBUG_CONSOLE,
 
     ID_REPORT_BUG,
     ID_TRAY_DISCONNECT,
@@ -73,6 +78,13 @@ public:
     ProfileManager &profiles() { return profile_mgr_; }
     AppSettings &settings() { return settings_; }
     int selected_profile() const { return selected_profile_; }
+    A2dpService::State state() const { return current_state_; }
+    const std::string &status_text() const { return current_status_text_; }
+    const A2dpService::StreamInfo &stream_info() const { return current_stream_info_; }
+
+    /* Streams with a profile that is not in the list (the receiver
+     * measurement), replacing the current stream like a profile click */
+    void start_stream(const ConnectionProfile &profile);
 
 private:
     /* ---- Initialization ---- */
@@ -81,6 +93,7 @@ private:
     void apply_theme();
     void rebuild_profile_list();
     void update_status_display();
+    void fit_status_label();
 
     /* ---- Event handlers ---- */
     void OnStatusUpdate(wxThreadEvent &evt);
@@ -101,10 +114,12 @@ private:
     void OnToggleMinimizeToTray(wxCommandEvent &evt);
     void OnToggleUpdateCheck(wxCommandEvent &evt);
     void OnToggleDebugMode(wxCommandEvent &evt);
-    void OnOpenAdvanced(wxCommandEvent &evt);
+    void OnOpenLinkQuality(wxCommandEvent &evt);
     void OnDebugCaptureStart(wxCommandEvent &evt);
     void OnDebugCaptureStop(wxCommandEvent &evt);
     void OnDebugOpenLog(wxCommandEvent &evt);
+    void OnDebugReceiver(wxCommandEvent &evt);
+    void OnDebugConsole(wxCommandEvent &evt);
     void update_title();
 
     void OnOpenFirmware(wxCommandEvent &evt);
@@ -126,6 +141,7 @@ private:
     ProfileManager profile_mgr_;
     AppSettings settings_;
     bool debug_active_ = false;  /* debug mode as of startup (shows the Debug menu) */
+    std::unique_ptr<DebugLogModel> debug_log_; /* follows debug.log (debug mode only) */
     int selected_profile_ = -1;
 
     /* ---- Tray ---- */
@@ -133,6 +149,7 @@ private:
 
     /* ---- UI elements ---- */
     wxPanel       *main_panel_ = nullptr;
+    wxPanel       *status_panel_ = nullptr;
     wxStaticText  *status_label_ = nullptr;
     wxStaticText  *stream_info_label_ = nullptr;
     wxButton      *disconnect_btn_ = nullptr;

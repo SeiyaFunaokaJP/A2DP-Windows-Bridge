@@ -38,6 +38,7 @@
 #include "ldac_encoder.h"
 #include "aptxhd_encoder.h"
 #include "a2dp_sbc_encoder.h"
+#include "app_settings.h"
 #include "aac_encoder.h"
 #include "aptxll_encoder.h"
 #include "aptx_encoder.h"
@@ -45,7 +46,10 @@
 #include "btstack_transport.h"
 #include "config_path.h"
 #include "hci_capture.h"
+#include "link_stats.h"
 #include "media_payload_limit.h"
+#include "remote_sink_client.h"
+#include "test_tone.h"
 #include "wx_app.h"
 
 /* Global state */
@@ -59,6 +63,13 @@ struct CliDevOptions {
     uint32_t duration_s = 0;  /* --duration <seconds>: stop streaming after this time (0 = Ctrl+C) */
 };
 static CliDevOptions g_dev;
+
+/* --remote-sink <host[:port]>: statistics of a measuring receiver
+ * (tools/linux_sink/a2dpwb_sink.py) printed while streaming */
+static std::string g_remote_sink;
+
+/* --afh auto|off|6,11: AFH host channel classification (default: settings) */
+static std::string g_afh;
 
 /* --max-packet: advanced max media packet size (media_payload_limit.h) */
 static uint16_t g_max_packet = MEDIA_PAYLOAD_LIMIT_DEFAULT;
@@ -292,6 +303,9 @@ static void audio_callback(
     static thread_local uint8_t accum[2048];
     uint32_t accum_size = 0;
     uint32_t accum_frames = 0;
+    /* g_timestamp counts the samples of the codec frames produced so far
+     * (RTP timestamp of the next frame); see a2dp_service.cpp */
+    uint32_t pcm_frames_per_codec_frame = encoder->get_pcm_frames_per_codec_frame();
     uint32_t first_ts = g_timestamp;
 
     while (offset + bytes_per_encode <= pcm_bytes) {
@@ -319,9 +333,9 @@ static void audio_callback(
                 accum_size += out_size;
                 accum_frames += out_frames;
             }
+            g_timestamp += out_frames * pcm_frames_per_codec_frame;
         }
 
-        g_timestamp += pcm_frames_per_encode;
         offset += bytes_per_encode;
     }
 
@@ -359,35 +373,17 @@ static void audio_callback(
     }
 }
 
-/* --test-tone: feeds audio_callback like WASAPI does (float32 stereo in 10 ms
- * blocks, paced in real time), so emulator tests get a known signal. */
+/* --test-tone: the shared generator (test_tone.h) feeding audio_callback,
+ * so emulator tests get a known signal */
 static const uint32_t TEST_TONE_RATE = 48000;
-static std::atomic<bool> g_tone_running{false};
-static std::thread g_tone_thread;
+static TestTone g_test_tone;
 
 static void start_test_tone() {
-    g_tone_running.store(true);
-    g_tone_thread = std::thread([]() {
-        const uint32_t block = TEST_TONE_RATE / 100;
-        const double two_pi = 6.283185307179586;
-        std::vector<float> buf(block * 2);
-        uint64_t n = 0;
-        auto next = std::chrono::steady_clock::now();
-        while (g_tone_running.load()) {
-            for (uint32_t i = 0; i < block; i++, n++) {
-                buf[2 * i]     = (float)(0.5 * sin(two_pi * 1000.0 * (double)n / TEST_TONE_RATE));
-                buf[2 * i + 1] = (float)(0.5 * sin(two_pi * 1500.0 * (double)n / TEST_TONE_RATE));
-            }
-            audio_callback(reinterpret_cast<const uint8_t *>(buf.data()), block, 2, TEST_TONE_RATE, 32);
-            next += std::chrono::milliseconds(10);
-            std::this_thread::sleep_until(next);
-        }
-    });
+    g_test_tone.start(TEST_TONE_RATE, audio_callback);
 }
 
 static void stop_test_tone() {
-    g_tone_running.store(false);
-    if (g_tone_thread.joinable()) g_tone_thread.join();
+    g_test_tone.stop();
 }
 
 /* Console Ctrl+C handler */
@@ -419,6 +415,11 @@ static void print_usage(const char *prog) {
     printf("  -u <path>    USB device path for BTstack (optional)\n");
     printf("  --max-packet <bytes>  Advanced: max media packet size, %u-%u (recommended: %u)\n",
            MEDIA_PAYLOAD_LIMIT_MIN, MEDIA_PAYLOAD_LIMIT_MAX, MEDIA_PAYLOAD_LIMIT_DEFAULT);
+    printf("  --remote-sink <host[:port]|auto>  Also show what a2dpwb_sink.py (tools/linux_sink)\n");
+    printf("               receives on another PC (default port %u); auto finds it on the\n", REMOTE_SINK_DEFAULT_PORT);
+    printf("               local network. Without -d, streams to that receiver\n");
+    printf("  --afh <auto|off|6,11>  AFH: avoid the Wi-Fi channels heard strongly (auto), none,\n");
+    printf("               or these Wi-Fi channels (default: as set in the GUI, else auto)\n");
     printf("  -h           Show this help\n");
     printf("\nCodec priority (auto mode): LDAC > aptX HD > aptX LL > aptX > AAC > SBC\n");
 }
@@ -441,6 +442,38 @@ static const char *codec_name_str(AudioCodec codec) {
     case AudioCodec::AAC:    return "AAC";
     }
     return "Unknown";
+}
+
+/* --remote-sink: one line with what the receiver measured */
+static void print_remote_sink() {
+    RemoteSinkClient &client = RemoteSinkClient::instance();
+    RemoteSinkStats s;
+    if (!client.latest(&s)) {
+        std::string detail;
+        RemoteSinkClient::Status st = client.status(&detail);
+        printf("Receiver %s: %s%s%s\n", client.target().c_str(),
+               st == RemoteSinkClient::Status::Connecting ? "connecting" :
+               st == RemoteSinkClient::Status::Connected ? "connected, waiting for data" : "not connected",
+               detail.empty() ? "" : " - ", detail.c_str());
+        return;
+    }
+    if (!s.has_stream) {
+        printf("Receiver: %s, no stream yet\n", s.connected ? "source connected" : "no source connected");
+        return;
+    }
+    uint64_t expected = s.packets + s.lost;
+    printf("Receiver: %s %llu packets (%.1f s), lost %llu (%.2f%%), late %llu, jitter %.1f ms, "
+           "max gap %.0f ms, dropouts %llu (%.0f ms), skips %llu (%.0f ms), errors %llu",
+           s.codec.c_str(), (unsigned long long)s.packets, s.audio_ms / 1000.0,
+           (unsigned long long)s.lost, expected ? 100.0 * s.lost / expected : 0.0,
+           (unsigned long long)s.late, s.jitter_ms, s.max_gap_ms,
+           (unsigned long long)s.underruns, s.underrun_ms,
+           (unsigned long long)s.overflows, s.overflow_ms,
+           (unsigned long long)(s.ts_errors + s.frame_errors + s.decode_errors));
+    /* BR/EDR RSSI is relative to the controller's golden receive range */
+    if (s.pauses) printf(", source paused %llu time(s)", (unsigned long long)s.pauses);
+    if (s.has_rssi) printf(", RSSI %+d dB vs. golden range", s.rssi);
+    printf("\n");
 }
 
 /*
@@ -491,6 +524,19 @@ static int run_streaming(const uint8_t target_addr[6],
     BtStackTransport transport;
     transport.set_link_key_dir(get_config_dir());
 
+    /* Realtek adapter: firmware from the config folder and the chip chosen in
+     * the GUI's firmware settings, as the GUI does */
+    {
+        AppSettings settings;
+        settings.load();
+        transport.set_firmware_dir(get_config_dir());
+        transport.set_product_id(settings.bt_chip_pid);
+        if (!settings.bt_chip_fw_stem.empty())
+            transport.set_fw_stem(settings.bt_chip_fw_stem);
+        BtStackTransport::set_afh_policy(g_afh.empty() ? settings.afh : g_afh);
+        printf("AFH host channel classification: %s\n", BtStackTransport::afh_policy().c_str());
+    }
+
     transport.set_media_payload_limit(g_max_packet);
     if (!g_dev.hci_tcp.empty()) transport.set_hci_tcp(g_dev.hci_tcp);
     if (!g_dev.hci_tcp.empty() || !g_dev.hci_capture.empty()) transport.set_hci_dump_enabled(false);
@@ -519,7 +565,27 @@ static int run_streaming(const uint8_t target_addr[6],
     /* --- Step 3: Connect and discover codecs --- */
     printf("\n[3/5] Connecting and negotiating codec...\n");
     printf("(This may take up to 30 seconds if the device is slow to respond.)\n");
-    if (!transport.connect_a2dp(target_addr)) {
+    bool connected = transport.connect_a2dp_retrying(
+        target_addr, []() { return !g_running.load(); },
+        [](int attempt, int attempts) { printf("Connection failed, trying again (%d/%d)...\n", attempt, attempts); });
+    if (!connected) {
+        switch (transport.last_connect_failure()) {
+        case BtStackTransport::ConnectFailure::NoAnswer:
+            fprintf(stderr, "The device did not answer (page timeout): it is off, out of range or not connectable.\n");
+            break;
+        case BtStackTransport::ConnectFailure::LinkLost:
+            fprintf(stderr, "The link came up but then carried nothing (radio conditions?).\n");
+            break;
+        case BtStackTransport::ConnectFailure::Refused:
+            fprintf(stderr, "The device answered but ended the connection itself: it does not accept\n"
+                            "a connection now (turning off, charging, or connected to another device?).\n");
+            break;
+        case BtStackTransport::ConnectFailure::AuthFailed:
+            fprintf(stderr, "Authentication failed, also after pairing again: the device refused pairing.\n");
+            break;
+        default:
+            break;
+        }
         fprintf(stderr,
             "Failed to connect to Bluetooth device.\n"
             "Troubleshooting:\n"
@@ -715,8 +781,15 @@ static int run_streaming(const uint8_t target_addr[6],
     const int MAX_RECONNECT_ATTEMPTS = 10;
 
     auto stream_start = std::chrono::steady_clock::now();
+    auto last_remote_print = stream_start;
     while (g_running.load()) {
         Sleep(200);
+
+        if (!g_remote_sink.empty() &&
+            std::chrono::steady_clock::now() - last_remote_print >= std::chrono::seconds(5)) {
+            last_remote_print = std::chrono::steady_clock::now();
+            print_remote_sink();
+        }
 
         if (g_dev.duration_s > 0 &&
             std::chrono::steady_clock::now() - stream_start >= std::chrono::seconds(g_dev.duration_s)) {
@@ -773,6 +846,16 @@ static int run_streaming(const uint8_t target_addr[6],
     wasapi_capture.stop();
     g_encoder.store(nullptr);
     g_transport.store(nullptr);
+
+    if (!g_remote_sink.empty()) {
+        /* Let the last packets arrive and the receiver report them */
+        Sleep(1500);
+        const LinkStats &ls = link_stats();
+        printf("Sent: %llu packets, %llu dropped before sending\n",
+               (unsigned long long)ls.packets_sent.load(),
+               (unsigned long long)(ls.queue_drops.load() + ls.send_errors.load()));
+        print_remote_sink();
+    }
 
     transport.stop_stream();
     transport.disconnect();
@@ -926,6 +1009,10 @@ int main(int argc, char *argv[]) {
             g_dev.hci_capture = argv[++i];
         } else if (strcmp(argv[i], "--test-tone") == 0) {
             g_dev.test_tone = true;
+        } else if (strcmp(argv[i], "--afh") == 0 && i + 1 < argc) {
+            g_afh = argv[++i];
+        } else if (strcmp(argv[i], "--remote-sink") == 0 && i + 1 < argc) {
+            g_remote_sink = argv[++i];
         } else if (strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
             g_dev.duration_s = static_cast<uint32_t>(strtoul(argv[++i], nullptr, 10));
         } else if (strcmp(argv[i], "-h") == 0) {
@@ -940,6 +1027,34 @@ int main(int argc, char *argv[]) {
         printf("Transport: BTstack (H4 over TCP to %s - development / testing)\n", g_dev.hci_tcp.c_str());
 
     SetConsoleCtrlHandler(console_handler, TRUE);
+
+    if (!g_remote_sink.empty()) {
+        /* Find the receiver: its IP for the statistics and, without -d, its
+         * Bluetooth address as the device to stream to */
+        std::string host;
+        if (g_remote_sink != REMOTE_SINK_AUTO) {
+            host = g_remote_sink;
+            size_t colon = host.rfind(':');
+            if (colon != std::string::npos && host.find(':') == colon) host.resize(colon);
+        }
+        std::vector<RemoteSinkInfo> found = RemoteSinkClient::discover(host);
+        if (found.empty()) {
+            printf("Receiver: none answered %s\n", host.empty() ? "on the local network" : host.c_str());
+        } else {
+            const RemoteSinkInfo &r = found[0];
+            printf("Receiver: %s (%s:%u), Bluetooth %s \"%s\", L2CAP MTU %u%s\n", r.host.c_str(),
+                   r.ip.c_str(), (unsigned)r.port, r.bt_address.c_str(), r.bt_name.c_str(), r.mtu,
+                   found.size() > 1 ? " (first of several)" : "");
+            if (device_addr_str[0] == '\0' && !r.bt_address.empty()) {
+                strncpy(device_addr_str, r.bt_address.c_str(), sizeof(device_addr_str) - 1);
+                printf("Streaming to the receiver (no -d given)\n");
+            }
+            if (g_remote_sink == REMOTE_SINK_AUTO)
+                g_remote_sink = r.ip + ":" + std::to_string(r.port);
+        }
+        printf("Receiver statistics: %s\n", g_remote_sink.c_str());
+        RemoteSinkClient::instance().start(g_remote_sink);
+    }
 
     /* --- Step 1: Discover/select Bluetooth device --- */
     printf("[1/5] Scanning for Bluetooth audio devices...\n");

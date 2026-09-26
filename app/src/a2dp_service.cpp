@@ -11,10 +11,12 @@
 #include "bt_adapter_enum.h"
 #include "btstack_transport.h"
 #include "hci_capture.h"
+#include "link_stats.h"
 #include "capture_mode.h"
 #include "config_path.h"
 #include "debug_log.h"
 #include "wasapi_capture.h"
+#include "test_tone.h"
 #include "ldac_encoder.h"
 #include "aptxhd_encoder.h"
 #include "aptxll_encoder.h"
@@ -158,8 +160,11 @@ static void service_audio_callback(
     g_ctx.ring.sample_rate = sample_rate;
     g_ctx.ring.bits_per_sample = bits_per_sample;
 
+    LinkStats &stats = link_stats();
+    stats.capture_frames.fetch_add(frames, std::memory_order_relaxed);
     if (g_ctx.ring.available_write() < byte_size) {
         ring_overflow_count.fetch_add(1, std::memory_order_relaxed);
+        stats.capture_dropped_frames.fetch_add(frames, std::memory_order_relaxed);
         return;
     }
     g_ctx.ring.write(data, byte_size);
@@ -315,6 +320,11 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
 
             uint32_t accum_size = 0;
             uint32_t accum_frames = 0;
+            /* g_ctx.timestamp counts the samples of the codec frames produced so
+             * far, i.e. the RTP timestamp of the next frame. Advancing it per
+             * encode call instead jitters for encoders that buffer input (LDAC
+             * emits whole packets on irregular calls). */
+            uint32_t pcm_frames_per_codec_frame = encoder->get_pcm_frames_per_codec_frame();
             uint32_t first_ts = g_ctx.timestamp;
 
             while (offset + bytes_per_encode <= pcm_bytes) {
@@ -337,9 +347,9 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
                         accum_size += out_size;
                         accum_frames += out_frames;
                     }
+                    g_ctx.timestamp += out_frames * pcm_frames_per_codec_frame;
                 }
 
-                g_ctx.timestamp += pcm_frames_per_encode;
                 offset += bytes_per_encode;
             }
 
@@ -617,7 +627,20 @@ void A2dpService::check_firmware_present() {
         fw_path = cfg_dir + "\\" + bt_chip_fw_stem_ + "_fw.bin";
         cfg_path = cfg_dir + "\\" + bt_chip_fw_stem_ + "_config.bin";
     } else {
-        firmware_present_ = false;
+        /* No Realtek chip selected. An adapter of another known vendor needs
+         * no rtl_bt files (Intel/Broadcom firmware is picked up at HCI init,
+         * experimental), so don't raise the Realtek warning for it. A
+         * Realtek or unrecognised adapter still gets the warning. */
+        bool realtek_seen = false;
+        BtChipVendor other = BtChipVendor::Unknown;
+        for (const auto &a : BtAdapterEnumerator::enumerate()) {
+            if (a.vendor == BtChipVendor::Realtek) realtek_seen = true;
+            else if (a.vendor == BtChipVendor::Intel || a.vendor == BtChipVendor::Broadcom ||
+                     a.vendor == BtChipVendor::Csr) other = a.vendor;
+        }
+        if (realtek_seen) other_vendor_ = BtChipVendor::Unknown;
+        else if (other != BtChipVendor::Unknown) other_vendor_ = other;
+        firmware_present_ = (other_vendor_ != BtChipVendor::Unknown);
         return;
     }
 
@@ -925,19 +948,43 @@ void A2dpService::streaming_thread_func_inner() {
 
     BtStackTransport *transport = transport_.get();
     LOG_INFO("A2dpService: BTstack initialized successfully");
-    transport->set_media_payload_limit(media_payload_limit_.load());
+    transport->set_media_payload_limit(p.max_media_payload);
 
     if (stop_requested_.load()) { running_.store(false); notify_state(State::Idle, L("status.ready")); return; }
 
     /* Connect */
     notify_state(State::Connecting, L("status.connecting_device"));
-    if (!transport->connect_a2dp(target_addr)) {
+    bool connected = transport->connect_a2dp_retrying(
+        target_addr,
+        [this]() { return stop_requested_.load(); },
+        [this](int attempt, int attempts) {
+            char text[256];
+            snprintf(text, sizeof(text), L("status.connecting_retry"), attempt, attempts);
+            notify_state(State::Connecting, text);
+        });
+    if (!connected) {
         if (stop_requested_.load()) {
             running_.store(false);
             notify_state(State::Idle, L("status.ready"));
             return;
         }
-        notify_state(State::Error, L("error.pairing_hint"));
+        switch (transport->last_connect_failure()) {
+        case BtStackTransport::ConnectFailure::NoAnswer:
+            notify_state(State::Error, L("error.connect_no_answer"));
+            break;
+        case BtStackTransport::ConnectFailure::LinkLost:
+            notify_state(State::Error, L("error.connect_link_lost"));
+            break;
+        case BtStackTransport::ConnectFailure::Refused:
+            notify_state(State::Error, L("error.connect_refused"));
+            break;
+        case BtStackTransport::ConnectFailure::AuthFailed:
+            notify_state(State::Error, L("error.connect_auth_failed"));
+            break;
+        default:
+            notify_state(State::Error, L("error.pairing_hint"));
+            break;
+        }
         running_.store(false);
         return;
     }
@@ -1011,8 +1058,10 @@ void A2dpService::streaming_thread_func_inner() {
         codec_max_sr = 96000;
     }
 
-    /* If auto, query device native rate */
-    if (preferred_sr == 0) {
+    /* If auto, query device native rate (the test tone runs at 48 kHz) */
+    if (preferred_sr == 0 && p.test_tone) {
+        preferred_sr = 48000;
+    } else if (preferred_sr == 0) {
         WasapiCapture temp_cap;
         std::wstring dev_id;
         if (cmode == CaptureMode::VirtualDevice && !p.audio_device_id.empty()) {
@@ -1051,7 +1100,11 @@ void A2dpService::streaming_thread_func_inner() {
         }
     }
 
-    switch (cmode) {
+    /* Audio source: the test tone (peer receiver test) or WASAPI capture */
+    TestTone test_tone;
+    if (p.test_tone) {
+        LOG_INFO("A2dpService: audio source: test tone at %u Hz", preferred_sr);
+    } else switch (cmode) {
     case CaptureMode::SystemLoopback:
         if (!wasapi_capture.init(preferred_sr)) {
             notify_state(State::Error, L("error.wasapi_init"));
@@ -1098,8 +1151,9 @@ void A2dpService::streaming_thread_func_inner() {
     }
     }
 
-    uint32_t sr = wasapi_capture.get_sample_rate();
-    uint32_t ch = wasapi_capture.get_channels();
+    uint32_t sr = p.test_tone ? preferred_sr : wasapi_capture.get_sample_rate();
+    uint32_t ch = p.test_tone ? TestTone::CHANNELS : wasapi_capture.get_channels();
+    uint32_t source_bits = p.test_tone ? TestTone::BITS_PER_SAMPLE : wasapi_capture.get_bits_per_sample();
     uint32_t use_ch = (ch > 2) ? 2 : ch;
     g_ctx.active_channels = use_ch;
     LOG_INFO("A2dpService: WASAPI capture init OK (sr=%u ch=%u use_ch=%u)", sr, ch, use_ch);
@@ -1185,9 +1239,7 @@ void A2dpService::streaming_thread_func_inner() {
     notify_state(State::Streaming, L("status.connected"));
     notify_stream_info({codec_name_for(selected_codec),
                         encoder->get_bitrate_kbps(), sr, use_ch,
-                        wasapi_capture.get_sample_rate(),
-                        wasapi_capture.get_channels(),
-                        wasapi_capture.get_bits_per_sample()});
+                        sr, ch, source_bits});
 
     /* Save device for future use */
     {
@@ -1230,7 +1282,11 @@ void A2dpService::streaming_thread_func_inner() {
     }
 
     LOG_INFO("A2dpService: A2DP stream started, starting audio capture");
-    bool capture_started = wasapi_capture.start(service_audio_callback);
+    bool capture_started = true;
+    if (p.test_tone)
+        test_tone.start(sr, service_audio_callback);
+    else
+        capture_started = wasapi_capture.start(service_audio_callback);
     if (!capture_started) {
         notify_state(State::Error, L("error.audio_capture_start"));
         g_ctx.running.store(false);
@@ -1307,6 +1363,7 @@ void A2dpService::streaming_thread_func_inner() {
      * 3. Release transport/encoder
      * 4. Destroy ring buffer */
     LOG_INFO("A2dpService: streaming stopped, cleaning up");
+    test_tone.stop();
     wasapi_capture.stop();
     g_ctx.running.store(false);
     if (g_ctx.ring.data_event) SetEvent(g_ctx.ring.data_event);

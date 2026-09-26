@@ -1,7 +1,8 @@
 # tools/emu Python environment (installed by setup_env.py into tools/emu/.venv).
 # Development / testing only: nothing here is linked into or shipped with A2DPWB.
 # Everything is pinned so the environment is reproducible; licenses are listed
-# in THIRD_PARTY_LICENSES.md section 13. Update both together.
+# in THIRD_PARTY_LICENSES.md section 13. Update both together, and
+# tools/linux_sink/requirements.txt (the same pins).
 
 # Virtual Bluetooth controllers + A2DP sink (emu_sink.py extends its controller)
 bumble==0.0.234

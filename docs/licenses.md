@@ -72,9 +72,9 @@ The fdk-aac license requires that the complete license text accompany binary red
 
 `a2dpwb_decode` (see [Usage](usage#verify-stream)) is built from source only and is not in the release zip. It links the Bluedroid SBC decoder (Apache-2.0), fdk-aac (FDK AAC License) and libopenaptx 0.2.0 (LGPL-2.1+) at the pinned versions above, and does **not** link BTstack or libldac. See THIRD_PARTY_LICENSES.md §12.
 
-### Test Environment tools/emu
+### Test Environment tools/emu and tools/linux_sink
 
-`tools/emu` (see [Building](building)) uses [Bumble](https://github.com/google/bumble) 0.0.234 (Apache-2.0) and its dependencies, downloaded by `setup_env.py` into a local, git-ignored environment at pinned versions. None of it is linked into or shipped with A2DPWB. See THIRD_PARTY_LICENSES.md §13 for the package list and licenses.
+`tools/emu` (see [Building](building)) and the measuring receiver `tools/linux_sink` (see [Usage](usage#receiver)) use [Bumble](https://github.com/google/bumble) 0.0.234 (Apache-2.0) and its dependencies, downloaded into local, git-ignored environments at pinned versions. None of it is linked into or shipped with A2DPWB. See THIRD_PARTY_LICENSES.md §13 for the package list and licenses.
 
 ### Bluetooth Qualification
 

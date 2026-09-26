@@ -93,8 +93,10 @@ These firmware files are proprietary Realtek binaries distributed via the linux-
 
 | Chipset | Example Products | Notes |
 |:--------|:-----------------|:------|
-| Intel | Intel AX200/AX210 | Works out of the box, no firmware needed |
+| Realtek | TP-Link UB500, RTL8761BU | Requires firmware download (see above). Best tested |
 | CSR | Generic CSR8510 dongles | Works out of the box, no firmware needed |
-| Realtek | TP-Link UB500, RTL8761BU | Requires firmware download (see above) |
+| Broadcom | ASUS BT400 (BCM20702) | *Experimental.* Runs on ROM firmware; an optional PatchRAM `.hcd` (e.g. `BCM20702A1-0b05-17cb.hcd`) in the config folder is uploaded at startup |
+| Intel | Intel 8265 / 9260 / AX200 / AX201 | *Experimental.* In bootloader mode (e.g. after a cold boot) needs the matching `ibt-*.sfi` + `ibt-*.ddc` from linux-firmware `intel/` in the config folder. AX210 and newer (TLV bootloader) are not supported yet |
+| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | Not supported: need firmware loaders A2DPWB does not have |
 
 USB Bluetooth 5.0+ adapters generally work best for high-bitrate codecs like LDAC.

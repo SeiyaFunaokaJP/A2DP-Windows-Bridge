@@ -6,6 +6,7 @@
 #include "wx_profile_dialog.h"
 #include "localization.h"
 #include "theme_manager.h"
+#include "media_payload_limit.h"
 #include <wx/statline.h>
 #include <cctype>
 #include <cstring>
@@ -160,6 +161,31 @@ void ProfileDialog::create_ui() {
     auto_switch_ctrl_->SetValue(true);
     codec_grid->Add(auto_switch_ctrl_, 0);
 
+    /* Max media packet size (advanced) */
+    wxString packet_help = wxString::Format(wxString::FromUTF8(L("advanced.max_packet_help")),
+        (int)MEDIA_PAYLOAD_LIMIT_MIN, (int)MEDIA_PAYLOAD_LIMIT_MAX, (int)MEDIA_PAYLOAD_LIMIT_DEFAULT);
+    auto *packet_label = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("advanced.max_packet")));
+    packet_label->SetToolTip(packet_help);
+    codec_grid->Add(packet_label, 0, wxALIGN_CENTER_VERTICAL);
+    auto *packet_row = new wxBoxSizer(wxHORIZONTAL);
+    max_packet_ctrl_ = new wxSpinCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition,
+                                      wxDefaultSize, wxSP_ARROW_KEYS,
+                                      MEDIA_PAYLOAD_LIMIT_MIN, MEDIA_PAYLOAD_LIMIT_MAX,
+                                      MEDIA_PAYLOAD_LIMIT_DEFAULT);
+    max_packet_ctrl_->SetToolTip(packet_help);
+    max_packet_ctrl_->SetBackgroundColour(TM().get(ThemeColor::CtrlBg));
+    max_packet_ctrl_->SetForegroundColour(TM().get(ThemeColor::CtrlFg));
+    packet_row->Add(max_packet_ctrl_, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+    auto *packet_reset_btn = new wxButton(this, wxID_ANY,
+        wxString::Format(wxString::FromUTF8(L("advanced.max_packet_recommended")),
+                         (int)MEDIA_PAYLOAD_LIMIT_DEFAULT),
+        wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+    packet_reset_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) {
+        max_packet_ctrl_->SetValue(MEDIA_PAYLOAD_LIMIT_DEFAULT);
+    });
+    packet_row->Add(packet_reset_btn, 0, wxALIGN_CENTER_VERTICAL);
+    codec_grid->Add(packet_row, 0);
+
     vbox->Add(codec_grid, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
 
     /* Audio device format info (above separator) */
@@ -226,6 +252,7 @@ void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
     codec_ctrl_->SetSelection(ProfileManager::codec_to_index(p.codec));
     quality_ctrl_->SetSelection(ProfileManager::quality_to_index(p.quality));
     abr_ctrl_->SetValue(p.abr);
+    max_packet_ctrl_->SetValue(p.max_media_payload);
 
     int sr_idx = (p.sample_rate == 44100) ? 1 :
                  (p.sample_rate == 48000) ? 2 :
@@ -596,6 +623,8 @@ void ProfileDialog::OnSave(wxCommandEvent &) {
         }
     }
     p.auto_switch_device = auto_switch_ctrl_->GetValue();
+    p.max_media_payload = clamp_media_payload_limit(
+        static_cast<uint32_t>(max_packet_ctrl_->GetValue()));
 
     fprintf(stderr, "ProfileDialog::OnSave: name='%s' codec=%s quality=%s\n",
             p.name.c_str(), p.codec.c_str(), p.quality.c_str());
@@ -603,7 +632,7 @@ void ProfileDialog::OnSave(wxCommandEvent &) {
             p.bit_depth, bd_sel, p.sample_rate, sr_sel);
     fprintf(stderr, "  capture_mode=%s audio_device_id='%s' audio_device_name='%s'\n",
             p.capture_mode.c_str(), p.audio_device_id.c_str(), p.audio_device_name.c_str());
-    fprintf(stderr, "  edit_index=%d\n", edit_index_);
+    fprintf(stderr, "  max_media_payload=%u edit_index=%d\n", p.max_media_payload, edit_index_);
     fflush(stderr);
 
     if (edit_index_ >= 0) {

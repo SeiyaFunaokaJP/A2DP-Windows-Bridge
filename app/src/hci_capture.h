@@ -2,8 +2,9 @@
  * HCI capture - on-demand HCI packet log (PacketLogger .pklg) for debug mode
  *
  * Installed as BTstack's hci_dump implementation. While no capture is running
- * it keeps only the packets needed to understand a connection later: L2CAP
- * signaling (channel setup) and AVDTP signaling except DELAYREPORT. When a
+ * it keeps only the packets needed to understand a connection later: HCI
+ * Connection Complete, L2CAP signaling (channel setup) and AVDTP signaling
+ * except DELAYREPORT. When a
  * capture starts in the middle of a connection, those packets are written
  * first (with their original timestamps), so Wireshark and a2dpwb_decode
  * still see the codec negotiation and which L2CAP channel carries the media.

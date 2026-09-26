@@ -47,6 +47,9 @@ add_executable(A2DPWB WIN32
     src/bt_adapter_enum.cpp
     src/btstack_transport.cpp
     src/hci_capture.cpp
+    src/remote_sink_client.cpp
+    src/test_tone.cpp
+    src/afh.cpp
     src/btstack_uart_tcp_windows.c
     src/btstack_link_key_db_file.c
     src/config_path.cpp
@@ -55,7 +58,10 @@ add_executable(A2DPWB WIN32
     src/wx_main_frame.cpp
     src/wx_profile_dialog.cpp
     src/wx_settings_dialog.cpp
-    src/wx_advanced_dialog.cpp
+    src/wx_link_quality_dialog.cpp
+    src/wx_receiver_dialog.cpp
+    src/wx_debug_console_dialog.cpp
+    src/debug_log_model.cpp
     src/wx_about_dialog.cpp
     src/wx_firmware_dialog.cpp
     src/wx_zadig_dialog.cpp
@@ -127,6 +133,8 @@ target_link_libraries(A2DPWB PRIVATE
     shcore         # SetProcessDpiAwareness (high-DPI)
     winmm          # timeBeginPeriod/timeEndPeriod (timer resolution)
     winhttp        # Update check (GitHub Releases API)
+    iphlpapi       # GetAdaptersAddresses (finding the measuring receiver)
+    wlanapi        # Wi-Fi survey for AFH host channel classification
 )
 
 # Application version
@@ -165,7 +173,25 @@ set(EMBEDDED_LANG_ENTRIES "")
 foreach(LANG_FILE ${LANG_FILES})
     get_filename_component(LANG_CODE ${LANG_FILE} NAME_WE)
     file(READ ${LANG_FILE} LANG_CONTENT)
-    string(APPEND EMBEDDED_LANG_ENTRIES "        {\"${LANG_CODE}\", R\"LANG_JSON(${LANG_CONTENT})LANG_JSON\"},\n")
+    # MSVC limits one string literal to ~16 KB (C2026), so emit adjacent raw
+    # literals of at most 8000 bytes, split after a newline so no UTF-8
+    # sequence is cut (the concatenated total may reach 64 KB)
+    set(LANG_LITERALS "")
+    string(LENGTH "${LANG_CONTENT}" LANG_LEN)
+    while(LANG_LEN GREATER 8000)
+        string(SUBSTRING "${LANG_CONTENT}" 0 8000 LANG_HEAD)
+        string(FIND "${LANG_HEAD}" "\n" LANG_CUT REVERSE)
+        if(LANG_CUT LESS 0)
+            message(FATAL_ERROR "${LANG_FILE}: a line is longer than 8000 bytes")
+        endif()
+        math(EXPR LANG_CUT "${LANG_CUT} + 1")
+        string(SUBSTRING "${LANG_CONTENT}" 0 ${LANG_CUT} LANG_CHUNK)
+        string(SUBSTRING "${LANG_CONTENT}" ${LANG_CUT} -1 LANG_CONTENT)
+        string(APPEND LANG_LITERALS "R\"LANG_JSON(${LANG_CHUNK})LANG_JSON\"\n            ")
+        string(LENGTH "${LANG_CONTENT}" LANG_LEN)
+    endwhile()
+    string(APPEND LANG_LITERALS "R\"LANG_JSON(${LANG_CONTENT})LANG_JSON\"")
+    string(APPEND EMBEDDED_LANG_ENTRIES "        {\"${LANG_CODE}\", ${LANG_LITERALS}},\n")
 endforeach()
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/embedded_langs.h.in

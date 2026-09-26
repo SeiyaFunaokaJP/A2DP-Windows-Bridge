@@ -6,7 +6,11 @@
 #include "wx_main_frame.h"
 #include "wx_profile_dialog.h"
 #include "wx_settings_dialog.h"
-#include "wx_advanced_dialog.h"
+#include "wx_link_quality_dialog.h"
+#include "wx_receiver_dialog.h"
+#include "btstack_transport.h"
+#include "wx_debug_console_dialog.h"
+#include "debug_log_model.h"
 #include "wx_about_dialog.h"
 #include "wx_firmware_dialog.h"
 #include "wx_zadig_dialog.h"
@@ -22,6 +26,8 @@
 #include <wx/clipbrd.h>
 #include <wx/datetime.h>
 #include <shellapi.h>
+
+#include <algorithm>
 
 #ifndef APP_VERSION
 #define APP_VERSION "1.0.1"
@@ -55,14 +61,16 @@ MainFrame::MainFrame()
     /* Load settings and data */
     settings_.load();
     Localization::instance().load(settings_.language);
-    profile_mgr_.load();
+    profile_mgr_.load(settings_.legacy_max_media_payload);
     service_.load_saved_devices();
     service_.set_bt_chip_pid(settings_.bt_chip_pid);
     service_.set_bt_chip_fw_stem(settings_.bt_chip_fw_stem);
+    BtStackTransport::set_afh_policy(settings_.afh);
     service_.set_debug_mode(settings_.debug_mode);
-    service_.set_media_payload_limit(settings_.max_media_payload);
     /* Debug mode changes apply after a restart; the Debug menu follows the boot state */
     debug_active_ = settings_.debug_mode;
+    if (debug_active_)
+        debug_log_ = std::make_unique<DebugLogModel>(service_.get_config_dir() + "\\debug.log");
     service_.check_firmware_present();
     /* Set icon */
     SetIcon(wxIcon(wxT("APP_ICON"), wxBITMAP_TYPE_ICO_RESOURCE));
@@ -157,6 +165,7 @@ void MainFrame::create_menu_bar() {
     /* Profile menu (was File) */
     auto *file_menu = new wxMenu();
     file_menu->Append(ID_NEW_PROFILE, wxString::FromUTF8(L("profile.new")));
+    file_menu->Append(ID_OPEN_LINK_QUALITY, wxString::FromUTF8(L("menu.file.link_quality")));
     file_menu->AppendSeparator();
     file_menu->Append(ID_OPEN_FIRMWARE, wxString::FromUTF8(L("firmware.title")));
     file_menu->AppendSeparator();
@@ -207,14 +216,17 @@ void MainFrame::create_menu_bar() {
     settings_menu->AppendSeparator();
     settings_menu->AppendCheckItem(ID_SETTING_DEBUG, wxString::FromUTF8(L("settings.debug_mode")));
     settings_menu->Check(ID_SETTING_DEBUG, settings_.debug_mode);
-    settings_menu->Append(ID_OPEN_ADVANCED, wxString::FromUTF8(L("settings.advanced")));
     menu_bar->Append(settings_menu, wxString::FromUTF8(L("menu.settings")));
 
     /* Debug menu: only when the app was started in debug mode */
     if (debug_active_) {
         auto *debug_menu = new wxMenu();
+        debug_menu->Append(ID_DEBUG_CONSOLE, wxString::FromUTF8(L("debug.console")) + "\tCtrl+Shift+D");
+        debug_menu->AppendSeparator();
         debug_menu->Append(ID_DEBUG_CAPTURE_START, wxString::FromUTF8(L("debug.capture_start")));
         debug_menu->Append(ID_DEBUG_CAPTURE_STOP, wxString::FromUTF8(L("debug.capture_stop")));
+        debug_menu->AppendSeparator();
+        debug_menu->Append(ID_DEBUG_RECEIVER, wxString::FromUTF8(L("debug.receiver")));
         debug_menu->AppendSeparator();
         debug_menu->Append(ID_DEBUG_OPEN_LOG, wxString::FromUTF8(L("debug.open_log")));
         debug_menu->Append(ID_OPEN_CONFIG, wxString::FromUTF8(L("menu.file.open_config")));
@@ -223,6 +235,8 @@ void MainFrame::create_menu_bar() {
         Bind(wxEVT_MENU, &MainFrame::OnDebugCaptureStart, this, ID_DEBUG_CAPTURE_START);
         Bind(wxEVT_MENU, &MainFrame::OnDebugCaptureStop, this, ID_DEBUG_CAPTURE_STOP);
         Bind(wxEVT_MENU, &MainFrame::OnDebugOpenLog, this, ID_DEBUG_OPEN_LOG);
+        Bind(wxEVT_MENU, &MainFrame::OnDebugReceiver, this, ID_DEBUG_RECEIVER);
+        Bind(wxEVT_MENU, &MainFrame::OnDebugConsole, this, ID_DEBUG_CONSOLE);
         Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent &e) { e.Enable(!hci_capture::active()); },
              ID_DEBUG_CAPTURE_START);
         Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent &e) { e.Enable(hci_capture::active()); },
@@ -250,7 +264,7 @@ void MainFrame::create_menu_bar() {
     Bind(wxEVT_MENU, &MainFrame::OnToggleMinimizeToTray, this, ID_SETTING_TRAY);
     Bind(wxEVT_MENU, &MainFrame::OnToggleUpdateCheck, this, ID_SETTING_UPDATE_CHECK);
     Bind(wxEVT_MENU, &MainFrame::OnToggleDebugMode, this, ID_SETTING_DEBUG);
-    Bind(wxEVT_MENU, &MainFrame::OnOpenAdvanced, this, ID_OPEN_ADVANCED);
+    Bind(wxEVT_MENU, &MainFrame::OnOpenLinkQuality, this, ID_OPEN_LINK_QUALITY);
 
     Bind(wxEVT_MENU, &MainFrame::OnOpenFirmware, this, ID_OPEN_FIRMWARE);
     Bind(wxEVT_BUTTON, &MainFrame::OnOpenFirmware, this, ID_OPEN_FIRMWARE);
@@ -286,10 +300,14 @@ void MainFrame::create_ui() {
     vbox->Add(firmware_bar_, 0, wxEXPAND);
 
     /* ---- Status section ---- */
-    auto *status_panel = new wxPanel(main_panel_);
+    status_panel_ = new wxPanel(main_panel_);
+    auto *status_panel = status_panel_;
     auto *status_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    status_label_ = new wxStaticText(status_panel, wxID_ANY, wxString::FromUTF8(L("status.idle")));
+    /* Width set by fit_status_label() so a long device name is ellipsized
+     * instead of pushing the disconnect button out of the window */
+    status_label_ = new wxStaticText(status_panel, wxID_ANY, wxString::FromUTF8(L("status.idle")),
+        wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END | wxST_NO_AUTORESIZE);
     auto font = status_label_->GetFont();
     font.SetPointSize(font.GetPointSize() + 2);
     font.SetWeight(wxFONTWEIGHT_BOLD);
@@ -300,12 +318,15 @@ void MainFrame::create_ui() {
         wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END);
     stream_info_label_->SetForegroundColour(TM().get(ThemeColor::TextStreamInfo));
     stream_info_label_->SetCursor(wxCursor(wxCURSOR_HAND));
+    stream_info_label_->SetMinSize(wxSize(0, -1)); /* ellipsized; never widens the row */
     stream_info_label_->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &) {
         if (current_state_ == A2dpService::State::Error && !current_status_text_.empty()) {
             if (wxTheClipboard->Open()) {
                 wxTheClipboard->SetData(new wxTextDataObject(wxString::FromUTF8(current_status_text_)));
                 wxTheClipboard->Close();
             }
+        } else if (current_state_ == A2dpService::State::Streaming) {
+            LinkQualityDialog::ShowFor(this);
         }
     });
     status_sizer->Add(stream_info_label_, 1, wxALIGN_CENTER_VERTICAL | wxLEFT, 12);
@@ -317,6 +338,10 @@ void MainFrame::create_ui() {
     Bind(wxEVT_BUTTON, &MainFrame::OnDisconnect, this, ID_DISCONNECT);
 
     status_panel->SetSizer(status_sizer);
+    status_panel->Bind(wxEVT_SIZE, [this](wxSizeEvent &evt) {
+        fit_status_label();
+        evt.Skip(); /* default handler lays the row out */
+    });
     vbox->Add(status_panel, 0, wxEXPAND | wxTOP | wxBOTTOM, 6);
 
     /* Separator */
@@ -565,6 +590,7 @@ void MainFrame::update_status_display() {
                             current_state_ == A2dpService::State::Connecting ||
                             current_state_ == A2dpService::State::Reconnecting);
     disconnect_btn_->Show(show_disconnect);
+    fit_status_label();
 
     if (current_state_ == A2dpService::State::Streaming) {
         stream_info_label_->SetLabel("");
@@ -601,6 +627,22 @@ void MainFrame::update_status_display() {
     }
 
     main_panel_->Layout();
+}
+
+/* Give the status label its text width, but no more than the status row
+ * leaves beside the disconnect button; the rest is ellipsized. */
+void MainFrame::fit_status_label() {
+    wxString label = status_label_->GetLabel();
+    int want = status_label_->GetTextExtent(label).x + 2;
+    int avail = status_panel_->GetClientSize().x - 8 - 12; /* label and stream info margins */
+    if (disconnect_btn_->IsShown())
+        avail -= disconnect_btn_->GetBestSize().x + 8;
+    int width = std::max(0, std::min(want, avail));
+    status_label_->SetMinSize(wxSize(width, -1));
+    if (width < want)
+        status_label_->SetToolTip(label);
+    else
+        status_label_->UnsetToolTip();
 }
 
 /* ======================================================================== */
@@ -815,10 +857,27 @@ void MainFrame::OnTrayBalloonClick(wxTaskBarIconEvent &) {
     pending_update_url_.clear();
 }
 
-void MainFrame::OnOpenAdvanced(wxCommandEvent &) {
-    AdvancedDialog dlg(this, &settings_);
-    if (dlg.ShowModal() == wxID_OK)
-        service_.set_media_payload_limit(settings_.max_media_payload);
+void MainFrame::OnOpenLinkQuality(wxCommandEvent &) {
+    LinkQualityDialog::ShowFor(this);
+}
+
+void MainFrame::OnDebugReceiver(wxCommandEvent &) {
+    ReceiverDialog::ShowFor(this);
+}
+
+void MainFrame::OnDebugConsole(wxCommandEvent &) {
+    DebugConsoleDialog::ShowFor(this, debug_log_.get());
+}
+
+void MainFrame::start_stream(const ConnectionProfile &profile) {
+    auto state = service_.state();
+    if (state == A2dpService::State::Streaming ||
+        state == A2dpService::State::Connecting) {
+        service_.stop_streaming();
+    }
+    selected_profile_ = -1;
+    service_.start_streaming(profile);
+    rebuild_profile_list();
 }
 
 void MainFrame::update_title() {

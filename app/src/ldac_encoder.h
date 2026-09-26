@@ -28,6 +28,7 @@ public:
                 uint32_t *out_frames) override;
 
     uint32_t get_pcm_frames_per_encode() const override;
+    uint32_t get_pcm_frames_per_codec_frame() const override;
 
     uint32_t get_bitrate_kbps() const override { return bitrate_kbps_; }
 
@@ -47,6 +48,7 @@ private:
     void *abr_handle_ = nullptr; /* HANDLE_LDAC_ABR */
     bool initialized_ = false;
     uint32_t bitrate_kbps_ = 0;
+    uint32_t sample_rate_ = 0;
     int sample_fmt_ = 2;         /* LDACBT_SMPL_FMT_S16=2, LDACBT_SMPL_FMT_S32=4 */
 };
 

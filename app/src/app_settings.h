@@ -35,8 +35,10 @@ public:
     /* Debug */
     bool debug_mode = false;
 
-    /* Advanced: max media packet size in bytes (media_payload_limit.h) */
-    uint16_t max_media_payload = MEDIA_PAYLOAD_LIMIT_DEFAULT;
+    /* Max media packet size from older versions, read but no longer saved:
+     * it is now per profile (ConnectionProfile::max_media_payload) and only
+     * seeds profiles saved without one. */
+    uint16_t legacy_max_media_payload = MEDIA_PAYLOAD_LIMIT_DEFAULT;
 
     /* Bluetooth adapter — Realtek chip type for firmware loading.
      * 0 = auto (works for VID=0x0BDA adapters).
@@ -47,6 +49,12 @@ public:
     /* Firmware stem for chips not in chip_db (pid==0 but firmware files present).
      * e.g. "rtl8761bu" → looks for rtl8761bu_fw.bin + rtl8761bu_config.bin. */
     std::string bt_chip_fw_stem;
+
+    /* AFH host channel classification: "auto", "off" or Wi-Fi channels "6,11" (afh.h) */
+    std::string afh = "auto";
+
+    /* Peer receiver test: measuring receiver (tools/linux_sink), host[:port] or "auto" */
+    std::string remote_sink;
 
     /* Window state */
     std::string last_profile;

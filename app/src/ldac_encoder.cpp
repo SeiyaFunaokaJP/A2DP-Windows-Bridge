@@ -79,6 +79,7 @@ bool LdacEncoder::init(uint16_t mtu, EncoderQuality quality,
     }
 
     initialized_ = true;
+    sample_rate_ = sample_rate;
     fprintf(stderr, "LdacEncoder: Initialized (rate=%u, ch=%u, quality=%d, mtu=%u, bitrate=%ukbps)\n",
            sample_rate, channels, eqmid, mtu, bitrate_kbps_);
     return true;
@@ -120,6 +121,11 @@ bool LdacEncoder::encode(const uint8_t *pcm_data, uint32_t pcm_bytes,
 uint32_t LdacEncoder::get_pcm_frames_per_encode() const {
     /* LDAC encodes 128 samples per frame at all sample rates */
     return 128;
+}
+
+uint32_t LdacEncoder::get_pcm_frames_per_codec_frame() const {
+    /* An LDAC frame holds 128 samples at 44.1/48 kHz and 256 at 88.2/96 kHz */
+    return (sample_rate_ > 48000) ? 256 : 128;
 }
 
 void LdacEncoder::shutdown() {

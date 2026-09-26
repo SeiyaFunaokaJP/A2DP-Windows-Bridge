@@ -108,6 +108,13 @@ bool track_locked(uint8_t packet_type, uint8_t in, const uint8_t *p, uint16_t le
         /* Disconnection Complete: status, handle, reason */
         if (len >= 6 && p[0] == 0x05 && p[2] == 0x00)
             forget_handle_locked(le16(p + 3) & 0x0FFF);
+        /* Connection Complete: status, handle, ... Wireshark tracks L2CAP
+         * channels (and so tells AVDTP media from signaling) only within a
+         * connection it has seen established. */
+        if (len >= 13 && p[0] == 0x03 && p[2] == 0x00) {
+            *handle_out = le16(p + 3) & 0x0FFF;
+            return true;
+        }
         return false;
     }
     if (packet_type != HCI_ACL_DATA_PACKET || len < 8) return false;

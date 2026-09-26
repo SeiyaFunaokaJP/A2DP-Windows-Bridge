@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(a2dpwb VERSION 1.0.7 LANGUAGES C CXX)
+project(a2dpwb VERSION 1.0.8 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -100,9 +100,12 @@ if(EXISTS ${BTSTACK_ROOT}/src/hci.c)
         ${BTSTACK_ROOT}/3rd-party/rijndael/rijndael.c
     )
 
-    # Chipset drivers (Realtek for TP-Link UB500 etc.)
+    # Chipset drivers (Realtek for TP-Link UB500 etc.; Broadcom PatchRAM and
+    # Intel bootloader firmware download are experimental)
     set(BTSTACK_CHIPSET_SRC
         ${BTSTACK_ROOT}/chipset/realtek/btstack_chipset_realtek.c
+        ${BTSTACK_ROOT}/chipset/bcm/btstack_chipset_bcm.c
+        ${BTSTACK_ROOT}/chipset/intel/btstack_chipset_intel_firmware.c
     )
 
     add_library(btstack STATIC
@@ -117,6 +120,10 @@ if(EXISTS ${BTSTACK_ROOT}/src/hci.c)
         ${BTSTACK_ROOT}/platform/windows
         ${BTSTACK_ROOT}/platform/posix
         ${BTSTACK_ROOT}/chipset/realtek
+        ${BTSTACK_ROOT}/chipset/bcm
+        ${BTSTACK_ROOT}/chipset/intel
+        # tinydir.h: btstack_chipset_bcm.c (HAVE_POSIX_FILE_IO) scans for .hcd
+        ${BTSTACK_ROOT}/3rd-party/tinydir
         ${BTSTACK_ROOT}/3rd-party/rijndael
         # yxml.h only: btstack.h -> classic/pbap_client.h includes it (no yxml.c)
         ${BTSTACK_ROOT}/3rd-party/yxml

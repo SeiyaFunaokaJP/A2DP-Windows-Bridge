@@ -31,10 +31,14 @@ extern "C" {
 #include "hci_dump_windows_stdout.h"
 #include "hci_transport_h4.h"
 #include "btstack_chipset_realtek.h"
+#include "btstack_chipset_bcm.h"
+#include "btstack_chipset_intel_firmware.h"
 }
 
+#include "afh.h"
 #include "bt_adapter_enum.h"
 #include "hci_capture.h"
+#include "link_stats.h"
 #include "btstack_uart_tcp_windows.h"
 
 /*
@@ -252,6 +256,7 @@ BtStackTransport::BtStackTransport() {
     stream_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     start_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     disconnect_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    acl_down_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     inquiry_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     cancel_event_ = CreateEventA(nullptr, TRUE, FALSE, nullptr);  /* manual-reset */
     auto *reg = new btstack_context_callback_registration_t();
@@ -266,6 +271,7 @@ BtStackTransport::~BtStackTransport() {
     CloseHandle(stream_event_);
     CloseHandle(start_event_);
     CloseHandle(disconnect_event_);
+    CloseHandle(acl_down_event_);
     CloseHandle(inquiry_event_);
     CloseHandle(cancel_event_);
     delete static_cast<btstack_context_callback_registration_t *>(media_trigger_reg_);
@@ -284,6 +290,7 @@ bool BtStackTransport::init(const char *usb_path) {
     }
     instance_ = this;
     running_.store(true);
+    init_failed_.store(false);
 
     /* Launch BTstack run loop in a dedicated thread */
     thread_handle_ = CreateThread(nullptr, 0,
@@ -304,12 +311,14 @@ bool BtStackTransport::init(const char *usb_path) {
                 fflush(stderr);
                 return true;
             }
+            if (init_failed_.load()) break;
             Sleep(poll_interval);
             elapsed += poll_interval;
         }
     }
 
-    fprintf(stderr, "BTstack: HCI initialization timed out\n");
+    fprintf(stderr, init_failed_.load() ? "BTstack: HCI initialization failed\n"
+                                        : "BTstack: HCI initialization timed out\n");
     shutdown();
     return false;
 }
@@ -359,11 +368,76 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     hci_transport_usb_add_device(0x8087, 0x0029);  /* Intel AX200/AX201 */
     hci_transport_usb_add_device(0x8087, 0x0032);  /* Intel AX210 */
 
-    if (!self->hci_tcp_.empty()) {
+    /* Resolve firmware directory: explicit setting → exe dir fallback.
+     * Stored in a member so the c_str() handed to BTstack survives
+     * subsequent chipset_init() calls (hci_power_control_on() invokes
+     * chipset_init again after hci_set_chipset). */
+    self->resolved_fw_dir_.clear();
+    if (!self->firmware_dir_.empty()) {
+        self->resolved_fw_dir_ = self->firmware_dir_;
+    } else {
+        char exe_dir[MAX_PATH];
+        if (GetModuleFileNameA(NULL, exe_dir, MAX_PATH)) {
+            char *last_sep = strrchr(exe_dir, '\\');
+            if (!last_sep) last_sep = strrchr(exe_dir, '/');
+            if (last_sep) *last_sep = '\0';
+            self->resolved_fw_dir_ = exe_dir;
+        }
+    }
+
+    /* Non-Realtek controllers (experimental): see which WinUSB adapters are
+     * present. Only an adapter bound to WinUSB passes the class check, so an
+     * Intel adapter still on the Intel driver does not count. */
+    self->usb_adapters_.clear();
+    self->intel_loader_ = false;
+    self->bcm_checked_ = false;
+    self->bcm_hcd_path_.clear();
+    if (self->hci_tcp_.empty() && self->product_id_ == 0) {
+        self->usb_adapters_ = BtAdapterEnumerator::enumerate();
+        for (const auto &a : self->usb_adapters_) {
+            if (a.vendor == BtChipVendor::Intel) self->intel_loader_ = true;
+            if (a.vendor == BtChipVendor::MediaTek || a.vendor == BtChipVendor::Qualcomm) {
+                fprintf(stderr, "BTstack: WARNING %s adapter %04X:%04X — firmware loading "
+                        "for this vendor is not implemented; it may not work\n",
+                        BtAdapterEnumerator::vendor_name(a.vendor), a.vid, a.pid);
+            }
+        }
+    }
+
+    if (self->intel_loader_) {
+        /* Intel controllers boot into a bootloader and need ibt-*.sfi/.ddc
+         * uploaded before regular HCI init. The loader sends HCI Reset first
+         * and finishes at once if the controller is already operational
+         * (e.g. the Intel driver loaded it before the switch to WinUSB). */
+        const std::string &fw_dir = self->resolved_fw_dir_;
+        btstack_chipset_intel_set_firmware_path(fw_dir.empty() ? "." : fw_dir.c_str());
+        fprintf(stderr, "BTstack: Intel adapter — checking bootloader firmware "
+                "(experimental), folder %s\n", fw_dir.c_str());
+        fflush(stderr);
+        btstack_chipset_intel_download_firmware(hci_transport_usb_instance(),
+                                                &BtStackTransport::intel_firmware_done);
+    } else {
+        self->setup_hci_and_power_on();
+    }
+
+    /* Run the event loop (blocks until shutdown) */
+    btstack_run_loop_execute();
+
+    /* Run loop has exited. Do NOT call hci_power_control/hci_close here —
+     * they need the run loop to process HCI commands and will block.
+     * Global cleanup (deinit) is handled by shutdown() after this thread exits. */
+    fprintf(stderr, "BTstack: run loop exited, thread finishing\n");
+    fflush(stderr);
+
+    return 0;
+}
+
+void BtStackTransport::setup_hci_and_power_on() {
+    if (!hci_tcp_.empty()) {
         /* Development / testing: H4 over TCP to a virtual controller (tools/emu) */
         static hci_transport_config_uart_t tcp_config = {
             HCI_TRANSPORT_CONFIG_UART, 115200, 0, 0, nullptr, BTSTACK_UART_PARITY_OFF};
-        tcp_config.device_name = self->hci_tcp_.c_str();
+        tcp_config.device_name = hci_tcp_.c_str();
         fprintf(stderr, "BTstack: H4 over TCP -> %s\n", tcp_config.device_name);
         hci_init(hci_transport_h4_instance_for_uart(btstack_uart_tcp_windows_instance()), &tcp_config);
     } else {
@@ -374,26 +448,9 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     /* Realtek chipset initialization — only when a Realtek PID is configured.
      * set_product_id() must be called before init() with the detected PID.
      * For non-Realtek adapters (PID==0), skip chipset-specific init. */
-    if (self->product_id_ != 0) {
-        fprintf(stderr, "BTstack: Realtek adapter PID=0x%04X\n", self->product_id_);
-        btstack_chipset_realtek_set_product_id(self->product_id_);
-
-        /* Resolve firmware directory: explicit setting → exe dir fallback.
-         * Stored in a member so the c_str() handed to BTstack survives
-         * subsequent chipset_init() calls (hci_power_control_on() invokes
-         * chipset_init again after hci_set_chipset). */
-        self->resolved_fw_dir_.clear();
-        if (!self->firmware_dir_.empty()) {
-            self->resolved_fw_dir_ = self->firmware_dir_;
-        } else {
-            char exe_dir[MAX_PATH];
-            if (GetModuleFileNameA(NULL, exe_dir, MAX_PATH)) {
-                char *last_sep = strrchr(exe_dir, '\\');
-                if (!last_sep) last_sep = strrchr(exe_dir, '/');
-                if (last_sep) *last_sep = '\0';
-                self->resolved_fw_dir_ = exe_dir;
-            }
-        }
+    if (product_id_ != 0) {
+        fprintf(stderr, "BTstack: Realtek adapter PID=0x%04X\n", product_id_);
+        btstack_chipset_realtek_set_product_id(product_id_);
 
         /* BTstack's chipset_init() unconditionally rebuilds firmware/config paths
          * as "${folder}/${patch_name}" when product_id is set, ignoring any
@@ -401,21 +458,21 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
          * (e.g. "rtl8761bu_fw"), but our distribution and linux-firmware use
          * .bin. Use folder-based lookup and materialise no-extension aliases
          * (hard-link, falling back to copy) from the .bin files we ship. */
-        const std::string &fw_dir = self->resolved_fw_dir_;
+        const std::string &fw_dir = resolved_fw_dir_;
         if (!fw_dir.empty()) {
             btstack_chipset_realtek_set_firmware_folder_path(fw_dir.c_str());
             btstack_chipset_realtek_set_config_folder_path(fw_dir.c_str());
             fprintf(stderr, "BTstack: Firmware search path: %s\n", fw_dir.c_str());
 
-            const char *fw_name = BtAdapterEnumerator::realtek_fw_name(self->product_id_);
-            const char *cfg_name = BtAdapterEnumerator::realtek_cfg_name(self->product_id_);
+            const char *fw_name = BtAdapterEnumerator::realtek_fw_name(product_id_);
+            const char *cfg_name = BtAdapterEnumerator::realtek_cfg_name(product_id_);
             std::string fw_stem, cfg_stem;
             if (fw_name && cfg_name) {
                 fw_stem = fw_name;
                 cfg_stem = cfg_name;
-            } else if (!self->fw_stem_.empty()) {
-                fw_stem = self->fw_stem_ + "_fw";
-                cfg_stem = self->fw_stem_ + "_config";
+            } else if (!fw_stem_.empty()) {
+                fw_stem = fw_stem_ + "_fw";
+                cfg_stem = fw_stem_ + "_config";
             }
 
             auto ensure_alias = [&fw_dir](const std::string &stem) {
@@ -445,15 +502,15 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
          * immediately, which uses the product ID and folder path set above. */
         hci_set_chipset(btstack_chipset_realtek_instance());
     } else {
-        fprintf(stderr, "BTstack: No Realtek PID configured, skipping chipset init\n");
+        fprintf(stderr, "BTstack: No Realtek PID configured, skipping Realtek chipset init\n");
     }
 
     fprintf(stderr, "BTstack: hci_init done, powering on...\n");
     fflush(stderr);
 
     /* Link key storage: file-backed if path was set, otherwise memory-only */
-    if (!self->link_key_dir_.empty()) {
-        btstack_link_key_db_file_set_path(self->link_key_dir_.c_str());
+    if (!link_key_dir_.empty()) {
+        btstack_link_key_db_file_set_path(link_key_dir_.c_str());
         hci_set_link_key_db(btstack_link_key_db_file_instance());
     } else {
         hci_set_link_key_db(btstack_link_key_db_memory_instance());
@@ -523,30 +580,116 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     sdp_register_service(sdp_avrcp_target_service_buffer);
 
     /* Register vendor codec stream endpoints */
-    self->register_codec_endpoints();
+    register_codec_endpoints();
 
     /* Enable custom pre-init so Realtek chipset driver can send
      * vendor commands before HCI Reset (Phase 1: read LMP subversion).
      * Without this, Phase 1 runs during Phase 2's slot and the
      * firmware download (Phase 2) never executes. */
-    if (self->product_id_ != 0) {
+    if (product_id_ != 0) {
         hci_enable_custom_pre_init();
     }
 
     /* Power on HCI — record start time to measure firmware loading */
-    self->init_start_tick_ = GetTickCount();
+    init_start_tick_ = GetTickCount();
     hci_power_control(HCI_POWER_ON);
+}
 
-    /* Run the event loop (blocks until shutdown) */
-    btstack_run_loop_execute();
+void BtStackTransport::intel_firmware_done(int result) {
+    BtStackTransport *self = instance_;
+    if (!self) return;
+    if (result != 0) {
+        fprintf(stderr, "BTstack: Intel firmware download failed (%d). Place the matching "
+                "ibt-*.sfi and ibt-*.ddc (linux-firmware intel/) in %s. Newer TLV-mode "
+                "controllers (AX210 and later) are not supported by BTstack yet.\n",
+                result, self->resolved_fw_dir_.c_str());
+        fflush(stderr);
+        /* hci_init() never ran, so close the adapter here or the next
+         * attempt cannot open it. */
+        hci_transport_usb_instance()->close();
+        self->init_failed_.store(true);
+        return;
+    }
+    fprintf(stderr, "BTstack: Intel controller operational\n");
+    fflush(stderr);
+    self->setup_hci_and_power_on();
+}
 
-    /* Run loop has exited. Do NOT call hci_power_control/hci_close here —
-     * they need the run loop to process HCI commands and will block.
-     * Global cleanup (deinit) is handled by shutdown() after this thread exits. */
-    fprintf(stderr, "BTstack: run loop exited, thread finishing\n");
+std::string BtStackTransport::find_bcm_hcd() const {
+    const std::string &dir = resolved_fw_dir_;
+    if (dir.empty()) return {};
+
+    std::vector<std::string> files;
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA((dir + "\\*.hcd").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return {};
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) files.push_back(fd.cFileName);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+
+    /* linux-firmware brcm/ naming: <chip>-<vid>-<pid>.hcd, e.g.
+     * BCM20702A1-0b05-17cb.hcd. Prefer the one for a present adapter. */
+    for (const auto &a : usb_adapters_) {
+        if (a.vendor != BtChipVendor::Broadcom) continue;
+        char tag[16];
+        snprintf(tag, sizeof(tag), "-%04x-%04x.", a.vid, a.pid);
+        for (const auto &f : files) {
+            std::string lower = f;
+            for (auto &c : lower) c = (char)tolower((unsigned char)c);
+            if (lower.find(tag) != std::string::npos) return dir + "\\" + f;
+        }
+    }
+    /* A lone .hcd is taken as meant for this adapter */
+    if (files.size() == 1) return dir + "\\" + files[0];
+    fprintf(stderr, "BTstack: %zu .hcd files but none named for the adapter's "
+            "VID:PID — skipping PatchRAM\n", files.size());
+    return {};
+}
+
+void BtStackTransport::on_local_version(const uint8_t *packet) {
+    /* Command Complete: [3..4]=opcode [5]=status [6]=hci_ver [7..8]=hci_rev
+     * [9]=lmp_ver [10..11]=manufacturer [12..13]=lmp_subver */
+    if (packet[5] != 0) return;
+    uint8_t  hci_ver = packet[6];
+    uint16_t manufacturer = little_endian_read_16(packet, 10);
+    uint16_t lmp_subver = little_endian_read_16(packet, 12);
+    const char *company = BtAdapterEnumerator::company_name(manufacturer);
+    fprintf(stderr, "BTstack: Controller %s (company 0x%04X), HCI version %u, "
+            "LMP subversion 0x%04X\n",
+            company ? company : "unknown", manufacturer, hci_ver, lmp_subver);
+
+    switch (manufacturer) {
+    case 0x0046:  /* MediaTek */
+    case 0x001D:  /* Qualcomm */
+    case 0x0045:  /* Atheros */
+        fprintf(stderr, "BTstack: WARNING this vendor needs a firmware download that is "
+                "not implemented; the controller runs its ROM firmware only\n");
+        break;
+    default:
+        break;
+    }
     fflush(stderr);
 
-    return 0;
+    /* Broadcom (hci.c maps Cypress/Infineon to it before we see the event).
+     * The PatchRAM goes in during custom init, which follows this command;
+     * after the upload BTstack resets without re-reading the version, so
+     * this runs once per power-on. */
+    if (bcm_checked_ || product_id_ != 0 || !hci_tcp_.empty()) return;
+    if (manufacturer != BLUETOOTH_COMPANY_ID_BROADCOM_CORPORATION) return;
+    if (hci_get_state() != HCI_STATE_INITIALIZING) return;
+    bcm_checked_ = true;
+
+    bcm_hcd_path_ = find_bcm_hcd();
+    if (bcm_hcd_path_.empty()) {
+        fprintf(stderr, "BTstack: Broadcom controller — no usable .hcd in %s, "
+                "running ROM firmware\n", resolved_fw_dir_.c_str());
+        return;
+    }
+    fprintf(stderr, "BTstack: Broadcom PatchRAM %s (experimental)\n", bcm_hcd_path_.c_str());
+    fflush(stderr);
+    btstack_chipset_bcm_set_hcd_file_path(bcm_hcd_path_.c_str());
+    hci_set_chipset(btstack_chipset_bcm_instance());
 }
 
 void BtStackTransport::register_codec_endpoints() {
@@ -704,6 +847,120 @@ void BtStackTransport::register_codec_endpoints() {
 /* Shutdown                                                                 */
 /* ======================================================================== */
 
+/* ---- AFH host channel classification / radio readings ---- */
+
+namespace {
+std::mutex g_afh_mutex;
+std::string g_afh_policy = "auto";
+std::atomic<int> g_afh_policy_version{0};
+
+/* Not in BTstack's command table: HCI Set AFH Host Channel Classification
+ * (10-byte map as 8 + 1 + 1 bytes) and HCI Read AFH Channel Map */
+const hci_cmd_t CMD_SET_AFH_HOST_CHANNEL_CLASSIFICATION = {0x0C3F, "D11"};
+const hci_cmd_t CMD_READ_AFH_CHANNEL_MAP = {0x1406, "H"};
+const uint16_t OPCODE_READ_RSSI = 0x1405;
+
+const uint32_t AFH_TICK_MS = 5000;
+const int AFH_CLASSIFY_EVERY_TICKS = 6;  /* re-survey the Wi-Fi every 30 s */
+} // namespace
+
+void BtStackTransport::set_afh_policy(const std::string &policy) {
+    std::lock_guard<std::mutex> lock(g_afh_mutex);
+    if (policy == g_afh_policy) return;
+    g_afh_policy = policy;
+    g_afh_policy_version.fetch_add(1);
+}
+
+std::string BtStackTransport::afh_policy() {
+    std::lock_guard<std::mutex> lock(g_afh_mutex);
+    return g_afh_policy;
+}
+
+void BtStackTransport::afh_start() {
+    if (!afh_timer_) afh_timer_ = new btstack_timer_source_t();
+    auto *t = static_cast<btstack_timer_source_t *>(afh_timer_);
+    afh_ticks_ = 0;
+    afh_policy_version_seen_ = -1;
+    afh_sent_ = false;
+    btstack_run_loop_set_timer_handler(t, [](btstack_timer_source_t *ts) {
+        auto *self = static_cast<BtStackTransport *>(btstack_run_loop_get_timer_context(ts));
+        self->afh_tick();
+        btstack_run_loop_set_timer(ts, AFH_TICK_MS);
+        btstack_run_loop_add_timer(ts);
+    });
+    btstack_run_loop_set_timer_context(t, this);
+    btstack_run_loop_set_timer(t, 200);
+    btstack_run_loop_add_timer(t);
+}
+
+void BtStackTransport::afh_stop() {
+    if (afh_timer_) btstack_run_loop_remove_timer(static_cast<btstack_timer_source_t *>(afh_timer_));
+    std::lock_guard<std::mutex> lock(link_radio_mutex());
+    link_radio_unlocked() = LinkRadio{};
+}
+
+void BtStackTransport::afh_tick() {
+    if (!hci_ready_.load()) return;
+    int version = g_afh_policy_version.load();
+    bool classify = version != afh_policy_version_seen_ || afh_ticks_ % AFH_CLASSIFY_EVERY_TICKS == 0;
+    afh_ticks_++;
+
+    /* 1. The classification, when it changes (one command per tick) */
+    if (classify) {
+        AfhClassification c = afh_classify(afh_policy());
+        {
+            std::lock_guard<std::mutex> lock(link_radio_mutex());
+            link_radio_unlocked().afh_usable = c.passed ? c.usable : -1;
+            link_radio_unlocked().afh_avoided = afh_describe(c.avoided_wifi);
+        }
+        /* Nothing to pass and nothing passed before: leave the controller alone */
+        bool changed = c.passed ? (!afh_sent_ || memcmp(c.map, afh_sent_map_, 10) != 0) : afh_sent_;
+        if (changed && hci_can_send_command_packet_now()) {
+            hci_send_cmd(&CMD_SET_AFH_HOST_CHANNEL_CLASSIFICATION, c.map, c.map[8], c.map[9]);
+            memcpy(afh_sent_map_, c.map, 10);
+            afh_sent_ = c.passed;
+            afh_policy_version_seen_ = version;
+            fprintf(stderr, "BTstack: AFH host classification: %s (%d of 79 channels usable)\n",
+                    c.passed ? ("avoid Wi-Fi " + afh_describe(c.avoided_wifi)).c_str() : "cleared", c.usable);
+            return;
+        }
+        if (!changed) afh_policy_version_seen_ = version;
+    }
+
+    /* 2. Readings of the current link: RSSI and AFH map in turn */
+    uint16_t handle = a2dp_con_handle_.load();
+    if (handle == 0xFFFF) {
+        std::lock_guard<std::mutex> lock(link_radio_mutex());
+        link_radio_unlocked().has_rssi = false;
+        link_radio_unlocked().afh_in_use = -1;
+        return;
+    }
+    if (!hci_can_send_command_packet_now()) return;
+    if (afh_ticks_ % 2)
+        hci_send_cmd(&hci_read_rssi, handle);
+    else
+        hci_send_cmd(&CMD_READ_AFH_CHANNEL_MAP, handle);
+}
+
+void BtStackTransport::on_radio_command_complete(uint8_t *packet, uint16_t size) {
+    uint16_t opcode = hci_event_command_complete_get_command_opcode(packet);
+    const uint8_t *rp = hci_event_command_complete_get_return_parameters(packet);
+    size_t rp_len = size >= 6 ? size - 6 : 0;
+    if (opcode == CMD_SET_AFH_HOST_CHANNEL_CLASSIFICATION.opcode) {
+        if (rp_len >= 1 && rp[0] != ERROR_CODE_SUCCESS)
+            fprintf(stderr, "BTstack: AFH host classification refused (0x%02x)\n", rp[0]);
+    } else if (opcode == OPCODE_READ_RSSI && rp_len >= 4) {
+        std::lock_guard<std::mutex> lock(link_radio_mutex());
+        link_radio_unlocked().has_rssi = rp[0] == ERROR_CODE_SUCCESS;
+        link_radio_unlocked().rssi = static_cast<int8_t>(rp[3]);
+    } else if (opcode == CMD_READ_AFH_CHANNEL_MAP.opcode && rp_len >= 14) {
+        /* status, handle, mode, map[10] */
+        std::lock_guard<std::mutex> lock(link_radio_mutex());
+        link_radio_unlocked().afh_in_use = (rp[0] == ERROR_CODE_SUCCESS && rp[3] == 1) ? afh_count(rp + 4)
+                                         : (rp[0] == ERROR_CODE_SUCCESS ? AFH_CHANNELS : -1);
+    }
+}
+
 void BtStackTransport::shutdown() {
     if (!running_.load()) return;
 
@@ -839,6 +1096,9 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
     /* Reset remote capabilities */
     remote_caps_ = {};
     disconnect_occurred_.store(false);
+    last_connect_failure_.store(ConnectFailure::None);
+    target_acl_handle_.store(0xFFFF);
+    target_acl_down_reason_.store(0);
 
     /* Clear stale events from any previous attempt */
     ResetEvent(static_cast<HANDLE>(cancel_event_));
@@ -849,6 +1109,7 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
 
     fprintf(stderr, "BTstack: Connecting to %02X:%02X:%02X:%02X:%02X:%02X...\n",
            addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+    release_leftover_avdtp();
 
     /* Dispatch a2dp_source_establish_stream to BTstack thread */
     RunLoopRequest req = {};
@@ -867,21 +1128,144 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
 
     if (req.u8_result != ERROR_CODE_SUCCESS) {
         fprintf(stderr, "BTstack: a2dp_source_establish_stream failed (0x%02x)\n", req.u8_result);
+        last_connect_failure_.store(ConnectFailure::Other);
         return false;
     }
 
     /* Wait for stream establishment (includes signaling connection + SEP discovery) */
     if (!wait_for_event(connect_event_, CONNECT_TIMEOUT_MS)) {
         fprintf(stderr, "BTstack: Connection timed out\n");
+        /* An answer that never came (e.g. a lost SDP response) */
+        last_connect_failure_.store(ConnectFailure::LinkLost);
+        classify_link_lost();
         abort_pending_connection();
         return false;
     }
 
     if (!connect_result_.load()) {
+        classify_link_lost();
         abort_pending_connection();
         return false;
     }
     return true;
+}
+
+void BtStackTransport::classify_link_lost() {
+    if (last_connect_failure_.load() != ConnectFailure::LinkLost) return;
+    /* L2CAP reports a link that went down as "baseband disconnect" before the
+     * HCI Disconnection Complete reaches us: wait for it to learn the reason */
+    uint8_t reason = target_acl_down_reason_.load();
+    for (int i = 0; reason == 0 && target_acl_handle_.load() != 0xFFFF && i < 20; i++) {
+        Sleep(50);
+        reason = target_acl_down_reason_.load();
+    }
+    /* The device ended the link itself: not the radio */
+    if (reason == ERROR_CODE_REMOTE_USER_TERMINATED_CONNECTION ||
+        reason == ERROR_CODE_REMOTE_DEVICE_TERMINATED_CONNECTION_DUE_TO_LOW_RESOURCES ||
+        reason == ERROR_CODE_REMOTE_DEVICE_TERMINATED_CONNECTION_DUE_TO_POWER_OFF) {
+        fprintf(stderr, "BTstack: the device ended the link itself (0x%02x)\n", reason);
+        last_connect_failure_.store(ConnectFailure::Refused);
+    }
+}
+
+bool BtStackTransport::connect_a2dp_retrying(const uint8_t remote_addr[6],
+                                             const std::function<bool()> &cancelled,
+                                             const std::function<void(int, int)> &on_retry) {
+    bool repaired = false;
+    for (int attempt = 1;; attempt++) {
+        if (connect_a2dp(remote_addr)) return true;
+        if (cancelled && cancelled()) return false;
+        ConnectFailure f = last_connect_failure_.load();
+        if (f == ConnectFailure::AuthFailed && !repaired) {
+            /* Stale link key: forget it and pair again, once */
+            repaired = true;
+            fprintf(stderr, "BTstack: authentication failed, dropping the stored link key and pairing again\n");
+            RunLoopRequest req = {};
+            req.done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+            memcpy(req.addr, remote_addr_be_, 6);
+            req.reg.callback = [](void *ctx) {
+                auto *r = static_cast<RunLoopRequest *>(ctx);
+                gap_drop_link_key_for_bd_addr(r->addr);
+                SetEvent(r->done_event);
+            };
+            req.reg.context = &req;
+            btstack_run_loop_execute_on_main_thread(&req.reg);
+            WaitForSingleObject(req.done_event, 2000);
+            CloseHandle(req.done_event);
+            if (on_retry) on_retry(attempt + 1, CONNECT_ATTEMPTS);
+            drop_acl_link(5000);
+            continue;
+        }
+        bool transient = f == ConnectFailure::NoAnswer || f == ConnectFailure::LinkLost;
+        if (!transient || attempt >= CONNECT_ATTEMPTS) return false;
+        fprintf(stderr, "BTstack: connection attempt %d/%d failed (%s), trying again\n", attempt,
+                CONNECT_ATTEMPTS, f == ConnectFailure::NoAnswer ? "no answer" : "link lost");
+        if (on_retry) on_retry(attempt + 1, CONNECT_ATTEMPTS);
+        drop_acl_link(5000);
+        /* Give both controllers a moment before paging again */
+        for (int i = 0; i < 10; i++) {
+            if (cancelled && cancelled()) return false;
+            Sleep(100);
+        }
+    }
+}
+
+void BtStackTransport::release_leftover_avdtp() {
+    ResetEvent(static_cast<HANDLE>(disconnect_event_));
+    RunLoopRequest req = {};
+    req.done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    memcpy(req.addr, remote_addr_be_, 6);
+    req.reg.callback = [](void *ctx) {
+        auto *r = static_cast<RunLoopRequest *>(ctx);
+        r->int_result = 0;
+        avdtp_connection_t *c = avdtp_get_connection_for_bd_addr(r->addr);
+        if (c != nullptr) {
+            r->int_result = (c->state == AVDTP_SIGNALING_CONNECTION_OPENED ||
+                             c->state == AVDTP_SIGNALING_CONNECTION_W4_L2CAP_DISCONNECTED) ? 1 : 2;
+            r->config_a2dp_cid = c->avdtp_cid;
+            a2dp_source_disconnect(c->avdtp_cid);
+        }
+        SetEvent(r->done_event);
+    };
+    req.reg.context = &req;
+    btstack_run_loop_execute_on_main_thread(&req.reg);
+    WaitForSingleObject(req.done_event, 2000);
+    CloseHandle(req.done_event);
+    if (req.int_result == 0) return;
+    fprintf(stderr, "BTstack: closing a leftover AVDTP connection (cid=0x%04x) first\n", req.config_a2dp_cid);
+    /* An open signaling channel is released asynchronously; one that never
+     * opened is freed at once */
+    if (req.int_result == 1 &&
+        WaitForSingleObject(static_cast<HANDLE>(disconnect_event_), DISCONNECT_TIMEOUT_MS) != WAIT_OBJECT_0)
+        fprintf(stderr, "BTstack: leftover AVDTP release timed out\n");
+    connected_.store(false);
+    streaming_.store(false);
+    disconnect_occurred_.store(false);
+    ResetEvent(static_cast<HANDLE>(connect_event_));
+    ResetEvent(static_cast<HANDLE>(stream_event_));
+}
+
+void BtStackTransport::drop_acl_link(uint32_t timeout_ms) {
+    if (!has_remote_addr_ || !hci_ready_.load()) return;
+    ResetEvent(static_cast<HANDLE>(acl_down_event_));
+    RunLoopRequest req = {};
+    req.done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    memcpy(req.addr, remote_addr_be_, 6);
+    req.reg.callback = [](void *ctx) {
+        auto *r = static_cast<RunLoopRequest *>(ctx);
+        hci_connection_t *conn = hci_connection_for_bd_addr_and_type(r->addr, BD_ADDR_TYPE_ACL);
+        r->int_result = 0;
+        if (conn && gap_disconnect(conn->con_handle) == ERROR_CODE_SUCCESS) r->int_result = 1;
+        SetEvent(r->done_event);
+    };
+    req.reg.context = &req;
+    btstack_run_loop_execute_on_main_thread(&req.reg);
+    WaitForSingleObject(req.done_event, 2000);
+    CloseHandle(req.done_event);
+    if (req.int_result != 1) return;
+    fprintf(stderr, "BTstack: dropping the ACL link before trying again\n");
+    if (WaitForSingleObject(static_cast<HANDLE>(acl_down_event_), timeout_ms) != WAIT_OBJECT_0)
+        fprintf(stderr, "BTstack: no Disconnection Complete within %u ms\n", timeout_ms);
 }
 
 uint32_t BtStackTransport::pick_aptx_sample_rate(AudioCodec codec, uint32_t wanted) const {
@@ -1211,6 +1595,7 @@ bool BtStackTransport::reconnect() {
     connected_.store(false);
     streaming_.store(false);
     media_queue_count_.store(0);
+    link_stats().queue_depth.store(0, std::memory_order_relaxed);
     media_queue_head_ = 0;
     media_queue_tail_ = 0;
     a2dp_cid_ = 0;
@@ -1237,6 +1622,7 @@ bool BtStackTransport::reconnect() {
     fprintf(stderr, "BTstack: Reconnecting to %02X:%02X:%02X:%02X:%02X:%02X...\n",
            remote_addr_be_[0], remote_addr_be_[1], remote_addr_be_[2],
            remote_addr_be_[3], remote_addr_be_[4], remote_addr_be_[5]);
+    release_leftover_avdtp();
 
     /* Dispatch a2dp_source_establish_stream to BTstack thread */
     RunLoopRequest req = {};
@@ -1363,6 +1749,7 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
         /* Drop if queue is full */
         if (media_queue_count_.load() >= MEDIA_QUEUE_CAPACITY) {
             send_failure_count_.fetch_add(1);
+            link_stats().queue_drops.fetch_add(1, std::memory_order_relaxed);
             return false;
         }
 
@@ -1376,6 +1763,7 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
         if (size + header > sizeof(slot.data)) {
             /* get_media_mtu() keeps encoders below this; report if it happens anyway */
             send_failure_count_.fetch_add(1);
+            link_stats().send_errors.fetch_add(1, std::memory_order_relaxed);
             if (!oversize_logged_.exchange(true))
                 fprintf(stderr, "BTstack: media payload of %u bytes exceeds the %u-byte queue slot, dropped\n",
                         size + header, (unsigned)sizeof(slot.data));
@@ -1395,7 +1783,8 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
          * codec_start_encode() writes RTP only for aptX HD) */
         slot.no_rtp = (codec == AudioCodec::Aptx || codec == AudioCodec::AptxLL);
         media_queue_head_ = (media_queue_head_ + 1) % MEDIA_QUEUE_CAPACITY;
-        media_queue_count_.fetch_add(1);
+        int depth = media_queue_count_.fetch_add(1) + 1;
+        link_stats().queue_depth.store(static_cast<uint32_t>(depth), std::memory_order_relaxed);
     }
     /* --- send_mutex released --- */
 
@@ -1470,7 +1859,9 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
             if (state == HCI_STATE_WORKING) {
                 uint32_t elapsed = GetTickCount() - init_start_tick_;
                 fprintf(stderr, "BTstack: HCI ready (took %lu ms)\n", (unsigned long)elapsed);
-                if (elapsed < 500) {
+                if (product_id_ == 0) {
+                    /* Not Realtek: nothing to infer from the timing */
+                } else if (elapsed < 500) {
                     fprintf(stderr, "BTstack: WARNING — HCI init < 500ms, "
                             "Realtek firmware likely NOT loaded\n");
                 } else {
@@ -1479,17 +1870,27 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                 }
                 fflush(stderr);
                 hci_ready_.store(true);
+                afh_start();
                 init_result_.store(true);
                 signal_event(init_event_, true);
             } else if (state == HCI_STATE_OFF) {
                 fprintf(stderr, "BTstack: HCI state OFF\n");
                 fflush(stderr);
+                afh_stop();
                 hci_ready_.store(false);
                 /* Signal init_event_ so shutdown() can proceed */
                 SetEvent(init_event_);
             }
             break;
         }
+
+        case HCI_EVENT_COMMAND_COMPLETE:
+            if (size >= 14 && hci_event_command_complete_get_command_opcode(packet) ==
+                                  HCI_OPCODE_HCI_READ_LOCAL_VERSION_INFORMATION) {
+                on_local_version(packet);
+            }
+            on_radio_command_complete(packet, size);
+            break;
 
         case HCI_EVENT_USER_CONFIRMATION_REQUEST:
             /* Auto-accept pairing (Just Works) */
@@ -1524,6 +1925,10 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                 fprintf(stderr, "BTstack: HCI ACL connection established to "
                        "%02X:%02X:%02X:%02X:%02X:%02X\n",
                        addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+                if (has_remote_addr_ && bd_addr_cmp(addr, remote_addr_be_) == 0) {
+                    target_acl_down_reason_.store(0);
+                    target_acl_handle_.store(hci_event_connection_complete_get_connection_handle(packet));
+                }
             }
             break;
         }
@@ -1569,11 +1974,23 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
             uint16_t handle = hci_event_disconnection_complete_get_connection_handle(packet);
             fprintf(stderr, "BTstack: HCI disconnection (handle=0x%04x, reason=0x%02x: %s)\n",
                    handle, reason, hci_error_string(reason));
+            SetEvent(static_cast<HANDLE>(acl_down_event_));
+            if (handle == target_acl_handle_.load()) {
+                target_acl_down_reason_.store(reason);
+                target_acl_handle_.store(0xFFFF);
+            }
+            uint16_t a2dp_handle = a2dp_con_handle_.load();
+            if (a2dp_handle != 0xFFFF && handle != a2dp_handle) {
+                fprintf(stderr, "BTstack: not the A2DP link (handle=0x%04x), stream unaffected\n", a2dp_handle);
+                break;
+            }
+            a2dp_con_handle_.store(0xFFFF);
             /* Mark connection as lost — main loop will handle reconnect */
             if (connected_.load() || streaming_.load()) {
                 streaming_.store(false);
                 connected_.store(false);
                 media_queue_count_.store(0);
+                link_stats().queue_depth.store(0, std::memory_order_relaxed);
                 disconnect_occurred_.store(true);
                 fprintf(stderr, "BTstack: Connection lost — ready for reconnect\n");
             }
@@ -1613,10 +2030,26 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
         a2dp_cid_ = established_cid;
         if (status != ERROR_CODE_SUCCESS) {
             fprintf(stderr, "BTstack: Signaling connection failed (0x%02x)\n", status);
+            /* Page timeout: no answer. Connection timeout / L2CAP RTX timeout /
+             * unspecified (a connection BTstack gave up on): the link came up
+             * and then carried nothing. */
+            last_connect_failure_.store(
+                status == ERROR_CODE_PAGE_TIMEOUT ? ConnectFailure::NoAnswer :
+                (status == L2CAP_CONNECTION_RESPONSE_RESULT_REFUSED_SECURITY ||
+                 status == L2CAP_CONNECTION_PIN_OR_LINK_KEY_MISSING ||
+                 status == ERROR_CODE_AUTHENTICATION_FAILURE ||
+                 status == ERROR_CODE_PIN_OR_KEY_MISSING) ? ConnectFailure::AuthFailed :
+                (status == ERROR_CODE_CONNECTION_TIMEOUT ||
+                 status == L2CAP_CONNECTION_RESPONSE_RESULT_RTX_TIMEOUT ||
+                 status == L2CAP_CONNECTION_BASEBAND_DISCONNECT ||
+                 status == ERROR_CODE_UNSPECIFIED_ERROR) ? ConnectFailure::LinkLost
+                                                         : ConnectFailure::Other);
             connect_result_.store(false);
             signal_event(connect_event_, false);
         } else {
-            fprintf(stderr, "BTstack: Signaling connection established (cid=0x%04x)\n", a2dp_cid_);
+            a2dp_con_handle_.store(a2dp_subevent_signaling_connection_established_get_con_handle(packet));
+            fprintf(stderr, "BTstack: Signaling connection established (cid=0x%04x, handle=0x%04x)\n",
+                    a2dp_cid_, a2dp_con_handle_.load());
             /* Don't signal yet — wait for capability discovery to complete */
         }
         break;
@@ -1789,6 +2222,15 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
 
     case A2DP_SUBEVENT_STREAM_STARTED: {
         fprintf(stderr, "BTstack: Streaming started\n");
+        {
+            LinkStats &ls = link_stats();
+            ls.start_packets.store(ls.packets_sent.load());
+            ls.start_bytes.store(ls.bytes_sent.load());
+            ls.start_dropped.store(ls.queue_drops.load() + ls.send_errors.load());
+            ls.start_capture_frames.store(ls.capture_frames.load());
+            ls.start_capture_dropped.store(ls.capture_dropped_frames.load());
+            ls.stream_starts.fetch_add(1);
+        }
         streaming_.store(true);
         start_result_.store(true);
         signal_event(start_event_, true);
@@ -1810,7 +2252,8 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
                 if (media_queue_count_.load() > 0) {
                     pkt = media_queue_[media_queue_tail_];
                     media_queue_tail_ = (media_queue_tail_ + 1) % MEDIA_QUEUE_CAPACITY;
-                    media_queue_count_.fetch_sub(1);
+                    int depth = media_queue_count_.fetch_sub(1) - 1;
+                    link_stats().queue_depth.store(static_cast<uint32_t>(depth), std::memory_order_relaxed);
                     have_packet = true;
                 }
             }
@@ -1827,11 +2270,18 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
                               a2dp_cid_, local_seid_, 0 /* marker */,
                               pkt.timestamp,
                               pkt.data, (uint16_t)pkt.size);
+                    LinkStats &stats = link_stats();
                     if (status != ERROR_CODE_SUCCESS) {
                         send_failure_count_.fetch_add(1);
+                        stats.send_errors.fetch_add(1, std::memory_order_relaxed);
+                    } else {
+                        stats.packets_sent.fetch_add(1, std::memory_order_relaxed);
+                        stats.bytes_sent.fetch_add(pkt.size + (pkt.no_rtp ? 0 : RTP_HEADER_SIZE),
+                                                   std::memory_order_relaxed);
                     }
                 } else {
                     send_failure_count_.fetch_add(1);
+                    link_stats().send_errors.fetch_add(1, std::memory_order_relaxed);
                 }
             }
             /* Chain next CAN_SEND_NOW if queue still has data.
@@ -1881,6 +2331,7 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
         connected_.store(false);
         streaming_.store(false);
         media_queue_count_.store(0);
+        link_stats().queue_depth.store(0, std::memory_order_relaxed);
         a2dp_cid_ = 0;
         if (avrcp_cid_) {
             avrcp_disconnect(avrcp_cid_);

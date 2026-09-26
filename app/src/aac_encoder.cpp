@@ -56,6 +56,20 @@ bool AacEncoder::init(uint16_t mtu, EncoderQuality quality,
 
     bitrate_ = quality_to_bitrate(quality);
 
+    /* Every AAC frame goes out whole in one media packet (no fragmentation),
+     * so cap the bitrate and the peak bitrate so a frame fits the media
+     * payload (mtu = remote L2CAP MTU minus the RTP header), as PipeWire does.
+     * Without the cap 256 kbps frames average 683 bytes: more than the 660
+     * bytes a 672-byte L2CAP MTU leaves (BlueZ sinks, some headphones), and
+     * every packet was dropped as oversized. */
+    uint32_t max_bitrate = static_cast<uint32_t>(
+        static_cast<uint64_t>(mtu) * 8u * sample_rate / 1024u);
+    if (bitrate_ > max_bitrate) {
+        fprintf(stderr, "AacEncoder: bitrate limited to %u bps by the %u-byte media payload\n",
+                max_bitrate, mtu);
+        bitrate_ = max_bitrate;
+    }
+
     /* Open fdk-aac encoder */
     HANDLE_AACENCODER enc = nullptr;
     AACENC_ERROR err = aacEncOpen(&enc, 0, static_cast<UINT>(channels));
@@ -69,6 +83,7 @@ bool AacEncoder::init(uint16_t mtu, EncoderQuality quality,
     aacEncoder_SetParam(enc, AACENC_SAMPLERATE, sample_rate);
     aacEncoder_SetParam(enc, AACENC_CHANNELMODE, (channels == 1) ? MODE_1 : MODE_2);
     aacEncoder_SetParam(enc, AACENC_BITRATE, bitrate_);
+    aacEncoder_SetParam(enc, AACENC_PEAK_BITRATE, max_bitrate);
     aacEncoder_SetParam(enc, AACENC_TRANSMUX, TT_MP4_LATM_MCP1);
     aacEncoder_SetParam(enc, AACENC_AFTERBURNER, 1);  /* Higher quality */
 
