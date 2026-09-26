@@ -15,7 +15,10 @@
 #include <wx/taskbar.h>
 
 #include <atomic>
+#include <memory>
 #include <thread>
+
+class DebugLogModel;
 
 /* Custom event IDs */
 enum {
@@ -39,6 +42,7 @@ enum {
     ID_DEBUG_CAPTURE_START,
     ID_DEBUG_CAPTURE_STOP,
     ID_DEBUG_OPEN_LOG,
+    ID_DEBUG_CONSOLE,
 
     ID_REPORT_BUG,
     ID_TRAY_DISCONNECT,
@@ -108,6 +112,7 @@ private:
     void OnDebugCaptureStart(wxCommandEvent &evt);
     void OnDebugCaptureStop(wxCommandEvent &evt);
     void OnDebugOpenLog(wxCommandEvent &evt);
+    void OnDebugConsole(wxCommandEvent &evt);
     void update_title();
 
     void OnOpenFirmware(wxCommandEvent &evt);
@@ -129,6 +134,7 @@ private:
     ProfileManager profile_mgr_;
     AppSettings settings_;
     bool debug_active_ = false;  /* debug mode as of startup (shows the Debug menu) */
+    std::unique_ptr<DebugLogModel> debug_log_; /* follows debug.log (debug mode only) */
     int selected_profile_ = -1;
 
     /* ---- Tray ---- */

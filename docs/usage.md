@@ -157,6 +157,8 @@ aptX, aptX HD and aptX LL support only 44.1 kHz and 48 kHz. A2DPWB picks one of 
 2. Connect to the headphones.
 3. Open `debug.log` in the config folder (`%APPDATA%\A2DPWB`). In CLI mode the same lines are written to standard error.
 
+In the GUI, **Debug > Debug Console...** (Ctrl+Shift+D) shows the same log live. Its **Connection Flow** list marks each stage of the latest connection attempt (adapter init, ACL / AVDTP connect, capability discovery, codec selection, WASAPI, stream configuration, encoder, stream start, audio sending, disconnects / reconnects) as OK, Warning or Failed; double-click a step to jump to the log line behind it. The log below can be filtered by level and text. **Copy Diagnostics** puts version, OS, adapter, profile, the flow, warnings / errors and the recent log on the clipboard, ready to paste into a bug report (Bluetooth addresses are masked to their vendor part by default).
+
 The capability lines show exactly which codecs the headphones list:
 
 ```

@@ -7,6 +7,8 @@
 #include "wx_profile_dialog.h"
 #include "wx_settings_dialog.h"
 #include "wx_link_quality_dialog.h"
+#include "wx_debug_console_dialog.h"
+#include "debug_log_model.h"
 #include "wx_about_dialog.h"
 #include "wx_firmware_dialog.h"
 #include "wx_zadig_dialog.h"
@@ -64,6 +66,8 @@ MainFrame::MainFrame()
     service_.set_debug_mode(settings_.debug_mode);
     /* Debug mode changes apply after a restart; the Debug menu follows the boot state */
     debug_active_ = settings_.debug_mode;
+    if (debug_active_)
+        debug_log_ = std::make_unique<DebugLogModel>(service_.get_config_dir() + "\\debug.log");
     service_.check_firmware_present();
     /* Set icon */
     SetIcon(wxIcon(wxT("APP_ICON"), wxBITMAP_TYPE_ICO_RESOURCE));
@@ -214,6 +218,8 @@ void MainFrame::create_menu_bar() {
     /* Debug menu: only when the app was started in debug mode */
     if (debug_active_) {
         auto *debug_menu = new wxMenu();
+        debug_menu->Append(ID_DEBUG_CONSOLE, wxString::FromUTF8(L("debug.console")) + "\tCtrl+Shift+D");
+        debug_menu->AppendSeparator();
         debug_menu->Append(ID_DEBUG_CAPTURE_START, wxString::FromUTF8(L("debug.capture_start")));
         debug_menu->Append(ID_DEBUG_CAPTURE_STOP, wxString::FromUTF8(L("debug.capture_stop")));
         debug_menu->AppendSeparator();
@@ -224,6 +230,7 @@ void MainFrame::create_menu_bar() {
         Bind(wxEVT_MENU, &MainFrame::OnDebugCaptureStart, this, ID_DEBUG_CAPTURE_START);
         Bind(wxEVT_MENU, &MainFrame::OnDebugCaptureStop, this, ID_DEBUG_CAPTURE_STOP);
         Bind(wxEVT_MENU, &MainFrame::OnDebugOpenLog, this, ID_DEBUG_OPEN_LOG);
+        Bind(wxEVT_MENU, &MainFrame::OnDebugConsole, this, ID_DEBUG_CONSOLE);
         Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent &e) { e.Enable(!hci_capture::active()); },
              ID_DEBUG_CAPTURE_START);
         Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent &e) { e.Enable(hci_capture::active()); },
@@ -846,6 +853,10 @@ void MainFrame::OnTrayBalloonClick(wxTaskBarIconEvent &) {
 
 void MainFrame::OnOpenLinkQuality(wxCommandEvent &) {
     LinkQualityDialog::ShowFor(this);
+}
+
+void MainFrame::OnDebugConsole(wxCommandEvent &) {
+    DebugConsoleDialog::ShowFor(this, debug_log_.get());
 }
 
 void MainFrame::update_title() {
