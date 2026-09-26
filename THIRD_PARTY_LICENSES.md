@@ -424,20 +424,30 @@ notices) apply, in the same way as for `A2DPWB.exe`.
 
 ---
 
-## 13. Test environment: tools/emu (Python)
+## 13. Test environment: tools/emu and tools/linux_sink (Python)
 
-`tools/emu/` runs A2DPWB against a virtual Bluetooth sink (see
-[docs/building.md](docs/building.md)). It is test tooling only:
+`tools/emu/` runs A2DPWB against a virtual Bluetooth sink, and
+`tools/linux_sink/` is a measuring A2DP receiver run on a second PC (see
+[docs/building.md](docs/building.md) and [docs/usage.md](docs/usage.md)).
+Both are test tooling only:
 
-- **Nothing from it is linked into or shipped with `A2DPWB.exe`** or the
-  release zip. A2DPWB only talks to the virtual controller over a local TCP
-  socket (development CLI option `--hci-tcp`).
+- **Nothing from them is linked into or shipped with `A2DPWB.exe`** or the
+  release zip. A2DPWB only talks to them over the network: to the virtual
+  controller over TCP (development CLI option `--hci-tcp`) and to the
+  receiver's statistics over TCP / UDP (JSON).
+- `tools/linux_sink/requirements.txt` installs the same pinned set into
+  `tools/linux_sink/.venv` (git-ignored; verified: `pip freeze` of it equals
+  the pinned set, Bumble 0.0.234 on Python 3.14 / Linux). On Linux,
+  `a2dpwb_sink.py` also loads the distribution's libsbc, libfreeaptx and
+  libfdk-aac at run time if installed (ctypes, see below); they are not part
+  of this repository.
 - The packages are **not included in this repository**. `setup_env.py`
   downloads them from PyPI into `tools/emu/.venv` (git-ignored), at the exact
   versions pinned in `tools/emu/requirements.txt`. Their licenses apply to
   that local environment.
-- The repository's own tools/emu scripts are MIT (§11). `emu_sink.py`
-  subclasses Bumble's `Controller` but does not copy Bumble code.
+- The repository's own tools/emu and tools/linux_sink scripts are MIT
+  (§11). `emu_sink.py` and `emu_vhci.py` subclass Bumble's `Controller`, and
+  `a2dpwb_sink.py` uses Bumble's API, without copying Bumble code.
 
 This is the complete set that `setup_env.py` installs (`pip freeze` of
 `tools/emu/.venv` equals `requirements.txt`). It follows Bumble 0.0.234's own
@@ -445,12 +455,12 @@ This is the complete set that `setup_env.py` installs (`pip freeze` of
 
 | Package | Pinned version | License (SPDX) | Determined from | Required by |
 |---------|----------------|----------------|-----------------|-------------|
-| [Bumble](https://github.com/google/bumble) | 0.0.234 | Apache-2.0 | metadata `License-Expression`; Apache License 2.0 text in the wheel; sources state "Copyright Google LLC" | tools/emu (virtual controllers, link, A2DP sink) |
-| cffi | 2.1.1 | MIT-0 | metadata `License-Expression` | cryptography |
+| [Bumble](https://github.com/google/bumble) | 0.0.234 | Apache-2.0 | metadata `License-Expression`; Apache License 2.0 text in the wheel; sources state "Copyright Google LLC" | tools/emu (virtual controllers, link, A2DP sink), tools/linux_sink (host stack, A2DP sink) |
+| cffi | 2.1.1 | MIT-0; its extension module statically contains **libffi** (MIT) \*\*\* | metadata `License-Expression`; libffi symbols defined in `_cffi_backend` (Linux `nm -D`: `T ffi_...`; Windows: libffi strings) | cryptography |
 | click | 8.5.0 | BSD-3-Clause | metadata `License-Expression` | Bumble |
-| cryptography | 50.0.1 | Apache-2.0 OR BSD-3-Clause | metadata `License-Expression` | Bumble |
+| cryptography | 50.0.1 | Apache-2.0 OR BSD-3-Clause; its Rust extension statically contains **OpenSSL 4.0.2** (Apache-2.0, as all OpenSSL since 3.0) \*\*\* | metadata `License-Expression`; OpenSSL version string in `_rust.pyd` (Windows) and `_rust.abi3.so` (Linux) | Bumble |
 | importlib_resources | 7.1.0 | Apache-2.0 | metadata `License-Expression` | libusb-package |
-| libusb-package | 1.0.26.4 | Apache-2.0 (Python code); the bundled `libusb-1.0.dll` is LGPL-2.1 per the package ("licensed with LGPLv2.1"; upstream libusb sources say version 2.1 or later) | metadata `License: Apache 2.0`; Apache LICENSE file in the wheel; "License" section of the package description | Bumble (USB transport, not used by tools/emu) |
+| libusb-package | 1.0.26.4 | Apache-2.0 (Python code); the bundled `libusb-1.0.dll` (Windows) / `libusb-1.0.so` (Linux) is LGPL-2.1 per the package ("licensed with LGPLv2.1"; upstream libusb sources say version 2.1 or later) | metadata `License: Apache 2.0`; Apache LICENSE file in the wheel; "License" section of the package description | Bumble (USB transport, not used by tools/emu) |
 | libusb1 | 3.4.0 | LGPL-2.1-or-later | metadata `License-Expression`; COPYING / COPYING.LESSER in the wheel | Bumble (USB transport, not used by tools/emu) |
 | platformdirs | 4.11.12 | MIT | metadata `License-Expression` | Bumble |
 | prompt_toolkit | 3.0.53 | BSD-3-Clause \* | LICENSE file in the wheel (metadata: classifier "BSD License" only) | Bumble |
@@ -470,6 +480,25 @@ conditions including "Neither the name ..."; MIT: the MIT permission notice).
 \*\* Not normalized to an SPDX identifier: the metadata only says "BSD" and
 the wheel contains no license text. The upstream pySerial repository's
 LICENSE.txt is BSD-3-Clause.
+
+\*\*\* Statically linked into the wheel's binary by its upstream build; the
+wheel ships no license text of the bundled library. Checked in both the
+Windows (tools/emu) and the Linux (tools/linux_sink) wheels of the pinned
+versions.
+
+#### Libraries tools/linux_sink loads at run time
+
+`a2dpwb_sink.py` decodes the received audio with the Linux distribution's
+shared libraries when they are installed (ctypes); without them it only
+checks frame headers. They are neither in this repository nor shipped with
+A2DPWB; the script works with whichever version the distribution provides.
+Licenses were verified for these versions (Ubuntu 26.04):
+
+| Library | Version checked | License (SPDX) | Determined from | Used for |
+|---------|-----------------|----------------|-----------------|----------|
+| libsbc (BlueZ SBC) | 2.1 (package 2.1-1build1, `libsbc.so.1.3.1`) | LGPL-2.1-or-later | `SPDX-License-Identifier` in all 17 library sources of the upstream sbc-2.1 tarball (kernel.org), COPYING.LIB. The Debian copyright's `Files: *` GPL-2+ covers the command line tools (sbcdec, sbcenc, ...), not the library | SBC decoding |
+| libfreeaptx | 0.2.2 (package 0.2.2-1build1, `libfreeaptx.so.0.2.2`) | LGPL-2.1-or-later | headers of freeaptx.c / freeaptx.h in the upstream 0.2.2 tag; Debian copyright `Files: *` LGPL-2.1+ | aptX, aptX HD, aptX LL decoding |
+| libfdk-aac | 2.0.2 (package 2.0.2-3~ubuntu5, multiverse; not installed on the test PC) | Fraunhofer FDK AAC license (LicenseRef-FDK-AAC) | Debian copyright `Files: *` License: Fraunhofer-FDK-AAC-for-Android (read from the downloaded package) | AAC decoding (optional) |
 
 When changing `requirements.txt`, re-check and update this table.
 

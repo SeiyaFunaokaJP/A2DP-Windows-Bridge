@@ -1,0 +1,4 @@
+# tools/linux_sink Python environment: Bumble at the versions pinned for tools/emu.
+# Test / measurement tooling only: nothing here is linked into or shipped with A2DPWB
+# (licenses: THIRD_PARTY_LICENSES.md section 13).
+-r ../emu/requirements.txt

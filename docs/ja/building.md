@@ -61,7 +61,8 @@ A2DP-Windows-Bridge/
 │   └── json/               nlohmann/json（ヘッダーオンリー）
 ├── tools/
 │   ├── a2dp_decode/        a2dpwb_decode: HCI キャプチャ（.pklg）のメディアストリームを検証・デコード
-│   └── emu/                仮想 Bluetooth シンクを相手にしたエンドツーエンドテスト（Python）
+│   ├── emu/                仮想 Bluetooth シンクを相手にしたエンドツーエンドテスト（Python）
+│   └── linux_sink/         a2dpwb_sink: Linux で動く測定用 A2DP 受信機（Python、Bumble）
 ├── CMakeLists.txt          ルートビルド設定
 └── build.bat               ビルドヘルパースクリプト
 ```
@@ -111,6 +112,8 @@ python tools/emu/run_test.py      # Release ビルド後に実行。全コーデ
 
 {: .note }
 仮想リンクには電波がありません。エンコード、パケット化、AVDTP / L2CAP のシグナリング、独立した Bluetooth スタック（Bumble）との相互接続性は検証できますが、電波の状態、実機でのタイミング、実際のヘッドホンでの再生は検証できません。Bumble 関連のパッケージはテスト用で、A2DPWB には含まれません（THIRD_PARTY_LICENSES.md §13 を参照）。
+
+`emu_vhci.py` は同じことを Linux の Bluetooth スタックに対して行います。Linux 上で `/dev/vhci` を通して仮想アダプターを作るので、測定用受信機 `tools/linux_sink` がそれを実機のアダプターと同じように使い、実機なしでテストできます。メディアパケットを欠落させたり一時的に止めたりもできます（`--drop`、`--stall`）。`tools/linux_sink/README.md` を参照してください。
 
 ## 依存関係
 

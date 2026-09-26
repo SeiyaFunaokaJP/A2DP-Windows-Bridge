@@ -79,3 +79,6 @@ AGENTS.md
 # tools/emu (virtual Bluetooth test): Python environment and test output
 tools/emu/.venv/
 tools/emu/out/
+# tools/linux_sink (measuring receiver): Python environment and pairing keys
+tools/linux_sink/.venv/
+tools/linux_sink/a2dpwb_sink_keys.json
