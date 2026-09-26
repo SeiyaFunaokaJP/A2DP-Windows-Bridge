@@ -576,6 +576,10 @@ static int run_streaming(const uint8_t target_addr[6],
         case BtStackTransport::ConnectFailure::LinkLost:
             fprintf(stderr, "The link came up but then carried nothing (radio conditions?).\n");
             break;
+        case BtStackTransport::ConnectFailure::Refused:
+            fprintf(stderr, "The device answered but ended the connection itself: it does not accept\n"
+                            "a connection now (turning off, charging, or connected to another device?).\n");
+            break;
         case BtStackTransport::ConnectFailure::AuthFailed:
             fprintf(stderr, "Authentication failed, also after pairing again: the device refused pairing.\n");
             break;

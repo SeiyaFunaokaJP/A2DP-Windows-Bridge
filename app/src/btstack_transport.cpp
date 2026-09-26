@@ -1097,6 +1097,8 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
     remote_caps_ = {};
     disconnect_occurred_.store(false);
     last_connect_failure_.store(ConnectFailure::None);
+    target_acl_handle_.store(0xFFFF);
+    target_acl_down_reason_.store(0);
 
     /* Clear stale events from any previous attempt */
     ResetEvent(static_cast<HANDLE>(cancel_event_));
@@ -1135,15 +1137,35 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
         fprintf(stderr, "BTstack: Connection timed out\n");
         /* An answer that never came (e.g. a lost SDP response) */
         last_connect_failure_.store(ConnectFailure::LinkLost);
+        classify_link_lost();
         abort_pending_connection();
         return false;
     }
 
     if (!connect_result_.load()) {
+        classify_link_lost();
         abort_pending_connection();
         return false;
     }
     return true;
+}
+
+void BtStackTransport::classify_link_lost() {
+    if (last_connect_failure_.load() != ConnectFailure::LinkLost) return;
+    /* L2CAP reports a link that went down as "baseband disconnect" before the
+     * HCI Disconnection Complete reaches us: wait for it to learn the reason */
+    uint8_t reason = target_acl_down_reason_.load();
+    for (int i = 0; reason == 0 && target_acl_handle_.load() != 0xFFFF && i < 20; i++) {
+        Sleep(50);
+        reason = target_acl_down_reason_.load();
+    }
+    /* The device ended the link itself: not the radio */
+    if (reason == ERROR_CODE_REMOTE_USER_TERMINATED_CONNECTION ||
+        reason == ERROR_CODE_REMOTE_DEVICE_TERMINATED_CONNECTION_DUE_TO_LOW_RESOURCES ||
+        reason == ERROR_CODE_REMOTE_DEVICE_TERMINATED_CONNECTION_DUE_TO_POWER_OFF) {
+        fprintf(stderr, "BTstack: the device ended the link itself (0x%02x)\n", reason);
+        last_connect_failure_.store(ConnectFailure::Refused);
+    }
 }
 
 bool BtStackTransport::connect_a2dp_retrying(const uint8_t remote_addr[6],
@@ -1903,6 +1925,10 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                 fprintf(stderr, "BTstack: HCI ACL connection established to "
                        "%02X:%02X:%02X:%02X:%02X:%02X\n",
                        addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+                if (has_remote_addr_ && bd_addr_cmp(addr, remote_addr_be_) == 0) {
+                    target_acl_down_reason_.store(0);
+                    target_acl_handle_.store(hci_event_connection_complete_get_connection_handle(packet));
+                }
             }
             break;
         }
@@ -1949,6 +1975,10 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
             fprintf(stderr, "BTstack: HCI disconnection (handle=0x%04x, reason=0x%02x: %s)\n",
                    handle, reason, hci_error_string(reason));
             SetEvent(static_cast<HANDLE>(acl_down_event_));
+            if (handle == target_acl_handle_.load()) {
+                target_acl_down_reason_.store(reason);
+                target_acl_handle_.store(0xFFFF);
+            }
             uint16_t a2dp_handle = a2dp_con_handle_.load();
             if (a2dp_handle != 0xFFFF && handle != a2dp_handle) {
                 fprintf(stderr, "BTstack: not the A2DP link (handle=0x%04x), stream unaffected\n", a2dp_handle);

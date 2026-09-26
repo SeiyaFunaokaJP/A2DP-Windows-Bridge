@@ -113,6 +113,8 @@ public:
         None,
         NoAnswer,   /* page timeout: the device did not answer */
         LinkLost,   /* link up, then no answer on it (L2CAP RTX / connection timeout) */
+        Refused,    /* link up, then ended by the device itself (e.g. it is turning
+                     * off or does not accept connections now) */
         AuthFailed, /* authentication / security refused, e.g. a stale link key */
         Other       /* anything else, e.g. no A2DP service */
     };
@@ -300,6 +302,8 @@ private:
 
     /* Tear down a half-open AVDTP connection after a failed/timed-out connect */
     void abort_pending_connection();
+    /* LinkLost -> Refused when the device ended the link itself */
+    void classify_link_lost();
 
     /* Thread handle */
     void *thread_handle_ = nullptr;
@@ -322,6 +326,11 @@ private:
      * moment later, must not end this stream. */
     std::atomic<uint16_t> a2dp_con_handle_{0xFFFF};
     std::atomic<ConnectFailure> last_connect_failure_{ConnectFailure::None};
+    /* ACL link to the device being connected (0xFFFF = none) and the reason
+     * it went down (0 = still up / none): tells a device that ends the link
+     * itself from a link lost on the radio */
+    std::atomic<uint16_t> target_acl_handle_{0xFFFF};
+    std::atomic<uint8_t> target_acl_down_reason_{0};
 
     /* AFH classification and radio readings, on the BTstack thread */
     void afh_start();

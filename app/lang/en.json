@@ -85,6 +85,7 @@
   "status.connecting_retry": "Connection failed, trying again (%d/%d)...",
   "error.connect_no_answer": "The device did not answer. Check that it is on, connectable (pairing mode for a new device) and within range.",
   "error.connect_link_lost": "The connection came up but then carried nothing, which points to radio conditions. Try again, or change the position of the adapter and the device.",
+  "error.connect_refused": "The device answered but then ended the connection itself. It does not accept a connection right now (for example it is turning off, charging, or connected to another device). Check the device and try again.",
   "error.connect_auth_failed": "Authentication failed, also after pairing again. Put the device into pairing mode, or remove the pairing on the device, and try again.",
   "error.pairing_hint": "Failed to connect. Ensure device is in pairing mode.",
   "error.aac_unavailable": "AAC encoder not available (fdk-aac not built)",

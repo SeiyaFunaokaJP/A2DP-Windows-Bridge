@@ -975,6 +975,9 @@ void A2dpService::streaming_thread_func_inner() {
         case BtStackTransport::ConnectFailure::LinkLost:
             notify_state(State::Error, L("error.connect_link_lost"));
             break;
+        case BtStackTransport::ConnectFailure::Refused:
+            notify_state(State::Error, L("error.connect_refused"));
+            break;
         case BtStackTransport::ConnectFailure::AuthFailed:
             notify_state(State::Error, L("error.connect_auth_failed"));
             break;
