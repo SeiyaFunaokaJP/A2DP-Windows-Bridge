@@ -144,20 +144,28 @@ static bool parse_vid_pid(const char *device_path, uint16_t &vid, uint16_t &pid)
     return true;
 }
 
-/* Bluetooth class verification via WinUSB (0xE0/0x01/0x01) */
-static bool is_bluetooth_class(const char *device_path)
+/* Bluetooth class verification via WinUSB (0xE0/0x01/0x01).
+ * `why` gets the step that ruled the device out, for the enumeration log. */
+static bool is_bluetooth_class(const char *device_path, std::string &why)
 {
+    char buf[96];
     HANDLE dev = CreateFileA(device_path,
         GENERIC_WRITE | GENERIC_READ,
         FILE_SHARE_WRITE | FILE_SHARE_READ,
         nullptr, OPEN_EXISTING,
         FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED,
         nullptr);
-    if (dev == INVALID_HANDLE_VALUE) return false;
+    if (dev == INVALID_HANDLE_VALUE) {
+        snprintf(buf, sizeof(buf), "open failed (error %lu)", GetLastError());
+        why = buf;
+        return false;
+    }
 
     WINUSB_INTERFACE_HANDLE usb_handle = nullptr;
     BOOL ok = WinUsb_Initialize(dev, &usb_handle);
     if (!ok) {
+        snprintf(buf, sizeof(buf), "WinUsb_Initialize failed (error %lu)", GetLastError());
+        why = buf;
         CloseHandle(dev);
         return false;
     }
@@ -168,10 +176,43 @@ static bool is_bluetooth_class(const char *device_path)
                  desc.bInterfaceClass == 0xE0 &&
                  desc.bInterfaceSubClass == 0x01 &&
                  desc.bInterfaceProtocol == 0x01;
+    if (!ok) {
+        snprintf(buf, sizeof(buf), "interface query failed (error %lu)", GetLastError());
+        why = buf;
+    } else if (!is_bt) {
+        snprintf(buf, sizeof(buf), "interface 0 is class %02X/%02X/%02X, not Bluetooth E0/01/01",
+                 desc.bInterfaceClass, desc.bInterfaceSubClass, desc.bInterfaceProtocol);
+        why = buf;
+    }
 
     WinUsb_Free(usb_handle);
     CloseHandle(dev);
     return is_bt;
+}
+
+/* A SetupAPI string property of the device node ("" if absent) */
+static std::string device_string_property(HDEVINFO dev_info, SP_DEVINFO_DATA &dev_data,
+                                          DWORD prop)
+{
+    char buf[256] = {};
+    if (!SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, prop, nullptr,
+                                           (BYTE *)buf, sizeof(buf) - 1, nullptr))
+        return {};
+    return buf;
+}
+
+/* True if a compatible ID names the Bluetooth class (E0/01/01), whatever
+ * driver currently owns the device */
+static bool has_bluetooth_compat_id(HDEVINFO dev_info, SP_DEVINFO_DATA &dev_data)
+{
+    char buf[1024] = {};
+    if (!SetupDiGetDeviceRegistryPropertyA(dev_info, &dev_data, SPDRP_COMPATIBLEIDS, nullptr,
+                                           (BYTE *)buf, sizeof(buf) - 2, nullptr))
+        return false;
+    for (const char *id = buf; *id; id += strlen(id) + 1) {
+        if (_strnicmp(id, "USB\\Class_E0&SubClass_01&Prot_01", 32) == 0) return true;
+    }
+    return false;
 }
 
 static std::string build_display_name(uint16_t vid, uint16_t pid, uint16_t realtek_pid,
@@ -363,7 +404,11 @@ std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
     HDEVINFO dev_info = SetupDiGetClassDevsA(
         &GUID_DEVINTERFACE_USB_DEVICE, nullptr, nullptr,
         DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
-    if (dev_info == INVALID_HANDLE_VALUE) return result;
+    if (dev_info == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "BtAdapterEnumerator: SetupDiGetClassDevs failed (error %lu)\n",
+                GetLastError());
+        return result;
+    }
 
     SP_DEVICE_INTERFACE_DATA intf_data = {};
     intf_data.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
@@ -410,11 +455,45 @@ std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
          * First check Realtek tables (BTstack + OEM mapping).
          * Fall back to WinUSB BT class check for non-Realtek adapters. */
         bool is_bt = false;
+        std::string why;
         uint16_t realtek_pid = resolve_realtek_pid(vid, pid);
         if (realtek_pid != 0) {
             is_bt = true;
         } else {
-            is_bt = is_bluetooth_class(path);
+            is_bt = is_bluetooth_class(path, why);
+        }
+
+        /* Log every device that looks like Bluetooth, taken or not, so a
+         * report of "my adapter is not listed" shows which driver owns it
+         * and where the check failed. Other USB devices stay quiet. A
+         * Bluetooth-only VID counts too: a vendor-class adapter such as the
+         * BT400 (FF/01/01) under no driver matches neither class test.
+         * Realtek's VID is left out (card readers, Wi-Fi), as are hubs. */
+        std::string service = device_string_property(dev_info, dev_data, SPDRP_SERVICE);
+        std::string setup_class = device_string_property(dev_info, dev_data, SPDRP_CLASS);
+        bool winusb = _stricmp(service.c_str(), "WinUSB") == 0;
+        BtChipVendor vid_vendor = vendor_for_usb(vid, pid, realtek_pid);
+        bool bt_vid = vid_vendor != BtChipVendor::Unknown &&
+                      vid_vendor != BtChipVendor::Realtek &&
+                      _strnicmp(service.c_str(), "usbhub", 6) != 0;
+        if (is_bt || winusb || bt_vid || has_bluetooth_compat_id(dev_info, dev_data) ||
+            _stricmp(setup_class.c_str(), "Bluetooth") == 0) {
+            fprintf(stderr, "BtAdapterEnumerator: USB %04X:%04X driver=%s class=%s -> %s%s%s\n",
+                    vid, pid, service.empty() ? "(none)" : service.c_str(),
+                    setup_class.empty() ? "(none)" : setup_class.c_str(),
+                    is_bt ? "adapter" : "skipped", is_bt || why.empty() ? "" : ": ",
+                    is_bt ? "" : why.c_str());
+            if (service.empty())
+                fprintf(stderr, "  no driver installed: install WinUSB with Zadig\n");
+            else if (_stricmp(service.c_str(), "usbccgp") == 0)
+                fprintf(stderr, "  composite device: WinUSB must replace the whole device "
+                        "in Zadig, not one of its interfaces\n");
+            else if (!winusb)
+                fprintf(stderr, "  not bound to WinUSB: usable only once Zadig replaces "
+                        "this driver with WinUSB\n");
+            else if (why.rfind("open failed (error 5)", 0) == 0)
+                fprintf(stderr, "  WinUSB allows one user at a time: close any other "
+                        "A2DPWB or tool holding the adapter\n");
         }
 
         if (is_bt) {
