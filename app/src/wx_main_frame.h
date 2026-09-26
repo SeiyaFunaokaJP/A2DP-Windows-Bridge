@@ -42,6 +42,7 @@ enum {
     ID_DEBUG_CAPTURE_START,
     ID_DEBUG_CAPTURE_STOP,
     ID_DEBUG_OPEN_LOG,
+    ID_DEBUG_RECEIVER,
     ID_DEBUG_CONSOLE,
 
     ID_REPORT_BUG,
@@ -78,7 +79,12 @@ public:
     AppSettings &settings() { return settings_; }
     int selected_profile() const { return selected_profile_; }
     A2dpService::State state() const { return current_state_; }
+    const std::string &status_text() const { return current_status_text_; }
     const A2dpService::StreamInfo &stream_info() const { return current_stream_info_; }
+
+    /* Streams with a profile that is not in the list (the receiver
+     * measurement), replacing the current stream like a profile click */
+    void start_stream(const ConnectionProfile &profile);
 
 private:
     /* ---- Initialization ---- */
@@ -112,6 +118,7 @@ private:
     void OnDebugCaptureStart(wxCommandEvent &evt);
     void OnDebugCaptureStop(wxCommandEvent &evt);
     void OnDebugOpenLog(wxCommandEvent &evt);
+    void OnDebugReceiver(wxCommandEvent &evt);
     void OnDebugConsole(wxCommandEvent &evt);
     void update_title();
 

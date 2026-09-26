@@ -47,6 +47,7 @@ add_executable(A2DPWB WIN32
     src/bt_adapter_enum.cpp
     src/btstack_transport.cpp
     src/hci_capture.cpp
+    src/remote_sink_client.cpp
     src/test_tone.cpp
     src/afh.cpp
     src/btstack_uart_tcp_windows.c
@@ -58,6 +59,7 @@ add_executable(A2DPWB WIN32
     src/wx_profile_dialog.cpp
     src/wx_settings_dialog.cpp
     src/wx_link_quality_dialog.cpp
+    src/wx_receiver_dialog.cpp
     src/wx_debug_console_dialog.cpp
     src/debug_log_model.cpp
     src/wx_about_dialog.cpp
@@ -131,6 +133,7 @@ target_link_libraries(A2DPWB PRIVATE
     shcore         # SetProcessDpiAwareness (high-DPI)
     winmm          # timeBeginPeriod/timeEndPeriod (timer resolution)
     winhttp        # Update check (GitHub Releases API)
+    iphlpapi       # GetAdaptersAddresses (finding the measuring receiver)
     wlanapi        # Wi-Fi survey for AFH host channel classification
 )
 

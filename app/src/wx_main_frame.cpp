@@ -7,6 +7,7 @@
 #include "wx_profile_dialog.h"
 #include "wx_settings_dialog.h"
 #include "wx_link_quality_dialog.h"
+#include "wx_receiver_dialog.h"
 #include "btstack_transport.h"
 #include "wx_debug_console_dialog.h"
 #include "debug_log_model.h"
@@ -225,6 +226,8 @@ void MainFrame::create_menu_bar() {
         debug_menu->Append(ID_DEBUG_CAPTURE_START, wxString::FromUTF8(L("debug.capture_start")));
         debug_menu->Append(ID_DEBUG_CAPTURE_STOP, wxString::FromUTF8(L("debug.capture_stop")));
         debug_menu->AppendSeparator();
+        debug_menu->Append(ID_DEBUG_RECEIVER, wxString::FromUTF8(L("debug.receiver")));
+        debug_menu->AppendSeparator();
         debug_menu->Append(ID_DEBUG_OPEN_LOG, wxString::FromUTF8(L("debug.open_log")));
         debug_menu->Append(ID_OPEN_CONFIG, wxString::FromUTF8(L("menu.file.open_config")));
         menu_bar->Append(debug_menu, wxString::FromUTF8(L("menu.debug")));
@@ -232,6 +235,7 @@ void MainFrame::create_menu_bar() {
         Bind(wxEVT_MENU, &MainFrame::OnDebugCaptureStart, this, ID_DEBUG_CAPTURE_START);
         Bind(wxEVT_MENU, &MainFrame::OnDebugCaptureStop, this, ID_DEBUG_CAPTURE_STOP);
         Bind(wxEVT_MENU, &MainFrame::OnDebugOpenLog, this, ID_DEBUG_OPEN_LOG);
+        Bind(wxEVT_MENU, &MainFrame::OnDebugReceiver, this, ID_DEBUG_RECEIVER);
         Bind(wxEVT_MENU, &MainFrame::OnDebugConsole, this, ID_DEBUG_CONSOLE);
         Bind(wxEVT_UPDATE_UI, [](wxUpdateUIEvent &e) { e.Enable(!hci_capture::active()); },
              ID_DEBUG_CAPTURE_START);
@@ -857,8 +861,23 @@ void MainFrame::OnOpenLinkQuality(wxCommandEvent &) {
     LinkQualityDialog::ShowFor(this);
 }
 
+void MainFrame::OnDebugReceiver(wxCommandEvent &) {
+    ReceiverDialog::ShowFor(this);
+}
+
 void MainFrame::OnDebugConsole(wxCommandEvent &) {
     DebugConsoleDialog::ShowFor(this, debug_log_.get());
+}
+
+void MainFrame::start_stream(const ConnectionProfile &profile) {
+    auto state = service_.state();
+    if (state == A2dpService::State::Streaming ||
+        state == A2dpService::State::Connecting) {
+        service_.stop_streaming();
+    }
+    selected_profile_ = -1;
+    service_.start_streaming(profile);
+    rebuild_profile_list();
 }
 
 void MainFrame::update_title() {

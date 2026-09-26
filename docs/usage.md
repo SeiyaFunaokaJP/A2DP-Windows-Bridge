@@ -202,6 +202,20 @@ For every stream it also reports RTP sequence gaps, how fast the RTP timestamp a
 {: .note }
 This shows what A2DPWB sent and that it is valid for the negotiated codec. Since a sink can only decode the codec that was negotiated, correct audio from the headphones together with a clean report is strong evidence that the codec is really in use.
 
+### Peer Receiver Test (tools/linux_sink) {#receiver}
+
+The link quality window shows what A2DPWB sends. To see what actually arrives, run `tools/linux_sink/a2dpwb_sink.py` on a second PC with Linux. It drives that PC's ordinary Bluetooth adapter - the built-in one is fine - directly (Bumble over the HCI user channel) as an A2DP sink for every codec including LDAC, measures every media packet that arrives and serves the statistics over the network:
+
+```bash
+sudo apt install python3-venv libsbc1 libfreeaptx0
+cd tools/linux_sink && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+sudo .venv/bin/python a2dpwb_sink.py
+```
+
+In debug mode, **Debug > Peer Receiver Test...** finds the receiver on the local network by itself. **Start** streams a steady test tone (or the system audio) to its Bluetooth adapter with the chosen codec, quality, sample rate and bit depth - no profile or pairing step needed - and the window shows what was sent next to what arrived: bitrate, lost and late packets (RTP sequence numbers), jitter and gaps, dropouts and skips of a modelled playout buffer, stream / decode errors and the RSSI at the receiver (relative to its golden receive range: 0 = fine, negative = too weak). Each step (find receiver, statistics, receiver settings, Bluetooth connection, codec, audio arrives) is shown as OK / NG, with a log that can be copied. In CLI mode, `--remote-sink auto` does the same: it finds the receiver, streams to it unless `-d` names another device, and prints its statistics every 5 seconds and at the end.
+
+The receiver's adapter is not available to its own Bluetooth stack while the tool runs. Discovery uses a UDP broadcast on port 51201, so both PCs must be on the same network segment (otherwise enter the address). See `tools/linux_sink/README.md` for all options and the statistics protocol.
+
 ## Troubleshooting
 
 ### Pairing Problems After Updating

@@ -53,6 +53,9 @@ public:
     /* AFH host channel classification: "auto", "off" or Wi-Fi channels "6,11" (afh.h) */
     std::string afh = "auto";
 
+    /* Peer receiver test: measuring receiver (tools/linux_sink), host[:port] or "auto" */
+    std::string remote_sink;
+
     /* Window state */
     std::string last_profile;
 

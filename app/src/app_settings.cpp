@@ -57,6 +57,9 @@ void AppSettings::load()
     bt_chip_pid = static_cast<uint16_t>(j.value("bt_chip_pid", static_cast<int>(bt_chip_pid)));
     bt_chip_fw_stem = j.value("bt_chip_fw_stem", bt_chip_fw_stem);
 
+    /* Peer receiver test */
+    remote_sink = j.value("remote_sink", remote_sink);
+
     /* AFH host channel classification */
     afh = j.value("afh", afh);
 
@@ -87,6 +90,9 @@ void AppSettings::save() const
     /* Bluetooth adapter */
     j["bt_chip_pid"] = static_cast<int>(bt_chip_pid);
     j["bt_chip_fw_stem"] = bt_chip_fw_stem;
+
+    /* Peer receiver test */
+    j["remote_sink"] = remote_sink;
 
     /* AFH host channel classification */
     j["afh"] = afh;
