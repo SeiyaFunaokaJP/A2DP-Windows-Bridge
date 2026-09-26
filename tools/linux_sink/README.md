@@ -42,23 +42,27 @@ measured and only the header checks are done.
 
 ## Setup (once)
 
-Ubuntu / Debian, Python 3.11 or later:
+Copy this folder to the Linux PC (it needs nothing else from the
+repository). Ubuntu / Debian, Python 3.11 or later:
 
 ```bash
-sudo apt install python3-venv libsbc1 libfreeaptx0
-cd tools/linux_sink
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+sh setup.sh
 ```
 
-`requirements.txt` installs Bumble and its dependencies at the versions pinned
-for `tools/emu`.
+It installs what is missing of `python3-venv` and the decoder libraries
+(`libsbc1`, `libfreeaptx0`, `libfdk-aac2` when the distribution has it; asks
+for the sudo password), creates `.venv` and installs `requirements.txt`:
+Bumble and its dependencies at the versions pinned for `tools/emu`. Safe to
+run again. On other distributions install venv support and, optionally, the
+libraries yourself; the script does the rest.
 
 ## Running
 
 ```bash
-sudo .venv/bin/python a2dpwb_sink.py
+sudo sh run.sh [options]
 ```
+
+(`run.sh` starts `.venv/bin/python a2dpwb_sink.py` with the options given.)
 
 Root is needed for the HCI user channel. The tool is discoverable as
 "A2DPWB Sink (&lt;host name&gt;)" and accepts pairing (Just Works); keys are kept
@@ -149,7 +153,7 @@ A2DPWB reaches over TCP; a2dpwb_sink then takes that adapter like a real one:
 
 ```bash
 sudo .venv/bin/python ../emu/emu_vhci.py [--drop 2] [--stall 400/6]   # Linux, terminal 1
-sudo .venv/bin/python a2dpwb_sink.py                                # Linux, terminal 2
+sudo sh run.sh                                                      # Linux, terminal 2
 A2DPWB.exe --cli --hci-tcp <linux>:9001 -c ldac --test-tone --duration 20 --remote-sink auto
 ```
 
