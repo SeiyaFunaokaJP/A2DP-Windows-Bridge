@@ -84,6 +84,7 @@ private:
     void apply_theme();
     void rebuild_profile_list();
     void update_status_display();
+    void fit_status_label();
 
     /* ---- Event handlers ---- */
     void OnStatusUpdate(wxThreadEvent &evt);
@@ -137,6 +138,7 @@ private:
 
     /* ---- UI elements ---- */
     wxPanel       *main_panel_ = nullptr;
+    wxPanel       *status_panel_ = nullptr;
     wxStaticText  *status_label_ = nullptr;
     wxStaticText  *stream_info_label_ = nullptr;
     wxButton      *disconnect_btn_ = nullptr;

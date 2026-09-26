@@ -24,6 +24,8 @@
 #include <wx/datetime.h>
 #include <shellapi.h>
 
+#include <algorithm>
+
 #ifndef APP_VERSION
 #define APP_VERSION "1.0.1"
 #endif
@@ -289,10 +291,14 @@ void MainFrame::create_ui() {
     vbox->Add(firmware_bar_, 0, wxEXPAND);
 
     /* ---- Status section ---- */
-    auto *status_panel = new wxPanel(main_panel_);
+    status_panel_ = new wxPanel(main_panel_);
+    auto *status_panel = status_panel_;
     auto *status_sizer = new wxBoxSizer(wxHORIZONTAL);
 
-    status_label_ = new wxStaticText(status_panel, wxID_ANY, wxString::FromUTF8(L("status.idle")));
+    /* Width set by fit_status_label() so a long device name is ellipsized
+     * instead of pushing the disconnect button out of the window */
+    status_label_ = new wxStaticText(status_panel, wxID_ANY, wxString::FromUTF8(L("status.idle")),
+        wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END | wxST_NO_AUTORESIZE);
     auto font = status_label_->GetFont();
     font.SetPointSize(font.GetPointSize() + 2);
     font.SetWeight(wxFONTWEIGHT_BOLD);
@@ -303,6 +309,7 @@ void MainFrame::create_ui() {
         wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END);
     stream_info_label_->SetForegroundColour(TM().get(ThemeColor::TextStreamInfo));
     stream_info_label_->SetCursor(wxCursor(wxCURSOR_HAND));
+    stream_info_label_->SetMinSize(wxSize(0, -1)); /* ellipsized; never widens the row */
     stream_info_label_->Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent &) {
         if (current_state_ == A2dpService::State::Error && !current_status_text_.empty()) {
             if (wxTheClipboard->Open()) {
@@ -322,6 +329,10 @@ void MainFrame::create_ui() {
     Bind(wxEVT_BUTTON, &MainFrame::OnDisconnect, this, ID_DISCONNECT);
 
     status_panel->SetSizer(status_sizer);
+    status_panel->Bind(wxEVT_SIZE, [this](wxSizeEvent &evt) {
+        fit_status_label();
+        evt.Skip(); /* default handler lays the row out */
+    });
     vbox->Add(status_panel, 0, wxEXPAND | wxTOP | wxBOTTOM, 6);
 
     /* Separator */
@@ -570,6 +581,7 @@ void MainFrame::update_status_display() {
                             current_state_ == A2dpService::State::Connecting ||
                             current_state_ == A2dpService::State::Reconnecting);
     disconnect_btn_->Show(show_disconnect);
+    fit_status_label();
 
     if (current_state_ == A2dpService::State::Streaming) {
         stream_info_label_->SetLabel("");
@@ -606,6 +618,22 @@ void MainFrame::update_status_display() {
     }
 
     main_panel_->Layout();
+}
+
+/* Give the status label its text width, but no more than the status row
+ * leaves beside the disconnect button; the rest is ellipsized. */
+void MainFrame::fit_status_label() {
+    wxString label = status_label_->GetLabel();
+    int want = status_label_->GetTextExtent(label).x + 2;
+    int avail = status_panel_->GetClientSize().x - 8 - 12; /* label and stream info margins */
+    if (disconnect_btn_->IsShown())
+        avail -= disconnect_btn_->GetBestSize().x + 8;
+    int width = std::max(0, std::min(want, avail));
+    status_label_->SetMinSize(wxSize(width, -1));
+    if (width < want)
+        status_label_->SetToolTip(label);
+    else
+        status_label_->UnsetToolTip();
 }
 
 /* ======================================================================== */
