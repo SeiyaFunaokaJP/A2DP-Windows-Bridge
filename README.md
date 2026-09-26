@@ -16,11 +16,49 @@ Streams system audio via LDAC, aptX HD, aptX Low Latency, aptX, AAC, or SBC usin
 | AAC | 128/192/256 kbps | 44.1/48 kHz | 16 bit | ~150 ms |
 | SBC | up to ~345 kbps | 44.1/48 kHz | 16 bit | ~150 ms |
 
+### Codec support by platform (sending to headphones)
+
+| Codec | Windows 10 built-in | Windows 11 built-in | Ubuntu built-in (PipeWire) | **A2DPWB** (Windows 10 / 11) |
+|-------|:-------------------:|:-------------------:|:--------------------------:|:----------------------------:|
+| LDAC | ❌ | ❌ | ✅ | ✅ |
+| aptX HD | ❌ | ❌ | ✅ | 🧪 experimental |
+| aptX Low Latency | ❌ | ❌ | ✅ | 🧪 experimental |
+| aptX | ✅ | ✅ | ✅ | 🧪 experimental |
+| AAC | ✅ | ✅ | ❌ not in Ubuntu's packages | ✅ |
+| SBC | ✅ | ✅ | ✅ | ✅ |
+| aptX Adaptive | ❌ | ❌ | ❌ | ❌ |
+
+✅ supported · 🧪 experimental · ❌ not supported. All columns are the sending side (PC → headphones). "Built-in" is the OS's own Bluetooth audio, without A2DPWB; the Ubuntu column is the PipeWire codec set of Ubuntu 26.04 (`libspa-0.2-bluetooth`).
+
 > **aptX, aptX HD and aptX Low Latency are experimental.** They follow the Android / PipeWire implementations and pass encode/decode round-trip tests, but have not yet been verified with real headphones. Latency values in this table are typical figures, not measured with A2DPWB.
 
 > **Only need classic aptX?** Windows 10 already supports classic aptX in its built-in Bluetooth stack (not aptX HD, aptX LL or aptX Adaptive), so A2DPWB is not required for it. A2DPWB is mainly useful for LDAC, aptX HD and aptX Low Latency.
 
 > **aptX Adaptive is not supported.** There is no open-source aptX Adaptive encoder, so A2DPWB never selects it. If your headphones also list classic aptX (many aptX Adaptive models do), A2DPWB uses aptX directly; otherwise Auto picks AAC or SBC. See [aptX family and aptX Adaptive](#aptx-family-and-aptx-adaptive) below.
+
+## Platform Support
+
+| Component | Windows 10 (x64) | Windows 11 (x64) | Linux (Ubuntu) |
+|-----------|:----------------:|:----------------:|:--------------:|
+| **A2DPWB** (GUI / CLI) | ✅ (not yet tried on real hardware) | ✅ | ❌ |
+| Building from source (Visual Studio 2022+) | ✅ | ✅ | ❌ |
+| `a2dpwb_decode` (stream checker) | ✅ | ✅ | ❌ |
+| End-to-end test `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
+| Virtual adapter `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
+| Measuring receiver `tools/linux_sink` | ❌ | ❌ | ✅ |
+
+A2DPWB itself runs on Windows only, as an x64 build. The Linux tools need Python 3.11 or later (verified on Ubuntu 26.04); `setup.sh` targets Ubuntu / Debian, other distributions need the packages installed by hand.
+
+## Verified Hardware
+
+| What | Setup | Codecs | Result |
+|-----|------|-------|-------|
+| Sony WH-1000XM4 (headphones) | Windows 11 + TP-Link UB500 | LDAC, AAC, SBC | ✅ Plays (the XM4 has no aptX) |
+| TP-Link UB500 (Realtek RTL8761BU, adapter) | Windows 11, WinUSB, linux-firmware `rtl8761bu` | – | ✅ |
+| Measuring receiver `tools/linux_sink` | Windows 11 + UB500 → Ubuntu 26.04 over the air | SBC, AAC, aptX, aptX HD, aptX LL, LDAC | ✅ Received and measured |
+| Virtual link `tools/emu` (Bumble) | Windows 11, no radio | SBC, AAC, aptX, aptX HD, aptX LL, LDAC | ✅ End-to-end test passes |
+
+Windows 10 has not been tried on real hardware yet. Other adapters: see [Recommended Adapters](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/setup#adapters).
 
 ## Architecture
 

@@ -28,6 +28,20 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LDAC、aptX HD
 | AAC | 128/192/256 kbps | 44.1/48 kHz | 16 bit | 約 150 ms |
 | SBC | 最大約 345 kbps | 44.1/48 kHz | 16 bit | 約 150 ms |
 
+### プラットフォーム別のコーデック対応（ヘッドホンへの送信）
+
+| コーデック | Windows 10 標準 | Windows 11 標準 | Ubuntu 標準（PipeWire） | **A2DPWB**（Windows 10 / 11） |
+|:-----------|:---------------:|:---------------:|:-----------------------:|:-----------------------------:|
+| LDAC | ❌ | ❌ | ✅ | ✅ |
+| aptX HD | ❌ | ❌ | ✅ | 🧪 実験的 |
+| aptX Low Latency | ❌ | ❌ | ✅ | 🧪 実験的 |
+| aptX | ✅ | ✅ | ✅ | 🧪 実験的 |
+| AAC | ✅ | ✅ | ❌ Ubuntu のパッケージに含まれない | ✅ |
+| SBC | ✅ | ✅ | ✅ | ✅ |
+| aptX Adaptive | ❌ | ❌ | ❌ | ❌ |
+
+✅ 対応 · 🧪 実験的 · ❌ 非対応。どの列も送信側（PC → ヘッドホン）です。「標準」は A2DPWB を使わない OS 自身の Bluetooth オーディオで、Ubuntu の列は Ubuntu 26.04 の PipeWire（`libspa-0.2-bluetooth`）が持つコーデックです。
+
 {: .warning }
 **aptX・aptX HD・aptX Low Latency は実験的な対応です。** Android / PipeWire の実装に合わせ、エンコード→デコードの往復テストは通っていますが、実機のヘッドホンでの検証はまだです。表のレイテンシーは一般的な目安で、A2DPWB で測定した値ではありません。
 
@@ -36,6 +50,30 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LDAC、aptX HD
 
 {: .note }
 **aptX Adaptive には対応していません**（オープンソースのエンコーダーが存在しないため）。ヘッドホンがクラシック aptX も通知していれば A2DPWB は aptX を直接使用し、そうでなければ Auto は AAC か SBC を選びます。詳しくは [aptX ファミリーと aptX Adaptive の互換性](usage#aptx-compatibility)を参照してください。
+
+## 対応プラットフォーム {#platform-support}
+
+| コンポーネント | Windows 10 (x64) | Windows 11 (x64) | Linux (Ubuntu) |
+|:---------------|:----------------:|:----------------:|:--------------:|
+| **A2DPWB**（GUI / CLI） | ✅（実機では未確認） | ✅ | ❌ |
+| [ソースからのビルド](building)（Visual Studio 2022 以降） | ✅ | ✅ | ❌ |
+| `a2dpwb_decode`（ストリーム検査ツール） | ✅ | ✅ | ❌ |
+| エンドツーエンドテスト `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
+| 仮想アダプター `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
+| [測定用受信機](usage#receiver) `tools/linux_sink` | ❌ | ❌ | ✅ |
+
+A2DPWB 本体は Windows 専用で、x64 ビルドのみです。Linux 側のツールには Python 3.11 以降が必要です（Ubuntu 26.04 で確認済み）。`setup.sh` は Ubuntu / Debian 向けで、他のディストリビューションではパッケージを手動でインストールしてください。
+
+## 検証済みの機器 {#verified-hardware}
+
+| 対象 | 構成 | コーデック | 結果 |
+|:-----|:-----|:-----------|:-----|
+| Sony WH-1000XM4（ヘッドホン） | Windows 11 + TP-Link UB500 | LDAC、AAC、SBC | ✅ 再生できる（XM4 は aptX 非対応） |
+| TP-Link UB500（Realtek RTL8761BU、アダプター） | Windows 11、WinUSB、linux-firmware の `rtl8761bu` | – | ✅ |
+| 測定用受信機 `tools/linux_sink` | Windows 11 + UB500 → Ubuntu 26.04（実際の無線） | SBC、AAC、aptX、aptX HD、aptX LL、LDAC | ✅ 受信・測定できる |
+| 仮想リンク `tools/emu`（Bumble） | Windows 11、無線なし | SBC、AAC、aptX、aptX HD、aptX LL、LDAC | ✅ エンドツーエンドテストに合格 |
+
+Windows 10 の実機ではまだ試していません。その他のアダプターは[推奨アダプター](setup#adapters)を参照してください。
 
 ## オーディオキャプチャモード
 
