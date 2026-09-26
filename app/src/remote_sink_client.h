@@ -2,9 +2,9 @@
  * Remote sink client - statistics from a measuring receiver on another PC
  *
  * tools/linux_sink/a2dpwb_sink.py runs on a Linux PC as an ordinary A2DP sink
- * (BlueZ, built-in Bluetooth) and measures what arrives: lost / late
- * packets, jitter, gaps, dropouts of a modelled playout buffer, frame and
- * decode errors, RSSI. It serves one JSON object per line over TCP; this
+ * (Bumble on its Bluetooth adapter, the built-in one is fine) and measures
+ * what arrives: lost / late packets, jitter, gaps, dropouts of a modelled
+ * playout buffer, frame and decode errors, RSSI. It serves one JSON object per line over TCP; this
  * client keeps the connection (reconnecting every few seconds) and holds the
  * latest statistics for the link quality window and the CLI.
  *

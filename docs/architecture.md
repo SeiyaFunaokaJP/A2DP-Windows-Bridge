@@ -18,9 +18,9 @@ nav_order: 5
 ## Overview
 
 A2DP Windows Bridge (A2DPWB) enables LDAC, aptX HD, aptX Low Latency, aptX,
-AAC, and SBC Bluetooth audio on Windows. Windows natively only supports SBC and AAC for
-Bluetooth A2DP — this tool adds high-quality codecs without requiring a kernel
-driver.
+AAC, and SBC Bluetooth audio on Windows. Windows' own Bluetooth stack supports
+only SBC, AAC and classic aptX for A2DP — this tool adds LDAC, aptX HD and aptX
+Low Latency without requiring a kernel driver.
 
 Uses **BTstack + WinUSB** — entirely user-mode, no driver signing needed.
 
@@ -42,14 +42,15 @@ user-mode.
   Bluetooth)
 - While claimed by WinUSB, the adapter is unavailable for normal Windows
   Bluetooth
-- Device address must be entered manually or selected from Windows paired
-  device list (discovered via built-in adapter)
+- Device address is entered manually, selected from the Windows paired device
+  list (read via the built-in adapter), or found by a scan (GAP inquiry) with
+  the USB adapter
 
 **How it works**:
 1. User installs WinUSB driver on a USB Bluetooth adapter via Zadig
 2. BTstack opens the USB device via WinUSB API
 3. BTstack sends HCI commands to initialize the Bluetooth controller
-4. (Realtek adapters) Firmware is uploaded if needed
+4. (Realtek, Intel and Broadcom adapters) Firmware is uploaded if needed
 5. BTstack establishes an ACL connection and opens L2CAP channels (PSM 0x0019)
 6. AVDTP signaling discovers remote SEPs and negotiates codecs
 7. Encoded audio is sent as AVDTP media packets over L2CAP
@@ -61,18 +62,25 @@ A2DPWB.exe
 ├── GUI Layer (wxWidgets)
 │   ├── wx_app              App entry point, event loop
 │   ├── wx_main_frame       Main window (device, codec, status)
-│   ├── wx_profile_dialog   Connection profile management
+│   ├── wx_profile_dialog   Connection profile management, device scan
 │   ├── wx_settings_dialog  Application settings
 │   ├── wx_firmware_dialog  Realtek firmware download
 │   ├── wx_about_dialog     About / license info
 │   ├── wx_zadig_dialog     Zadig WinUSB installation guide
+│   ├── wx_link_quality_dialog  Link quality window (what is sent, radio)
+│   ├── wx_receiver_dialog  Peer receiver test (sent vs. received, debug mode)
+│   ├── wx_debug_console_dialog  Debug console: live log, connection flow
+│   ├── wx_radio_text.h     RSSI / AFH as text for both windows
 │   ├── theme_manager       Light / dark theme support
 │   └── localization        i18n (en, ja — embedded JSON)
 │
 ├── Core Layer
 │   ├── a2dp_service        A2DP connection lifecycle & state machine
 │   ├── btstack_transport   BTstack integration (HCI, L2CAP, AVDTP, A2DP)
+│   ├── btstack_link_key_db_file  Link key storage (file in the config folder)
+│   ├── btstack_uart_tcp_windows  H4 over TCP to a virtual controller (--hci-tcp, testing)
 │   ├── wasapi_capture      WASAPI loopback audio capture
+│   ├── test_tone           Test tone instead of captured audio
 │   ├── audio_encoder       Encoder interface (abstract base)
 │   │   ├── ldac_encoder        LDAC (libldac, ABR support)
 │   │   ├── aptxhd_encoder      aptX HD (libopenaptx)
@@ -85,13 +93,22 @@ A2DPWB.exe
 │   ├── bt_device           Bluetooth device info (address, name, codecs)
 │   ├── bt_adapter_enum     USB Bluetooth adapter enumeration (WinUSB)
 │   ├── audio_device_enum   WASAPI audio device enumeration
-│   └── profile_manager     Connection profile persistence (JSON)
+│   ├── profile_manager     Connection profile persistence (JSON)
+│   ├── media_payload_limit Max media packet size (range, default)
+│   ├── afh                 AFH host channel classification from the Wi-Fi scan
+│   ├── link_stats          Counters for the link quality window
+│   └── remote_sink_client  Statistics from tools/linux_sink over the network
 │
 ├── Support
 │   ├── app_settings        Persistent application settings (JSON)
 │   ├── config_path         Config file path resolution
 │   ├── system_integration  System tray, autostart
 │   ├── debug_log           Debug logging macros
+│   ├── debug_log_model     Log lines and connection flow for the debug console
+│   ├── hci_capture         On-demand HCI capture (.pklg)
+│   ├── update_checker      Update check (GitHub Releases)
+│   ├── zadig_helper        Zadig download / launch
+│   ├── embedded_langs      Language files embedded at build time
 │   └── capture_mode        Audio capture mode definitions
 │
 └── CLI Mode
@@ -104,7 +121,7 @@ A2DPWB.exe
 System Audio Output
        │
        ▼
- WASAPI Loopback Capture (PCM 16-bit, 44.1/48 kHz)
+ WASAPI Loopback Capture (device mix format, usually float32, 44.1-96 kHz)
        │
        ▼
  Audio Encoder (LDAC / aptX HD / aptX LL / aptX / AAC / SBC)
@@ -131,7 +148,8 @@ Central connection lifecycle manager. Coordinates:
 - Stream endpoint registration for all supported codecs
 - aptX-family sample rate selection (44.1 / 48 kHz from the rates the remote
   advertises; WASAPI resamples the capture)
-- Connection state machine (idle → connecting → streaming → disconnecting)
+- PCM conversion (float32 → 16 / 32-bit integer) for the encoder
+- Connection state machine (idle → connecting → streaming → reconnecting, error)
 - Auto-reconnect logic on unexpected disconnection
 - Media packet sending with codec-specific framing
 
@@ -151,8 +169,14 @@ API.
 - Handle A2DP connection lifecycle via async-to-sync wrappers
 - Manage SSP pairing (Just Works, General Bonding; link keys persisted)
 - Tear down a half-open connection after a connect timeout so retries work
+- Retry a failed connection (up to 3 attempts) and tell the causes apart (no
+  answer, silent link, remote ended the link, authentication); drop a link key
+  the device no longer knows and pair again
+- GAP inquiry for the device scan
+- AFH host channel classification and RSSI / AFH readings for the link quality
+  window
 - Provide thread-safe media sending for WASAPI callback
-- Realtek chipset firmware loading
+- Firmware loading for Realtek, Intel and Broadcom chipsets
 
 **Key BTstack APIs used**:
 - `a2dp_source_create_stream_endpoint()` — Register codec endpoints
@@ -167,7 +191,8 @@ API.
 
 Captures system audio output in real-time using Windows Audio Session API.
 - Uses `IAudioClient` in `AUDCLNT_STREAMFLAGS_LOOPBACK` mode
-- Provides PCM data (float32 → int16 conversion, channel downmix)
+- Delivers the device's shared-mode mix format (usually float32; A2DP Service
+  converts it for the encoder)
 - Configurable audio device selection
 
 ### Audio Encoders

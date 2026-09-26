@@ -48,6 +48,7 @@ WinUSB モードの間、Windows はそのアダプターを通常の Bluetooth 
 
 **A2DPWB の GUI から確認:**
 - `A2DPWB.exe` を起動すると、ペアリング済みの Bluetooth オーディオデバイスがデバイスドロップダウンに表示されます
+- プロファイル画面の **デバイスを検索** で、USB アダプターを使って近くのデバイスを探すこともできます（ヘッドホンをペアリングモードにしてください）
 
 **CLI から確認:**
 ```
@@ -76,7 +77,7 @@ Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU �
 
 ### GUI（ガイド付きダウンロード）
 
-`A2DPWB.exe` を起動し、**ファームウェア**ダイアログを開きます。ファームウェアが不足している場合は警告が表示されます。**Open Download Page** ボタンでブラウザの [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) ページを開き、**Open Config Folder** で保存先フォルダーを開きます。必要な `.bin` ファイルをダウンロードしてフォルダーに配置します。
+`A2DPWB.exe` を起動し、**操作 > Bluetoothファームウェア選択** を開きます。ファームウェアが不足している場合は警告が表示されます。**ダウンロードページを開く** ボタンでブラウザの [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) ページを開き、**設定フォルダを開く** で保存先フォルダーを開きます。必要な `.bin` ファイルをダウンロードしてフォルダーに配置します。
 
 ダイアログはアダプターのチップセットを自動検出し、必要なファームウェアファイル名を表示します。
 

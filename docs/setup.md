@@ -47,6 +47,7 @@ You need the Bluetooth MAC address of your headphones/speakers.
 
 **From A2DPWB GUI:**
 - Launch `A2DPWB.exe` and paired Bluetooth audio devices are listed in the device dropdown
+- Or use **Scan Devices** in the profile dialog to find nearby devices with the USB adapter (put the headphones into pairing mode)
 
 **From CLI:**
 ```
@@ -75,7 +76,7 @@ Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) re
 
 ### GUI (Guided Download)
 
-Launch `A2DPWB.exe` and open **Firmware** dialog. If firmware is missing, a warning is displayed. Use the **Open Download Page** button to open the [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) page in your browser, then use **Open Config Folder** to open the destination folder. Download the required `.bin` files and place them in the config folder.
+Launch `A2DPWB.exe` and choose **Actions > Bluetooth Firmware Selection**. If firmware is missing, a warning is displayed. Use the **Open Download Page** button to open the [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) page in your browser, then use **Open Config Folder** to open the destination folder. Download the required `.bin` files and place them in the config folder.
 
 The dialog auto-detects your adapter chipset and shows which firmware files are needed.
 

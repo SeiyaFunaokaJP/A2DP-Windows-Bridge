@@ -51,6 +51,7 @@ A2DP-Windows-Bridge/
 │   ├── lang/               ローカライゼーション (en.json, ja.json)
 │   ├── resources/          アイコン、マニフェスト、リソーススクリプト
 │   └── CMakeLists.txt      アプリビルド設定
+├── cmake/                  リリースパッケージ作成（make_dist.cmake）
 ├── compat/                 AOSP コード用 MSVC 互換ヘッダー
 ├── docs/                   ドキュメント（このサイト）
 ├── extern/                 サードパーティライブラリ（git サブモジュール）
@@ -64,7 +65,7 @@ A2DP-Windows-Bridge/
 │   ├── emu/                仮想 Bluetooth シンクを相手にしたエンドツーエンドテスト（Python）
 │   └── linux_sink/         a2dpwb_sink: Linux で動く測定用 A2DP 受信機（Python、Bumble）
 ├── CMakeLists.txt          ルートビルド設定
-└── build.bat               ビルドヘルパースクリプト
+└── build.bat.example       ビルドヘルパースクリプト（build.bat にコピーして CMake のパスを設定）
 ```
 
 ## ビルドオプション
@@ -78,7 +79,7 @@ A2DP-Windows-Bridge/
 cmake -B build -A x64 -DA2DPWB_BUILD_TOOLS=OFF
 ```
 
-## 実機なしでのテスト（tools/emu）
+## 実機なしでのテスト（tools/emu） {#emu}
 
 `tools/emu` は、アダプターやヘッドホンなしで、A2DPWB から同じ PC 上の仮想 Bluetooth シンクへ全コーデックをストリーミングしてテストします。Windows だけで完結し、ビルドに必要なものに加えて **Python 3.11 以降** が必要です。
 

@@ -58,6 +58,11 @@ Streams system audio via LDAC, aptX HD, aptX Low Latency, aptX, AAC, or SBC usin
 | `extern/libopenaptx/` | libopenaptx — aptX / aptX HD / aptX LL encoder (git submodule) |
 | `extern/fdk-aac/` | Fraunhofer FDK AAC — AAC-LC encoder (git submodule) |
 | `extern/json/` | nlohmann/json — JSON parser for settings, profiles, localization |
+| `compat/` | MSVC compatibility headers for the AOSP code |
+| `cmake/` | Release packaging script |
+| `tools/a2dp_decode/` | `a2dpwb_decode` — checks / decodes the media stream in an HCI capture (developer tool) |
+| `tools/emu/` | End-to-end test against a virtual Bluetooth sink (Python, Bumble) |
+| `tools/linux_sink/` | `a2dpwb_sink` — measuring A2DP receiver on a second PC with Linux (Python, Bumble) |
 
 ## Prerequisites
 
@@ -84,7 +89,7 @@ Streams system audio via LDAC, aptX HD, aptX Low Latency, aptX, AAC, or SBC usin
 
 Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) require proprietary firmware to operate. CSR adapters need no firmware. Intel and Broadcom adapters (experimental) may need firmware files of their own: see the [Setup guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/setup#adapters).
 
-**GUI (Guided):** Launch `A2DPWB.exe` and open the **Firmware** dialog. If firmware is missing, a warning is displayed with the required filenames. Use **Open Download Page** to open the [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) page in your browser, and **Open Config Folder** to open the destination folder. Download the `.bin` files and place them in the config folder.
+**GUI (Guided):** Launch `A2DPWB.exe` and choose **Actions > Bluetooth Firmware Selection**. If firmware is missing, a warning is displayed with the required filenames. Use **Open Download Page** to open the [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) page in your browser, and **Open Config Folder** to open the destination folder. Download the `.bin` files and place them in the config folder.
 
 **Manual:**
 
@@ -117,11 +122,13 @@ A2DPWB.exe
 The graphical interface provides:
 - Bluetooth adapter selection (WinUSB-attached adapters)
 - Audio device selection (WASAPI loopback capture source)
+- Device selection (paired devices, or a scan for nearby devices with the USB adapter)
 - Codec selection (Auto / LDAC / aptX HD / aptX LL / aptX / SBC / AAC)
 - LDAC quality mode (HQ 990 kbps / SQ 660 kbps / MQ 330 kbps)
 - LDAC ABR (Adaptive Bit Rate) toggle
 - Connection profile management (save / load device + codec settings)
 - Real-time status display (codec, bitrate, connection state)
+- Link quality window (what is sent, RSSI, AFH channels)
 
 ### CLI Mode
 
@@ -153,7 +160,12 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -u "\\?\usb#..."
 
 # List paired Bluetooth audio devices
 A2DPWB.exe --cli -l
+
+# Show all options
+A2DPWB.exe --cli -h
 ```
+
+All options, including AFH (`--afh`) and the peer receiver test (`--remote-sink`), are listed in the [Usage guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/usage#all-options).
 
 > **Note**: Both capture modes (system loopback and virtual device) use WASAPI shared mode. The capture sample rate depends on the device's format configured in Windows Sound settings (typically 48 kHz). To use LDAC at 96 kHz, change the device format to 96 kHz in Sound settings > Advanced.
 
@@ -176,7 +188,7 @@ To see exactly which codecs your headphones offer, enable debug mode and check t
 You can configure A2DPWB to start automatically when Windows boots.
 
 **Via GUI:**
-Enable the "Run on startup" option in the Settings dialog. When enabled, the application will automatically launch minimized in the system tray upon user login.
+Check **Settings > Start with Windows**. When enabled, the application will automatically launch minimized in the system tray upon user login.
 
 **Manual Configuration (regedit):**
 The auto-start behavior is controlled by the standard Windows registry key.
@@ -191,11 +203,13 @@ You can manually add this entry using `regedit` if needed. To disable it manuall
 - **Multi-codec support**: LDAC, aptX HD, aptX Low Latency, aptX, AAC, SBC with automatic negotiation
 - **Two capture modes**: System loopback (all system audio) or virtual audio device (per-app routing via VB-CABLE etc.)
 - **LDAC ABR**: Adaptive Bit Rate for unstable connections
-- **Auto-reconnect**: Reconnects on Bluetooth disconnection (up to 10 attempts)
+- **Auto-reconnect**: Reconnects on Bluetooth disconnection (up to 10 attempts); a failed connection is retried (up to 3 attempts)
+- **Link quality and AFH**: Shows what is sent, the RSSI and the channels in use; tells the adapter which Wi-Fi channels to avoid
 - **Auto-start**: Optionally run minimized in the system tray at Windows startup
 - **Profile management**: Save and load device + codec configurations
 - **Localization**: English / Japanese UI
 - **Realtek firmware**: Guided firmware download for Realtek adapters
+- **Diagnostics** (debug mode): debug console with the connection flow, HCI capture, peer receiver test against a Linux PC
 - **MTU-aware framing**: Optimal packet utilization for each codec
 - **PCM residual buffering**: Prevents audio data loss at encoder boundaries
 

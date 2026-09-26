@@ -435,7 +435,7 @@ Both are test tooling only:
   release zip. A2DPWB only talks to them over the network: to the virtual
   controller over TCP (development CLI option `--hci-tcp`) and to the
   receiver's statistics over TCP / UDP (JSON).
-- `tools/linux_sink/requirements.txt` installs the same pinned set into
+- `tools/linux_sink/requirements.txt` (installed by `setup.sh`) holds the same pinned set for
   `tools/linux_sink/.venv` (git-ignored; verified: `pip freeze` of it equals
   the pinned set, Bumble 0.0.234 on Python 3.14 / Linux). On Linux,
   `a2dpwb_sink.py` also loads the distribution's libsbc, libfreeaptx and
