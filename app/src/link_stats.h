@@ -35,6 +35,11 @@ struct LinkStats {
     std::atomic<uint64_t> capture_dropped_frames{0};
     /* Instantaneous send queue fill (packets) */
     std::atomic<uint32_t> queue_depth{0};
+    /* The counters above when the current stream started, before its first
+     * packet; stream_starts changes with every stream (written after them) */
+    std::atomic<uint64_t> start_packets{0}, start_bytes{0}, start_dropped{0};
+    std::atomic<uint64_t> start_capture_frames{0}, start_capture_dropped{0};
+    std::atomic<uint32_t> stream_starts{0};
 };
 
 inline LinkStats &link_stats() {

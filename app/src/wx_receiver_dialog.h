@@ -69,6 +69,7 @@ private:
     /* Codec of the last stream; its counts stay shown after it stopped so
      * they can be compared with the receiver's final ones */
     wxString last_codec_;
+    uint32_t stream_starts_ = 0;   /* LinkStats::stream_starts baseline_ was taken at */
     A2dpService::State last_state_ = A2dpService::State::Idle;
     /* Receiver counters are relative to this; a new stream at the receiver restarts them */
     RemoteSinkStats remote_base_{};

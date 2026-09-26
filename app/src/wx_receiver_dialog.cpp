@@ -428,9 +428,20 @@ void ReceiverDialog::refresh() {
     A2dpService::State state = frame_->state();
     bool streaming = state == A2dpService::State::Streaming;
 
-    /* A new stream starts the counts from zero on both sides */
+    /* A new stream starts the counts from zero on both sides: here from the
+     * counts when it started, as the receiver counts per stream, not from the
+     * first refresh that sees it (up to a second of packets later) */
+    const LinkStats &ls = link_stats();
+    uint32_t starts = ls.stream_starts.load();
+    if (starts != stream_starts_) {
+        stream_starts_ = starts;
+        baseline_.packets = ls.start_packets.load();
+        baseline_.bytes = ls.start_bytes.load();
+        baseline_.dropped = ls.start_dropped.load();
+        baseline_.capture_frames = ls.start_capture_frames.load();
+        baseline_.capture_dropped = ls.start_capture_dropped.load();
+    }
     if (streaming && last_state_ != A2dpService::State::Streaming) {
-        baseline_ = now;
         prev_ = now;
         have_prev_ = false;
     }

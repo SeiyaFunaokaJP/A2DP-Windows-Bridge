@@ -2221,6 +2221,15 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
 
     case A2DP_SUBEVENT_STREAM_STARTED: {
         fprintf(stderr, "BTstack: Streaming started\n");
+        {
+            LinkStats &ls = link_stats();
+            ls.start_packets.store(ls.packets_sent.load());
+            ls.start_bytes.store(ls.bytes_sent.load());
+            ls.start_dropped.store(ls.queue_drops.load() + ls.send_errors.load());
+            ls.start_capture_frames.store(ls.capture_frames.load());
+            ls.start_capture_dropped.store(ls.capture_dropped_frames.load());
+            ls.stream_starts.fetch_add(1);
+        }
         streaming_.store(true);
         start_result_.store(true);
         signal_event(start_event_, true);
