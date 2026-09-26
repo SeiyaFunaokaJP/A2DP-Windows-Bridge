@@ -27,7 +27,6 @@ enum {
     ID_SCAN_COMPLETE,
     ID_DISCONNECT,
     ID_NEW_PROFILE,
-    ID_OPEN_SETTINGS,
     ID_OPEN_ABOUT,
     ID_OPEN_FIRMWARE,
     ID_OPEN_ZADIG,
@@ -109,7 +108,6 @@ private:
     void OnDisconnect(wxCommandEvent &evt);
     void OnOpenConfig(wxCommandEvent &evt);
     void OnExit(wxCommandEvent &evt);
-    void OnOpenSettings(wxCommandEvent &evt);
     void OnToggleStartWithWindows(wxCommandEvent &evt);
     void OnToggleMinimizeToTray(wxCommandEvent &evt);
     void OnToggleUpdateCheck(wxCommandEvent &evt);

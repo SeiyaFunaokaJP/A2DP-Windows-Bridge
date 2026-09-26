@@ -25,12 +25,14 @@ The graphical interface provides:
 
 - **Bluetooth adapter selection** -- choose which WinUSB adapter to use
 - **Audio device selection** -- choose the WASAPI loopback capture source
-- **Device address** -- enter manually or select from paired devices
+- **Device address** -- enter manually, select from paired devices, or **Scan Devices** in the profile dialog (nearby devices, found with the USB adapter)
 - **Codec selection** -- Auto / LDAC / aptX HD / aptX LL / aptX / SBC / AAC
 - **LDAC quality** -- HQ (990 kbps) / SQ (660 kbps) / MQ (330 kbps)
 - **LDAC ABR** -- Adaptive Bit Rate toggle for unstable connections
 - **Profile management** -- save and load device + codec configurations
 - **Real-time status** -- codec, bitrate, connection state
+- **Link quality** -- **Actions > Link Quality...** (see [Link Quality Window and AFH](#link-quality))
+- **Settings menu** -- language, theme, Start with Windows, Minimize to System Tray, Check for Updates on Startup, Debug Mode (adds the **Debug** menu: debug console, HCI capture, peer receiver test)
 
 ## CLI Mode
 
@@ -83,6 +85,27 @@ A2DPWB.exe --cli -l
 
 {: .note }
 Device listing uses the Windows Bluetooth API via your **built-in** Bluetooth adapter, not the WinUSB adapter.
+
+### All Options
+
+| Option | Description |
+|:-------|:------------|
+| `-d <addr>` | Bluetooth address of the headphones (`AA:BB:CC:DD:EE:FF`) |
+| `-c <codec>` | `ldac`, `aptxhd`, `aptxll`, `aptx`, `aac`, `sbc`, `auto` (default: `auto`) |
+| `-q <mode>` | LDAC quality: `hq` (default), `sq`, `mq` |
+| `-a` | LDAC ABR |
+| `-m <mode>` | Capture mode: `loopback` (default), `virtual` |
+| `--audio-device <id>` | Audio device ID for `-m virtual` |
+| `-u <path>` | USB device path of the adapter (when several are connected) |
+| `-l` | List paired Bluetooth audio devices and exit |
+| `--max-packet <bytes>` | Max media packet size, 679-1679 (see [Max Media Packet Size](#max-packet)) |
+| `--afh <auto\|off\|6,11>` | AFH host channel classification (see [Link Quality Window and AFH](#link-quality)) |
+| `--remote-sink <host[:port]\|auto>` | Show what the peer receiver gets (see [Peer Receiver Test](#receiver)) |
+| `-h` | Show the help |
+
+For development and testing there are also `--hci-tcp <host:port>` (a virtual controller over TCP instead of the WinUSB adapter), `--test-tone` (1 kHz left / 1.5 kHz right instead of captured audio), `--duration <s>` (stop after this many seconds) and `--hci-capture <file.pklg>` (HCI capture of the whole run); see [Building](building#emu).
+
+In GUI mode, `--minimized` starts A2DPWB in the system tray (used by **Start with Windows**).
 
 ## Capture Modes
 
@@ -172,13 +195,13 @@ BTstack: Capability discovery complete (LDAC=0, aptXHD=0, aptXLL=0, aptX=1, aptX
 - `aptX=0`, `aptXHD=0`, `aptXLL=0` with `aptXAdaptive=1` -- the headphones offer only aptX Adaptive; use Auto, AAC or SBC.
 - `Remote vendor codec ... — unsupported` -- another vendor codec that A2DPWB does not implement.
 
-### Max Media Packet Size (per Profile)
+## Max Media Packet Size (per Profile) {#max-packet}
 
 **Max media packet size** in each profile (**Edit Profile**; CLI: `--max-packet <bytes>`) sets the upper limit for the audio data in each Bluetooth packet, from 679 to 1679 bytes, so headphones that need a different value can have their own. The headphones' own limit (MTU) always applies too; A2DPWB uses the smaller of the two. The change applies from the next connection. Profiles saved by older versions take the value that was set globally before.
 
 **1023 (default) is recommended.** It fits one Bluetooth baseband packet (3-DH5). Larger values save only 1-2% overhead, and each lost packet then loses more audio. 679 fits one 2-DH5 packet and is the minimum LDAC accepts.
 
-### Verifying the Media Stream (a2dpwb_decode) {#verify-stream}
+## Verifying the Media Stream (a2dpwb_decode) {#verify-stream}
 
 Most headphones cannot show which codec is in use. In debug mode, the GUI has a **Debug** menu with **Start HCI Capture** / **Stop HCI Capture**. A capture is an HCI packet log (`hci_<date>_<time>.pklg` in the config folder) with the codec negotiation and every media packet sent. At LDAC 990 kbps it grows by roughly 0.5 GB per hour, so capture only as long as you need.
 
@@ -202,7 +225,7 @@ For every stream it also reports RTP sequence gaps, how fast the RTP timestamp a
 {: .note }
 This shows what A2DPWB sent and that it is valid for the negotiated codec. Since a sink can only decode the codec that was negotiated, correct audio from the headphones together with a clean report is strong evidence that the codec is really in use.
 
-### Link Quality Window and AFH {#link-quality}
+## Link Quality Window and AFH {#link-quality}
 
 **Actions > Link Quality...** shows what A2DPWB sends while streaming: codec and bitrate, packets sent, packets dropped before sending (send queue full: the radio link could not keep up), audio the encoder could not keep up with, the send queue, and **Radio**: the RSSI of the connection, relative to the controller's golden receive range (0 = fine, negative = too weak; not an absolute level), and how many of the 79 Bluetooth channels the link hops on (AFH).
 
@@ -216,7 +239,7 @@ Bluetooth avoids busy channels by itself (AFH), but it only learns about Wi-Fi f
 
 At least 20 Bluetooth channels always stay in use. Set it with `"afh"` in `settings.json` (config folder), in the Peer Receiver Test window (it is saved there), or with `--afh` in CLI mode. The Radio row shows which Wi-Fi channels are avoided. Whether it helps depends on the environment: measure with the peer receiver test.
 
-### Peer Receiver Test (tools/linux_sink) {#receiver}
+## Peer Receiver Test (tools/linux_sink) {#receiver}
 
 The link quality window shows what A2DPWB sends. To see what actually arrives, run `tools/linux_sink/a2dpwb_sink.py` on a second PC with Linux. It drives that PC's ordinary Bluetooth adapter - the built-in one is fine - directly (Bumble over the HCI user channel) as an A2DP sink for every codec including LDAC, measures every media packet that arrives and serves the statistics over the network:
 

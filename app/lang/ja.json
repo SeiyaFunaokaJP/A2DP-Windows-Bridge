@@ -161,7 +161,6 @@
   "modal.confirm_disconnect": "切断してもよろしいですか？",
   "modal.confirm_delete_profile": "このプロファイルを削除してもよろしいですか？",
   "settings.header": "設定",
-  "settings.title": "設定...",
   "settings.language": "言語",
   "settings.start_with_windows": "Windows 起動時に開始",
   "settings.minimize_to_tray": "システムトレイに最小化",

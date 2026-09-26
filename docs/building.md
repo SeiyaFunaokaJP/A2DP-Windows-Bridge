@@ -50,6 +50,7 @@ A2DP-Windows-Bridge/
 │   ├── lang/               Localization (en.json, ja.json)
 │   ├── resources/          Icon, manifest, resource script
 │   └── CMakeLists.txt      App build config
+├── cmake/                  Release packaging (make_dist.cmake)
 ├── compat/                 MSVC compatibility headers for AOSP code
 ├── docs/                   Documentation (this site)
 ├── extern/                 Third-party libraries (git submodules)
@@ -63,7 +64,7 @@ A2DP-Windows-Bridge/
 │   ├── emu/                End-to-end test against a virtual Bluetooth sink (Python)
 │   └── linux_sink/         a2dpwb_sink: measuring A2DP receiver on Linux (Python, Bumble)
 ├── CMakeLists.txt          Root build config
-└── build.bat               Build helper script
+└── build.bat.example       Build helper script (copy to build.bat, set the CMake path)
 ```
 
 ## Build Options
@@ -77,7 +78,7 @@ A2DP-Windows-Bridge/
 cmake -B build -A x64 -DA2DPWB_BUILD_TOOLS=OFF
 ```
 
-## Testing Without Hardware (tools/emu)
+## Testing Without Hardware (tools/emu) {#emu}
 
 `tools/emu` streams every codec from A2DPWB to a virtual Bluetooth sink on the same PC, with no adapter or headphones. It runs on Windows only and needs **Python 3.11 or later** in addition to the build requirements.
 

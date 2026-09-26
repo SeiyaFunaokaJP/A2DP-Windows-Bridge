@@ -57,7 +57,6 @@ add_executable(A2DPWB WIN32
     src/wx_app.cpp
     src/wx_main_frame.cpp
     src/wx_profile_dialog.cpp
-    src/wx_settings_dialog.cpp
     src/wx_link_quality_dialog.cpp
     src/wx_receiver_dialog.cpp
     src/wx_debug_console_dialog.cpp

@@ -18,7 +18,7 @@ nav_order: 4
 
 ## 概要
 
-A2DP Windows Bridge (A2DPWB) は Windows で LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC の Bluetooth オーディオを実現します。Windows は Bluetooth A2DP で SBC と AAC のみネイティブ対応ですが、このツールはカーネルドライバーなしで高音質コーデックを追加します。
+A2DP Windows Bridge (A2DPWB) は Windows で LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC の Bluetooth オーディオを実現します。Windows 標準の Bluetooth スタックが A2DP で対応するのは SBC、AAC、クラシック aptX のみですが、このツールはカーネルドライバーなしで LDAC、aptX HD、aptX Low Latency を追加します。
 
 **BTstack + WinUSB** を使用 -- 完全にユーザーモードで動作し、ドライバー署名は不要です。
 
@@ -35,13 +35,13 @@ Windows の Bluetooth スタックを完全にバイパスし、WinUSB（Microso
 **トレードオフ**:
 - 専用の USB Bluetooth アダプターが必要（Windows 内蔵 Bluetooth とは別）
 - WinUSB モードのアダプターは Windows の通常の Bluetooth として使用不可
-- デバイスアドレスは手動入力か、内蔵アダプター経由で取得した Windows ペアリング済みデバイス一覧から選択
+- デバイスアドレスは手動入力、内蔵アダプター経由で取得した Windows ペアリング済みデバイス一覧から選択、または USB アダプターでの検索（GAP inquiry）で指定
 
 **動作の流れ**:
 1. Zadig で USB Bluetooth アダプターに WinUSB ドライバーをインストール
 2. BTstack が WinUSB API 経由で USB デバイスを開く
 3. BTstack が HCI コマンドで Bluetooth コントローラーを初期化
-4. (Realtek アダプター) 必要に応じてファームウェアをアップロード
+4. (Realtek、Intel、Broadcom アダプター) 必要に応じてファームウェアをアップロード
 5. BTstack が ACL 接続を確立し、L2CAP チャネル (PSM 0x0019) を開く
 6. AVDTP シグナリングでリモート SEP を検出し、コーデックをネゴシエーション
 7. エンコード済み音声が L2CAP 経由の AVDTP メディアパケットとして送信
@@ -53,18 +53,24 @@ A2DPWB.exe
 ├── GUI レイヤー (wxWidgets)
 │   ├── wx_app              アプリエントリーポイント、イベントループ
 │   ├── wx_main_frame       メインウィンドウ（デバイス、コーデック、ステータス）
-│   ├── wx_profile_dialog   接続プロファイル管理
-│   ├── wx_settings_dialog  アプリケーション設定
+│   ├── wx_profile_dialog   接続プロファイル管理、デバイス検索
 │   ├── wx_firmware_dialog  Realtek ファームウェアダウンロード
 │   ├── wx_about_dialog     バージョン情報 / ライセンス
 │   ├── wx_zadig_dialog     Zadig WinUSB インストールガイド
+│   ├── wx_link_quality_dialog  通信品質ウィンドウ（送信内容、電波）
+│   ├── wx_receiver_dialog  対向受信テスト（送信と受信の比較、デバッグモード）
+│   ├── wx_debug_console_dialog  デバッグコンソール: ログ表示、接続フロー
+│   ├── wx_radio_text.h     RSSI / AFH の表示文字列（両ウィンドウ共通）
 │   ├── theme_manager       ライト / ダークテーマ対応
 │   └── localization        多言語化 (en, ja -- 埋め込み JSON)
 │
 ├── コアレイヤー
 │   ├── a2dp_service        A2DP 接続ライフサイクル & ステートマシン
 │   ├── btstack_transport   BTstack 統合 (HCI, L2CAP, AVDTP, A2DP)
+│   ├── btstack_link_key_db_file  リンクキー保存（設定フォルダーのファイル）
+│   ├── btstack_uart_tcp_windows  仮想コントローラーへの H4 over TCP（--hci-tcp、テスト用）
 │   ├── wasapi_capture      WASAPI ループバックオーディオキャプチャ
+│   ├── test_tone           キャプチャ音声の代わりのテストトーン
 │   ├── audio_encoder       エンコーダーインターフェース（抽象基底）
 │   │   ├── ldac_encoder        LDAC (libldac, ABR 対応)
 │   │   ├── aptxhd_encoder      aptX HD (libopenaptx)
@@ -77,13 +83,22 @@ A2DPWB.exe
 │   ├── bt_device           Bluetooth デバイス情報（アドレス、名前、コーデック）
 │   ├── bt_adapter_enum     USB Bluetooth アダプター列挙 (WinUSB)
 │   ├── audio_device_enum   WASAPI オーディオデバイス列挙
-│   └── profile_manager     接続プロファイル永続化 (JSON)
+│   ├── profile_manager     接続プロファイル永続化 (JSON)
+│   ├── media_payload_limit 最大メディアパケットサイズ（範囲、既定値）
+│   ├── afh                 Wi-Fi スキャンからの AFH ホストチャネル分類
+│   ├── link_stats          通信品質ウィンドウ用のカウンター
+│   └── remote_sink_client  tools/linux_sink の統計をネットワーク経由で取得
 │
 ├── サポート
 │   ├── app_settings        永続アプリケーション設定 (JSON)
 │   ├── config_path         設定ファイルパス解決
 │   ├── system_integration  システムトレイ、自動起動
 │   ├── debug_log           デバッグログマクロ
+│   ├── debug_log_model     デバッグコンソール用のログ行と接続フロー
+│   ├── hci_capture         随時開始できる HCI キャプチャ (.pklg)
+│   ├── update_checker      アップデート確認 (GitHub Releases)
+│   ├── zadig_helper        Zadig のダウンロード / 起動
+│   ├── embedded_langs      ビルド時に埋め込む言語ファイル
 │   └── capture_mode        オーディオキャプチャモード定義
 │
 └── CLI モード
@@ -96,7 +111,7 @@ A2DPWB.exe
 システム音声出力
        │
        ▼
- WASAPI ループバックキャプチャ (PCM 16-bit, 44.1/48 kHz)
+ WASAPI ループバックキャプチャ (デバイスのミックス形式、通常 float32、44.1〜96 kHz)
        │
        ▼
  オーディオエンコーダー (LDAC / aptX HD / aptX LL / aptX / AAC / SBC)
@@ -122,7 +137,8 @@ A2DPWB.exe
 - コーデックネゴシエーション（自動選択またはユーザー指定）
 - 全対応コーデックのストリームエンドポイント登録
 - aptX 系のサンプルレート選択（リモートが通知する 44.1 / 48 kHz から選び、キャプチャは WASAPI がリサンプリング）
-- 接続ステートマシン（idle → connecting → streaming → disconnecting）
+- エンコーダー向けの PCM 変換（float32 → 16 / 32-bit 整数）
+- 接続ステートマシン（idle → connecting → streaming → reconnecting、error）
 - 予期しない切断時の自動再接続ロジック
 - コーデック固有のフレーミングによるメディアパケット送信
 
@@ -139,8 +155,11 @@ A2DPWB.exe
 - 非同期→同期ラッパーで A2DP 接続ライフサイクルを管理
 - SSP ペアリング（Just Works、General Bonding、リンクキー永続化）を処理
 - 接続タイムアウト後に中途半端な接続を破棄し、再試行できるようにする
+- 失敗した接続を再試行し（最大 3 回）、原因（応答なし、通信のないリンク、相手からの切断、認証）を区別する。デバイスが失ったリンクキーを破棄してペアリングし直す
+- デバイス検索のための GAP inquiry
+- AFH ホストチャネル分類と、通信品質ウィンドウ用の RSSI / AFH の読み取り
 - WASAPI コールバック向けスレッドセーフなメディア送信を提供
-- Realtek チップセットファームウェアロード
+- Realtek、Intel、Broadcom チップセットのファームウェアロード
 
 **使用する主な BTstack API**:
 - `a2dp_source_create_stream_endpoint()` -- コーデックエンドポイント登録
@@ -153,7 +172,7 @@ A2DPWB.exe
 
 Windows Audio Session API を使用してシステム音声出力をリアルタイムでキャプチャ。
 - `IAudioClient` を `AUDCLNT_STREAMFLAGS_LOOPBACK` モードで使用
-- PCM データ提供（float32 → int16 変換、チャネルダウンミックス）
+- デバイスの共有モードのミックス形式（通常 float32）で提供（エンコーダー向けの変換は A2DP Service が行う）
 - オーディオデバイス選択に対応
 
 ### オーディオエンコーダー

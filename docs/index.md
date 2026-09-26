@@ -76,7 +76,9 @@ A2DPWB bypasses the Windows Bluetooth stack entirely. It communicates directly w
 - **Two capture modes**: System loopback or virtual audio device routing
 - **LDAC ABR**: Adaptive Bit Rate for unstable connections
 - **Auto-reconnect**: Reconnects on disconnection (up to 10 attempts)
+- **Link quality and AFH**: Shows what is sent, the RSSI and the channels in use; tells the adapter which Wi-Fi channels to avoid (see [Usage](usage#link-quality))
 - **Profile management**: Save and load device + codec configurations
 - **GUI + CLI**: wxWidgets graphical interface or command-line operation
 - **Localization**: English / Japanese
 - **Realtek firmware**: Guided firmware download for Realtek adapters
+- **Diagnostics** (debug mode): debug console, HCI capture, peer receiver test against a Linux PC (see [Usage](usage#receiver))
