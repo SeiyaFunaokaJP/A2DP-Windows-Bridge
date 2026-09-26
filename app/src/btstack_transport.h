@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 #include <atomic>
+#include <functional>
 #include <mutex>
 
 /* BTstack forward declarations (avoid exposing full BTstack headers) */
@@ -98,6 +99,43 @@ public:
      * Blocks until connection + stream establishment completes or fails.
      */
     bool connect_a2dp(const uint8_t remote_addr[6]);
+
+    /* How the last connect_a2dp() failed */
+    enum class ConnectFailure {
+        None,
+        NoAnswer,   /* page timeout: the device did not answer */
+        LinkLost,   /* link up, then no answer on it (L2CAP RTX / connection timeout) */
+        AuthFailed, /* authentication / security refused, e.g. a stale link key */
+        Other       /* anything else, e.g. no A2DP service */
+    };
+    ConnectFailure last_connect_failure() const { return last_connect_failure_.load(); }
+
+    /*
+     * connect_a2dp(), tried again after a transient failure (NoAnswer /
+     * LinkLost) up to CONNECT_ATTEMPTS times in all: a link can fail right
+     * after it came up and work on the next attempt. After an authentication
+     * failure with a stored link key (the device was reset or paired
+     * elsewhere) the key is dropped and pairing is tried once more.
+     * cancelled() is polled between attempts; on_retry(attempt, attempts)
+     * reports each new attempt.
+     */
+    static constexpr int CONNECT_ATTEMPTS = 3;
+
+    bool connect_a2dp_retrying(const uint8_t remote_addr[6],
+                               const std::function<bool()> &cancelled,
+                               const std::function<void(int, int)> &on_retry);
+
+    /* HCI Disconnect of the ACL link to the last remote, if one exists, and
+     * wait for Disconnection Complete (up to timeout_ms). A link that came
+     * up and then went silent otherwise stays until the supervision timeout
+     * and the next attempt would reuse it. */
+    void drop_acl_link(uint32_t timeout_ms);
+
+    /* An AVDTP connection to the remote still known to BTstack before a new
+     * connect (e.g. left over when a stream was given up on) makes
+     * a2dp_source_establish_stream() fail with COMMAND_DISALLOWED: close it
+     * and wait for the release. */
+    void release_leftover_avdtp();
 
     /* Disconnect from the remote device */
     bool disconnect();
@@ -264,12 +302,19 @@ private:
     void *stream_event_ = nullptr;
     void *start_event_ = nullptr;
     void *disconnect_event_ = nullptr;
+    void *acl_down_event_ = nullptr;     /* auto-reset; HCI Disconnection Complete */
     void *inquiry_event_ = nullptr;
     void *cancel_event_ = nullptr;       /* manual-reset; signaled to abort blocking waits */
 
     /* Result flags for sync operations */
     std::atomic<bool> init_result_{false};
     std::atomic<bool> connect_result_{false};
+    /* ACL handle the A2DP signaling runs on (0xFFFF = none). Disconnections
+     * of other links, e.g. a device used before that drops its idle link a
+     * moment later, must not end this stream. */
+    std::atomic<uint16_t> a2dp_con_handle_{0xFFFF};
+    std::atomic<ConnectFailure> last_connect_failure_{ConnectFailure::None};
+
     std::atomic<bool> stream_result_{false};
     std::atomic<bool> start_result_{false};
 

@@ -522,7 +522,23 @@ static int run_streaming(const uint8_t target_addr[6],
     /* --- Step 3: Connect and discover codecs --- */
     printf("\n[3/5] Connecting and negotiating codec...\n");
     printf("(This may take up to 30 seconds if the device is slow to respond.)\n");
-    if (!transport.connect_a2dp(target_addr)) {
+    bool connected = transport.connect_a2dp_retrying(
+        target_addr, []() { return !g_running.load(); },
+        [](int attempt, int attempts) { printf("Connection failed, trying again (%d/%d)...\n", attempt, attempts); });
+    if (!connected) {
+        switch (transport.last_connect_failure()) {
+        case BtStackTransport::ConnectFailure::NoAnswer:
+            fprintf(stderr, "The device did not answer (page timeout): it is off, out of range or not connectable.\n");
+            break;
+        case BtStackTransport::ConnectFailure::LinkLost:
+            fprintf(stderr, "The link came up but then carried nothing (radio conditions?).\n");
+            break;
+        case BtStackTransport::ConnectFailure::AuthFailed:
+            fprintf(stderr, "Authentication failed, also after pairing again: the device refused pairing.\n");
+            break;
+        default:
+            break;
+        }
         fprintf(stderr,
             "Failed to connect to Bluetooth device.\n"
             "Troubleshooting:\n"

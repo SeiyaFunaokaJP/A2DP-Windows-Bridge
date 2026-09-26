@@ -255,6 +255,7 @@ BtStackTransport::BtStackTransport() {
     stream_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     start_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     disconnect_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    acl_down_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     inquiry_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     cancel_event_ = CreateEventA(nullptr, TRUE, FALSE, nullptr);  /* manual-reset */
     auto *reg = new btstack_context_callback_registration_t();
@@ -269,6 +270,7 @@ BtStackTransport::~BtStackTransport() {
     CloseHandle(stream_event_);
     CloseHandle(start_event_);
     CloseHandle(disconnect_event_);
+    CloseHandle(acl_down_event_);
     CloseHandle(inquiry_event_);
     CloseHandle(cancel_event_);
     delete static_cast<btstack_context_callback_registration_t *>(media_trigger_reg_);
@@ -979,6 +981,7 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
     /* Reset remote capabilities */
     remote_caps_ = {};
     disconnect_occurred_.store(false);
+    last_connect_failure_.store(ConnectFailure::None);
 
     /* Clear stale events from any previous attempt */
     ResetEvent(static_cast<HANDLE>(cancel_event_));
@@ -989,6 +992,7 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
 
     fprintf(stderr, "BTstack: Connecting to %02X:%02X:%02X:%02X:%02X:%02X...\n",
            addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+    release_leftover_avdtp();
 
     /* Dispatch a2dp_source_establish_stream to BTstack thread */
     RunLoopRequest req = {};
@@ -1007,12 +1011,15 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
 
     if (req.u8_result != ERROR_CODE_SUCCESS) {
         fprintf(stderr, "BTstack: a2dp_source_establish_stream failed (0x%02x)\n", req.u8_result);
+        last_connect_failure_.store(ConnectFailure::Other);
         return false;
     }
 
     /* Wait for stream establishment (includes signaling connection + SEP discovery) */
     if (!wait_for_event(connect_event_, CONNECT_TIMEOUT_MS)) {
         fprintf(stderr, "BTstack: Connection timed out\n");
+        /* An answer that never came (e.g. a lost SDP response) */
+        last_connect_failure_.store(ConnectFailure::LinkLost);
         abort_pending_connection();
         return false;
     }
@@ -1022,6 +1029,106 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
         return false;
     }
     return true;
+}
+
+bool BtStackTransport::connect_a2dp_retrying(const uint8_t remote_addr[6],
+                                             const std::function<bool()> &cancelled,
+                                             const std::function<void(int, int)> &on_retry) {
+    bool repaired = false;
+    for (int attempt = 1;; attempt++) {
+        if (connect_a2dp(remote_addr)) return true;
+        if (cancelled && cancelled()) return false;
+        ConnectFailure f = last_connect_failure_.load();
+        if (f == ConnectFailure::AuthFailed && !repaired) {
+            /* Stale link key: forget it and pair again, once */
+            repaired = true;
+            fprintf(stderr, "BTstack: authentication failed, dropping the stored link key and pairing again\n");
+            RunLoopRequest req = {};
+            req.done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+            memcpy(req.addr, remote_addr_be_, 6);
+            req.reg.callback = [](void *ctx) {
+                auto *r = static_cast<RunLoopRequest *>(ctx);
+                gap_drop_link_key_for_bd_addr(r->addr);
+                SetEvent(r->done_event);
+            };
+            req.reg.context = &req;
+            btstack_run_loop_execute_on_main_thread(&req.reg);
+            WaitForSingleObject(req.done_event, 2000);
+            CloseHandle(req.done_event);
+            if (on_retry) on_retry(attempt + 1, CONNECT_ATTEMPTS);
+            drop_acl_link(5000);
+            continue;
+        }
+        bool transient = f == ConnectFailure::NoAnswer || f == ConnectFailure::LinkLost;
+        if (!transient || attempt >= CONNECT_ATTEMPTS) return false;
+        fprintf(stderr, "BTstack: connection attempt %d/%d failed (%s), trying again\n", attempt,
+                CONNECT_ATTEMPTS, f == ConnectFailure::NoAnswer ? "no answer" : "link lost");
+        if (on_retry) on_retry(attempt + 1, CONNECT_ATTEMPTS);
+        drop_acl_link(5000);
+        /* Give both controllers a moment before paging again */
+        for (int i = 0; i < 10; i++) {
+            if (cancelled && cancelled()) return false;
+            Sleep(100);
+        }
+    }
+}
+
+void BtStackTransport::release_leftover_avdtp() {
+    ResetEvent(static_cast<HANDLE>(disconnect_event_));
+    RunLoopRequest req = {};
+    req.done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    memcpy(req.addr, remote_addr_be_, 6);
+    req.reg.callback = [](void *ctx) {
+        auto *r = static_cast<RunLoopRequest *>(ctx);
+        r->int_result = 0;
+        avdtp_connection_t *c = avdtp_get_connection_for_bd_addr(r->addr);
+        if (c != nullptr) {
+            r->int_result = (c->state == AVDTP_SIGNALING_CONNECTION_OPENED ||
+                             c->state == AVDTP_SIGNALING_CONNECTION_W4_L2CAP_DISCONNECTED) ? 1 : 2;
+            r->config_a2dp_cid = c->avdtp_cid;
+            a2dp_source_disconnect(c->avdtp_cid);
+        }
+        SetEvent(r->done_event);
+    };
+    req.reg.context = &req;
+    btstack_run_loop_execute_on_main_thread(&req.reg);
+    WaitForSingleObject(req.done_event, 2000);
+    CloseHandle(req.done_event);
+    if (req.int_result == 0) return;
+    fprintf(stderr, "BTstack: closing a leftover AVDTP connection (cid=0x%04x) first\n", req.config_a2dp_cid);
+    /* An open signaling channel is released asynchronously; one that never
+     * opened is freed at once */
+    if (req.int_result == 1 &&
+        WaitForSingleObject(static_cast<HANDLE>(disconnect_event_), DISCONNECT_TIMEOUT_MS) != WAIT_OBJECT_0)
+        fprintf(stderr, "BTstack: leftover AVDTP release timed out\n");
+    connected_.store(false);
+    streaming_.store(false);
+    disconnect_occurred_.store(false);
+    ResetEvent(static_cast<HANDLE>(connect_event_));
+    ResetEvent(static_cast<HANDLE>(stream_event_));
+}
+
+void BtStackTransport::drop_acl_link(uint32_t timeout_ms) {
+    if (!has_remote_addr_ || !hci_ready_.load()) return;
+    ResetEvent(static_cast<HANDLE>(acl_down_event_));
+    RunLoopRequest req = {};
+    req.done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    memcpy(req.addr, remote_addr_be_, 6);
+    req.reg.callback = [](void *ctx) {
+        auto *r = static_cast<RunLoopRequest *>(ctx);
+        hci_connection_t *conn = hci_connection_for_bd_addr_and_type(r->addr, BD_ADDR_TYPE_ACL);
+        r->int_result = 0;
+        if (conn && gap_disconnect(conn->con_handle) == ERROR_CODE_SUCCESS) r->int_result = 1;
+        SetEvent(r->done_event);
+    };
+    req.reg.context = &req;
+    btstack_run_loop_execute_on_main_thread(&req.reg);
+    WaitForSingleObject(req.done_event, 2000);
+    CloseHandle(req.done_event);
+    if (req.int_result != 1) return;
+    fprintf(stderr, "BTstack: dropping the ACL link before trying again\n");
+    if (WaitForSingleObject(static_cast<HANDLE>(acl_down_event_), timeout_ms) != WAIT_OBJECT_0)
+        fprintf(stderr, "BTstack: no Disconnection Complete within %u ms\n", timeout_ms);
 }
 
 uint32_t BtStackTransport::pick_aptx_sample_rate(AudioCodec codec, uint32_t wanted) const {
@@ -1378,6 +1485,7 @@ bool BtStackTransport::reconnect() {
     fprintf(stderr, "BTstack: Reconnecting to %02X:%02X:%02X:%02X:%02X:%02X...\n",
            remote_addr_be_[0], remote_addr_be_[1], remote_addr_be_[2],
            remote_addr_be_[3], remote_addr_be_[4], remote_addr_be_[5]);
+    release_leftover_avdtp();
 
     /* Dispatch a2dp_source_establish_stream to BTstack thread */
     RunLoopRequest req = {};
@@ -1722,6 +1830,13 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
             uint16_t handle = hci_event_disconnection_complete_get_connection_handle(packet);
             fprintf(stderr, "BTstack: HCI disconnection (handle=0x%04x, reason=0x%02x: %s)\n",
                    handle, reason, hci_error_string(reason));
+            SetEvent(static_cast<HANDLE>(acl_down_event_));
+            uint16_t a2dp_handle = a2dp_con_handle_.load();
+            if (a2dp_handle != 0xFFFF && handle != a2dp_handle) {
+                fprintf(stderr, "BTstack: not the A2DP link (handle=0x%04x), stream unaffected\n", a2dp_handle);
+                break;
+            }
+            a2dp_con_handle_.store(0xFFFF);
             /* Mark connection as lost — main loop will handle reconnect */
             if (connected_.load() || streaming_.load()) {
                 streaming_.store(false);
@@ -1767,10 +1882,25 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
         a2dp_cid_ = established_cid;
         if (status != ERROR_CODE_SUCCESS) {
             fprintf(stderr, "BTstack: Signaling connection failed (0x%02x)\n", status);
+            /* Page timeout: no answer. Connection timeout / L2CAP RTX timeout /
+             * unspecified (a connection BTstack gave up on): the link came up
+             * and then carried nothing. */
+            last_connect_failure_.store(
+                status == ERROR_CODE_PAGE_TIMEOUT ? ConnectFailure::NoAnswer :
+                (status == L2CAP_CONNECTION_RESPONSE_RESULT_REFUSED_SECURITY ||
+                 status == ERROR_CODE_AUTHENTICATION_FAILURE ||
+                 status == ERROR_CODE_PIN_OR_KEY_MISSING) ? ConnectFailure::AuthFailed :
+                (status == ERROR_CODE_CONNECTION_TIMEOUT ||
+                 status == L2CAP_CONNECTION_RESPONSE_RESULT_RTX_TIMEOUT ||
+                 status == L2CAP_CONNECTION_BASEBAND_DISCONNECT ||
+                 status == ERROR_CODE_UNSPECIFIED_ERROR) ? ConnectFailure::LinkLost
+                                                         : ConnectFailure::Other);
             connect_result_.store(false);
             signal_event(connect_event_, false);
         } else {
-            fprintf(stderr, "BTstack: Signaling connection established (cid=0x%04x)\n", a2dp_cid_);
+            a2dp_con_handle_.store(a2dp_subevent_signaling_connection_established_get_con_handle(packet));
+            fprintf(stderr, "BTstack: Signaling connection established (cid=0x%04x, handle=0x%04x)\n",
+                    a2dp_cid_, a2dp_con_handle_.load());
             /* Don't signal yet — wait for capability discovery to complete */
         }
         break;

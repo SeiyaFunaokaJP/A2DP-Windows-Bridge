@@ -953,13 +953,34 @@ void A2dpService::streaming_thread_func_inner() {
 
     /* Connect */
     notify_state(State::Connecting, L("status.connecting_device"));
-    if (!transport->connect_a2dp(target_addr)) {
+    bool connected = transport->connect_a2dp_retrying(
+        target_addr,
+        [this]() { return stop_requested_.load(); },
+        [this](int attempt, int attempts) {
+            char text[256];
+            snprintf(text, sizeof(text), L("status.connecting_retry"), attempt, attempts);
+            notify_state(State::Connecting, text);
+        });
+    if (!connected) {
         if (stop_requested_.load()) {
             running_.store(false);
             notify_state(State::Idle, L("status.ready"));
             return;
         }
-        notify_state(State::Error, L("error.pairing_hint"));
+        switch (transport->last_connect_failure()) {
+        case BtStackTransport::ConnectFailure::NoAnswer:
+            notify_state(State::Error, L("error.connect_no_answer"));
+            break;
+        case BtStackTransport::ConnectFailure::LinkLost:
+            notify_state(State::Error, L("error.connect_link_lost"));
+            break;
+        case BtStackTransport::ConnectFailure::AuthFailed:
+            notify_state(State::Error, L("error.connect_auth_failed"));
+            break;
+        default:
+            notify_state(State::Error, L("error.pairing_hint"));
+            break;
+        }
         running_.store(false);
         return;
     }
