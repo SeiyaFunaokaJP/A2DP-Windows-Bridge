@@ -82,7 +82,7 @@ Streams system audio via LDAC, aptX HD, aptX Low Latency, aptX, AAC, or SBC usin
 
 ### Firmware Files (Realtek adapters)
 
-Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) require proprietary firmware to operate. Intel and CSR adapters do not need this step.
+Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) require proprietary firmware to operate. CSR adapters need no firmware. Intel and Broadcom adapters (experimental) may need firmware files of their own: see the [Setup guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/setup#adapters).
 
 **GUI (Guided):** Launch `A2DPWB.exe` and open the **Firmware** dialog. If firmware is missing, a warning is displayed with the required filenames. Use **Open Download Page** to open the [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) page in your browser, and **Open Config Folder** to open the destination folder. Download the `.bin` files and place them in the config folder.
 

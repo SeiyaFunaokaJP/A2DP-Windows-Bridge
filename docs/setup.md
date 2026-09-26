@@ -71,7 +71,7 @@ See [Usage](usage) for full details.
 
 ## Firmware (Realtek Adapters)
 
-Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) require proprietary firmware to operate. **Intel and CSR adapters do not need this step.**
+Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) require proprietary firmware to operate. CSR adapters need no firmware. Intel and Broadcom adapters (experimental) may need firmware files of their own: see [Recommended Adapters](#adapters).
 
 ### GUI (Guided Download)
 
@@ -82,14 +82,14 @@ The dialog auto-detects your adapter chipset and shows which firmware files are 
 ### Manual Download
 
 1. Download the firmware and config `.bin` files for your chipset from [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (e.g., `rtl8761bu_fw.bin` and `rtl8761bu_config.bin`)
-2. Place both files in the A2DPWB config folder (same directory as `A2DPWB.exe`, or the path shown in the Firmware dialog)
+2. Place both files in the A2DPWB config folder (`%APPDATA%\A2DPWB`, or the path shown in the Firmware dialog)
 
 {: .note }
 These firmware files are proprietary Realtek binaries distributed via the linux-firmware project. They are not included in this repository. See [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE) for redistribution terms.
 
 ---
 
-## Recommended Adapters
+## Recommended Adapters {#adapters}
 
 | Chipset | Example Products | Notes |
 |:--------|:-----------------|:------|

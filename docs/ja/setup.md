@@ -72,7 +72,7 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF
 
 ## ファームウェア（Realtek アダプター）
 
-Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU ドングル等）は動作に専用ファームウェアが必要です。**Intel および CSR アダプターはこの手順は不要です。**
+Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU ドングル等）は動作に専用ファームウェアが必要です。CSR アダプターはファームウェア不要です。Intel と Broadcom のアダプター（試験的）は、それぞれのファームウェアファイルが必要な場合があります。[推奨アダプター](#adapters)を参照してください。
 
 ### GUI（ガイド付きダウンロード）
 
@@ -83,14 +83,14 @@ Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU �
 ### 手動ダウンロード
 
 1. [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) からチップセット用のファームウェアと設定の `.bin` ファイルをダウンロード（例: `rtl8761bu_fw.bin` と `rtl8761bu_config.bin`）
-2. A2DPWB 設定フォルダー（`A2DPWB.exe` と同じディレクトリ、またはファームウェアダイアログに表示されるパス）に両ファイルを配置
+2. A2DPWB 設定フォルダー（`%APPDATA%\A2DPWB`、またはファームウェアダイアログに表示されるパス）に両ファイルを配置
 
 {: .note }
 これらのファームウェアファイルは linux-firmware プロジェクト経由で配布される Realtek 独自のバイナリです。本リポジトリには含まれていません。再配布条件については [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE) を参照してください。
 
 ---
 
-## 推奨アダプター
+## 推奨アダプター {#adapters}
 
 | チップセット | 製品例 | 備考 |
 |:-------------|:-------|:-----|

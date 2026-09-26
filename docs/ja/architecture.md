@@ -205,7 +205,7 @@ AAC と SBC は A2DP 仕様で定義された標準コーデック ID を使用�
 
 ## 重要な注意事項
 
-- **アダプター互換性**: Intel、CSR、Realtek USB アダプターでテスト済み。Realtek アダプターは起動時にファームウェアアップロードが必要
+- **アダプター互換性**: Realtek（最も検証済み）と CSR の USB アダプター。Intel と Broadcom は試験的。Realtek アダプターは起動時にファームウェアアップロードが必要（Intel もブートローダーモードでは必要）
 - **ペアリング**: SSP Just Works（General Bonding）を使用。リンクキーはローカルファイルに永続化
 - **セカンドアダプター推奨**: Windows には内蔵 Bluetooth、A2DPWB には専用 USB アダプターを使用
 - 一部の Bluetooth アダプターのファームウェアは達成可能なビットレートを制限する場合がある
