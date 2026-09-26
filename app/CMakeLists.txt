@@ -47,6 +47,7 @@ add_executable(A2DPWB WIN32
     src/bt_adapter_enum.cpp
     src/btstack_transport.cpp
     src/hci_capture.cpp
+    src/test_tone.cpp
     src/btstack_uart_tcp_windows.c
     src/btstack_link_key_db_file.c
     src/config_path.cpp

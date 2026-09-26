@@ -47,6 +47,7 @@
 #include "config_path.h"
 #include "hci_capture.h"
 #include "media_payload_limit.h"
+#include "test_tone.h"
 #include "wx_app.h"
 
 /* Global state */
@@ -363,35 +364,17 @@ static void audio_callback(
     }
 }
 
-/* --test-tone: feeds audio_callback like WASAPI does (float32 stereo in 10 ms
- * blocks, paced in real time), so emulator tests get a known signal. */
+/* --test-tone: the shared generator (test_tone.h) feeding audio_callback,
+ * so emulator tests get a known signal */
 static const uint32_t TEST_TONE_RATE = 48000;
-static std::atomic<bool> g_tone_running{false};
-static std::thread g_tone_thread;
+static TestTone g_test_tone;
 
 static void start_test_tone() {
-    g_tone_running.store(true);
-    g_tone_thread = std::thread([]() {
-        const uint32_t block = TEST_TONE_RATE / 100;
-        const double two_pi = 6.283185307179586;
-        std::vector<float> buf(block * 2);
-        uint64_t n = 0;
-        auto next = std::chrono::steady_clock::now();
-        while (g_tone_running.load()) {
-            for (uint32_t i = 0; i < block; i++, n++) {
-                buf[2 * i]     = (float)(0.5 * sin(two_pi * 1000.0 * (double)n / TEST_TONE_RATE));
-                buf[2 * i + 1] = (float)(0.5 * sin(two_pi * 1500.0 * (double)n / TEST_TONE_RATE));
-            }
-            audio_callback(reinterpret_cast<const uint8_t *>(buf.data()), block, 2, TEST_TONE_RATE, 32);
-            next += std::chrono::milliseconds(10);
-            std::this_thread::sleep_until(next);
-        }
-    });
+    g_test_tone.start(TEST_TONE_RATE, audio_callback);
 }
 
 static void stop_test_tone() {
-    g_tone_running.store(false);
-    if (g_tone_thread.joinable()) g_tone_thread.join();
+    g_test_tone.stop();
 }
 
 /* Console Ctrl+C handler */

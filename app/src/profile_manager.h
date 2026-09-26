@@ -29,6 +29,8 @@ struct ConnectionProfile {
     std::string audio_device_id;  /* WASAPI device ID for virtual mode */
     std::string audio_device_name; /* display name */
     bool auto_switch_device = true;  /* auto-switch default for Virtual Device mode */
+    bool test_tone = false;       /* runtime only, not saved: send the test tone
+                                   * (test_tone.h) instead of captured audio */
     uint16_t max_media_payload = MEDIA_PAYLOAD_LIMIT_DEFAULT; /* max media packet size (media_payload_limit.h) */
 };
 

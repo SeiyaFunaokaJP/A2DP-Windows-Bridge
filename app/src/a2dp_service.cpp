@@ -16,6 +16,7 @@
 #include "config_path.h"
 #include "debug_log.h"
 #include "wasapi_capture.h"
+#include "test_tone.h"
 #include "ldac_encoder.h"
 #include "aptxhd_encoder.h"
 #include "aptxll_encoder.h"
@@ -1054,8 +1055,10 @@ void A2dpService::streaming_thread_func_inner() {
         codec_max_sr = 96000;
     }
 
-    /* If auto, query device native rate */
-    if (preferred_sr == 0) {
+    /* If auto, query device native rate (the test tone runs at 48 kHz) */
+    if (preferred_sr == 0 && p.test_tone) {
+        preferred_sr = 48000;
+    } else if (preferred_sr == 0) {
         WasapiCapture temp_cap;
         std::wstring dev_id;
         if (cmode == CaptureMode::VirtualDevice && !p.audio_device_id.empty()) {
@@ -1094,7 +1097,11 @@ void A2dpService::streaming_thread_func_inner() {
         }
     }
 
-    switch (cmode) {
+    /* Audio source: the test tone (peer receiver test) or WASAPI capture */
+    TestTone test_tone;
+    if (p.test_tone) {
+        LOG_INFO("A2dpService: audio source: test tone at %u Hz", preferred_sr);
+    } else switch (cmode) {
     case CaptureMode::SystemLoopback:
         if (!wasapi_capture.init(preferred_sr)) {
             notify_state(State::Error, L("error.wasapi_init"));
@@ -1141,8 +1148,9 @@ void A2dpService::streaming_thread_func_inner() {
     }
     }
 
-    uint32_t sr = wasapi_capture.get_sample_rate();
-    uint32_t ch = wasapi_capture.get_channels();
+    uint32_t sr = p.test_tone ? preferred_sr : wasapi_capture.get_sample_rate();
+    uint32_t ch = p.test_tone ? TestTone::CHANNELS : wasapi_capture.get_channels();
+    uint32_t source_bits = p.test_tone ? TestTone::BITS_PER_SAMPLE : wasapi_capture.get_bits_per_sample();
     uint32_t use_ch = (ch > 2) ? 2 : ch;
     g_ctx.active_channels = use_ch;
     LOG_INFO("A2dpService: WASAPI capture init OK (sr=%u ch=%u use_ch=%u)", sr, ch, use_ch);
@@ -1228,9 +1236,7 @@ void A2dpService::streaming_thread_func_inner() {
     notify_state(State::Streaming, L("status.connected"));
     notify_stream_info({codec_name_for(selected_codec),
                         encoder->get_bitrate_kbps(), sr, use_ch,
-                        wasapi_capture.get_sample_rate(),
-                        wasapi_capture.get_channels(),
-                        wasapi_capture.get_bits_per_sample()});
+                        sr, ch, source_bits});
 
     /* Save device for future use */
     {
@@ -1273,7 +1279,11 @@ void A2dpService::streaming_thread_func_inner() {
     }
 
     LOG_INFO("A2dpService: A2DP stream started, starting audio capture");
-    bool capture_started = wasapi_capture.start(service_audio_callback);
+    bool capture_started = true;
+    if (p.test_tone)
+        test_tone.start(sr, service_audio_callback);
+    else
+        capture_started = wasapi_capture.start(service_audio_callback);
     if (!capture_started) {
         notify_state(State::Error, L("error.audio_capture_start"));
         g_ctx.running.store(false);
@@ -1350,6 +1360,7 @@ void A2dpService::streaming_thread_func_inner() {
      * 3. Release transport/encoder
      * 4. Destroy ring buffer */
     LOG_INFO("A2dpService: streaming stopped, cleaning up");
+    test_tone.stop();
     wasapi_capture.stop();
     g_ctx.running.store(false);
     if (g_ctx.ring.data_event) SetEvent(g_ctx.ring.data_event);
