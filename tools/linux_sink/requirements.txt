@@ -1,4 +1,24 @@
-# tools/linux_sink Python environment: Bumble at the versions pinned for tools/emu.
+# tools/linux_sink Python environment (installed by setup.sh into .venv).
 # Test / measurement tooling only: nothing here is linked into or shipped with A2DPWB
-# (licenses: THIRD_PARTY_LICENSES.md section 13).
--r ../emu/requirements.txt
+# (licenses: THIRD_PARTY_LICENSES.md section 13). Same pins as tools/emu/requirements.txt,
+# listed here too so this folder works when copied on its own: update both together.
+
+bumble==0.0.234
+
+# Dependencies of bumble 0.0.234
+cffi==2.1.1
+click==8.5.0
+cryptography==50.0.1
+importlib_resources==7.1.0
+libusb-package==1.0.26.4
+libusb1==3.4.0
+platformdirs==4.11.12
+prompt_toolkit==3.0.53
+pycparser==3.0
+pyee==14.0.0
+pyserial==3.5
+pyserial-asyncio==0.6
+pyusb==1.3.1
+typing_extensions==4.16.0
+wcwidth==0.9.1
+websockets==17.1
