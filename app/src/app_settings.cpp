@@ -57,6 +57,9 @@ void AppSettings::load()
     bt_chip_pid = static_cast<uint16_t>(j.value("bt_chip_pid", static_cast<int>(bt_chip_pid)));
     bt_chip_fw_stem = j.value("bt_chip_fw_stem", bt_chip_fw_stem);
 
+    /* AFH host channel classification */
+    afh = j.value("afh", afh);
+
     /* Window state */
     last_profile  = j.value("last_profile", last_profile);
 }
@@ -84,6 +87,9 @@ void AppSettings::save() const
     /* Bluetooth adapter */
     j["bt_chip_pid"] = static_cast<int>(bt_chip_pid);
     j["bt_chip_fw_stem"] = bt_chip_fw_stem;
+
+    /* AFH host channel classification */
+    j["afh"] = afh;
 
     /* Window state */
     j["last_profile"]  = last_profile;

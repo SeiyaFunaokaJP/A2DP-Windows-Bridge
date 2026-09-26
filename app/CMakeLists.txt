@@ -48,6 +48,7 @@ add_executable(A2DPWB WIN32
     src/btstack_transport.cpp
     src/hci_capture.cpp
     src/test_tone.cpp
+    src/afh.cpp
     src/btstack_uart_tcp_windows.c
     src/btstack_link_key_db_file.c
     src/config_path.cpp
@@ -130,6 +131,7 @@ target_link_libraries(A2DPWB PRIVATE
     shcore         # SetProcessDpiAwareness (high-DPI)
     winmm          # timeBeginPeriod/timeEndPeriod (timer resolution)
     winhttp        # Update check (GitHub Releases API)
+    wlanapi        # Wi-Fi survey for AFH host channel classification
 )
 
 # Application version

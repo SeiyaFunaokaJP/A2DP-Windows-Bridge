@@ -75,6 +75,14 @@ public:
     /* Shut down BTstack and release USB adapter */
     void shutdown();
 
+    /* AFH host channel classification policy of the process: "auto",
+     * "off" or Wi-Fi channels to avoid such as "6,11" (afh.h). A2DPWB is the
+     * central of its links, so it applies to headphones and receivers alike.
+     * Takes effect within seconds, also on a running link. */
+    static void set_afh_policy(const std::string &policy);
+    static std::string afh_policy();
+    /* The radio state of the link is published as link_radio() (link_stats.h) */
+
     /* Discovered device info from GAP inquiry */
     struct DiscoveredDevice {
         uint8_t     address[6];  /* big-endian (BTstack format) */
@@ -315,6 +323,16 @@ private:
     std::atomic<uint16_t> a2dp_con_handle_{0xFFFF};
     std::atomic<ConnectFailure> last_connect_failure_{ConnectFailure::None};
 
+    /* AFH classification and radio readings, on the BTstack thread */
+    void afh_start();
+    void afh_stop();
+    void afh_tick();
+    void on_radio_command_complete(uint8_t *packet, uint16_t size);
+    void *afh_timer_ = nullptr;          /* btstack_timer_source_t */
+    uint8_t afh_sent_map_[10] = {};
+    bool afh_sent_ = false;              /* a classification is in force at the controller */
+    int afh_policy_version_seen_ = -1;
+    int afh_ticks_ = 0;
     std::atomic<bool> stream_result_{false};
     std::atomic<bool> start_result_{false};
 

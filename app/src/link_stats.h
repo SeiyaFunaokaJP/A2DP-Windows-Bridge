@@ -15,6 +15,8 @@
 
 #include <atomic>
 #include <cstdint>
+#include <mutex>
+#include <string>
 
 /* Capacity of BtStackTransport's media send queue, in packets */
 constexpr uint32_t MEDIA_QUEUE_PACKETS = 64;
@@ -38,6 +40,31 @@ struct LinkStats {
 inline LinkStats &link_stats() {
     static LinkStats stats;
     return stats;
+}
+
+/* Radio state of the current link, read from the controller every few
+ * seconds on the BTstack thread (BtStackTransport), shown by the GUI */
+struct LinkRadio {
+    bool has_rssi = false;
+    int rssi = 0;              /* BR/EDR: relative to the golden receive range, not dBm */
+    int afh_usable = -1;       /* channels the host classification leaves usable, -1 = none passed */
+    std::string afh_avoided;   /* Wi-Fi channels passed as bad, "6, 11" */
+    int afh_in_use = -1;       /* channels the link hops over (Read AFH Channel Map), -1 = unknown */
+};
+
+inline std::mutex &link_radio_mutex() {
+    static std::mutex m;
+    return m;
+}
+
+inline LinkRadio &link_radio_unlocked() {
+    static LinkRadio radio;
+    return radio;
+}
+
+inline LinkRadio link_radio() {
+    std::lock_guard<std::mutex> lock(link_radio_mutex());
+    return link_radio_unlocked();
 }
 
 #endif /* LINK_STATS_H */

@@ -8,6 +8,7 @@
 #include "link_stats.h"
 #include "localization.h"
 #include "theme_manager.h"
+#include "wx_radio_text.h"
 
 #include <wx/statline.h>
 
@@ -127,6 +128,7 @@ LinkQualityDialog::LinkQualityDialog(MainFrame *frame)
     bitrate_value_ = add_row(this, g_send, "quality.bitrate");
     packets_value_ = add_row(this, g_send, "quality.packets");
     queue_value_ = add_row(this, g_send, "quality.queue");
+    radio_value_ = add_row(this, g_send, "quality.radio");
     vbox->Add(g_send, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 8);
 
     add_heading(this, vbox, "quality.section_band");
@@ -248,6 +250,7 @@ void LinkQualityDialog::refresh() {
         airtime_value_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
         airtime_gauge_->SetValue(0);
     }
+    radio_value_->SetLabel(streaming ? radio_text(link_radio()) : wxString("-"));
     queue_value_->SetLabel(streaming
         ? wxString::Format(U("quality.queue_value"),
               (unsigned)link_stats().queue_depth.load(std::memory_order_relaxed),

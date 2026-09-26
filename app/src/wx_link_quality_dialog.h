@@ -44,6 +44,7 @@ private:
     wxStaticText *bitrate_value_ = nullptr;
     wxStaticText *packets_value_ = nullptr;
     wxStaticText *queue_value_ = nullptr;
+    wxStaticText *radio_value_ = nullptr;
     wxStaticText *theory_value_ = nullptr;
     wxGauge      *theory_gauge_ = nullptr;
     wxStaticText *airtime_value_ = nullptr;

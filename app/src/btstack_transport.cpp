@@ -35,6 +35,7 @@ extern "C" {
 #include "btstack_chipset_intel_firmware.h"
 }
 
+#include "afh.h"
 #include "bt_adapter_enum.h"
 #include "hci_capture.h"
 #include "link_stats.h"
@@ -845,6 +846,120 @@ void BtStackTransport::register_codec_endpoints() {
 /* ======================================================================== */
 /* Shutdown                                                                 */
 /* ======================================================================== */
+
+/* ---- AFH host channel classification / radio readings ---- */
+
+namespace {
+std::mutex g_afh_mutex;
+std::string g_afh_policy = "auto";
+std::atomic<int> g_afh_policy_version{0};
+
+/* Not in BTstack's command table: HCI Set AFH Host Channel Classification
+ * (10-byte map as 8 + 1 + 1 bytes) and HCI Read AFH Channel Map */
+const hci_cmd_t CMD_SET_AFH_HOST_CHANNEL_CLASSIFICATION = {0x0C3F, "D11"};
+const hci_cmd_t CMD_READ_AFH_CHANNEL_MAP = {0x1406, "H"};
+const uint16_t OPCODE_READ_RSSI = 0x1405;
+
+const uint32_t AFH_TICK_MS = 5000;
+const int AFH_CLASSIFY_EVERY_TICKS = 6;  /* re-survey the Wi-Fi every 30 s */
+} // namespace
+
+void BtStackTransport::set_afh_policy(const std::string &policy) {
+    std::lock_guard<std::mutex> lock(g_afh_mutex);
+    if (policy == g_afh_policy) return;
+    g_afh_policy = policy;
+    g_afh_policy_version.fetch_add(1);
+}
+
+std::string BtStackTransport::afh_policy() {
+    std::lock_guard<std::mutex> lock(g_afh_mutex);
+    return g_afh_policy;
+}
+
+void BtStackTransport::afh_start() {
+    if (!afh_timer_) afh_timer_ = new btstack_timer_source_t();
+    auto *t = static_cast<btstack_timer_source_t *>(afh_timer_);
+    afh_ticks_ = 0;
+    afh_policy_version_seen_ = -1;
+    afh_sent_ = false;
+    btstack_run_loop_set_timer_handler(t, [](btstack_timer_source_t *ts) {
+        auto *self = static_cast<BtStackTransport *>(btstack_run_loop_get_timer_context(ts));
+        self->afh_tick();
+        btstack_run_loop_set_timer(ts, AFH_TICK_MS);
+        btstack_run_loop_add_timer(ts);
+    });
+    btstack_run_loop_set_timer_context(t, this);
+    btstack_run_loop_set_timer(t, 200);
+    btstack_run_loop_add_timer(t);
+}
+
+void BtStackTransport::afh_stop() {
+    if (afh_timer_) btstack_run_loop_remove_timer(static_cast<btstack_timer_source_t *>(afh_timer_));
+    std::lock_guard<std::mutex> lock(link_radio_mutex());
+    link_radio_unlocked() = LinkRadio{};
+}
+
+void BtStackTransport::afh_tick() {
+    if (!hci_ready_.load()) return;
+    int version = g_afh_policy_version.load();
+    bool classify = version != afh_policy_version_seen_ || afh_ticks_ % AFH_CLASSIFY_EVERY_TICKS == 0;
+    afh_ticks_++;
+
+    /* 1. The classification, when it changes (one command per tick) */
+    if (classify) {
+        AfhClassification c = afh_classify(afh_policy());
+        {
+            std::lock_guard<std::mutex> lock(link_radio_mutex());
+            link_radio_unlocked().afh_usable = c.passed ? c.usable : -1;
+            link_radio_unlocked().afh_avoided = afh_describe(c.avoided_wifi);
+        }
+        /* Nothing to pass and nothing passed before: leave the controller alone */
+        bool changed = c.passed ? (!afh_sent_ || memcmp(c.map, afh_sent_map_, 10) != 0) : afh_sent_;
+        if (changed && hci_can_send_command_packet_now()) {
+            hci_send_cmd(&CMD_SET_AFH_HOST_CHANNEL_CLASSIFICATION, c.map, c.map[8], c.map[9]);
+            memcpy(afh_sent_map_, c.map, 10);
+            afh_sent_ = c.passed;
+            afh_policy_version_seen_ = version;
+            fprintf(stderr, "BTstack: AFH host classification: %s (%d of 79 channels usable)\n",
+                    c.passed ? ("avoid Wi-Fi " + afh_describe(c.avoided_wifi)).c_str() : "cleared", c.usable);
+            return;
+        }
+        if (!changed) afh_policy_version_seen_ = version;
+    }
+
+    /* 2. Readings of the current link: RSSI and AFH map in turn */
+    uint16_t handle = a2dp_con_handle_.load();
+    if (handle == 0xFFFF) {
+        std::lock_guard<std::mutex> lock(link_radio_mutex());
+        link_radio_unlocked().has_rssi = false;
+        link_radio_unlocked().afh_in_use = -1;
+        return;
+    }
+    if (!hci_can_send_command_packet_now()) return;
+    if (afh_ticks_ % 2)
+        hci_send_cmd(&hci_read_rssi, handle);
+    else
+        hci_send_cmd(&CMD_READ_AFH_CHANNEL_MAP, handle);
+}
+
+void BtStackTransport::on_radio_command_complete(uint8_t *packet, uint16_t size) {
+    uint16_t opcode = hci_event_command_complete_get_command_opcode(packet);
+    const uint8_t *rp = hci_event_command_complete_get_return_parameters(packet);
+    size_t rp_len = size >= 6 ? size - 6 : 0;
+    if (opcode == CMD_SET_AFH_HOST_CHANNEL_CLASSIFICATION.opcode) {
+        if (rp_len >= 1 && rp[0] != ERROR_CODE_SUCCESS)
+            fprintf(stderr, "BTstack: AFH host classification refused (0x%02x)\n", rp[0]);
+    } else if (opcode == OPCODE_READ_RSSI && rp_len >= 4) {
+        std::lock_guard<std::mutex> lock(link_radio_mutex());
+        link_radio_unlocked().has_rssi = rp[0] == ERROR_CODE_SUCCESS;
+        link_radio_unlocked().rssi = static_cast<int8_t>(rp[3]);
+    } else if (opcode == CMD_READ_AFH_CHANNEL_MAP.opcode && rp_len >= 14) {
+        /* status, handle, mode, map[10] */
+        std::lock_guard<std::mutex> lock(link_radio_mutex());
+        link_radio_unlocked().afh_in_use = (rp[0] == ERROR_CODE_SUCCESS && rp[3] == 1) ? afh_count(rp + 4)
+                                         : (rp[0] == ERROR_CODE_SUCCESS ? AFH_CHANNELS : -1);
+    }
+}
 
 void BtStackTransport::shutdown() {
     if (!running_.load()) return;
@@ -1733,11 +1848,13 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                 }
                 fflush(stderr);
                 hci_ready_.store(true);
+                afh_start();
                 init_result_.store(true);
                 signal_event(init_event_, true);
             } else if (state == HCI_STATE_OFF) {
                 fprintf(stderr, "BTstack: HCI state OFF\n");
                 fflush(stderr);
+                afh_stop();
                 hci_ready_.store(false);
                 /* Signal init_event_ so shutdown() can proceed */
                 SetEvent(init_event_);
@@ -1750,6 +1867,7 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                                   HCI_OPCODE_HCI_READ_LOCAL_VERSION_INFORMATION) {
                 on_local_version(packet);
             }
+            on_radio_command_complete(packet, size);
             break;
 
         case HCI_EVENT_USER_CONFIRMATION_REQUEST:

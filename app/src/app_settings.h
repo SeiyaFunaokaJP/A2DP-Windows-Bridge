@@ -50,6 +50,9 @@ public:
      * e.g. "rtl8761bu" → looks for rtl8761bu_fw.bin + rtl8761bu_config.bin. */
     std::string bt_chip_fw_stem;
 
+    /* AFH host channel classification: "auto", "off" or Wi-Fi channels "6,11" (afh.h) */
+    std::string afh = "auto";
+
     /* Window state */
     std::string last_profile;
 

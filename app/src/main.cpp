@@ -62,6 +62,9 @@ struct CliDevOptions {
 };
 static CliDevOptions g_dev;
 
+/* --afh auto|off|6,11: AFH host channel classification (default: settings) */
+static std::string g_afh;
+
 /* --max-packet: advanced max media packet size (media_payload_limit.h) */
 static uint16_t g_max_packet = MEDIA_PAYLOAD_LIMIT_DEFAULT;
 static std::mutex g_encode_mutex;
@@ -406,6 +409,8 @@ static void print_usage(const char *prog) {
     printf("  -u <path>    USB device path for BTstack (optional)\n");
     printf("  --max-packet <bytes>  Advanced: max media packet size, %u-%u (recommended: %u)\n",
            MEDIA_PAYLOAD_LIMIT_MIN, MEDIA_PAYLOAD_LIMIT_MAX, MEDIA_PAYLOAD_LIMIT_DEFAULT);
+    printf("  --afh <auto|off|6,11>  AFH: avoid the Wi-Fi channels heard strongly (auto), none,\n");
+    printf("               or these Wi-Fi channels (default: as set in the GUI, else auto)\n");
     printf("  -h           Show this help\n");
     printf("\nCodec priority (auto mode): LDAC > aptX HD > aptX LL > aptX > AAC > SBC\n");
 }
@@ -487,6 +492,8 @@ static int run_streaming(const uint8_t target_addr[6],
         transport.set_product_id(settings.bt_chip_pid);
         if (!settings.bt_chip_fw_stem.empty())
             transport.set_fw_stem(settings.bt_chip_fw_stem);
+        BtStackTransport::set_afh_policy(g_afh.empty() ? settings.afh : g_afh);
+        printf("AFH host channel classification: %s\n", BtStackTransport::afh_policy().c_str());
     }
 
     transport.set_media_payload_limit(g_max_packet);
@@ -940,6 +947,8 @@ int main(int argc, char *argv[]) {
             g_dev.hci_capture = argv[++i];
         } else if (strcmp(argv[i], "--test-tone") == 0) {
             g_dev.test_tone = true;
+        } else if (strcmp(argv[i], "--afh") == 0 && i + 1 < argc) {
+            g_afh = argv[++i];
         } else if (strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
             g_dev.duration_s = static_cast<uint32_t>(strtoul(argv[++i], nullptr, 10));
         } else if (strcmp(argv[i], "-h") == 0) {

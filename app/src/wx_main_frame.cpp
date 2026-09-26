@@ -7,6 +7,7 @@
 #include "wx_profile_dialog.h"
 #include "wx_settings_dialog.h"
 #include "wx_link_quality_dialog.h"
+#include "btstack_transport.h"
 #include "wx_debug_console_dialog.h"
 #include "debug_log_model.h"
 #include "wx_about_dialog.h"
@@ -63,6 +64,7 @@ MainFrame::MainFrame()
     service_.load_saved_devices();
     service_.set_bt_chip_pid(settings_.bt_chip_pid);
     service_.set_bt_chip_fw_stem(settings_.bt_chip_fw_stem);
+    BtStackTransport::set_afh_policy(settings_.afh);
     service_.set_debug_mode(settings_.debug_mode);
     /* Debug mode changes apply after a restart; the Debug menu follows the boot state */
     debug_active_ = settings_.debug_mode;
