@@ -38,6 +38,7 @@
 #include "ldac_encoder.h"
 #include "aptxhd_encoder.h"
 #include "a2dp_sbc_encoder.h"
+#include "app_settings.h"
 #include "aac_encoder.h"
 #include "aptxll_encoder.h"
 #include "aptx_encoder.h"
@@ -493,6 +494,17 @@ static int run_streaming(const uint8_t target_addr[6],
                              const wchar_t *audio_device_id = nullptr) {
     BtStackTransport transport;
     transport.set_link_key_dir(get_config_dir());
+
+    /* Realtek adapter: firmware from the config folder and the chip chosen in
+     * the GUI's firmware settings, as the GUI does */
+    {
+        AppSettings settings;
+        settings.load();
+        transport.set_firmware_dir(get_config_dir());
+        transport.set_product_id(settings.bt_chip_pid);
+        if (!settings.bt_chip_fw_stem.empty())
+            transport.set_fw_stem(settings.bt_chip_fw_stem);
+    }
 
     transport.set_media_payload_limit(g_max_packet);
     if (!g_dev.hci_tcp.empty()) transport.set_hci_tcp(g_dev.hci_tcp);
