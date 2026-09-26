@@ -2036,6 +2036,7 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
             last_connect_failure_.store(
                 status == ERROR_CODE_PAGE_TIMEOUT ? ConnectFailure::NoAnswer :
                 (status == L2CAP_CONNECTION_RESPONSE_RESULT_REFUSED_SECURITY ||
+                 status == L2CAP_CONNECTION_PIN_OR_LINK_KEY_MISSING ||
                  status == ERROR_CODE_AUTHENTICATION_FAILURE ||
                  status == ERROR_CODE_PIN_OR_KEY_MISSING) ? ConnectFailure::AuthFailed :
                 (status == ERROR_CODE_CONNECTION_TIMEOUT ||
