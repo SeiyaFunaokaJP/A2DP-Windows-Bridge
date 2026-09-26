@@ -12,6 +12,7 @@
 
 #include <wx/wx.h>
 #include <wx/listbox.h>
+#include <wx/spinctrl.h>
 
 
 class ProfileDialog : public wxDialog {
@@ -54,6 +55,7 @@ private:
     wxChoice    *capture_ctrl_ = nullptr;
     wxChoice    *audio_dev_ctrl_ = nullptr;
     wxCheckBox  *auto_switch_ctrl_ = nullptr;
+    wxSpinCtrl  *max_packet_ctrl_ = nullptr;
     wxStaticText *audio_dev_label_ = nullptr;
     wxStaticText *auto_switch_label_ = nullptr;
     wxStaticText *format_info_ = nullptr;

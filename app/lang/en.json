@@ -170,8 +170,6 @@
   "settings.debug_mode_enabled": "Debug mode will take effect after you restart A2DPWB.\n\ndebug.log is then written to the config folder, and a Debug menu appears where you can start and stop an HCI packet capture (up to about 0.5 GB per hour while streaming).",
   "settings.debug_mode_disabled": "Debug mode will be turned off after you restart A2DPWB.\n\nExisting debug.log and HCI capture (.pklg) files stay in the config folder until you delete them.",
   "settings.check_updates_on_startup": "Check for Updates on Startup",
-  "settings.advanced": "Advanced Settings...",
-  "advanced.title": "Advanced Settings",
   "advanced.max_packet": "Max media packet size (bytes)",
   "advanced.max_packet_recommended": "Recommended (%d)",
   "advanced.max_packet_help": "Upper limit for the audio data in each Bluetooth packet (%d-%d). The headphones' own limit (MTU) always applies too; A2DPWB uses the smaller of the two.\n\n%d (recommended) fits one Bluetooth baseband packet. Larger values save only 1-2%% overhead, but more audio is lost when a packet is lost. Applies from the next connection.",

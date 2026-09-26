@@ -14,6 +14,8 @@
 #include <vector>
 #include <cstdint>
 
+#include "media_payload_limit.h"
+
 struct ConnectionProfile {
     std::string name;
     std::string device_address;   /* XX:XX:XX:XX:XX:XX */
@@ -27,12 +29,16 @@ struct ConnectionProfile {
     std::string audio_device_id;  /* WASAPI device ID for virtual mode */
     std::string audio_device_name; /* display name */
     bool auto_switch_device = true;  /* auto-switch default for Virtual Device mode */
+    uint16_t max_media_payload = MEDIA_PAYLOAD_LIMIT_DEFAULT; /* max media packet size (media_payload_limit.h) */
 };
 
 class ProfileManager {
 public:
-    /* Load profiles from %APPDATA%\A2DPWB\profiles.json */
-    void load();
+    /* Load profiles from %APPDATA%\A2DPWB\profiles.json.
+     * legacy_max_media_payload: value for profiles saved before the max media
+     * packet size moved from settings.json into each profile; they are
+     * rewritten with it. */
+    void load(uint16_t legacy_max_media_payload = MEDIA_PAYLOAD_LIMIT_DEFAULT);
 
     /* Save all profiles to disk */
     void save() const;

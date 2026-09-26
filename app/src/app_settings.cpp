@@ -47,10 +47,10 @@ void AppSettings::load()
     /* Debug */
     debug_mode = j.value("debug_mode", debug_mode);
 
-    /* Advanced */
+    /* Legacy: max media packet size before it moved into each profile */
     {
-        int v = j.value("max_media_payload", static_cast<int>(max_media_payload));
-        max_media_payload = clamp_media_payload_limit(v > 0 ? static_cast<uint32_t>(v) : 0u);
+        int v = j.value("max_media_payload", static_cast<int>(legacy_max_media_payload));
+        legacy_max_media_payload = clamp_media_payload_limit(v > 0 ? static_cast<uint32_t>(v) : 0u);
     }
 
     /* Bluetooth adapter */
@@ -80,9 +80,6 @@ void AppSettings::save() const
 
     /* Debug */
     j["debug_mode"] = debug_mode;
-
-    /* Advanced */
-    j["max_media_payload"] = static_cast<int>(max_media_payload);
 
     /* Bluetooth adapter */
     j["bt_chip_pid"] = static_cast<int>(bt_chip_pid);

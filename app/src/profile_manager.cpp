@@ -15,8 +15,9 @@ std::string ProfileManager::get_profiles_path() const {
     return get_config_dir() + "\\profiles.json";
 }
 
-void ProfileManager::load() {
+void ProfileManager::load(uint16_t legacy_max_media_payload) {
     profiles_.clear();
+    bool migrated = false;
     std::ifstream ifs(get_profiles_path());
     if (!ifs.is_open()) return;
 
@@ -38,13 +39,23 @@ void ProfileManager::load() {
             p.audio_device_id  = item.value("audio_device_id", std::string());
             p.audio_device_name = item.value("audio_device_name", std::string());
             p.auto_switch_device = item.value("auto_switch_device", true);
+            if (item.contains("max_media_payload")) {
+                int v = item.value("max_media_payload", static_cast<int>(MEDIA_PAYLOAD_LIMIT_DEFAULT));
+                p.max_media_payload = clamp_media_payload_limit(v > 0 ? static_cast<uint32_t>(v) : 0u);
+            } else {
+                p.max_media_payload = clamp_media_payload_limit(legacy_max_media_payload);
+                migrated = true;
+            }
             if (!p.name.empty() && !p.device_address.empty()) {
                 profiles_.push_back(std::move(p));
             }
         }
     } catch (...) {
         /* Ignore parse errors; keep whatever was loaded */
+        return;
     }
+
+    if (migrated) save();
 }
 
 void ProfileManager::save() const {
@@ -62,7 +73,8 @@ void ProfileManager::save() const {
             {"capture_mode",     p.capture_mode},
             {"audio_device_id",  p.audio_device_id},
             {"audio_device_name", p.audio_device_name},
-            {"auto_switch_device", p.auto_switch_device}
+            {"auto_switch_device", p.auto_switch_device},
+            {"max_media_payload", p.max_media_payload}
         });
     }
 

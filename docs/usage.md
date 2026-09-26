@@ -170,9 +170,9 @@ BTstack: Capability discovery complete (LDAC=0, aptXHD=0, aptXLL=0, aptX=1, aptX
 - `aptX=0`, `aptXHD=0`, `aptXLL=0` with `aptXAdaptive=1` -- the headphones offer only aptX Adaptive; use Auto, AAC or SBC.
 - `Remote vendor codec ... — unsupported` -- another vendor codec that A2DPWB does not implement.
 
-### Max Media Packet Size (Advanced)
+### Max Media Packet Size (per Profile)
 
-**Settings > Advanced Settings...** (CLI: `--max-packet <bytes>`) sets the upper limit for the audio data in each Bluetooth packet, from 679 to 1679 bytes. The headphones' own limit (MTU) always applies too; A2DPWB uses the smaller of the two. The change applies from the next connection.
+**Max media packet size** in each profile (**Edit Profile**; CLI: `--max-packet <bytes>`) sets the upper limit for the audio data in each Bluetooth packet, from 679 to 1679 bytes, so headphones that need a different value can have their own. The headphones' own limit (MTU) always applies too; A2DPWB uses the smaller of the two. The change applies from the next connection. Profiles saved by older versions take the value that was set globally before.
 
 **1023 (default) is recommended.** It fits one Bluetooth baseband packet (3-DH5). Larger values save only 1-2% overhead, and each lost packet then loses more audio. 679 fits one 2-DH5 packet and is the minimum LDAC accepts.
 
