@@ -230,8 +230,9 @@ only logs it; classic aptX is used if the sink lists that separately.
 
 ## Important Considerations
 
-- **Adapter compatibility**: Tested with Intel, CSR, and Realtek USB adapters.
-  Realtek adapters require firmware upload at startup
+- **Adapter compatibility**: Realtek (best tested) and CSR USB adapters; Intel and
+  Broadcom are experimental. Realtek adapters require firmware upload at startup,
+  Intel adapters in bootloader mode too
 - **Pairing**: Uses SSP Just Works with General Bonding. Link keys are persisted
   to a local file
 - **Second adapter recommended**: Keep built-in Bluetooth for Windows, use
