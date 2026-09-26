@@ -307,6 +307,7 @@
   "receiver.source_system": "システム音声",
   "receiver.source_tooltip": "テストトーン（左 1 kHz / 右 1.5 kHz）なら送信が一定になります。システム音声は PC で再生中の音を送るため、何も再生していない間は何も送られず、受信側では一時停止として数えます。",
   "receiver.pauses_value": "、送信側の一時停止 %llu 回",
+  "receiver.final_value": "%s（停止時）",
   "receiver.idle_value": "送信なし - ",
   "quality.radio": "電波",
   "radio.rssi": "RSSI 適正範囲との差 %+d dB",

@@ -307,6 +307,7 @@
   "receiver.source_system": "System audio",
   "receiver.source_tooltip": "Test tone (1 kHz left / 1.5 kHz right) keeps the stream steady. System audio sends what the PC plays; while it plays nothing, nothing is sent, and the receiver counts that as a pause.",
   "receiver.pauses_value": ", source paused %llu time(s)",
+  "receiver.final_value": "%s (at stop)",
   "receiver.idle_value": "source idle - ",
   "quality.radio": "Radio",
   "radio.rssi": "RSSI %+d dB vs. golden range",

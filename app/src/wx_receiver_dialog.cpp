@@ -396,6 +396,7 @@ void ReceiverDialog::start_stop() {
     p.test_tone = source_->GetSelection() == 0;
     /* Receiver side first: it applies the settings to the connection that follows */
     reset_measurement_steps();
+    last_codec_.clear();
     requested_mtu_ = MTUS[mtu_->GetSelection()];
     requested_buffer_ms_ = BUFFERS_MS[buffer_->GetSelection()];
     RemoteSinkStats s;
@@ -631,10 +632,19 @@ void ReceiverDialog::refresh_sent(bool streaming, const Sample &now) {
         for (auto *t : {codec_s_, bitrate_s_, total_s_, loss_s_, timing_s_, buffer_s_, audio_s_,
                         errors_s_, signal_s_})
             set_value(t, "-");
+        if (last_codec_.empty()) return;
+        /* Stopped: the final counts (the counters are not reset, and nothing
+         * is sent any more) */
+        set_value(codec_s_, wxString::Format(U("receiver.final_value"), last_codec_));
+        uint64_t sent = now.packets - baseline_.packets;
+        uint64_t dropped = now.dropped - baseline_.dropped;
+        set_value(total_s_, wxString::Format("%llu", (unsigned long long)sent));
+        set_value(loss_s_, wxString::Format(U("receiver.dropped_value"), (unsigned long long)dropped,
+                                            pct(dropped, sent + dropped)), dropped > 0);
         return;
     }
-    set_value(codec_s_, wxString::Format("%s, %.1f kHz", wxString::FromUTF8(info.codec),
-                                         info.sample_rate / 1000.0));
+    last_codec_ = wxString::Format("%s, %.1f kHz", wxString::FromUTF8(info.codec), info.sample_rate / 1000.0);
+    set_value(codec_s_, last_codec_);
     double dt = have_prev_ ? (now.tick_ms - prev_.tick_ms) / 1000.0 : 0.0;
     uint64_t d_packets = now.packets - prev_.packets;
     if (dt > 0.2 && d_packets > 0)
@@ -682,7 +692,8 @@ void ReceiverDialog::refresh_received() {
     uint64_t errors = (s.frame_errors - b.frame_errors) + (s.decode_errors - b.decode_errors) +
                       (s.ts_errors - b.ts_errors);
 
-    set_value(codec_r_, wxString::FromUTF8(s.config));
+    wxString config = wxString::FromUTF8(s.config);
+    set_value(codec_r_, s.streaming ? config : wxString::Format(U("receiver.final_value"), config));
     if (s.streaming && s.interval_packets > 0) {
         set_value(bitrate_r_, wxString::Format(U("receiver.bitrate_value"), s.interval_bytes * 8.0 / 1000.0,
                                                (double)s.interval_packets));
