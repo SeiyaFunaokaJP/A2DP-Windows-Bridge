@@ -161,7 +161,6 @@
   "modal.confirm_disconnect": "Are you sure you want to disconnect?",
   "modal.confirm_delete_profile": "Are you sure you want to delete this profile?",
   "settings.header": "Settings",
-  "settings.title": "Settings...",
   "settings.language": "Language",
   "settings.start_with_windows": "Start with Windows",
   "settings.minimize_to_tray": "Minimize to System Tray",

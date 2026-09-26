@@ -63,7 +63,6 @@ A2DPWB.exe
 │   ├── wx_app              App entry point, event loop
 │   ├── wx_main_frame       Main window (device, codec, status)
 │   ├── wx_profile_dialog   Connection profile management, device scan
-│   ├── wx_settings_dialog  Application settings
 │   ├── wx_firmware_dialog  Realtek firmware download
 │   ├── wx_about_dialog     About / license info
 │   ├── wx_zadig_dialog     Zadig WinUSB installation guide

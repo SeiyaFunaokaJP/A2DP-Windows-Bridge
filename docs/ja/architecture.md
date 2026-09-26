@@ -54,7 +54,6 @@ A2DPWB.exe
 │   ├── wx_app              アプリエントリーポイント、イベントループ
 │   ├── wx_main_frame       メインウィンドウ（デバイス、コーデック、ステータス）
 │   ├── wx_profile_dialog   接続プロファイル管理、デバイス検索
-│   ├── wx_settings_dialog  アプリケーション設定
 │   ├── wx_firmware_dialog  Realtek ファームウェアダウンロード
 │   ├── wx_about_dialog     バージョン情報 / ライセンス
 │   ├── wx_zadig_dialog     Zadig WinUSB インストールガイド

@@ -5,7 +5,6 @@
 
 #include "wx_main_frame.h"
 #include "wx_profile_dialog.h"
-#include "wx_settings_dialog.h"
 #include "wx_link_quality_dialog.h"
 #include "wx_receiver_dialog.h"
 #include "btstack_transport.h"
@@ -719,13 +718,6 @@ void MainFrame::OnOpenConfig(wxCommandEvent &) {
 
 void MainFrame::OnExit(wxCommandEvent &) {
     Close(true);
-}
-
-void MainFrame::OnOpenSettings(wxCommandEvent &) {
-    SettingsDialog dlg(this, &settings_);
-    if (dlg.ShowModal() == wxID_OK) {
-        apply_theme();
-    }
 }
 
 void MainFrame::OnToggleStartWithWindows(wxCommandEvent &) {
