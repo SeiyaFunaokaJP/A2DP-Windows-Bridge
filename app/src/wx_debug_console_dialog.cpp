@@ -632,8 +632,15 @@ wxString DebugConsoleDialog::diagnostics_text() const {
     out << "\n";
 
     out << "\n[Adapter]\n";
+    const char *chip_kind = "";
+    if (BtAdapterEnumerator::is_auto_chip(set.bt_chip_pid, set.bt_chip_fw_stem))
+        chip_kind = " (auto)";
+    else if (set.bt_chip_pid == NON_REALTEK_CHIP_PID)
+        chip_kind = " (not Realtek)";
+    else if (set.bt_chip_pid == CUSTOM_CHIP_PID)
+        chip_kind = " (custom)";
     out << wxString::Format("  Setting: chip PID 0x%04X%s%s\n", (unsigned)set.bt_chip_pid,
-                            set.bt_chip_pid ? "" : " (auto)",
+                            chip_kind,
                             set.bt_chip_fw_stem.empty() ? wxString()
                                 : wxString(", firmware stem ") + wxString::FromUTF8(set.bt_chip_fw_stem));
     A2dpService &svc = frame_->service();

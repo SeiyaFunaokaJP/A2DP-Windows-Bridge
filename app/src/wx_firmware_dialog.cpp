@@ -35,26 +35,21 @@ FirmwareDialog::FirmwareDialog(wxWindow *parent, A2dpService *service, AppSettin
     vbox->Add(adapter_info_, 0, wxLEFT | wxRIGHT | wxTOP, 8);
 
     /* Enumerate USB Bluetooth adapters */
-    auto adapters = BtAdapterEnumerator::enumerate();
-    uint16_t detected_realtek_pid = 0;
+    adapters_ = BtAdapterEnumerator::enumerate();
     bool realtek_seen = false;
-    for (const auto &a : adapters) {
+    for (const auto &a : adapters_) {
         if (a.vendor == BtChipVendor::Realtek) realtek_seen = true;
         else if (a.vendor != BtChipVendor::Unknown && other_vendor_ == BtChipVendor::Unknown)
             other_vendor_ = a.vendor;
     }
     if (realtek_seen) other_vendor_ = BtChipVendor::Unknown;
-    if (adapters.empty()) {
+    if (adapters_.empty()) {
         adapter_info_->SetLabel(wxString::FromUTF8(L("firmware.no_adapters")));
     } else {
         std::string info_text;
-        for (const auto &a : adapters) {
+        for (const auto &a : adapters_) {
             if (!info_text.empty()) info_text += "\n";
             info_text += a.display_name;
-            /* Remember first detected Realtek PID for auto-selection */
-            if (a.realtek_pid != 0 && detected_realtek_pid == 0) {
-                detected_realtek_pid = a.realtek_pid;
-            }
         }
         adapter_info_->SetLabel(wxString::FromUTF8(info_text));
         adapter_info_->Wrap(480);
@@ -62,7 +57,11 @@ FirmwareDialog::FirmwareDialog(wxWindow *parent, A2dpService *service, AppSettin
 
     vbox->Add(new wxStaticLine(this), 0, wxEXPAND | wxALL, 8);
 
-    /* ---- Chip type selector (populated from firmware files) ---- */
+    /* ---- Chip selector ----
+     * Auto (from the detected adapter), Not Realtek, every Realtek chip in
+     * the chip table whether its files are there or not, chips known only
+     * by firmware files in the config folder, and Custom. Nothing is saved
+     * until the user picks an entry. */
     auto *chip_row = new wxBoxSizer(wxHORIZONTAL);
     auto *chip_label = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("settings.bt_chip")));
     chip_label->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
@@ -71,63 +70,53 @@ FirmwareDialog::FirmwareDialog(wxWindow *parent, A2dpService *service, AppSettin
     chip_ctrl_->SetBackgroundColour(TM().get(ThemeColor::CtrlBg));
     chip_ctrl_->SetForegroundColour(TM().get(ThemeColor::CtrlFg));
 
-    /* Scan config directory for firmware file pairs */
-    fw_entries_ = BtAdapterEnumerator::scan_firmware_files(service->get_config_dir());
+    auto add_option = [this](uint16_t pid, const std::string &stem, const wxString &label) {
+        options_.push_back({pid, stem});
+        chip_ctrl_->Append(label);
+    };
+
+    uint16_t auto_pid = BtAdapterEnumerator::resolve_chip_pid(0, "", adapters_);
+    std::string auto_chip;
+    if (auto_pid != 0) {
+        const char *name = BtAdapterEnumerator::realtek_chip_name(auto_pid);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "Realtek 0x%04X", auto_pid);
+        auto_chip = name ? name : buf;
+    }
+    add_option(0, "", wxString::Format(wxString::FromUTF8(L("firmware.chip_auto")),
+                                       auto_pid ? wxString::FromUTF8(auto_chip)
+                                                : wxString::FromUTF8(L("firmware.chip_auto_none"))));
+    add_option(NON_REALTEK_CHIP_PID, "", wxString::FromUTF8(L("firmware.chip_non_realtek")));
+    for (const auto &c : BtAdapterEnumerator::get_realtek_chips()) {
+        if (c.pid == CUSTOM_CHIP_PID) continue;
+        std::string stem = c.fw_name;
+        stem.resize(stem.size() - 3);  /* drop "_fw" */
+        add_option(c.pid, stem, wxString::FromUTF8(c.chip_name));
+    }
+    for (const auto &e : BtAdapterEnumerator::scan_firmware_files(service->get_config_dir())) {
+        if (e.pid == 0)
+            add_option(0, e.stem, wxString::FromUTF8(e.display_name + " (" + e.stem + "_fw.bin)"));
+    }
+    add_option(CUSTOM_CHIP_PID, "custom",
+               wxString::FromUTF8("Custom (custom_fw.bin, custom_config.bin)"));
 
     int chip_sel = -1;
-    if (fw_entries_.empty()) {
-        /* No firmware files found — show hint text (Custom still available) */
-        chip_ctrl_->Append(wxString::FromUTF8(L("firmware.no_firmware_files_short")));
-    } else {
-        for (int i = 0; i < static_cast<int>(fw_entries_.size()); i++) {
-            chip_ctrl_->Append(wxString::FromUTF8(fw_entries_[i].display_name));
-            if (fw_entries_[i].pid != 0 && fw_entries_[i].pid == settings->bt_chip_pid)
-                chip_sel = i;
-            else if (fw_entries_[i].pid == 0 && fw_entries_[i].stem == settings->bt_chip_fw_stem)
-                chip_sel = i;
-        }
+    for (int i = 0; i < static_cast<int>(options_.size()) && chip_sel < 0; i++) {
+        const auto &o = options_[i];
+        if (o.pid != 0 ? o.pid == settings->bt_chip_pid
+                       : settings->bt_chip_pid == 0 && o.stem == settings->bt_chip_fw_stem)
+            chip_sel = i;
     }
-    /* Always append Custom as last real entry */
-    chip_ctrl_->Append(wxString::FromUTF8("Custom"));
-
-    /* Auto-select based on detected adapter (if firmware files exist) */
-    if (detected_realtek_pid != 0 && chip_sel < 0) {
-        for (int i = 0; i < static_cast<int>(fw_entries_.size()); i++) {
-            if (fw_entries_[i].pid == detected_realtek_pid) {
-                chip_sel = i;
-                /* Apply auto-selection to settings */
-                settings->bt_chip_pid = fw_entries_[i].pid;
-                settings->bt_chip_fw_stem = fw_entries_[i].stem;
-                settings->save();
-                service->set_bt_chip_pid(fw_entries_[i].pid);
-                service->set_bt_chip_fw_stem(fw_entries_[i].stem);
-                service->check_firmware_present();
-                chip_changed_ = true;
-                break;
-            }
-        }
+    if (chip_sel < 0) {
+        /* A setting no entry stands for (e.g. a chip since dropped from the
+         * table): keep it selectable as it is */
+        char buf[64];
+        snprintf(buf, sizeof(buf), "0x%04X %s", settings->bt_chip_pid,
+                 settings->bt_chip_fw_stem.c_str());
+        add_option(settings->bt_chip_pid, settings->bt_chip_fw_stem, wxString::FromUTF8(buf));
+        chip_sel = static_cast<int>(options_.size()) - 1;
     }
-
-    if (chip_sel >= 0) {
-        chip_ctrl_->SetSelection(chip_sel);
-    } else if (!fw_entries_.empty() && other_vendor_ == BtChipVendor::Unknown) {
-        /* Default to first firmware entry if nothing matched (not for a
-         * non-Realtek adapter: a Realtek driver must not be forced on it) */
-        chip_ctrl_->SetSelection(0);
-        auto &first = fw_entries_[0];
-        if (first.pid != settings->bt_chip_pid || first.stem != settings->bt_chip_fw_stem) {
-            settings->bt_chip_pid = first.pid;
-            settings->bt_chip_fw_stem = first.stem;
-            settings->save();
-            service->set_bt_chip_pid(first.pid);
-            service->set_bt_chip_fw_stem(first.stem);
-            service->check_firmware_present();
-            chip_changed_ = true;
-        }
-    } else if (fw_entries_.empty()) {
-        chip_ctrl_->SetSelection(0);  /* placeholder or Custom */
-    }
-    /* else: non-Realtek adapter with Realtek files around — leave unselected */
+    chip_ctrl_->SetSelection(chip_sel);
 
     chip_ctrl_->Bind(wxEVT_CHOICE, &FirmwareDialog::OnChipChanged, this);
     chip_row->Add(chip_ctrl_, 1, wxEXPAND);
@@ -193,24 +182,10 @@ FirmwareDialog::FirmwareDialog(wxWindow *parent, A2dpService *service, AppSettin
 
 void FirmwareDialog::OnChipChanged(wxCommandEvent &) {
     int sel = chip_ctrl_->GetSelection();
-    if (sel < 0) return;
+    if (sel < 0 || sel >= static_cast<int>(options_.size())) return;
 
-    uint16_t new_pid = 0;
-    std::string new_stem;
-
-    /* Last item is always Custom */
-    int custom_idx = static_cast<int>(fw_entries_.size());
-    if (fw_entries_.empty()) custom_idx = 1;  /* placeholder + Custom */
-
-    if (sel == custom_idx || (fw_entries_.empty() && sel == 1)) {
-        new_pid = CUSTOM_CHIP_PID;
-        new_stem = "custom";
-    } else if (!fw_entries_.empty() && sel < static_cast<int>(fw_entries_.size())) {
-        new_pid = fw_entries_[sel].pid;
-        new_stem = fw_entries_[sel].stem;
-    } else {
-        return;
-    }
+    uint16_t new_pid = options_[sel].pid;
+    std::string new_stem = options_[sel].stem;
 
     bool changed = (new_pid != settings_->bt_chip_pid) ||
                    (new_stem != settings_->bt_chip_fw_stem);
@@ -227,9 +202,16 @@ void FirmwareDialog::OnChipChanged(wxCommandEvent &) {
     Fit();
 }
 
+uint16_t FirmwareDialog::effective_pid() const {
+    return BtAdapterEnumerator::resolve_chip_pid(settings_->bt_chip_pid,
+                                                 settings_->bt_chip_fw_stem, adapters_);
+}
+
 void FirmwareDialog::UpdateFirmwareStatus() {
-    uint16_t pid = settings_->bt_chip_pid;
-    bool is_custom = (pid == CUSTOM_CHIP_PID);
+    uint16_t pid = effective_pid();
+    bool is_auto = BtAdapterEnumerator::is_auto_chip(settings_->bt_chip_pid,
+                                                     settings_->bt_chip_fw_stem);
+    bool non_realtek = settings_->bt_chip_pid == NON_REALTEK_CHIP_PID;
 
     /* Determine firmware/config filenames */
     std::string fw_name, cfg_name;
@@ -238,12 +220,23 @@ void FirmwareDialog::UpdateFirmwareStatus() {
     if (fw && cfg) {
         fw_name = fw;
         cfg_name = cfg;
-    } else if (!settings_->bt_chip_fw_stem.empty()) {
+    } else if (!non_realtek && !settings_->bt_chip_fw_stem.empty()) {
         fw_name = settings_->bt_chip_fw_stem + "_fw";
         cfg_name = settings_->bt_chip_fw_stem + "_config";
     }
 
-    if (fw_name.empty() && other_vendor_ != BtChipVendor::Unknown) {
+    if (fw_name.empty() && other_vendor_ == BtChipVendor::Unknown && (non_realtek || is_auto)) {
+        /* No Realtek init and no vendor we can say more about */
+        const char *key = non_realtek      ? "firmware.non_realtek"
+                        : adapters_.empty() ? "firmware.auto_no_adapter"
+                                            : "firmware.auto_unrecognized";
+        status_text_->SetLabel(wxString::FromUTF8(L(key)));
+        status_text_->SetForegroundColour(TM().get(non_realtek ? ThemeColor::FirmwareOk
+                                                               : ThemeColor::FirmwareWarning));
+        status_text_->Wrap(480);
+        download_btn_->Enable(false);
+        manual_hint_->SetLabel("");
+    } else if (fw_name.empty() && other_vendor_ != BtChipVendor::Unknown) {
         /* Non-Realtek adapter: no rtl_bt files; explain what (if anything)
          * this vendor needs instead */
         const char *key = "firmware.vendor_unsupported";
@@ -289,8 +282,9 @@ void FirmwareDialog::OnDownload(wxCommandEvent &) {
     const char *url =
         "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/"
         "linux-firmware.git/tree/rtl_bt";
-    bool realtek_selected = BtAdapterEnumerator::realtek_fw_name(settings_->bt_chip_pid) ||
-                            !settings_->bt_chip_fw_stem.empty();
+    bool realtek_selected = BtAdapterEnumerator::realtek_fw_name(effective_pid()) ||
+                            (settings_->bt_chip_pid != NON_REALTEK_CHIP_PID &&
+                             !settings_->bt_chip_fw_stem.empty());
     if (!realtek_selected && other_vendor_ == BtChipVendor::Intel) {
         url = "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/"
               "linux-firmware.git/tree/intel";

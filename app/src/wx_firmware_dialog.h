@@ -38,8 +38,18 @@ private:
      * Realtek adapter is also present) */
     BtChipVendor  other_vendor_ = BtChipVendor::Unknown;
 
-    /* Firmware file entries from config directory scan */
-    std::vector<FirmwareFileEntry> fw_entries_;
+    /* Adapters detected when the dialog opened (Auto resolves against them) */
+    std::vector<BtAdapterInfo> adapters_;
+
+    /* One per chip choice entry: the chip setting it stands for */
+    struct ChipOption {
+        uint16_t    pid;
+        std::string stem;
+    };
+    std::vector<ChipOption> options_;
+
+    /* Realtek PID the current setting resolves to (0 = no Realtek init) */
+    uint16_t effective_pid() const;
 };
 
 #endif /* WX_FIRMWARE_DIALOG_H */
