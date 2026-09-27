@@ -1134,7 +1134,8 @@ void A2dpService::streaming_thread_func_inner() {
         if (p.auto_switch_device) {
             original_default_device_ = AudioDeviceEnumerator::get_default_device_id();
             if (!AudioDeviceEnumerator::set_default_device(dev_id)) {
-                fprintf(stderr, "warning: failed to switch default device\n");
+                LOG_WARN("A2dpService: failed to switch the default output device to '%s'",
+                         p.audio_device_name.c_str());
             }
         }
         if (!wasapi_capture.init(preferred_sr, dev_id.c_str())) {
