@@ -19,12 +19,14 @@
 
 /* ------------------------------------------------------------------ */
 /*  IPolicyConfig — undocumented COM interface for default-device      */
-/*  switching.  The CLSID below is for Windows 10+ (CPolicyConfigClient). */
+/*  switching (Windows 7 and later, CPolicyConfigClient).  The Vista   */
+/*  variant (IPolicyConfigVista) has no ResetDeviceFormat, so its      */
+/*  vtable does not match this declaration; do not use it here.        */
 /* ------------------------------------------------------------------ */
 
 struct DeviceShareMode; /* opaque, never dereferenced */
 
-MIDL_INTERFACE("568b9108-44bf-40b4-92d0-968cf737f7d7")
+MIDL_INTERFACE("f8679f50-850a-41cf-9c72-430f290290c8")
 IPolicyConfig : public IUnknown {
 public:
     virtual HRESULT STDMETHODCALLTYPE GetMixFormat(
@@ -58,8 +60,8 @@ static const CLSID CLSID_CPolicyConfigClient = {
 };
 
 static const IID IID_IPolicyConfig = {
-    0x568b9108, 0x44bf, 0x40b4,
-    {0x92, 0xd0, 0x96, 0x8c, 0xf7, 0x37, 0xf7, 0xd7}
+    0xf8679f50, 0x850a, 0x41cf,
+    {0x9c, 0x72, 0x43, 0x0f, 0x29, 0x02, 0x90, 0xc8}
 };
 
 /* WASAPI CLSID/IID — same definitions used by wasapi_capture.cpp */
@@ -282,24 +284,11 @@ bool AudioDeviceEnumerator::is_virtual_device(IMMDevice *device,
 bool AudioDeviceEnumerator::set_default_device(const std::wstring &device_id) {
     if (device_id.empty()) return false;
 
-    /* Try Windows 10+ CLSID first, then fall back to Windows 7+ CLSID */
-    static const CLSID CLSID_PolicyConfigClient_W7 = {
-        0x294935CE, 0xF637, 0x4E7C,
-        {0xA4, 0x1B, 0xAB, 0x25, 0x54, 0x60, 0xB8, 0x62}
-    };
-
     IPolicyConfig *policy = nullptr;
     HRESULT hr = CoCreateInstance(
         CLSID_CPolicyConfigClient, nullptr, CLSCTX_ALL,
         IID_IPolicyConfig, reinterpret_cast<void **>(&policy)
     );
-    if (FAILED(hr) || !policy) {
-        /* Fallback: try the Windows 7+ CLSID */
-        hr = CoCreateInstance(
-            CLSID_PolicyConfigClient_W7, nullptr, CLSCTX_ALL,
-            IID_IPolicyConfig, reinterpret_cast<void **>(&policy)
-        );
-    }
     if (FAILED(hr) || !policy) {
         fprintf(stderr, "AudioDeviceEnumerator: Failed to create IPolicyConfig: 0x%08lx\n", hr);
         return false;

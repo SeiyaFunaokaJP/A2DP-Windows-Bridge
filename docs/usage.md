@@ -107,7 +107,7 @@ For development and testing there are also `--hci-tcp <host:port>` (a virtual co
 
 In GUI mode, `--minimized` starts A2DPWB in the system tray (used by **Start with Windows**).
 
-## Capture Modes
+## Capture Modes {#capture-modes}
 
 A2DPWB supports two audio capture modes:
 
@@ -115,6 +115,16 @@ A2DPWB supports two audio capture modes:
 |:-----|:------------|
 | System Loopback | Captures all system audio from the default output device |
 | Virtual Device | Captures from a specific virtual audio device (e.g., VB-CABLE) for per-app routing |
+
+System Loopback copies the audio; it does not take it away from the default output device. The audio keeps playing on that device (speakers, an HDMI TV, ...) as well as on the Bluetooth headphones. To hear it only on the headphones, use Virtual Device mode with a device that does not play anywhere, such as VB-CABLE.
+
+In Virtual Device mode, **Auto-switch default device** (on by default) makes the selected device the Windows default output while streaming, so apps play to it without changing Windows settings. When streaming stops, A2DPWB switches back to the previous default device.
+
+- The **Audio Device** list shows only the devices that A2DPWB detects as virtual audio devices.
+- The default communication device (used by calling apps) is not changed.
+- Some apps keep playing on the previous device until they are restarted.
+- If A2DPWB exits unexpectedly, the default device is not switched back. Change it in Windows Sound settings.
+- Windows has no public API for changing the default device. A2DPWB uses the undocumented IPolicyConfig interface, as other audio switching tools do (Windows 10 and 11).
 
 {: .warning }
 Both modes use WASAPI shared mode, so the capture sample rate is determined by the device's **Default Format** in Windows Sound settings (typically 48 kHz). To use LDAC at 96 kHz, change the output device's format to 96 kHz in **Sound settings > Device properties > Advanced > Default format**.
