@@ -73,9 +73,9 @@ private:
     uint32_t seen_session_ = 0;
     wxString query_lower_;
 
-    /* Live packet rate for the audio step */
-    uint64_t prev_tick_ = 0, prev_packets_ = 0, prev_bytes_ = 0;
-    double pps_ = -1.0, kbps_ = 0.0;
+    /* Live packet and capture rates for the audio step */
+    uint64_t prev_tick_ = 0, prev_packets_ = 0, prev_bytes_ = 0, prev_capture_ = 0;
+    double pps_ = -1.0, kbps_ = 0.0, capture_fps_ = 0.0;
 
     friend class DebugLogListCtrl;
 };
