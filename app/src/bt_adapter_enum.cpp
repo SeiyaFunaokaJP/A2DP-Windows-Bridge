@@ -144,10 +144,30 @@ static bool parse_vid_pid(const char *device_path, uint16_t &vid, uint16_t &pid)
     return true;
 }
 
-/* Bluetooth class verification via WinUSB (0xE0/0x01/0x01).
- * `why` gets the step that ruled the device out, for the enumeration log. */
-static bool is_bluetooth_class(const char *device_path, std::string &why)
+/* True if interface 0 has the HCI endpoint set: interrupt IN (events),
+ * bulk IN and bulk OUT (ACL data) */
+static bool has_hci_endpoints(WINUSB_INTERFACE_HANDLE usb_handle, uint8_t num_endpoints)
 {
+    bool intr_in = false, bulk_in = false, bulk_out = false;
+    for (uint8_t i = 0; i < num_endpoints; i++) {
+        WINUSB_PIPE_INFORMATION pipe = {};
+        if (!WinUsb_QueryPipe(usb_handle, 0, i, &pipe)) continue;
+        bool in = USB_ENDPOINT_DIRECTION_IN(pipe.PipeId);
+        if (pipe.PipeType == UsbdPipeTypeInterrupt && in) intr_in = true;
+        else if (pipe.PipeType == UsbdPipeTypeBulk) (in ? bulk_in : bulk_out) = true;
+    }
+    return intr_in && bulk_in && bulk_out;
+}
+
+/* Bluetooth class verification via WinUSB (0xE0/0x01/0x01).
+ * Broadcom-based adapters such as the ASUS BT400 report the vendor class
+ * 0xFF/0x01/0x01 instead (Linux btusb accepts it for several OEM VIDs);
+ * that counts too when interface 0 carries the HCI endpoints, and sets
+ * `vendor_class` since BTstack's transport needs the VID:PID registered.
+ * `why` gets the step that ruled the device out, for the enumeration log. */
+static bool is_bluetooth_class(const char *device_path, bool &vendor_class, std::string &why)
+{
+    vendor_class = false;
     char buf[96];
     HANDLE dev = CreateFileA(device_path,
         GENERIC_WRITE | GENERIC_READ,
@@ -172,16 +192,19 @@ static bool is_bluetooth_class(const char *device_path, std::string &why)
 
     USB_INTERFACE_DESCRIPTOR desc = {};
     ok = WinUsb_QueryInterfaceSettings(usb_handle, 0, &desc);
-    bool is_bt = ok &&
-                 desc.bInterfaceClass == 0xE0 &&
-                 desc.bInterfaceSubClass == 0x01 &&
-                 desc.bInterfaceProtocol == 0x01;
+    bool sub_prot = ok && desc.bInterfaceSubClass == 0x01 && desc.bInterfaceProtocol == 0x01;
+    bool is_bt = sub_prot && desc.bInterfaceClass == 0xE0;
+    if (sub_prot && desc.bInterfaceClass == 0xFF)
+        is_bt = vendor_class = has_hci_endpoints(usb_handle, desc.bNumEndpoints);
     if (!ok) {
         snprintf(buf, sizeof(buf), "interface query failed (error %lu)", GetLastError());
         why = buf;
+    } else if (!is_bt && sub_prot && desc.bInterfaceClass == 0xFF) {
+        why = "interface 0 is vendor class FF/01/01 but lacks the HCI endpoints";
     } else if (!is_bt) {
-        snprintf(buf, sizeof(buf), "interface 0 is class %02X/%02X/%02X, not Bluetooth E0/01/01",
-                 desc.bInterfaceClass, desc.bInterfaceSubClass, desc.bInterfaceProtocol);
+        snprintf(buf, sizeof(buf), "interface 0 is class %02X/%02X/%02X, not Bluetooth "
+                 "E0/01/01 or FF/01/01", desc.bInterfaceClass, desc.bInterfaceSubClass,
+                 desc.bInterfaceProtocol);
         why = buf;
     }
 
@@ -455,19 +478,20 @@ std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
          * First check Realtek tables (BTstack + OEM mapping).
          * Fall back to WinUSB BT class check for non-Realtek adapters. */
         bool is_bt = false;
+        bool vendor_class = false;
         std::string why;
         uint16_t realtek_pid = resolve_realtek_pid(vid, pid);
         if (realtek_pid != 0) {
             is_bt = true;
         } else {
-            is_bt = is_bluetooth_class(path, why);
+            is_bt = is_bluetooth_class(path, vendor_class, why);
         }
 
         /* Log every device that looks like Bluetooth, taken or not, so a
          * report of "my adapter is not listed" shows which driver owns it
          * and where the check failed. Other USB devices stay quiet. A
          * Bluetooth-only VID counts too: a vendor-class adapter such as the
-         * BT400 (FF/01/01) under no driver matches neither class test.
+         * BT400 (FF/01/01) under no driver has no Bluetooth compatible ID.
          * Realtek's VID is left out (card readers, Wi-Fi), as are hubs. */
         std::string service = device_string_property(dev_info, dev_data, SPDRP_SERVICE);
         std::string setup_class = device_string_property(dev_info, dev_data, SPDRP_CLASS);
@@ -481,8 +505,9 @@ std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
             fprintf(stderr, "BtAdapterEnumerator: USB %04X:%04X driver=%s class=%s -> %s%s%s\n",
                     vid, pid, service.empty() ? "(none)" : service.c_str(),
                     setup_class.empty() ? "(none)" : setup_class.c_str(),
-                    is_bt ? "adapter" : "skipped", is_bt || why.empty() ? "" : ": ",
-                    is_bt ? "" : why.c_str());
+                    is_bt ? (vendor_class ? "adapter (vendor class FF/01/01)" : "adapter")
+                          : "skipped",
+                    is_bt || why.empty() ? "" : ": ", is_bt ? "" : why.c_str());
             if (service.empty())
                 fprintf(stderr, "  no driver installed: install WinUSB with Zadig\n");
             else if (_stricmp(service.c_str(), "usbccgp") == 0)
@@ -503,6 +528,7 @@ std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
             info.device_path = path;
             info.realtek_pid = realtek_pid;
             info.vendor = vendor_for_usb(vid, pid, realtek_pid);
+            info.vendor_class = vendor_class;
 
             info.display_name = build_display_name(vid, pid, info.realtek_pid, info.vendor);
 
