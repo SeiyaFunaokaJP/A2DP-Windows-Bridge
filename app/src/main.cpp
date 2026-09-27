@@ -530,7 +530,11 @@ static int run_streaming(const uint8_t target_addr[6],
         AppSettings settings;
         settings.load();
         transport.set_firmware_dir(get_config_dir());
-        transport.set_product_id(settings.bt_chip_pid);
+        bool is_auto = BtAdapterEnumerator::is_auto_chip(settings.bt_chip_pid,
+                                                         settings.bt_chip_fw_stem);
+        transport.set_product_id(BtAdapterEnumerator::resolve_chip_pid(
+            settings.bt_chip_pid, settings.bt_chip_fw_stem,
+            is_auto ? BtAdapterEnumerator::enumerate() : std::vector<BtAdapterInfo>{}));
         if (!settings.bt_chip_fw_stem.empty())
             transport.set_fw_stem(settings.bt_chip_fw_stem);
         BtStackTransport::set_afh_policy(g_afh.empty() ? settings.afh : g_afh);

@@ -59,6 +59,12 @@ struct FirmwareFileEntry {
 /* Sentinel PID for user-supplied custom firmware */
 static constexpr uint16_t CUSTOM_CHIP_PID = 0xFFFF;
 
+/* Sentinel PID for "not a Realtek adapter": skip Realtek chipset init.
+ * The chip setting's other values: 0 with no firmware stem = Auto (decided
+ * from the detected adapter), 0 with a stem = firmware files of a chip not
+ * in the chip table, else a Realtek PID or CUSTOM_CHIP_PID. */
+static constexpr uint16_t NON_REALTEK_CHIP_PID = 0xFFFE;
+
 /* OEM VID:PID → Realtek chip PID mapping for non-0x0BDA adapters */
 struct OemChipMapping {
     uint16_t vid;
@@ -70,6 +76,17 @@ class BtAdapterEnumerator {
 public:
     /* Enumerate all connected USB Bluetooth adapters. */
     static std::vector<BtAdapterInfo> enumerate();
+
+    /* True if the chip setting is Auto */
+    static bool is_auto_chip(uint16_t setting_pid, const std::string &fw_stem) {
+        return setting_pid == 0 && fw_stem.empty();
+    }
+
+    /* The Realtek PID the transport should use for a chip setting (0 = no
+     * Realtek chipset init). Auto takes the first detected Realtek adapter
+     * from `adapters`. */
+    static uint16_t resolve_chip_pid(uint16_t setting_pid, const std::string &fw_stem,
+                                     const std::vector<BtAdapterInfo> &adapters);
 
     /* Scan config directory for *_fw.bin / *_config.bin pairs. */
     static std::vector<FirmwareFileEntry> scan_firmware_files(const std::string &config_dir);

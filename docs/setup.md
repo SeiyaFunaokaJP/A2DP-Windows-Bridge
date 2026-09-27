@@ -80,6 +80,19 @@ Launch `A2DPWB.exe` and choose **Actions > Bluetooth Firmware Selection**. If fi
 
 The dialog auto-detects your adapter chipset and shows which firmware files are needed.
 
+### Bluetooth Chip setting
+
+The **Bluetooth Chip** list in the same dialog decides whether A2DPWB runs Realtek initialization (firmware upload) on the adapter:
+
+| Choice | Meaning |
+|:-------|:--------|
+| **Auto** (default) | Decided from the detected adapter each time A2DPWB starts. A known Realtek adapter gets its chip; any other adapter gets no Realtek initialization |
+| **Not Realtek** | Never run Realtek initialization. Use it for Intel, Broadcom, CSR and other adapters if Auto does not recognize yours |
+| **RTL8761BU**, **RTL8822CU**, ... | That Realtek chip. Needed for a Realtek-based adapter that Auto does not recognize (an OEM product under its own VID:PID). The status line shows whether its `.bin` files are in the config folder |
+| **Custom** | Uses `custom_fw.bin` and `custom_config.bin` from the config folder |
+
+Do not choose a Realtek chip or Custom for a non-Realtek adapter: A2DPWB would try to upload Realtek firmware to it, and the adapter may fail to start.
+
 ### Manual Download
 
 1. Download the firmware and config `.bin` files for your chipset from [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (e.g., `rtl8761bu_fw.bin` and `rtl8761bu_config.bin`)

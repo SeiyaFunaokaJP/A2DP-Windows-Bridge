@@ -81,6 +81,19 @@ Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU �
 
 ダイアログはアダプターのチップセットを自動検出し、必要なファームウェアファイル名を表示します。
 
+### Bluetooth チップの設定
+
+同じダイアログの **Bluetooth Chip** の一覧で、アダプターに Realtek の初期化（ファームウェアの書き込み）を行うかどうかを決めます。
+
+| 選択肢 | 意味 |
+|:-------|:-----|
+| **自動**（既定） | A2DPWB の起動ごとに、検出したアダプターから判定します。既知の Realtek アダプターならそのチップ、それ以外のアダプターなら Realtek の初期化を行いません |
+| **Realtek 以外** | Realtek の初期化を行いません。Intel、Broadcom、CSR などのアダプターを自動で判別できない場合に選びます |
+| **RTL8761BU**、**RTL8822CU** など | その Realtek チップとして扱います。自動で判別できない Realtek 系アダプター（独自の VID:PID を持つ OEM 製品）で必要です。状態欄に `.bin` ファイルが設定フォルダーにあるかが表示されます |
+| **Custom** | 設定フォルダーの `custom_fw.bin` と `custom_config.bin` を使います |
+
+Realtek 以外のアダプターに Realtek チップや Custom を選ばないでください。Realtek ファームウェアを書き込もうとするため、アダプターが起動しない場合があります。
+
 ### 手動ダウンロード
 
 1. [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) からチップセット用のファームウェアと設定の `.bin` ファイルをダウンロード（例: `rtl8761bu_fw.bin` と `rtl8761bu_config.bin`）

@@ -273,6 +273,17 @@ static std::string build_display_name(uint16_t vid, uint16_t pid, uint16_t realt
 /* Public API                                                                */
 /* ======================================================================== */
 
+uint16_t BtAdapterEnumerator::resolve_chip_pid(uint16_t setting_pid, const std::string &fw_stem,
+                                               const std::vector<BtAdapterInfo> &adapters)
+{
+    if (setting_pid == NON_REALTEK_CHIP_PID) return 0;
+    if (!is_auto_chip(setting_pid, fw_stem)) return setting_pid;
+    for (const auto &a : adapters) {
+        if (a.realtek_pid != 0) return a.realtek_pid;
+    }
+    return 0;
+}
+
 const char *BtAdapterEnumerator::realtek_chip_name(uint16_t pid)
 {
     /* First check our curated chip DB (has nice names) */

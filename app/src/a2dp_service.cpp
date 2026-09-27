@@ -609,9 +609,11 @@ void A2dpService::check_firmware_present() {
         return true;
     };
 
-    /* Determine firmware filenames based on selected chip type.
-     * pid==0 means no chip selected — try stem-based lookup. */
-    uint16_t pid = bt_chip_pid_;
+    /* Determine firmware filenames based on the chip setting (Auto takes
+     * the detected Realtek adapter; Not Realtek resolves to 0). A pid of 0
+     * with a stem is a chip known only by its firmware files. */
+    auto adapters = BtAdapterEnumerator::enumerate();
+    uint16_t pid = BtAdapterEnumerator::resolve_chip_pid(bt_chip_pid_, bt_chip_fw_stem_, adapters);
     const char *fw = BtAdapterEnumerator::realtek_fw_name(pid);
     const char *cfg = BtAdapterEnumerator::realtek_cfg_name(pid);
 
@@ -627,20 +629,22 @@ void A2dpService::check_firmware_present() {
         fw_path = cfg_dir + "\\" + bt_chip_fw_stem_ + "_fw.bin";
         cfg_path = cfg_dir + "\\" + bt_chip_fw_stem_ + "_config.bin";
     } else {
-        /* No Realtek chip selected. An adapter of another known vendor needs
+        /* No Realtek chip in use. An adapter of another known vendor needs
          * no rtl_bt files (Intel/Broadcom firmware is picked up at HCI init,
-         * experimental), so don't raise the Realtek warning for it. A
-         * Realtek or unrecognised adapter still gets the warning. */
+         * experimental), so don't raise the Realtek warning for it, nor when
+         * the user chose Not Realtek. A Realtek or unrecognised adapter
+         * under Auto still gets the warning. */
         bool realtek_seen = false;
         BtChipVendor other = BtChipVendor::Unknown;
-        for (const auto &a : BtAdapterEnumerator::enumerate()) {
+        for (const auto &a : adapters) {
             if (a.vendor == BtChipVendor::Realtek) realtek_seen = true;
             else if (a.vendor == BtChipVendor::Intel || a.vendor == BtChipVendor::Broadcom ||
                      a.vendor == BtChipVendor::Csr) other = a.vendor;
         }
         if (realtek_seen) other_vendor_ = BtChipVendor::Unknown;
         else if (other != BtChipVendor::Unknown) other_vendor_ = other;
-        firmware_present_ = (other_vendor_ != BtChipVendor::Unknown);
+        firmware_present_ = (other_vendor_ != BtChipVendor::Unknown) ||
+                            bt_chip_pid_ == NON_REALTEK_CHIP_PID;
         return;
     }
 
@@ -669,16 +673,20 @@ bool A2dpService::ensure_btstack_init() {
     transport_->set_firmware_dir(get_config_dir());
     transport_->set_link_key_dir(get_config_dir());
 
-    /* Use the chip PID selected in Firmware settings.
-     * pid==0 means non-Realtek or no chip selected — skip chipset init. */
+    /* Use the chip selected in Firmware settings; Auto takes the detected
+     * Realtek adapter. pid==0 means non-Realtek — skip chipset init. */
     {
-        uint16_t pid = bt_chip_pid_;
+        bool is_auto = BtAdapterEnumerator::is_auto_chip(bt_chip_pid_, bt_chip_fw_stem_);
+        uint16_t pid = BtAdapterEnumerator::resolve_chip_pid(
+            bt_chip_pid_, bt_chip_fw_stem_,
+            is_auto ? BtAdapterEnumerator::enumerate() : std::vector<BtAdapterInfo>{});
         if (pid != 0) {
             const char *name = BtAdapterEnumerator::realtek_chip_name(pid);
-            fprintf(stderr, "A2dpService: Using chip %s (0x%04X)\n",
-                    name ? name : "unknown", pid);
+            fprintf(stderr, "A2dpService: Using chip %s (0x%04X)%s\n",
+                    name ? name : "unknown", pid, is_auto ? " (auto)" : "");
         } else {
-            fprintf(stderr, "A2dpService: No Realtek chip selected, skipping chipset init\n");
+            fprintf(stderr, "A2dpService: No Realtek chip %s, skipping chipset init\n",
+                    is_auto ? "detected (auto)" : "selected");
         }
         transport_->set_product_id(pid);
         if (!bt_chip_fw_stem_.empty()) {
