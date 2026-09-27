@@ -147,7 +147,7 @@ A2DPWB は 2 つのオーディオキャプチャモードに対応していま�
 A2DPWB は 3 種類の aptX コーデックに対応しており、いずれも [libopenaptx](https://github.com/pali/libopenaptx) でエンコードします。aptX Adaptive には**対応していません**。
 
 {: .warning }
-**aptX・aptX HD・aptX Low Latency は実験的な対応です。** Android / PipeWire の実装に合わせ、エンコード→デコードの往復テストは通っていますが、実機のヘッドホンでの検証はまだです。
+**aptX HD・aptX Low Latency は実験的な対応です。** Android / PipeWire の実装に合わせ、エンコード→デコードの往復テストは通っていますが、実機のヘッドホンでの検証はまだです。
 
 {: .note }
 **クラシック aptX だけが目的なら**、Windows 10 標準の Bluetooth スタックがクラシック aptX に対応しています（aptX HD・aptX LL・aptX Adaptive は非対応）。その場合 A2DPWB は不要です。A2DPWB が主に役立つのは LDAC・aptX HD・aptX Low Latency です。

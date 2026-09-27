@@ -35,15 +35,15 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LDAC、aptX HD
 | LDAC | ❌ | ❌ | ✅ | ✅ |
 | aptX HD | ❌ | ❌ | ✅ | 🧪 実験的 |
 | aptX Low Latency | ❌ | ❌ | ✅ | 🧪 実験的 |
-| aptX | ✅ | ✅ | ✅ | 🧪 実験的 |
-| AAC | ✅ | ✅ | ❌ Ubuntu のパッケージに含まれない | ✅ |
+| aptX | ✅ | ✅ | ✅ | ✅ |
+| AAC | ❌ | ✅ | ❌ Ubuntu のパッケージに含まれない | ✅ |
 | SBC | ✅ | ✅ | ✅ | ✅ |
 | aptX Adaptive | ❌ | ❌ | ❌ | ❌ |
 
 ✅ 対応 · 🧪 実験的 · ❌ 非対応。どの列も送信側（PC → ヘッドホン）です。「標準」は A2DPWB を使わない OS 自身の Bluetooth オーディオで、Ubuntu の列は Ubuntu 26.04 の PipeWire（`libspa-0.2-bluetooth`）が持つコーデックです。
 
 {: .warning }
-**aptX・aptX HD・aptX Low Latency は実験的な対応です。** Android / PipeWire の実装に合わせ、エンコード→デコードの往復テストは通っていますが、実機のヘッドホンでの検証はまだです。表のレイテンシーは一般的な目安で、A2DPWB で測定した値ではありません。
+**aptX HD・aptX Low Latency は実験的な対応です。** Android / PipeWire の実装に合わせ、エンコード→デコードの往復テストは通っていますが、実機のヘッドホンでの検証はまだです。表のレイテンシーは一般的な目安で、A2DPWB で測定した値ではありません。
 
 {: .note }
 **クラシック aptX だけが目的なら**、Windows 10 標準の Bluetooth スタックがクラシック aptX に対応しています（aptX HD・aptX LL・aptX Adaptive は非対応）。その場合 A2DPWB は不要です。A2DPWB が主に役立つのは LDAC・aptX HD・aptX Low Latency です。

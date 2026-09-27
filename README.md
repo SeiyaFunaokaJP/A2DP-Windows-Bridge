@@ -23,14 +23,14 @@ Streams system audio via LDAC, aptX HD, aptX Low Latency, aptX, AAC, or SBC usin
 | LDAC | ❌ | ❌ | ✅ | ✅ |
 | aptX HD | ❌ | ❌ | ✅ | 🧪 experimental |
 | aptX Low Latency | ❌ | ❌ | ✅ | 🧪 experimental |
-| aptX | ✅ | ✅ | ✅ | 🧪 experimental |
-| AAC | ✅ | ✅ | ❌ not in Ubuntu's packages | ✅ |
+| aptX | ✅ | ✅ | ✅ | ✅ |
+| AAC | ❌ | ✅ | ❌ not in Ubuntu's packages | ✅ |
 | SBC | ✅ | ✅ | ✅ | ✅ |
 | aptX Adaptive | ❌ | ❌ | ❌ | ❌ |
 
 ✅ supported · 🧪 experimental · ❌ not supported. All columns are the sending side (PC → headphones). "Built-in" is the OS's own Bluetooth audio, without A2DPWB; the Ubuntu column is the PipeWire codec set of Ubuntu 26.04 (`libspa-0.2-bluetooth`).
 
-> **aptX, aptX HD and aptX Low Latency are experimental.** They follow the Android / PipeWire implementations and pass encode/decode round-trip tests, but have not yet been verified with real headphones. Latency values in this table are typical figures, not measured with A2DPWB.
+> **aptX HD and aptX Low Latency are experimental.** They follow the Android / PipeWire implementations and pass encode/decode round-trip tests, but have not yet been verified with real headphones. Latency values in this table are typical figures, not measured with A2DPWB.
 
 > **Only need classic aptX?** Windows 10 already supports classic aptX in its built-in Bluetooth stack (not aptX HD, aptX LL or aptX Adaptive), so A2DPWB is not required for it. A2DPWB is mainly useful for LDAC, aptX HD and aptX Low Latency.
 
