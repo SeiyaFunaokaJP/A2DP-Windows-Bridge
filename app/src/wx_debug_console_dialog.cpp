@@ -409,6 +409,7 @@ DebugConsoleDialog::DebugConsoleDialog(MainFrame *frame, DebugLogModel *model)
     prev_tick_ = GetTickCount64();
     prev_packets_ = link_stats().packets_sent.load(std::memory_order_relaxed);
     prev_bytes_ = link_stats().bytes_sent.load(std::memory_order_relaxed);
+    prev_capture_ = link_stats().capture_frames.load(std::memory_order_relaxed);
 
     model_->poll();
     rebuild_filter();
@@ -527,9 +528,14 @@ DebugConsoleDialog::FlowRow DebugConsoleDialog::flow_row(int step, bool english)
     if (step == DebugLogModel::STEP_AUDIO && active &&
         (r.status == StepStatus::Done || r.status == StepStatus::Warning) &&
         state == A2dpService::State::Streaming && pps_ >= 0) {
-        if (pps_ < 1.0) {
+        if (pps_ < 1.0 && capture_fps_ < 1.0) {
+            /* Loopback capture gets no data while nothing plays, so nothing
+             * is sent either: normal while playback is paused */
+            r.status = StepStatus::Done;
+            r.detail = T("dbgc.audio_idle", "No audio playing - nothing to send");
+        } else if (pps_ < 1.0) {
             r.status = StepStatus::Warning;
-            r.detail = T("dbgc.audio_stalled", "No packets sent in the last second");
+            r.detail = T("dbgc.audio_stalled", "Audio captured but no packets sent in the last second");
         } else {
             r.detail = wxString::Format(T("dbgc.audio_live", "%.0f packets/s, %.0f kbps"), pps_, kbps_);
         }
@@ -576,13 +582,16 @@ void DebugConsoleDialog::OnTimer(wxTimerEvent &) {
     uint64_t tick = GetTickCount64();
     uint64_t packets = link_stats().packets_sent.load(std::memory_order_relaxed);
     uint64_t bytes = link_stats().bytes_sent.load(std::memory_order_relaxed);
+    uint64_t capture = link_stats().capture_frames.load(std::memory_order_relaxed);
     double dt = (tick - prev_tick_) / 1000.0;
     if (dt >= 0.9) {
         pps_ = (packets - prev_packets_) / dt;
         kbps_ = (bytes - prev_bytes_) * 8.0 / dt / 1000.0;
+        capture_fps_ = (capture - prev_capture_) / dt;
         prev_tick_ = tick;
         prev_packets_ = packets;
         prev_bytes_ = bytes;
+        prev_capture_ = capture;
     }
 
     model_->poll();
