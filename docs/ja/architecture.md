@@ -18,7 +18,7 @@ nav_order: 4
 
 ## 概要
 
-A2DP Windows Bridge (A2DPWB) は Windows で LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC の Bluetooth オーディオを実現します。Windows 標準の Bluetooth スタックが A2DP で対応するのは SBC、AAC、クラシック aptX のみですが、このツールはカーネルドライバーなしで LDAC、aptX HD、aptX Low Latency を追加します。
+A2DP Windows Bridge (A2DPWB) は Windows で LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC の Bluetooth オーディオを実現します。Windows 標準の Bluetooth スタックが A2DP で対応するのは SBC、クラシック aptX、AAC（Windows 11 のみ）だけですが、このツールはカーネルドライバーなしで LDAC、aptX HD、aptX Low Latency を追加します。
 
 **BTstack + WinUSB** を使用 -- 完全にユーザーモードで動作し、ドライバー署名は不要です。
 
