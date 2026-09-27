@@ -385,15 +385,24 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
         }
     }
 
-    /* Non-Realtek controllers (experimental): see which WinUSB adapters are
-     * present. Only an adapter bound to WinUSB passes the class check, so an
-     * Intel adapter still on the Intel driver does not count. */
+    /* See which WinUSB adapters are present. Only an adapter bound to WinUSB
+     * passes the class check, so an Intel adapter still on the Intel driver
+     * does not count. A vendor-class (FF/01/01) adapter is opened by the
+     * transport only once its VID:PID is registered. The Intel loader and
+     * vendor warnings are for non-Realtek controllers (experimental). */
     self->usb_adapters_.clear();
     self->intel_loader_ = false;
     self->bcm_checked_ = false;
     self->bcm_hcd_path_.clear();
-    if (self->hci_tcp_.empty() && self->product_id_ == 0) {
+    if (self->hci_tcp_.empty()) {
         self->usb_adapters_ = BtAdapterEnumerator::enumerate();
+        for (const auto &a : self->usb_adapters_) {
+            if (!a.vendor_class) continue;
+            hci_transport_usb_add_device(a.vid, a.pid);
+            fprintf(stderr, "BTstack: Registered vendor-class device %04X:%04X\n", a.vid, a.pid);
+        }
+    }
+    if (self->hci_tcp_.empty() && self->product_id_ == 0) {
         for (const auto &a : self->usb_adapters_) {
             if (a.vendor == BtChipVendor::Intel) self->intel_loader_ = true;
             if (a.vendor == BtChipVendor::MediaTek || a.vendor == BtChipVendor::Qualcomm) {
