@@ -42,7 +42,7 @@ public:
     bool init(uint32_t preferred_sample_rate = 0, const wchar_t *device_id = nullptr);
 
     /* Initialize per-process loopback capture: only the audio that process
-     * and its child processes play (Windows 10 build 20348+). The format is
+     * and its child processes play (Windows 10 2004 / build 19041+). The format is
      * 32-bit float stereo at sample_rate; Windows converts to it. */
     bool init_process(DWORD process_id, uint32_t sample_rate);
 

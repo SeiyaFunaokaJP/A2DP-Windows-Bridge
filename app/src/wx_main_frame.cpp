@@ -65,6 +65,7 @@ MainFrame::MainFrame()
     service_.set_bt_chip_pid(settings_.bt_chip_pid);
     service_.set_bt_chip_fw_stem(settings_.bt_chip_fw_stem);
     BtStackTransport::set_afh_policy(settings_.afh);
+    BtStackTransport::set_media_keys_enabled(settings_.media_keys);
     service_.set_debug_mode(settings_.debug_mode);
     /* Debug mode changes apply after a restart; the Debug menu follows the boot state */
     debug_active_ = settings_.debug_mode;
@@ -212,6 +213,8 @@ void MainFrame::create_menu_bar() {
     settings_menu->Check(ID_SETTING_TRAY, settings_.minimize_to_tray);
     settings_menu->AppendCheckItem(ID_SETTING_UPDATE_CHECK, wxString::FromUTF8(L("settings.check_updates_on_startup")));
     settings_menu->Check(ID_SETTING_UPDATE_CHECK, settings_.check_updates_on_startup);
+    settings_menu->AppendCheckItem(ID_SETTING_MEDIA_KEYS, wxString::FromUTF8(L("settings.media_keys")));
+    settings_menu->Check(ID_SETTING_MEDIA_KEYS, settings_.media_keys);
 
     settings_menu->AppendSeparator();
     settings_menu->AppendCheckItem(ID_SETTING_DEBUG, wxString::FromUTF8(L("settings.debug_mode")));
@@ -263,6 +266,7 @@ void MainFrame::create_menu_bar() {
     Bind(wxEVT_MENU, &MainFrame::OnToggleStartWithWindows, this, ID_SETTING_START_WIN);
     Bind(wxEVT_MENU, &MainFrame::OnToggleMinimizeToTray, this, ID_SETTING_TRAY);
     Bind(wxEVT_MENU, &MainFrame::OnToggleUpdateCheck, this, ID_SETTING_UPDATE_CHECK);
+    Bind(wxEVT_MENU, &MainFrame::OnToggleMediaKeys, this, ID_SETTING_MEDIA_KEYS);
     Bind(wxEVT_MENU, &MainFrame::OnToggleDebugMode, this, ID_SETTING_DEBUG);
     Bind(wxEVT_MENU, &MainFrame::OnOpenLinkQuality, this, ID_OPEN_LINK_QUALITY);
 
@@ -783,6 +787,12 @@ void MainFrame::OnToggleMinimizeToTray(wxCommandEvent &) {
 
 void MainFrame::OnToggleUpdateCheck(wxCommandEvent &) {
     settings_.check_updates_on_startup = !settings_.check_updates_on_startup;
+    settings_.save();
+}
+
+void MainFrame::OnToggleMediaKeys(wxCommandEvent &) {
+    settings_.media_keys = !settings_.media_keys;
+    BtStackTransport::set_media_keys_enabled(settings_.media_keys);
     settings_.save();
 }
 

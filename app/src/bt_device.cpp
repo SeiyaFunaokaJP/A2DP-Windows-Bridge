@@ -8,6 +8,7 @@
  */
 
 #include "bt_device.h"
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
@@ -162,9 +163,41 @@ std::string BtDeviceDiscovery::format_address(const uint8_t addr[6]) {
     return std::string(buf);
 }
 
+bool BtDeviceDiscovery::normalize_address(const std::string &str, std::string &out) {
+    std::string digits;
+    size_t begin = str.find_first_not_of(" \t\r\n");
+    size_t end = str.find_last_not_of(" \t\r\n");
+    if (begin == std::string::npos) return false;
+    bool after_sep = false;
+    for (size_t i = begin; i <= end; i++) {
+        char c = str[i];
+        if (std::isxdigit(static_cast<unsigned char>(c))) {
+            if (digits.size() >= 12) return false;
+            digits += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+            after_sep = false;
+        } else if (c == ':' || c == '-' || c == '.' || c == ' ') {
+            /* Only between pairs, and not two in a row ("AA::BB") */
+            if (digits.empty() || digits.size() % 2 != 0 || after_sep) return false;
+            after_sep = true;
+        } else {
+            return false;
+        }
+    }
+    if (digits.size() != 12 || after_sep) return false;
+    out.clear();
+    for (size_t i = 0; i < 12; i += 2) {
+        if (i) out += ':';
+        out += digits[i];
+        out += digits[i + 1];
+    }
+    return true;
+}
+
 bool BtDeviceDiscovery::parse_address(const std::string &str, uint8_t addr[6]) {
+    std::string canonical;
+    if (!normalize_address(str, canonical)) return false;
     unsigned int a[6];
-    if (sscanf(str.c_str(), "%02x:%02x:%02x:%02x:%02x:%02x",
+    if (sscanf(canonical.c_str(), "%02x:%02x:%02x:%02x:%02x:%02x",
                &a[0], &a[1], &a[2], &a[3], &a[4], &a[5]) != 6) {
         return false;
     }

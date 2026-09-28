@@ -30,8 +30,16 @@ public:
     /* Format a Bluetooth address as XX:XX:XX:XX:XX:XX */
     static std::string format_address(const uint8_t addr[6]);
 
-    /* Parse a Bluetooth address from XX:XX:XX:XX:XX:XX string */
+    /* Parse a Bluetooth address from XX:XX:XX:XX:XX:XX string (or any form
+     * normalize_address() accepts) */
     static bool parse_address(const std::string &str, uint8_t addr[6]);
+
+    /* Bring an address typed or pasted in another common form into the
+     * canonical XX:XX:XX:XX:XX:XX (upper case): "aa-bb-cc-dd-ee-ff",
+     * "AABBCCDDEEFF", "AA BB CC DD EE FF", surrounding whitespace. Separators
+     * (':', '-', '.', space) may only stand between pairs. False unless it
+     * holds exactly 12 hex digits. */
+    static bool normalize_address(const std::string &str, std::string &out);
 };
 
 #endif /* BT_DEVICE_H */

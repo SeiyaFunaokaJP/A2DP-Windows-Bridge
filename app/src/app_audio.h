@@ -16,13 +16,15 @@
 #include <vector>
 #include <windows.h>
 
-/* Per-process loopback (AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK)
- * needs Windows 10 build 20348 or later (Windows 11 is 22000+). */
-static const uint32_t APP_CAPTURE_MIN_BUILD = 20348;
+/* Per-process loopback (AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK).
+ * Microsoft documents build 20348, but it works from Windows 10 2004
+ * (build 19041), which covers 20H2-22H2 (19042-19045). OBS's Application
+ * Audio Capture uses the same threshold. */
+static const uint32_t APP_CAPTURE_MIN_BUILD = 19041;
 
 struct AudioAppInfo {
-    std::string exe_name;      /* UTF-8, e.g. "FxSound.exe" */
-    std::string display_name;  /* UTF-8, e.g. "FxSound (FxSound.exe)" */
+    std::string exe_name;      /* UTF-8, e.g. "player.exe" */
+    std::string display_name;  /* UTF-8, e.g. "Music Player (player.exe)" */
 };
 
 namespace app_audio {
