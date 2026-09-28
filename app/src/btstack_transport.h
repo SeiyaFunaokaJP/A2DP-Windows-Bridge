@@ -91,6 +91,12 @@ public:
     static int remote_volume();
     static void request_volume(uint8_t volume);
 
+    /* Headphone buttons (AVRCP pass-through commands to our Target):
+     * play/pause, stop, next and previous are sent to Windows as media keys
+     * while enabled (default). May be called from any thread. */
+    static void set_media_keys_enabled(bool enabled);
+    static bool media_keys_enabled();
+
     /* Discovered device info from GAP inquiry */
     struct DiscoveredDevice {
         uint8_t     address[6];  /* big-endian (BTstack format) */
@@ -275,7 +281,20 @@ private:
     void handle_a2dp_event(uint8_t *packet, uint16_t size);
     void handle_avrcp_event(uint8_t *packet, uint16_t size);
     void send_pending_volume();  /* BTstack thread */
+    void handle_avrcp_operation(uint8_t operation_id, bool pressed);
     void handle_hci_event(uint8_t *packet, uint16_t size);
+
+    /* Playback status reported to the headphones' AVRCP Controller, from
+     * whether audio is being captured (BTstack thread) */
+    void playback_status_start();
+    void playback_status_stop();
+    void playback_status_tick();
+    void set_playback_status(uint8_t status, const char *why);
+    void *playback_timer_ = nullptr;     /* btstack_timer_source_t */
+    uint8_t playback_status_ = 0;        /* avrcp_playback_status_t */
+    uint64_t playback_prev_frames_ = 0;
+    int playback_idle_ticks_ = 0;
+    unsigned long playback_hold_until_ = 0; /* GetTickCount(): keep a status set by a button */
 
     /* BTstack run loop thread */
     static unsigned long __stdcall btstack_thread_proc(void *param);

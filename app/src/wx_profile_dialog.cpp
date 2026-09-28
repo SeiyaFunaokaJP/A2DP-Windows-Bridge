@@ -7,6 +7,7 @@
 #include "localization.h"
 #include "theme_manager.h"
 #include "media_payload_limit.h"
+#include "bt_device.h"
 #include <wx/statline.h>
 #include <cctype>
 #include <cstring>
@@ -652,23 +653,77 @@ void ProfileDialog::on_scan_complete() {
     }
 }
 
-bool ProfileDialog::validate_address(const wxString &addr) {
-    if (addr.IsEmpty()) return true; /* empty is not invalid, just incomplete */
-    std::string s = addr.utf8_string();
-    if (s.length() != 17) return false;
-    for (int i = 0; i < 17; i++) {
-        if (i % 3 == 2) {
-            if (s[i] != ':') return false;
+namespace {
+/* Full-width characters from an IME ("ＡＡ：ＢＢ") as their ASCII forms */
+wxString ascii_from_fullwidth(const wxString &s) {
+    wxString out;
+    out.reserve(s.length());
+    for (wxUniChar c : s) {
+        wxUint32 v = c.GetValue();
+        if (v >= 0xFF01 && v <= 0xFF5E) out += wxUniChar(v - 0xFEE0);
+        else if (v == 0x3000) out += ' ';
+        else out += c;
+    }
+    return out;
+}
+
+bool is_addr_space(wxUniChar c) {
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+bool is_addr_separator(wxUniChar c) {
+    return c == ':' || c == '-' || c == '.' || is_addr_space(c);
+}
+
+/* Formats an address as it is typed or pasted: hex digits in pairs joined
+ * by colons, upper case ("aa-bb-c" -> "AA:BB:C"). A separator typed after a
+ * complete pair stays, so "AA:" can be typed; no colon is added on its own,
+ * so Backspace over one works. The caret keeps its place among the digits.
+ * False if the text cannot become an address (other characters, more than
+ * 12 digits): it is left as it is. */
+bool format_address_input(const wxString &in, long caret_in, wxString &out, long &caret_out) {
+    wxString s = ascii_from_fullwidth(in);
+    size_t begin = 0, end = s.length();
+    while (begin < end && is_addr_space(s[begin])) begin++;
+    wxString digits;
+    bool trailing_sep = false;
+    long digits_before_caret = 0;
+    for (size_t i = begin; i < end; i++) {
+        wxUniChar c = s[i];
+        if (c.IsAscii() && std::isxdigit(static_cast<unsigned char>(c.GetValue()))) {
+            if (digits.length() >= 12) return false;
+            digits += static_cast<char>(std::toupper(static_cast<unsigned char>(c.GetValue())));
+            if (static_cast<long>(i) < caret_in) digits_before_caret++;
+            trailing_sep = false;
+        } else if (is_addr_separator(c)) {
+            /* Anywhere: a digit typed or deleted inside the address moves
+             * the rest along, and the pairs are formed again */
+            trailing_sep = !digits.empty() && digits.length() % 2 == 0;
         } else {
-            if (!std::isxdigit(static_cast<unsigned char>(s[i]))) return false;
+            return false;
         }
     }
+    out.clear();
+    for (size_t i = 0; i < digits.length(); i++) {
+        if (i > 0 && i % 2 == 0) out += ':';
+        out += digits[i];
+    }
+    if (trailing_sep && digits.length() < 12) out += ':';
+    if (caret_in >= static_cast<long>(in.length()))
+        caret_out = static_cast<long>(out.length());
+    else
+        caret_out = digits_before_caret + (digits_before_caret > 0 ? (digits_before_caret - 1) / 2 : 0);
     return true;
 }
+} // namespace
 
 void ProfileDialog::update_addr_visual() {
     wxString addr = addr_ctrl_->GetValue();
-    bool valid = validate_address(addr);
+    /* Red only once the text cannot become an address; an address still
+     * being typed is checked on Save */
+    wxString formatted;
+    long caret = 0;
+    bool valid = format_address_input(addr, 0, formatted, caret);
     bool show_error = !valid && !addr.IsEmpty();
     addr_ctrl_->SetBackgroundColour(show_error ? wxColour(80, 20, 20) : TM().get(ThemeColor::CtrlBg));
     addr_ctrl_->SetForegroundColour(show_error ? wxColour(255, 100, 100) : TM().get(ThemeColor::CtrlFg));
@@ -676,23 +731,34 @@ void ProfileDialog::update_addr_visual() {
 }
 
 void ProfileDialog::OnAddrChange(wxCommandEvent &) {
+    wxString value = addr_ctrl_->GetValue();
+    wxString formatted;
+    long caret = 0;
+    if (format_address_input(value, addr_ctrl_->GetInsertionPoint(), formatted, caret) &&
+        formatted != value) {
+        addr_ctrl_->ChangeValue(formatted);  /* no second wxEVT_TEXT */
+        addr_ctrl_->SetInsertionPoint(caret);
+    }
     update_addr_visual();
 }
 
 void ProfileDialog::OnSave(wxCommandEvent &) {
     wxString addr = addr_ctrl_->GetValue();
+    addr.Trim(true).Trim(false);
     if (addr.IsEmpty()) return;
 
-    if (!validate_address(addr)) {
+    std::string canonical;
+    if (!BtDeviceDiscovery::normalize_address(ascii_from_fullwidth(addr).utf8_string(), canonical)) {
         wxMessageBox(wxString::FromUTF8(L("error.invalid_address_format")),
                      wxString::FromUTF8(L("error.invalid_address")),
                      wxOK | wxICON_WARNING, this);
         addr_ctrl_->SetFocus();
         return;
     }
+    addr_ctrl_->ChangeValue(wxString::FromUTF8(canonical));
 
     ConnectionProfile p;
-    p.device_address = addr.utf8_string();
+    p.device_address = canonical;
     p.device_name = devname_ctrl_->GetValue().utf8_string();
 
     /* Auto-generate internal name from device + codec */

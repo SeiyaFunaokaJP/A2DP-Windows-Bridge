@@ -36,6 +36,7 @@ enum {
     ID_SETTING_START_WIN,
     ID_SETTING_TRAY,
     ID_SETTING_UPDATE_CHECK,
+    ID_SETTING_MEDIA_KEYS,
     ID_SETTING_DEBUG,
     ID_OPEN_LINK_QUALITY,
     ID_DEBUG_CAPTURE_START,
@@ -112,6 +113,7 @@ private:
     void OnToggleStartWithWindows(wxCommandEvent &evt);
     void OnToggleMinimizeToTray(wxCommandEvent &evt);
     void OnToggleUpdateCheck(wxCommandEvent &evt);
+    void OnToggleMediaKeys(wxCommandEvent &evt);
     void OnToggleDebugMode(wxCommandEvent &evt);
     void OnOpenLinkQuality(wxCommandEvent &evt);
     void OnDebugCaptureStart(wxCommandEvent &evt);

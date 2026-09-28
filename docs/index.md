@@ -82,7 +82,7 @@ A2DPWB captures audio via WASAPI and offers three modes:
 |:-----|:------------|:---------|
 | **System Loopback** | Captures all system audio output from the default playback device via WASAPI loopback | Simple setup -- all sounds are streamed |
 | **Virtual Device** | Captures from a user-selected virtual audio device (e.g., VB-CABLE, VoiceMeeter) | Route specific apps to Bluetooth while keeping other audio on speakers |
-| **Application** | Captures only what one app plays, after its own processing (Windows 11 / Windows 10 build 20348+) | Send one app, or the output of an effects app such as FxSound |
+| **Application** | Captures only what one app plays, after its own processing (Windows 11 / Windows 10 2004+) | Send one app, or the output of a system-wide effects app (equalizer, sound enhancer) |
 
 In **Virtual Device** mode, A2DPWB switches the Windows default playback device to the selected virtual device, then captures its loopback output. Apps that output to the virtual device are streamed over Bluetooth. When streaming stops, the previous default device is restored.
 
@@ -119,6 +119,7 @@ A2DPWB bypasses the Windows Bluetooth stack entirely. It communicates directly w
 - **LDAC ABR**: Adaptive Bit Rate for unstable connections
 - **Auto-reconnect**: Reconnects on disconnection (up to 10 attempts)
 - **Link quality and AFH**: Shows what is sent, the RSSI and the channels in use; tells the adapter which Wi-Fi channels to avoid (see [Usage](usage#link-quality))
+- **Headphone controls (AVRCP)**: Volume slider synced with the headphones; their play/pause, next and previous buttons control playback on the PC (see [Usage](usage#headphone-buttons))
 - **Profile management**: Save and load device + codec configurations
 - **GUI + CLI**: wxWidgets graphical interface or command-line operation
 - **Localization**: English / Japanese

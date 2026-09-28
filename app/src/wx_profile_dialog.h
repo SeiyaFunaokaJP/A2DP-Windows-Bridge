@@ -36,7 +36,6 @@ private:
     void OnDeviceDelete(wxCommandEvent &evt);
     void OnCaptureChange(wxCommandEvent &evt);
     void OnAddrChange(wxCommandEvent &evt);
-    bool validate_address(const wxString &addr);
     void update_addr_visual();
     void update_format_info();
     void update_capture_hint();

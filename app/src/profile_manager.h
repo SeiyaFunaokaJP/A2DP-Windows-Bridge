@@ -29,7 +29,7 @@ struct ConnectionProfile {
     std::string audio_device_id;  /* WASAPI device ID for virtual mode */
     std::string audio_device_name; /* display name */
     bool auto_switch_device = true;  /* auto-switch default for Virtual Device mode */
-    std::string app_exe;          /* executable name for Application mode, e.g. "FxSound.exe" */
+    std::string app_exe;          /* executable name for Application mode, e.g. "player.exe" */
     std::string app_name;         /* display name for Application mode */
     bool test_tone = false;       /* runtime only, not saved: send the test tone
                                    * (test_tone.h) instead of captured audio */

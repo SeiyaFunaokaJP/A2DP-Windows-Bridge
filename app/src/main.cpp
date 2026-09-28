@@ -538,6 +538,7 @@ static int run_streaming(const uint8_t target_addr[6],
         if (!settings.bt_chip_fw_stem.empty())
             transport.set_fw_stem(settings.bt_chip_fw_stem);
         BtStackTransport::set_afh_policy(g_afh.empty() ? settings.afh : g_afh);
+        BtStackTransport::set_media_keys_enabled(settings.media_keys);
         printf("AFH host channel classification: %s\n", BtStackTransport::afh_policy().c_str());
     }
 

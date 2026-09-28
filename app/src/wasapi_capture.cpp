@@ -287,13 +287,8 @@ private:
 };
 } /* namespace */
 
-bool WasapiCapture::init_process(DWORD process_id, uint32_t sample_rate) {
-    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE && hr != S_FALSE) {
-        fprintf(stderr, "WasapiCapture: CoInitializeEx failed: 0x%08lx\n", hr);
-        return false;
-    }
-
+/* Activate a process loopback IAudioClient for process_id (and its children). */
+static HRESULT activate_process_loopback(DWORD process_id, IAudioClient **client) {
     AUDIOCLIENT_ACTIVATION_PARAMS params = {};
     params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
     params.ProcessLoopbackParams.TargetProcessId = process_id;
@@ -303,19 +298,24 @@ bool WasapiCapture::init_process(DWORD process_id, uint32_t sample_rate) {
     activate_params.blob.cbSize = sizeof(params);
     activate_params.blob.pBlobData = reinterpret_cast<BYTE *>(&params);
 
+    *client = nullptr;
     auto *handler = new ActivateHandler();
     IActivateAudioInterfaceAsyncOperation *op = nullptr;
-    hr = ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, __uuidof(IAudioClient),
-                                     &activate_params, handler, &op);
+    HRESULT hr = ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, __uuidof(IAudioClient),
+                                             &activate_params, handler, &op);
     if (SUCCEEDED(hr) && WaitForSingleObject(handler->done_, 5000) != WAIT_OBJECT_0) hr = E_ABORT;
     if (SUCCEEDED(hr)) hr = handler->result_;
-    if (SUCCEEDED(hr)) audio_client_ = handler->client_;
+    if (SUCCEEDED(hr)) *client = handler->client_;
     else if (handler->client_) handler->client_->Release();
     if (op) op->Release();
     handler->Release();
-    if (FAILED(hr)) {
-        fprintf(stderr, "WasapiCapture: Process loopback activation failed for PID %lu: 0x%08lx\n",
-                process_id, hr);
+    return hr;
+}
+
+bool WasapiCapture::init_process(DWORD process_id, uint32_t sample_rate) {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE && hr != S_FALSE) {
+        fprintf(stderr, "WasapiCapture: CoInitializeEx failed: 0x%08lx\n", hr);
         return false;
     }
 
@@ -333,15 +333,28 @@ bool WasapiCapture::init_process(DWORD process_id, uint32_t sample_rate) {
 #ifndef AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
 #define AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM 0x80000000
 #endif
+    /* Microsoft documents process loopback from build 20348 only. If an
+     * earlier build rejects AUTOCONVERTPCM, retry without it (as OBS does)
+     * on a freshly activated client, since a failed Initialize can leave
+     * the old one unusable. */
+    const DWORD base_flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+    const DWORD attempts[] = {base_flags | AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM, base_flags};
     REFERENCE_TIME buf_duration = static_cast<REFERENCE_TIME>(BUFFER_DURATION_MS) * 10000;
-    hr = audio_client_->Initialize(AUDCLNT_SHAREMODE_SHARED,
-                                   AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
-                                       AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
-                                   buf_duration, 0, &fmt, nullptr);
-    if (FAILED(hr)) {
-        fprintf(stderr, "WasapiCapture: Process loopback Initialize failed: 0x%08lx\n", hr);
-        return false;
+    for (DWORD flags : attempts) {
+        hr = activate_process_loopback(process_id, &audio_client_);
+        if (FAILED(hr)) {
+            fprintf(stderr, "WasapiCapture: Process loopback activation failed for PID %lu: 0x%08lx\n",
+                    process_id, hr);
+            return false;
+        }
+        hr = audio_client_->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, buf_duration, 0, &fmt, nullptr);
+        if (SUCCEEDED(hr)) break;
+        fprintf(stderr, "WasapiCapture: Process loopback Initialize (flags 0x%08lx) failed: 0x%08lx\n",
+                flags, hr);
+        audio_client_->Release();
+        audio_client_ = nullptr;
     }
+    if (FAILED(hr)) return false;
     hr = audio_client_->SetEventHandle(buffer_event_);
     if (FAILED(hr)) {
         fprintf(stderr, "WasapiCapture: SetEventHandle failed: 0x%08lx\n", hr);

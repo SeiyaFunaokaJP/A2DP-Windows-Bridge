@@ -921,6 +921,157 @@ void BtStackTransport::send_pending_volume() {
     g_volume.store(v);
 }
 
+/* ---- Headphone buttons (AVRCP pass-through) and playback status ---- */
+namespace {
+std::atomic<bool> g_media_keys{true};
+const uint32_t PLAYBACK_TICK_MS = 1000;
+const int PLAYBACK_IDLE_TICKS = 2;          /* no audio for ~2 s = paused */
+const DWORD PLAYBACK_HOLD_MS = 3000;        /* let the player react to a button */
+
+const char *avrcp_operation_name(uint8_t id) {
+    switch (id) {
+    case AVRCP_OPERATION_ID_PLAY:         return "PLAY";
+    case AVRCP_OPERATION_ID_PAUSE:        return "PAUSE";
+    case AVRCP_OPERATION_ID_STOP:         return "STOP";
+    case AVRCP_OPERATION_ID_FORWARD:      return "FORWARD";
+    case AVRCP_OPERATION_ID_BACKWARD:     return "BACKWARD";
+    case AVRCP_OPERATION_ID_FAST_FORWARD: return "FAST_FORWARD";
+    case AVRCP_OPERATION_ID_REWIND:       return "REWIND";
+    case AVRCP_OPERATION_ID_VOLUME_UP:    return "VOLUME_UP";
+    case AVRCP_OPERATION_ID_VOLUME_DOWN:  return "VOLUME_DOWN";
+    case AVRCP_OPERATION_ID_MUTE:         return "MUTE";
+    default:                              return "other";
+    }
+}
+
+const char *playback_status_name(uint8_t status) {
+    switch (status) {
+    case AVRCP_PLAYBACK_STATUS_STOPPED: return "stopped";
+    case AVRCP_PLAYBACK_STATUS_PLAYING: return "playing";
+    case AVRCP_PLAYBACK_STATUS_PAUSED:  return "paused";
+    default:                            return "other";
+    }
+}
+
+/* Press and release of a media key, as a keyboard's media keys send it.
+ * Windows hands it to the app that owns media playback (the one shown in
+ * the volume flyout), whichever window has the focus. */
+void send_media_key(WORD vk) {
+    INPUT in[2] = {};
+    in[0].type = INPUT_KEYBOARD;
+    in[0].ki.wVk = vk;
+    in[0].ki.dwFlags = KEYEVENTF_EXTENDEDKEY;
+    in[1] = in[0];
+    in[1].ki.dwFlags = KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP;
+    if (SendInput(2, in, sizeof(INPUT)) != 2) {
+        fprintf(stderr, "BTstack: SendInput for media key 0x%02X failed (error %lu)\n",
+                vk, GetLastError());
+    }
+}
+} // namespace
+
+void BtStackTransport::set_media_keys_enabled(bool enabled) {
+    g_media_keys.store(enabled);
+}
+
+bool BtStackTransport::media_keys_enabled() {
+    return g_media_keys.load();
+}
+
+void BtStackTransport::handle_avrcp_operation(uint8_t operation_id, bool pressed) {
+    /* A button sends a press and then a release; act on the press */
+    if (!pressed) return;
+    WORD vk = 0;
+    switch (operation_id) {
+    case AVRCP_OPERATION_ID_PLAY:
+    case AVRCP_OPERATION_ID_PAUSE:
+        /* Windows has one Play/Pause key. Headphones send PLAY or PAUSE by
+         * what they believe the state is, which may be stale (the player
+         * was paused on the PC): a toggle always does what the tap meant. */
+        vk = VK_MEDIA_PLAY_PAUSE;
+        break;
+    case AVRCP_OPERATION_ID_STOP:     vk = VK_MEDIA_STOP; break;
+    case AVRCP_OPERATION_ID_FORWARD:  vk = VK_MEDIA_NEXT_TRACK; break;
+    case AVRCP_OPERATION_ID_BACKWARD: vk = VK_MEDIA_PREV_TRACK; break;
+    default:
+        /* FAST_FORWARD / REWIND have no Windows media key; VOLUME_UP/DOWN
+         * come from headphones without absolute volume, which set their
+         * own level instead */
+        fprintf(stderr, "BTstack: AVRCP button %s (0x%02x) ignored\n",
+                avrcp_operation_name(operation_id), operation_id);
+        return;
+    }
+    if (!g_media_keys.load()) {
+        fprintf(stderr, "BTstack: AVRCP button %s ignored (media keys off)\n",
+                avrcp_operation_name(operation_id));
+        return;
+    }
+    fprintf(stderr, "BTstack: AVRCP button %s -> media key 0x%02X\n",
+            avrcp_operation_name(operation_id), vk);
+    send_media_key(vk);
+
+    /* Tell the headphones the state the button asked for right away; the
+     * capture check takes over once the player had time to react */
+    if (operation_id == AVRCP_OPERATION_ID_PLAY) {
+        set_playback_status(AVRCP_PLAYBACK_STATUS_PLAYING, "button");
+    } else if (operation_id == AVRCP_OPERATION_ID_PAUSE) {
+        set_playback_status(AVRCP_PLAYBACK_STATUS_PAUSED, "button");
+    } else if (operation_id == AVRCP_OPERATION_ID_STOP) {
+        set_playback_status(AVRCP_PLAYBACK_STATUS_STOPPED, "button");
+    } else {
+        return;
+    }
+    playback_hold_until_ = GetTickCount() + PLAYBACK_HOLD_MS;
+    playback_idle_ticks_ = 0;
+    playback_prev_frames_ = link_stats().capture_frames.load(std::memory_order_relaxed);
+}
+
+void BtStackTransport::set_playback_status(uint8_t status, const char *why) {
+    if (avrcp_cid_ == 0 || status == playback_status_) return;
+    fprintf(stderr, "BTstack: AVRCP playback status %s -> %s (%s)\n",
+            playback_status_name(playback_status_), playback_status_name(status), why);
+    playback_status_ = status;
+    avrcp_target_set_playback_status(avrcp_cid_, static_cast<avrcp_playback_status_t>(status));
+}
+
+void BtStackTransport::playback_status_start() {
+    if (!playback_timer_) playback_timer_ = new btstack_timer_source_t();
+    auto *t = static_cast<btstack_timer_source_t *>(playback_timer_);
+    btstack_run_loop_remove_timer(t);
+    playback_prev_frames_ = link_stats().capture_frames.load(std::memory_order_relaxed);
+    playback_idle_ticks_ = 0;
+    playback_hold_until_ = GetTickCount();
+    btstack_run_loop_set_timer_handler(t, [](btstack_timer_source_t *ts) {
+        auto *self = static_cast<BtStackTransport *>(btstack_run_loop_get_timer_context(ts));
+        self->playback_status_tick();
+        btstack_run_loop_set_timer(ts, PLAYBACK_TICK_MS);
+        btstack_run_loop_add_timer(ts);
+    });
+    btstack_run_loop_set_timer_context(t, this);
+    btstack_run_loop_set_timer(t, PLAYBACK_TICK_MS);
+    btstack_run_loop_add_timer(t);
+}
+
+void BtStackTransport::playback_status_stop() {
+    if (playback_timer_) btstack_run_loop_remove_timer(static_cast<btstack_timer_source_t *>(playback_timer_));
+}
+
+void BtStackTransport::playback_status_tick() {
+    /* Loopback capture gets no data while nothing plays: audio arriving
+     * means playing, none for a while means paused */
+    uint64_t frames = link_stats().capture_frames.load(std::memory_order_relaxed);
+    bool audio = frames != playback_prev_frames_;
+    playback_prev_frames_ = frames;
+    playback_idle_ticks_ = audio ? 0 : playback_idle_ticks_ + 1;
+    if (static_cast<LONG>(GetTickCount() - playback_hold_until_) < 0) return;
+    if (audio) {
+        set_playback_status(AVRCP_PLAYBACK_STATUS_PLAYING, "audio");
+    } else if (playback_idle_ticks_ >= PLAYBACK_IDLE_TICKS &&
+               playback_status_ == AVRCP_PLAYBACK_STATUS_PLAYING) {
+        set_playback_status(AVRCP_PLAYBACK_STATUS_PAUSED, "no audio");
+    }
+}
+
 void BtStackTransport::set_afh_policy(const std::string &policy) {
     std::lock_guard<std::mutex> lock(g_afh_mutex);
     if (policy == g_afh_policy) return;
@@ -1942,6 +2093,7 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                 fprintf(stderr, "BTstack: HCI state OFF\n");
                 fflush(stderr);
                 afh_stop();
+                playback_status_stop();
                 hci_ready_.store(false);
                 /* Signal init_event_ so shutdown() can proceed */
                 SetEvent(init_event_);
@@ -2449,12 +2601,19 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
         /* Subscribe to volume change notifications */
         avrcp_controller_enable_notification(avrcp_cid_,
             AVRCP_NOTIFICATION_EVENT_VOLUME_CHANGED);
+
+        /* Target side: the headphones' buttons arrive as pass-through
+         * commands; playback status lets them pick play or pause */
+        avrcp_target_support_event(avrcp_cid_, AVRCP_NOTIFICATION_EVENT_PLAYBACK_STATUS_CHANGED);
+        playback_status_ = AVRCP_PLAYBACK_STATUS_STOPPED;
+        playback_status_start();
         break;
     }
 
     case AVRCP_SUBEVENT_CONNECTION_RELEASED:
         fprintf(stderr, "BTstack: AVRCP disconnected (cid=0x%04x)\n",
                 avrcp_subevent_connection_released_get_avrcp_cid(packet));
+        playback_status_stop();
         avrcp_cid_ = 0;
         {
             std::lock_guard<std::mutex> lock(g_volume_mutex);
@@ -2483,6 +2642,24 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
         g_volume_in_flight = false;
         g_volume.store(vol);
         send_pending_volume();  /* a newer value queued meanwhile */
+        break;
+    }
+
+    case AVRCP_SUBEVENT_OPERATION: {
+        /* Pass-through command from the headphones' buttons (our Target
+         * has already accepted it) */
+        uint16_t cid = avrcp_subevent_operation_get_avrcp_cid(packet);
+        if (cid != avrcp_cid_) break;
+        handle_avrcp_operation(avrcp_subevent_operation_get_operation_id(packet),
+                               avrcp_subevent_operation_get_button_pressed(packet) != 0);
+        break;
+    }
+
+    case AVRCP_SUBEVENT_PLAY_STATUS_QUERY: {
+        /* GetPlayStatus: no track length or position to report */
+        uint16_t cid = avrcp_subevent_play_status_query_get_avrcp_cid(packet);
+        avrcp_target_play_status(cid, 0xFFFFFFFF, 0xFFFFFFFF,
+                                 static_cast<avrcp_playback_status_t>(playback_status_));
         break;
     }
 

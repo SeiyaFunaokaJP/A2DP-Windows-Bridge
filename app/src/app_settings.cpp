@@ -44,6 +44,9 @@ void AppSettings::load()
     check_updates_on_startup = j.value("check_updates_on_startup", check_updates_on_startup);
     last_update_check        = j.value("last_update_check", last_update_check);
 
+    /* Headphones */
+    media_keys = j.value("media_keys", media_keys);
+
     /* Debug */
     debug_mode = j.value("debug_mode", debug_mode);
 
@@ -83,6 +86,9 @@ void AppSettings::save() const
     /* Updates */
     j["check_updates_on_startup"] = check_updates_on_startup;
     j["last_update_check"]        = last_update_check;
+
+    /* Headphones */
+    j["media_keys"] = media_keys;
 
     /* Debug */
     j["debug_mode"] = debug_mode;

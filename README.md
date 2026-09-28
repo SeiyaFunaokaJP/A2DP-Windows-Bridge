@@ -167,6 +167,7 @@ The graphical interface provides:
 - Connection profile management (save / load device + codec settings)
 - Real-time status display (codec, bitrate, connection state)
 - Link quality window (what is sent, RSSI, AFH channels)
+- Headphone volume slider and headphone buttons (play/pause, next / previous track) as Windows media keys (AVRCP)
 
 ### CLI Mode
 
@@ -239,10 +240,11 @@ You can manually add this entry using `regedit` if needed. To disable it manuall
 ## Features
 
 - **Multi-codec support**: LDAC, aptX HD, aptX Low Latency, aptX, AAC, SBC with automatic negotiation
-- **Three capture modes**: System loopback (all system audio), virtual audio device (per-app routing via VB-CABLE etc.), or one application's output (Windows 11 / Windows 10 build 20348+)
+- **Three capture modes**: System loopback (all system audio), virtual audio device (per-app routing via VB-CABLE etc.), or one application's output (Windows 11 / Windows 10 2004+)
 - **LDAC ABR**: Adaptive Bit Rate for unstable connections
 - **Auto-reconnect**: Reconnects on Bluetooth disconnection (up to 10 attempts); a failed connection is retried (up to 3 attempts)
 - **Link quality and AFH**: Shows what is sent, the RSSI and the channels in use; tells the adapter which Wi-Fi channels to avoid
+- **Headphone controls (AVRCP)**: Volume slider synced with the headphones; their play/pause, next and previous buttons control playback on the PC
 - **Auto-start**: Optionally run minimized in the system tray at Windows startup
 - **Profile management**: Save and load device + codec configurations
 - **Localization**: English / Japanese UI

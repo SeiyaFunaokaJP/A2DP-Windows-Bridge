@@ -25,14 +25,14 @@ The graphical interface provides:
 
 - **Bluetooth adapter selection** -- choose which WinUSB adapter to use
 - **Audio device selection** -- choose the WASAPI loopback capture source
-- **Device address** -- enter manually, select from paired devices, or **Scan Devices** in the profile dialog (nearby devices, found with the USB adapter)
+- **Device address** -- enter manually, select from paired devices, or **Scan Devices** in the profile dialog (nearby devices, found with the USB adapter). Typed or pasted addresses are formatted as you go: `AA:BB:CC:DD:EE:FF`, `aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` and `AA BB CC DD EE FF` all become `AA:BB:CC:DD:EE:FF`
 - **Codec selection** -- Auto / LDAC / aptX HD / aptX LL / aptX / SBC / AAC
 - **LDAC quality** -- HQ (990 kbps) / SQ (660 kbps) / MQ (330 kbps)
 - **LDAC ABR** -- Adaptive Bit Rate toggle for unstable connections
 - **Profile management** -- save and load device + codec configurations
 - **Real-time status** -- codec, bitrate, connection state
 - **Link quality** -- **Actions > Link Quality...** (see [Link Quality Window and AFH](#link-quality))
-- **Settings menu** -- language, theme, Start with Windows, Minimize to System Tray, Check for Updates on Startup, Debug Mode (adds the **Debug** menu: debug console, HCI capture, peer receiver test)
+- **Settings menu** -- language, theme, Start with Windows, Minimize to System Tray, Check for Updates on Startup, Headphone Buttons Control Playback (see [Headphone buttons](#headphone-buttons)), Debug Mode (adds the **Debug** menu: debug console, HCI capture, peer receiver test)
 
 ## CLI Mode
 
@@ -115,7 +115,7 @@ A2DPWB supports three audio capture modes. Each records a different point in the
 |:-----|:----------------|
 | System Loopback | What the Windows default output device plays: all apps mixed |
 | Virtual Device | What apps play into the selected device (e.g., VB-CABLE) |
-| Application | Only what one app (and its child processes) plays, after the app's own processing. Needs Windows 11 or Windows 10 build 20348 or later |
+| Application | Only what one app (and its child processes) plays, after the app's own processing. Needs Windows 11 or Windows 10 version 2004 (build 19041) or later |
 
 The profile dialog shows the same explanation under **Capture Source**.
 
@@ -136,21 +136,46 @@ Application mode sends the audio of one app, for example a music player, a brows
 - The app keeps playing on its own output device as well. To hear it only on the headphones, mute that output device (its master volume): this does not affect what A2DPWB captures. Do not mute the app in the Windows Volume Mixer, though, or the headphones get silence too.
 - The app's slider in the Windows Volume Mixer changes the level sent to the headphones (and on its output device). The master volume and the volume keys do not.
 - Windows converts the audio to the sample rate that A2DPWB asks for, so the device format in Sound settings does not limit it.
-- On Windows 10 before build 20348, Windows has no per-app capture. The profile dialog marks Application as not available on that PC, and connecting with such a profile shows an error.
+- On Windows 10 before version 2004 (build 19041), Windows has no per-app capture. The profile dialog marks Application as not available on that PC, and connecting with such a profile shows an error.
 
 ### Volume {#volume}
 
-While streaming, the main window shows a **Volume** slider when the headphones support AVRCP absolute volume. It sets the volume on the headphones themselves, so the audio sent keeps its full resolution. The slider also follows the volume buttons on the headphones.
+While streaming, the main window shows a **Volume** slider when the headphones support AVRCP absolute volume. It sets the volume on the headphones themselves, so the audio sent keeps its full resolution. The slider also follows the volume buttons and touch controls on the headphones.
 
-### Effects apps such as FxSound {#effects-apps}
+### Headphone buttons {#headphone-buttons}
 
-An effects app (FxSound, an equalizer, ...) takes audio from its own virtual device and plays the processed audio to a real device. Which mode you choose decides whether you hear the effects:
+The play/pause, next and previous track controls on the headphones (buttons or touch gestures, e.g. a double tap on the WH-1000XM4) control playback on the PC while streaming: A2DPWB passes them to Windows as media keys, which go to the app shown in the Windows media controls (Spotify, a browser, a media player...). Stop is passed as well.
+
+- Play and pause both act as the Windows Play/Pause key, so a tap always switches between playing and paused, even if the headphones' idea of the state is out of date.
+- A2DPWB tells the headphones whether audio is playing (from whether there is audio to capture), so headphones that pause when taken off send the right command.
+- Fast forward / rewind (holding a button) have no Windows media key and are ignored.
+- Volume gestures change the headphones' own volume (see [Volume](#volume)); they do not change the Windows volume.
+- Turn this off with **Settings > Headphone Buttons Control Playback**, e.g. if another program already reacts to the media keys twice.
+
+This needs AVRCP on the headphones, which nearly all have. Without it, streaming works as usual, just without the buttons.
+
+### System-wide effects apps {#effects-apps}
+
+A system-wide effects app (an equalizer, a sound enhancer, a virtual surround app, ...) usually installs its own virtual output device. Other apps play into that device; the effects app processes the audio and plays the result to the output device you choose in the effects app. Which A2DPWB mode you choose decides whether the headphones get the effects:
 
 | Setting | What reaches the headphones |
 |:--------|:----------------------------|
-| Virtual Device: *FxSound Speakers* | The audio **before** the effects: what apps send into FxSound |
-| Application: *FxSound* | The audio **after** the effects: what FxSound plays |
-| Virtual Device: FxSound's output device (e.g., VB-CABLE set as FxSound's output) | The audio after the effects (for Windows versions without Application mode) |
+| Virtual Device: the effects app's own virtual device | The audio **before** the effects: what apps send into the effects app |
+| Application: the effects app | The audio **after** the effects: what the effects app plays (recommended) |
+| Virtual Device: the effects app's output device (e.g., VB-CABLE set as its output) | The audio after the effects (for Windows versions without Application mode) |
+
+In Application mode, the effects app's output device can be any device: A2DPWB takes what the app plays, not what the device plays, so the device is only somewhere for the audio to go. So that the PC does not play the audio at the same time, choose an output nobody listens to (e.g., a monitor's HDMI audio) or mute that device's master volume. A virtual device such as VB-CABLE also works as a silent place to send it, but it is not required. The device must be enabled and connected.
+
+#### Why A2DPWB has no virtual output device of its own {#no-virtual-device}
+
+A Bluetooth headphones entry in the Windows output device list, which an effects app could select directly, would need a kernel-mode audio driver. A2DPWB does not include one:
+
+- Writing and maintaining a kernel audio driver is a large job, and a bug in it can crash Windows (blue screen).
+- Windows 10 and 11 load only drivers signed by Microsoft. Getting that signature needs an EV code signing certificate (several hundred US dollars a year) and a Microsoft Partner Center account, normally registered as a company.
+- The only way around the signature is Windows test signing mode, which lowers system security and breaks some software (e.g., games with anti-cheat). A2DPWB will not rely on it.
+
+Application mode, or a free virtual device such as VB-CABLE, covers the same use.
+
 - Windows has no public API for changing the default device. A2DPWB uses the undocumented IPolicyConfig interface, as other audio switching tools do (Windows 10 and 11).
 
 {: .warning }

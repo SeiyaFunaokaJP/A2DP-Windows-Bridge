@@ -32,6 +32,10 @@ public:
     bool check_updates_on_startup = true;
     std::string last_update_check; /* ISO date of the last automatic check */
 
+    /* Headphones: their buttons (play/pause, next, previous) act as Windows
+     * media keys */
+    bool media_keys = true;
+
     /* Debug */
     bool debug_mode = false;
 

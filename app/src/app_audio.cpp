@@ -43,7 +43,7 @@ std::wstring process_image_path(DWORD pid) {
     return path;
 }
 
-/* FileDescription from the version resource, e.g. "FxSound" */
+/* FileDescription from the version resource, e.g. "Music Player" */
 std::wstring file_description(const std::wstring &path) {
     DWORD dummy = 0;
     DWORD size = GetFileVersionInfoSizeW(path.c_str(), &dummy);
