@@ -13,6 +13,32 @@
 #include <avrt.h>
 #include <timeapi.h>
 #include <functiondiscoverykeys_devpkey.h>
+#include <audioclientactivationparams.h>
+
+/* The SDK declares these only for NTDDI_WIN10_FE (build 20348) and later,
+ * but the app targets Windows 10 in general and checks the build at run time
+ * (app_audio::capture_supported). Same layout as audioclientactivationparams.h. */
+#ifndef VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK
+#define VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK L"VAD\\Process_Loopback"
+enum PROCESS_LOOPBACK_MODE {
+    PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE = 0,
+    PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE = 1
+};
+struct AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS {
+    DWORD TargetProcessId;
+    PROCESS_LOOPBACK_MODE ProcessLoopbackMode;
+};
+enum AUDIOCLIENT_ACTIVATION_TYPE {
+    AUDIOCLIENT_ACTIVATION_TYPE_DEFAULT = 0,
+    AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK = 1
+};
+struct AUDIOCLIENT_ACTIVATION_PARAMS {
+    AUDIOCLIENT_ACTIVATION_TYPE ActivationType;
+    union {
+        AUDIOCLIENT_PROCESS_LOOPBACK_PARAMS ProcessLoopbackParams;
+    };
+};
+#endif
 
 /* WASAPI CLSID/IID - defined here to avoid linking issues */
 static const CLSID CLSID_MMDeviceEnumerator_ = __uuidof(MMDeviceEnumerator);
@@ -211,6 +237,127 @@ bool WasapiCapture::init(uint32_t preferred_sample_rate, const wchar_t *device_i
     }
 
     fprintf(stderr, "WasapiCapture: Initialized successfully\n");
+    return true;
+}
+
+/* Completion handler for ActivateAudioInterfaceAsync. It must be agile
+ * (IAgileObject) because Windows calls it on one of its own MTA threads. */
+namespace {
+class ActivateHandler : public IActivateAudioInterfaceCompletionHandler, public IAgileObject {
+public:
+    ActivateHandler() { done_ = CreateEventW(nullptr, TRUE, FALSE, nullptr); }
+    ~ActivateHandler() { if (done_) CloseHandle(done_); }
+
+    STDMETHODIMP QueryInterface(REFIID riid, void **ppv) override {
+        if (riid == __uuidof(IUnknown) || riid == __uuidof(IActivateAudioInterfaceCompletionHandler)) {
+            *ppv = static_cast<IActivateAudioInterfaceCompletionHandler *>(this);
+        } else if (riid == __uuidof(IAgileObject)) {
+            *ppv = static_cast<IAgileObject *>(this);
+        } else {
+            *ppv = nullptr;
+            return E_NOINTERFACE;
+        }
+        AddRef();
+        return S_OK;
+    }
+    STDMETHODIMP_(ULONG) AddRef() override { return InterlockedIncrement(&refs_); }
+    STDMETHODIMP_(ULONG) Release() override {
+        ULONG r = InterlockedDecrement(&refs_);
+        if (r == 0) delete this;
+        return r;
+    }
+    STDMETHODIMP ActivateCompleted(IActivateAudioInterfaceAsyncOperation *op) override {
+        HRESULT activate_hr = E_FAIL;
+        IUnknown *unk = nullptr;
+        result_ = op->GetActivateResult(&activate_hr, &unk);
+        if (SUCCEEDED(result_)) result_ = activate_hr;
+        if (SUCCEEDED(result_) && unk)
+            result_ = unk->QueryInterface(__uuidof(IAudioClient), reinterpret_cast<void **>(&client_));
+        if (unk) unk->Release();
+        SetEvent(done_);
+        return S_OK;
+    }
+
+    HANDLE done_ = nullptr;
+    HRESULT result_ = E_FAIL;
+    IAudioClient *client_ = nullptr;  /* owned by the caller once done_ is set */
+
+private:
+    LONG refs_ = 1;
+};
+} /* namespace */
+
+bool WasapiCapture::init_process(DWORD process_id, uint32_t sample_rate) {
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE && hr != S_FALSE) {
+        fprintf(stderr, "WasapiCapture: CoInitializeEx failed: 0x%08lx\n", hr);
+        return false;
+    }
+
+    AUDIOCLIENT_ACTIVATION_PARAMS params = {};
+    params.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
+    params.ProcessLoopbackParams.TargetProcessId = process_id;
+    params.ProcessLoopbackParams.ProcessLoopbackMode = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
+    PROPVARIANT activate_params = {};
+    activate_params.vt = VT_BLOB;
+    activate_params.blob.cbSize = sizeof(params);
+    activate_params.blob.pBlobData = reinterpret_cast<BYTE *>(&params);
+
+    auto *handler = new ActivateHandler();
+    IActivateAudioInterfaceAsyncOperation *op = nullptr;
+    hr = ActivateAudioInterfaceAsync(VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK, __uuidof(IAudioClient),
+                                     &activate_params, handler, &op);
+    if (SUCCEEDED(hr) && WaitForSingleObject(handler->done_, 5000) != WAIT_OBJECT_0) hr = E_ABORT;
+    if (SUCCEEDED(hr)) hr = handler->result_;
+    if (SUCCEEDED(hr)) audio_client_ = handler->client_;
+    else if (handler->client_) handler->client_->Release();
+    if (op) op->Release();
+    handler->Release();
+    if (FAILED(hr)) {
+        fprintf(stderr, "WasapiCapture: Process loopback activation failed for PID %lu: 0x%08lx\n",
+                process_id, hr);
+        return false;
+    }
+
+    /* A process loopback client has no mix format (GetMixFormat fails):
+     * ask for float stereo and let Windows convert to it. */
+    if (sample_rate == 0) sample_rate = 48000;
+    WAVEFORMATEX fmt = {};
+    fmt.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
+    fmt.nChannels = 2;
+    fmt.nSamplesPerSec = sample_rate;
+    fmt.wBitsPerSample = 32;
+    fmt.nBlockAlign = fmt.nChannels * fmt.wBitsPerSample / 8;
+    fmt.nAvgBytesPerSec = fmt.nSamplesPerSec * fmt.nBlockAlign;
+
+#ifndef AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
+#define AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM 0x80000000
+#endif
+    REFERENCE_TIME buf_duration = static_cast<REFERENCE_TIME>(BUFFER_DURATION_MS) * 10000;
+    hr = audio_client_->Initialize(AUDCLNT_SHAREMODE_SHARED,
+                                   AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                                       AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM,
+                                   buf_duration, 0, &fmt, nullptr);
+    if (FAILED(hr)) {
+        fprintf(stderr, "WasapiCapture: Process loopback Initialize failed: 0x%08lx\n", hr);
+        return false;
+    }
+    hr = audio_client_->SetEventHandle(buffer_event_);
+    if (FAILED(hr)) {
+        fprintf(stderr, "WasapiCapture: SetEventHandle failed: 0x%08lx\n", hr);
+        return false;
+    }
+    hr = audio_client_->GetService(IID_IAudioCaptureClient_, reinterpret_cast<void **>(&capture_client_));
+    if (FAILED(hr)) {
+        fprintf(stderr, "WasapiCapture: Failed to get capture client: 0x%08lx\n", hr);
+        return false;
+    }
+
+    sample_rate_ = sample_rate;
+    channels_ = 2;
+    bits_per_sample_ = 32;
+    fprintf(stderr, "WasapiCapture: Capturing process %lu (and its child processes), "
+            "%u Hz, 2 ch, 32-bit float\n", process_id, sample_rate_);
     return true;
 }
 

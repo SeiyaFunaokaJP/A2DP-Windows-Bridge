@@ -9,6 +9,7 @@
 #include "a2dp_service.h"
 #include "profile_manager.h"
 #include "audio_device_enum.h"
+#include "app_audio.h"
 
 #include <wx/wx.h>
 #include <wx/listbox.h>
@@ -38,6 +39,8 @@ private:
     bool validate_address(const wxString &addr);
     void update_addr_visual();
     void update_format_info();
+    void update_capture_hint();
+    void refresh_app_list();
 
     A2dpService    *service_;
     ProfileManager *mgr_;
@@ -59,11 +62,19 @@ private:
     wxStaticText *audio_dev_label_ = nullptr;
     wxStaticText *auto_switch_label_ = nullptr;
     wxStaticText *format_info_ = nullptr;
+    wxStaticText *capture_hint_ = nullptr;
+    wxStaticText *app_label_ = nullptr;
+    wxChoice    *app_ctrl_ = nullptr;
+    wxButton    *app_refresh_btn_ = nullptr;
+    wxStaticText *app_note_label_ = nullptr;
+    wxStaticText *app_note_ = nullptr;
     wxButton    *scan_btn_ = nullptr;
     wxButton    *dev_edit_btn_ = nullptr;
     wxButton    *dev_del_btn_ = nullptr;
 
     std::vector<AudioDeviceInfo> audio_devices_;
+    std::vector<AudioAppInfo> apps_;
+    std::string saved_app_exe_, saved_app_name_;  /* from the profile being edited */
 };
 
 #endif /* WX_PROFILE_DIALOG_H */

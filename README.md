@@ -205,7 +205,7 @@ A2DPWB.exe --cli -h
 
 All options, including AFH (`--afh`) and the peer receiver test (`--remote-sink`), are listed in the [Usage guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/usage#all-options).
 
-> **Note**: Both capture modes (system loopback and virtual device) use WASAPI shared mode. The capture sample rate depends on the device's format configured in Windows Sound settings (typically 48 kHz). To use LDAC at 96 kHz, change the device format to 96 kHz in Sound settings > Advanced.
+> **Note**: System loopback and virtual device capture use WASAPI shared mode. The capture sample rate depends on the device's format configured in Windows Sound settings (typically 48 kHz). To use LDAC at 96 kHz, change the device format to 96 kHz in Sound settings > Advanced. Application capture is converted by Windows to the rate A2DPWB asks for.
 
 Auto-select priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
 
@@ -239,7 +239,7 @@ You can manually add this entry using `regedit` if needed. To disable it manuall
 ## Features
 
 - **Multi-codec support**: LDAC, aptX HD, aptX Low Latency, aptX, AAC, SBC with automatic negotiation
-- **Two capture modes**: System loopback (all system audio) or virtual audio device (per-app routing via VB-CABLE etc.)
+- **Three capture modes**: System loopback (all system audio), virtual audio device (per-app routing via VB-CABLE etc.), or one application's output (Windows 11 / Windows 10 build 20348+)
 - **LDAC ABR**: Adaptive Bit Rate for unstable connections
 - **Auto-reconnect**: Reconnects on Bluetooth disconnection (up to 10 attempts); a failed connection is retried (up to 3 attempts)
 - **Link quality and AFH**: Shows what is sent, the RSSI and the channels in use; tells the adapter which Wi-Fi channels to avoid

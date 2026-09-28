@@ -671,7 +671,12 @@ wxString DebugConsoleDialog::diagnostics_text() const {
                                 p.sample_rate ? wxString::Format("%u", p.sample_rate) : wxString("auto"),
                                 p.bit_depth ? wxString::Format("%u", p.bit_depth) : wxString("auto"));
         out << "  Capture: " << p.capture_mode;
-        if (!p.audio_device_name.empty()) out << " '" << wxString::FromUTF8(p.audio_device_name) << "'";
+        if (p.capture_mode == "app") {
+            if (!p.app_exe.empty())
+                out << " '" << wxString::FromUTF8(p.app_name.empty() ? p.app_exe : p.app_name) << "'";
+        } else if (!p.audio_device_name.empty()) {
+            out << " '" << wxString::FromUTF8(p.audio_device_name) << "'";
+        }
         out << wxString::Format(", auto switch %s, max media packet %u\n",
                                 p.auto_switch_device ? "on" : "off", (unsigned)p.max_media_payload);
     } else {

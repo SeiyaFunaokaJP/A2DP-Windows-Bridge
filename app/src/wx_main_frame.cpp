@@ -142,6 +142,7 @@ MainFrame::MainFrame()
 }
 
 MainFrame::~MainFrame() {
+    volume_timer_.Stop();
     if (update_thread_.joinable())
         update_thread_.join();
 
@@ -343,6 +344,34 @@ void MainFrame::create_ui() {
     });
     vbox->Add(status_panel, 0, wxEXPAND | wxTOP | wxBOTTOM, 6);
 
+    /* ---- Headphone volume (AVRCP absolute volume, while streaming) ---- */
+    volume_panel_ = new wxPanel(main_panel_);
+    auto *volume_sizer = new wxBoxSizer(wxHORIZONTAL);
+    volume_label_ = new wxStaticText(volume_panel_, wxID_ANY, wxString::FromUTF8(L("volume.label")));
+    volume_label_->SetToolTip(wxString::FromUTF8(L("tooltip.volume")));
+    volume_sizer->Add(volume_label_, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 8);
+    volume_slider_ = new wxSlider(volume_panel_, wxID_ANY, 0, 0, 100);
+    volume_slider_->SetToolTip(wxString::FromUTF8(L("tooltip.volume")));
+    volume_sizer->Add(volume_slider_, 1, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 8);
+    volume_value_ = new wxStaticText(volume_panel_, wxID_ANY, "100%",
+        wxDefaultPosition, wxDefaultSize, wxALIGN_RIGHT | wxST_NO_AUTORESIZE);
+    volume_sizer->Add(volume_value_, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+    volume_label_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
+    volume_value_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
+    volume_panel_->SetSizer(volume_sizer);
+    volume_panel_->Show(false);
+    vbox->Add(volume_panel_, 0, wxEXPAND | wxBOTTOM, 6);
+
+    volume_slider_->Bind(wxEVT_SLIDER, [this](wxCommandEvent &) {
+        int percent = volume_slider_->GetValue();
+        volume_value_->SetLabel(wxString::Format("%d%%", percent));
+        volume_touched_tick_ = GetTickCount();
+        BtStackTransport::request_volume(static_cast<uint8_t>((percent * 127 + 50) / 100));
+    });
+    /* Follow the headphones (their buttons, or the value at connect) */
+    volume_timer_.Bind(wxEVT_TIMER, [this](wxTimerEvent &) { update_volume_row(); });
+    volume_timer_.Start(300);
+
     /* Separator */
     vbox->Add(new wxStaticLine(main_panel_), 0, wxEXPAND | wxLEFT | wxRIGHT, 4);
 
@@ -373,6 +402,8 @@ void MainFrame::apply_theme() {
     firmware_bar_->SetBackgroundColour(TM().get(ThemeColor::FirmwareBarBg));
     stream_info_label_->SetForegroundColour(TM().get(ThemeColor::TextStreamInfo));
     SetBackgroundColour(TM().get(ThemeColor::WindowBg));
+    volume_label_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
+    volume_value_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
     rebuild_profile_list();
     update_status_display();
     main_panel_->Refresh();
@@ -561,6 +592,22 @@ void MainFrame::rebuild_profile_list() {
 /* ======================================================================== */
 /* Status Display                                                            */
 /* ======================================================================== */
+
+void MainFrame::update_volume_row() {
+    int vol = BtStackTransport::remote_volume();
+    bool show = current_state_ == A2dpService::State::Streaming && vol >= 0;
+    if (volume_panel_->IsShown() != show) {
+        volume_panel_->Show(show);
+        main_panel_->Layout();
+    }
+    if (!show) return;
+    /* Leave the slider alone while the user is moving it */
+    if (volume_slider_->HasCapture() || GetTickCount() - volume_touched_tick_ < 1500) return;
+    int percent = (vol * 100 + 63) / 127;
+    if (volume_slider_->GetValue() != percent) volume_slider_->SetValue(percent);
+    wxString text = wxString::Format("%d%%", percent);
+    if (volume_value_->GetLabel() != text) volume_value_->SetLabel(text);
+}
 
 void MainFrame::update_status_display() {
     wxColour color;

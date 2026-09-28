@@ -83,6 +83,14 @@ public:
     static std::string afh_policy();
     /* The radio state of the link is published as link_radio() (link_stats.h) */
 
+    /* Headphone volume over AVRCP absolute volume, 0-127. remote_volume() is
+     * the last value the headphones reported (their buttons included), or -1
+     * while unknown: no AVRCP link, or the headphones do not support it.
+     * request_volume() may be called from any thread; while one request is
+     * in flight, newer values replace the queued one. */
+    static int remote_volume();
+    static void request_volume(uint8_t volume);
+
     /* Discovered device info from GAP inquiry */
     struct DiscoveredDevice {
         uint8_t     address[6];  /* big-endian (BTstack format) */
@@ -266,6 +274,7 @@ private:
     /* A2DP-specific event handlers */
     void handle_a2dp_event(uint8_t *packet, uint16_t size);
     void handle_avrcp_event(uint8_t *packet, uint16_t size);
+    void send_pending_volume();  /* BTstack thread */
     void handle_hci_event(uint8_t *packet, uint16_t size);
 
     /* BTstack run loop thread */

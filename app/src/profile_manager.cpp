@@ -39,6 +39,8 @@ void ProfileManager::load(uint16_t legacy_max_media_payload) {
             p.audio_device_id  = item.value("audio_device_id", std::string());
             p.audio_device_name = item.value("audio_device_name", std::string());
             p.auto_switch_device = item.value("auto_switch_device", true);
+            p.app_exe          = item.value("app_exe", std::string());
+            p.app_name         = item.value("app_name", std::string());
             if (item.contains("max_media_payload")) {
                 int v = item.value("max_media_payload", static_cast<int>(MEDIA_PAYLOAD_LIMIT_DEFAULT));
                 p.max_media_payload = clamp_media_payload_limit(v > 0 ? static_cast<uint32_t>(v) : 0u);
@@ -74,6 +76,8 @@ void ProfileManager::save() const {
             {"audio_device_id",  p.audio_device_id},
             {"audio_device_name", p.audio_device_name},
             {"auto_switch_device", p.auto_switch_device},
+            {"app_exe",          p.app_exe},
+            {"app_name",         p.app_name},
             {"max_media_payload", p.max_media_payload}
         });
     }
@@ -173,12 +177,14 @@ uint32_t ProfileManager::index_to_bit_depth(int index) {
 
 int ProfileManager::capture_mode_to_index(const std::string &mode) {
     if (mode == "virtual") return 1;
+    if (mode == "app") return 2;
     return 0; /* "loopback" or default (including legacy "apo") */
 }
 
 std::string ProfileManager::index_to_capture_mode(int index) {
     switch (index) {
     case 1: return "virtual";
+    case 2: return "app";
     default: return "loopback";
     }
 }

@@ -25,10 +25,12 @@ struct ConnectionProfile {
     bool abr = false;
     uint32_t sample_rate = 0;     /* 0=auto, 44100, 48000, 88200, 96000 */
     uint32_t bit_depth = 0;       /* 0=auto, 16, 24 */
-    std::string capture_mode;     /* "loopback", "virtual" */
+    std::string capture_mode;     /* "loopback", "virtual", "app" */
     std::string audio_device_id;  /* WASAPI device ID for virtual mode */
     std::string audio_device_name; /* display name */
     bool auto_switch_device = true;  /* auto-switch default for Virtual Device mode */
+    std::string app_exe;          /* executable name for Application mode, e.g. "FxSound.exe" */
+    std::string app_name;         /* display name for Application mode */
     bool test_tone = false;       /* runtime only, not saved: send the test tone
                                    * (test_tone.h) instead of captured audio */
     uint16_t max_media_payload = MEDIA_PAYLOAD_LIMIT_DEFAULT; /* max media packet size (media_payload_limit.h) */
@@ -78,7 +80,7 @@ public:
     /* Convert combo index to bit depth value */
     static uint32_t index_to_bit_depth(int index);
 
-    /* Convert capture mode string to combo index (0=loopback, 1=virtual) */
+    /* Convert capture mode string to combo index (0=loopback, 1=virtual, 2=app) */
     static int capture_mode_to_index(const std::string &mode);
 
     /* Convert combo index to capture mode string */
