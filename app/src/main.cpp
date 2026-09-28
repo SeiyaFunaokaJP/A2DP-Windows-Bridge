@@ -656,6 +656,12 @@ static int run_streaming(const uint8_t target_addr[6],
             return 1;
         }
         break;
+
+    case CaptureMode::Application:
+        fprintf(stderr, "Application capture is available in the GUI only\n");
+        transport.disconnect();
+        transport.shutdown();
+        return 1;
     }
 
     uint32_t sample_rate = g_dev.test_tone ? TEST_TONE_RATE : wasapi_capture.get_sample_rate();

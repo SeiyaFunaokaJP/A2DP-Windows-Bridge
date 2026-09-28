@@ -143,9 +143,36 @@ void ProfileDialog::create_ui() {
     capture_ctrl_ = new wxChoice(this, wxID_ANY);
     capture_ctrl_->Append(wxString::FromUTF8(L("capture.loopback")));
     capture_ctrl_->Append(wxString::FromUTF8(L("capture.virtual")));
+    capture_ctrl_->Append(wxString::FromUTF8(L("capture.app")));
     capture_ctrl_->SetSelection(0);
     capture_ctrl_->Bind(wxEVT_CHOICE, &ProfileDialog::OnCaptureChange, this);
     codec_grid->Add(capture_ctrl_, 1, wxEXPAND);
+
+    /* What the selected mode records (input or output side of an effects app) */
+    codec_grid->Add(new wxStaticText(this, wxID_ANY, ""), 0);
+    capture_hint_ = new wxStaticText(this, wxID_ANY, "");
+    capture_hint_->SetFont(capture_hint_->GetFont().Smaller());
+    codec_grid->Add(capture_hint_, 0);
+
+    /* Application (app mode) */
+    app_label_ = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("capture.app_select")));
+    app_label_->SetToolTip(wxString::FromUTF8(L("tooltip.app")));
+    codec_grid->Add(app_label_, 0, wxALIGN_CENTER_VERTICAL);
+    auto *app_row = new wxBoxSizer(wxHORIZONTAL);
+    app_ctrl_ = new wxChoice(this, wxID_ANY);
+    app_ctrl_->SetToolTip(wxString::FromUTF8(L("tooltip.app")));
+    app_row->Add(app_ctrl_, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+    app_refresh_btn_ = new wxButton(this, wxID_ANY, wxString::FromUTF8(L("capture.app_refresh")),
+                                    wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+    app_refresh_btn_->Bind(wxEVT_BUTTON, [this](wxCommandEvent &) { refresh_app_list(); });
+    app_row->Add(app_refresh_btn_, 0, wxALIGN_CENTER_VERTICAL);
+    codec_grid->Add(app_row, 1, wxEXPAND);
+
+    app_note_label_ = new wxStaticText(this, wxID_ANY, "");
+    codec_grid->Add(app_note_label_, 0);
+    app_note_ = new wxStaticText(this, wxID_ANY, "");
+    app_note_->SetFont(app_note_->GetFont().Smaller());
+    codec_grid->Add(app_note_, 0);
 
     /* Audio device (virtual mode) */
     audio_dev_label_ = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("capture.audio_device")));
@@ -244,6 +271,12 @@ void ProfileDialog::create_ui() {
     audio_dev_ctrl_->Show(false);
     auto_switch_label_->Show(false);
     auto_switch_ctrl_->Show(false);
+    app_label_->Show(false);
+    app_ctrl_->Show(false);
+    app_refresh_btn_->Show(false);
+    app_note_label_->Show(false);
+    app_note_->Show(false);
+    update_capture_hint();
 }
 
 void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
@@ -261,6 +294,8 @@ void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
     /* sample_rate_ctrl_ populated by update_codec_dependent */
 
     int bd_idx = ProfileManager::bit_depth_to_index(p.bit_depth);
+    saved_app_exe_ = p.app_exe;
+    saved_app_name_ = p.app_name;
     capture_ctrl_->SetSelection(ProfileManager::capture_mode_to_index(p.capture_mode));
 
     update_codec_dependent();
@@ -392,6 +427,16 @@ void ProfileDialog::update_codec_dependent() {
             audio_dev_ctrl_->SetSelection(0);
     }
 
+    /* Application visibility */
+    bool app_mode = (capture_ctrl_->GetSelection() == 2);
+    app_label_->Show(app_mode);
+    app_ctrl_->Show(app_mode);
+    app_refresh_btn_->Show(app_mode);
+    app_note_label_->Show(app_mode);
+    app_note_->Show(app_mode);
+    if (app_mode && app_ctrl_->GetCount() == 0) refresh_app_list();
+
+    update_capture_hint();
     update_format_info();
 
     Layout();
@@ -402,6 +447,12 @@ void ProfileDialog::update_format_info() {
     /* Determine which device to query */
     bool virtual_mode = (capture_ctrl_->GetSelection() == 1);
     AudioDeviceFormat dev_fmt;
+
+    /* Application capture: Windows converts to the requested rate */
+    if (capture_ctrl_->GetSelection() == 2) {
+        format_info_->SetLabel("");
+        return;
+    }
 
     if (virtual_mode) {
         int dev_sel = audio_dev_ctrl_->GetSelection();
@@ -439,6 +490,63 @@ void ProfileDialog::update_format_info() {
         mismatch ? wxColour(220, 50, 50) : TM().get(ThemeColor::TextMuted));
     format_info_->SetBackgroundColour(TM().get(ThemeColor::DialogBg));
     format_info_->Refresh();
+}
+
+void ProfileDialog::update_capture_hint() {
+    static const char *hint_keys[] = { "capture.hint_loopback", "capture.hint_virtual", "capture.hint_app" };
+    int mode = capture_ctrl_->GetSelection();
+    if (mode < 0 || mode > 2) mode = 0;
+    const int wrap = FromDIP(380);
+    capture_hint_->SetLabel(wxString::FromUTF8(L(hint_keys[mode])));
+    capture_hint_->Wrap(wrap);
+    capture_hint_->SetForegroundColour(TM().get(ThemeColor::TextMuted));
+
+    if (mode != 2) return;
+    /* Application mode: say plainly when this Windows cannot do it */
+    bool supported = app_audio::capture_supported();
+    app_ctrl_->Enable(supported);
+    app_refresh_btn_->Enable(supported);
+    if (supported) {
+        app_note_->SetLabel(wxString::FromUTF8(L("capture.app_hint")));
+        app_note_->SetForegroundColour(TM().get(ThemeColor::TextMuted));
+    } else {
+        app_note_->SetLabel(wxString::Format(wxString::FromUTF8(L("capture.app_unsupported")),
+                                             app_audio::windows_build()));
+        app_note_->SetForegroundColour(wxColour(220, 50, 50));
+    }
+    app_note_->Wrap(wrap);
+}
+
+void ProfileDialog::refresh_app_list() {
+    /* Keep the current choice, else the one saved in the profile */
+    std::string keep = saved_app_exe_;
+    int sel = app_ctrl_->GetSelection();
+    if (sel >= 0 && sel < static_cast<int>(apps_.size())) keep = apps_[sel].exe_name;
+
+    apps_ = app_audio::list_audio_apps();
+    bool found = false;
+    for (const auto &a : apps_)
+        if (_stricmp(a.exe_name.c_str(), keep.c_str()) == 0) { found = true; break; }
+    if (!keep.empty() && !found) {
+        /* Saved app that is not playing (or not running) right now */
+        AudioAppInfo saved;
+        saved.exe_name = keep;
+        saved.display_name = keep == saved_app_exe_ && !saved_app_name_.empty() ? saved_app_name_ : keep;
+        apps_.insert(apps_.begin(), saved);
+    }
+
+    app_ctrl_->Clear();
+    int select = apps_.empty() ? -1 : 0;
+    for (size_t i = 0; i < apps_.size(); i++) {
+        wxString label = wxString::FromUTF8(apps_[i].display_name);
+        if (i == 0 && !keep.empty() && !found)
+            label = wxString::Format(wxString::FromUTF8(L("capture.app_not_playing")), label);
+        app_ctrl_->Append(label);
+        if (_stricmp(apps_[i].exe_name.c_str(), keep.c_str()) == 0) select = static_cast<int>(i);
+    }
+    if (select >= 0) app_ctrl_->SetSelection(select);
+    Layout();
+    Fit();
 }
 
 void ProfileDialog::OnCodecChange(wxCommandEvent &) {
@@ -621,6 +729,22 @@ void ProfileDialog::OnSave(wxCommandEvent &) {
             }
             p.audio_device_name = dev.display_name;
         }
+    }
+    if (capture_ctrl_->GetSelection() == 2) {
+        if (!app_audio::capture_supported()) {
+            wxString msg = wxString::Format(wxString::FromUTF8(L("error.app_capture_unsupported")),
+                                            app_audio::windows_build());
+            wxMessageBox(msg, wxString::FromUTF8(L("capture.app")), wxOK | wxICON_WARNING, this);
+            return;
+        }
+        int app_sel = app_ctrl_->GetSelection();
+        if (app_sel < 0 || app_sel >= static_cast<int>(apps_.size())) {
+            wxMessageBox(wxString::FromUTF8(L("error.no_app_selected")),
+                         wxString::FromUTF8(L("capture.app")), wxOK | wxICON_WARNING, this);
+            return;
+        }
+        p.app_exe = apps_[app_sel].exe_name;
+        p.app_name = apps_[app_sel].display_name;
     }
     p.auto_switch_device = auto_switch_ctrl_->GetValue();
     p.max_media_payload = clamp_media_payload_limit(

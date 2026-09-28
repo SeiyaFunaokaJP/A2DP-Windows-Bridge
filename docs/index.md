@@ -76,12 +76,13 @@ Windows 10 has not been tried on real hardware yet. Other adapters: see [Recomme
 
 ## Audio Capture Modes
 
-A2DPWB captures audio via WASAPI and offers two modes:
+A2DPWB captures audio via WASAPI and offers three modes:
 
 | Mode | Description | Use Case |
 |:-----|:------------|:---------|
 | **System Loopback** | Captures all system audio output from the default playback device via WASAPI loopback | Simple setup -- all sounds are streamed |
 | **Virtual Device** | Captures from a user-selected virtual audio device (e.g., VB-CABLE, VoiceMeeter) | Route specific apps to Bluetooth while keeping other audio on speakers |
+| **Application** | Captures only what one app plays, after its own processing (Windows 11 / Windows 10 build 20348+) | Send one app, or the output of an effects app such as FxSound |
 
 In **Virtual Device** mode, A2DPWB switches the Windows default playback device to the selected virtual device, then captures its loopback output. Apps that output to the virtual device are streamed over Bluetooth. When streaming stops, the previous default device is restored.
 
@@ -94,6 +95,7 @@ Audio Source
   |
   +-- System Loopback: default playback device (all system audio)
   +-- Virtual Device:  selected virtual audio device (per-app routing)
+  +-- Application:     one app and its child processes (process loopback)
   |
   v
 WASAPI Loopback Capture (PCM)
@@ -113,7 +115,7 @@ A2DPWB bypasses the Windows Bluetooth stack entirely. It communicates directly w
 ## Features
 
 - **Multi-codec**: LDAC, aptX HD, aptX Low Latency, aptX, AAC, SBC with automatic negotiation
-- **Two capture modes**: System loopback or virtual audio device routing
+- **Three capture modes**: System loopback, virtual audio device routing, or one application's output
 - **LDAC ABR**: Adaptive Bit Rate for unstable connections
 - **Auto-reconnect**: Reconnects on disconnection (up to 10 attempts)
 - **Link quality and AFH**: Shows what is sent, the RSSI and the channels in use; tells the adapter which Wi-Fi channels to avoid (see [Usage](usage#link-quality))

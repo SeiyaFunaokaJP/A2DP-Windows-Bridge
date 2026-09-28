@@ -93,6 +93,7 @@ private:
     void rebuild_profile_list();
     void update_status_display();
     void fit_status_label();
+    void update_volume_row();
 
     /* ---- Event handlers ---- */
     void OnStatusUpdate(wxThreadEvent &evt);
@@ -153,6 +154,12 @@ private:
     wxButton      *disconnect_btn_ = nullptr;
     wxButton      *add_profile_btn_ = nullptr;
     wxPanel       *firmware_bar_ = nullptr;
+    wxPanel       *volume_panel_ = nullptr;
+    wxStaticText  *volume_label_ = nullptr;
+    wxSlider      *volume_slider_ = nullptr;
+    wxStaticText  *volume_value_ = nullptr;
+    wxTimer        volume_timer_;
+    unsigned long  volume_touched_tick_ = 0; /* last slider move by the user */
     wxScrolledWindow *profile_scroll_ = nullptr;
     wxBoxSizer    *profile_sizer_ = nullptr;
 

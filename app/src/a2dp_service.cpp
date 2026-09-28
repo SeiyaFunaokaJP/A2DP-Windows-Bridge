@@ -8,6 +8,7 @@
 
 #include "a2dp_service.h"
 #include "audio_device_enum.h"
+#include "app_audio.h"
 #include "bt_adapter_enum.h"
 #include "btstack_transport.h"
 #include "hci_capture.h"
@@ -169,6 +170,43 @@ static void service_audio_callback(
     }
     g_ctx.ring.write(data, byte_size);
 }
+
+/* Application capture that follows the app: attaches by executable name and
+ * notices when the process exits, so it can attach again when the app is
+ * started anew. Used by the streaming thread only. */
+struct AppSource {
+    std::string exe;
+    uint32_t sample_rate = 48000;
+    std::unique_ptr<WasapiCapture> capture;
+    HANDLE process = nullptr;
+    DWORD failed_pid = 0;  /* activation failed for this PID: log it once */
+
+    /* Find the app and open a capture on it (not started yet) */
+    bool attach() {
+        DWORD pid = app_audio::find_process(exe);
+        if (pid == 0) return false;
+        auto cap = std::make_unique<WasapiCapture>();
+        if (!cap->init_process(pid, sample_rate)) {
+            if (failed_pid != pid) LOG_WARN("A2dpService: cannot capture %s (PID %lu)", exe.c_str(), (unsigned long)pid);
+            failed_pid = pid;
+            return false;
+        }
+        process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+        capture = std::move(cap);
+        LOG_INFO("A2dpService: capturing app %s (PID %lu)", exe.c_str(), (unsigned long)pid);
+        return true;
+    }
+    bool exited() const {
+        return process && WaitForSingleObject(process, 0) == WAIT_OBJECT_0;
+    }
+    void detach() {
+        if (capture) capture->stop();
+        capture.reset();
+        if (process) CloseHandle(process);
+        process = nullptr;
+    }
+    ~AppSource() { detach(); }
+};
 
 /* Encode thread — reads raw PCM from ring buffer, converts, encodes, sends.
  * Processes data in small chunks (~10ms) to avoid bursty packet delivery. */
@@ -1054,6 +1092,8 @@ void A2dpService::streaming_thread_func_inner() {
     /* Initialize audio capture */
     notify_state(State::Connecting, L("status.initializing_audio"));
     WasapiCapture wasapi_capture;
+    AppSource app_source;  /* Application mode */
+    bool app_mode = !p.test_tone && p.capture_mode == "app";
 
     int capture_mode_index = ProfileManager::capture_mode_to_index(p.capture_mode);
     CaptureMode cmode = static_cast<CaptureMode>(capture_mode_index);
@@ -1158,11 +1198,38 @@ void A2dpService::streaming_thread_func_inner() {
         }
         break;
     }
+
+    case CaptureMode::Application: {
+        char msg[256];
+        uint32_t build = app_audio::windows_build();
+        if (build < APP_CAPTURE_MIN_BUILD) {
+            snprintf(msg, sizeof(msg), L("error.app_capture_unsupported"), build);
+        } else if (p.app_exe.empty()) {
+            snprintf(msg, sizeof(msg), "%s", L("error.no_app_selected"));
+        } else {
+            /* Not running yet is fine: streaming starts and the capture
+             * attaches once the app is up (main loop below) */
+            app_source.exe = p.app_exe;
+            if (preferred_sr) app_source.sample_rate = preferred_sr;
+            if (!app_source.attach())
+                LOG_INFO("A2dpService: %s is not running yet, waiting for it", p.app_exe.c_str());
+            break;
+        }
+        LOG_ERROR("A2dpService: %s", msg);
+        notify_state(State::Error, msg);
+        transport->disconnect();
+        running_.store(false);
+        return;
+    }
     }
 
-    uint32_t sr = p.test_tone ? preferred_sr : wasapi_capture.get_sample_rate();
-    uint32_t ch = p.test_tone ? TestTone::CHANNELS : wasapi_capture.get_channels();
-    uint32_t source_bits = p.test_tone ? TestTone::BITS_PER_SAMPLE : wasapi_capture.get_bits_per_sample();
+    /* Application capture has a fixed format (float stereo), known even
+     * while the app is not running yet */
+    uint32_t sr = p.test_tone ? preferred_sr
+                : app_mode    ? app_source.sample_rate : wasapi_capture.get_sample_rate();
+    uint32_t ch = p.test_tone ? TestTone::CHANNELS : app_mode ? 2 : wasapi_capture.get_channels();
+    uint32_t source_bits = p.test_tone ? TestTone::BITS_PER_SAMPLE
+                         : app_mode    ? 32 : wasapi_capture.get_bits_per_sample();
     uint32_t use_ch = (ch > 2) ? 2 : ch;
     g_ctx.active_channels = use_ch;
     LOG_INFO("A2dpService: WASAPI capture init OK (sr=%u ch=%u use_ch=%u)", sr, ch, use_ch);
@@ -1294,7 +1361,9 @@ void A2dpService::streaming_thread_func_inner() {
     bool capture_started = true;
     if (p.test_tone)
         test_tone.start(sr, service_audio_callback);
-    else
+    else if (app_mode && app_source.capture)
+        capture_started = app_source.capture->start(service_audio_callback);
+    else if (!app_mode)
         capture_started = wasapi_capture.start(service_audio_callback);
     if (!capture_started) {
         notify_state(State::Error, L("error.audio_capture_start"));
@@ -1316,8 +1385,21 @@ void A2dpService::streaming_thread_func_inner() {
 
     /* Main loop: keep streaming, auto-reconnect on disconnect */
     try {
+    int app_ticks = 0;
     while (!stop_requested_.load()) {
         Sleep(200);
+
+        /* Application capture follows the app: it may quit and start again */
+        if (app_mode) {
+            if (app_source.capture && app_source.exited()) {
+                LOG_INFO("A2dpService: %s exited, waiting for it to start again", app_source.exe.c_str());
+                app_source.detach();
+            }
+            if (!app_source.capture && ++app_ticks % 5 == 0 && app_source.attach()) {
+                if (!app_source.capture->start(service_audio_callback))
+                    app_source.detach();
+            }
+        }
 
         if (transport->check_disconnected()) {
             LOG_WARN("A2dpService: connection lost, attempting reconnect");
@@ -1374,6 +1456,7 @@ void A2dpService::streaming_thread_func_inner() {
     LOG_INFO("A2dpService: streaming stopped, cleaning up");
     test_tone.stop();
     wasapi_capture.stop();
+    app_source.detach();
     g_ctx.running.store(false);
     if (g_ctx.ring.data_event) SetEvent(g_ctx.ring.data_event);
     WaitForSingleObject(encode_thread, 5000);

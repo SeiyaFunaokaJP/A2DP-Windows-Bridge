@@ -873,6 +873,54 @@ const uint32_t AFH_TICK_MS = 5000;
 const int AFH_CLASSIFY_EVERY_TICKS = 6;  /* re-survey the Wi-Fi every 30 s */
 } // namespace
 
+/* ---- Headphone volume (AVRCP absolute volume) ---- */
+namespace {
+std::mutex g_volume_mutex;              /* g_volume_live vs. shutdown */
+bool g_volume_live = false;             /* AVRCP up, run loop takes work */
+std::atomic<int> g_volume{-1};          /* last reported volume, 0-127 */
+std::atomic<int> g_volume_request{-1};  /* queued request, -1 = none */
+std::atomic<bool> g_volume_queued{false};
+btstack_context_callback_registration_t g_volume_reg;
+/* BTstack thread only */
+bool g_volume_in_flight = false;
+DWORD g_volume_sent_tick = 0;
+const DWORD VOLUME_RESPONSE_TIMEOUT_MS = 1000;
+} // namespace
+
+int BtStackTransport::remote_volume() {
+    return g_volume.load();
+}
+
+void BtStackTransport::request_volume(uint8_t volume) {
+    g_volume_request.store(volume > 127 ? 127 : volume);
+    std::lock_guard<std::mutex> lock(g_volume_mutex);
+    if (!g_volume_live || g_volume_queued.exchange(true)) return;
+    g_volume_reg.callback = [](void *) {
+        g_volume_queued.store(false);
+        if (instance_) instance_->send_pending_volume();
+    };
+    g_volume_reg.context = nullptr;
+    btstack_run_loop_execute_on_main_thread(&g_volume_reg);
+}
+
+void BtStackTransport::send_pending_volume() {
+    if (avrcp_cid_ == 0) return;
+    /* One command at a time; a lost response must not block for good */
+    if (g_volume_in_flight && GetTickCount() - g_volume_sent_tick < VOLUME_RESPONSE_TIMEOUT_MS) return;
+    int v = g_volume_request.exchange(-1);
+    if (v < 0) return;
+    uint8_t status = avrcp_controller_set_absolute_volume(avrcp_cid_, (uint8_t)v);
+    if (status != ERROR_CODE_SUCCESS) {
+        /* Busy with another AVRCP command: keep it unless a newer one came */
+        int none = -1;
+        g_volume_request.compare_exchange_strong(none, v);
+        return;
+    }
+    g_volume_in_flight = true;
+    g_volume_sent_tick = GetTickCount();
+    g_volume.store(v);
+}
+
 void BtStackTransport::set_afh_policy(const std::string &policy) {
     std::lock_guard<std::mutex> lock(g_afh_mutex);
     if (policy == g_afh_policy) return;
@@ -972,6 +1020,14 @@ void BtStackTransport::on_radio_command_complete(uint8_t *packet, uint16_t size)
 
 void BtStackTransport::shutdown() {
     if (!running_.load()) return;
+
+    /* No more volume requests into a run loop that is going away */
+    {
+        std::lock_guard<std::mutex> lock(g_volume_mutex);
+        g_volume_live = false;
+    }
+    g_volume.store(-1);
+    g_volume_request.store(-1);
 
     /* Power off HCI properly so the USB adapter is released.
      * Without this, the next launch can't open the adapter. */
@@ -2372,8 +2428,23 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
             fprintf(stderr, "BTstack: AVRCP connection failed (0x%02x)\n", status);
             break;
         }
+        if (a2dp_cid_ == 0) {
+            /* Requested at capability discovery, but the A2DP connection was
+             * torn down before it came up (e.g. a failed start): an orphan
+             * AVRCP link would keep the ACL open and make the next
+             * avrcp_connect() fail with COMMAND_DISALLOWED. */
+            fprintf(stderr, "BTstack: AVRCP connected (cid=0x%04x) after A2DP closed, disconnecting\n", cid);
+            avrcp_disconnect(cid);
+            break;
+        }
         avrcp_cid_ = cid;
         fprintf(stderr, "BTstack: AVRCP connected (cid=0x%04x)\n", cid);
+        g_volume_in_flight = false;
+        {
+            std::lock_guard<std::mutex> lock(g_volume_mutex);
+            g_volume_live = true;
+            g_volume_queued.store(false);  /* a request lost with an earlier run loop */
+        }
 
         /* Subscribe to volume change notifications */
         avrcp_controller_enable_notification(avrcp_cid_,
@@ -2385,12 +2456,19 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
         fprintf(stderr, "BTstack: AVRCP disconnected (cid=0x%04x)\n",
                 avrcp_subevent_connection_released_get_avrcp_cid(packet));
         avrcp_cid_ = 0;
+        {
+            std::lock_guard<std::mutex> lock(g_volume_mutex);
+            g_volume_live = false;
+        }
+        g_volume.store(-1);
+        g_volume_request.store(-1);
         break;
 
     case AVRCP_SUBEVENT_NOTIFICATION_VOLUME_CHANGED: {
         uint8_t vol = avrcp_subevent_notification_volume_changed_get_absolute_volume(packet);
         fprintf(stderr, "BTstack: AVRCP volume changed to %u (%u%%)\n",
                 vol, vol * 100 / 127);
+        g_volume.store(vol);
 
         /* Re-register notification (AVRCP spec requires re-subscribing after each) */
         avrcp_controller_enable_notification(avrcp_cid_,
@@ -2402,6 +2480,9 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
         uint8_t vol = avrcp_subevent_set_absolute_volume_response_get_absolute_volume(packet);
         fprintf(stderr, "BTstack: AVRCP absolute volume confirmed: %u (%u%%)\n",
                 vol, vol * 100 / 127);
+        g_volume_in_flight = false;
+        g_volume.store(vol);
+        send_pending_volume();  /* a newer value queued meanwhile */
         break;
     }
 

@@ -67,6 +67,7 @@ add_executable(A2DPWB WIN32
     src/app_settings.cpp
     src/theme_manager.cpp
     src/audio_device_enum.cpp
+    src/app_audio.cpp
     src/localization.cpp
     src/profile_manager.cpp
     src/system_integration.cpp
@@ -121,6 +122,7 @@ target_link_libraries(A2DPWB PRIVATE wx::core wx::base)
 # Windows system libraries
 target_link_libraries(A2DPWB PRIVATE
     ole32          # COM (CoInitializeEx, CoCreateInstance)
+    mmdevapi       # ActivateAudioInterfaceAsync (Application capture)
     uuid           # COM interface UUIDs (__uuidof)
     avrt           # Multimedia scheduling (AvSetMmThreadCharacteristics)
     bthprops       # Bluetooth device enumeration (BluetoothFindFirstDevice)

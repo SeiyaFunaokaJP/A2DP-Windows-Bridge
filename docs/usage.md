@@ -109,12 +109,15 @@ In GUI mode, `--minimized` starts A2DPWB in the system tray (used by **Start wit
 
 ## Capture Modes {#capture-modes}
 
-A2DPWB supports two audio capture modes:
+A2DPWB supports three audio capture modes. Each records a different point in the audio path:
 
-| Mode | Description |
-|:-----|:------------|
-| System Loopback | Captures all system audio from the default output device |
-| Virtual Device | Captures from a specific virtual audio device (e.g., VB-CABLE) for per-app routing |
+| Mode | What it records |
+|:-----|:----------------|
+| System Loopback | What the Windows default output device plays: all apps mixed |
+| Virtual Device | What apps play into the selected device (e.g., VB-CABLE) |
+| Application | Only what one app (and its child processes) plays, after the app's own processing. Needs Windows 11 or Windows 10 build 20348 or later |
+
+The profile dialog shows the same explanation under **Capture Source**.
 
 System Loopback copies the audio; it does not take it away from the default output device. The audio keeps playing on that device (speakers, an HDMI TV, ...) as well as on the Bluetooth headphones. To hear it only on the headphones, use Virtual Device mode with a device that does not play anywhere, such as VB-CABLE.
 
@@ -124,6 +127,30 @@ In Virtual Device mode, **Auto-switch default device** (on by default) makes the
 - The default communication device (used by calling apps) is not changed.
 - Some apps keep playing on the previous device until they are restarted.
 - If A2DPWB exits unexpectedly, the default device is not switched back. Change it in Windows Sound settings.
+
+### Application mode {#application-mode}
+
+Application mode sends the audio of one app, for example a music player, a browser or an effects app. Choose the app in the **App** list. The list shows the apps that are playing audio right now; if yours is missing, start playback in it and click **Refresh**. The app's child processes are included, so a browser that plays audio from a separate process works too.
+
+- The app does not have to be running. A2DPWB connects to the headphones anyway and starts sending once the app is up. When the app quits during streaming, A2DPWB stays connected and picks the app up again when it is restarted.
+- The app keeps playing on its own output device as well. To hear it only on the headphones, mute that output device (its master volume): this does not affect what A2DPWB captures. Do not mute the app in the Windows Volume Mixer, though, or the headphones get silence too.
+- The app's slider in the Windows Volume Mixer changes the level sent to the headphones (and on its output device). The master volume and the volume keys do not.
+- Windows converts the audio to the sample rate that A2DPWB asks for, so the device format in Sound settings does not limit it.
+- On Windows 10 before build 20348, Windows has no per-app capture. The profile dialog marks Application as not available on that PC, and connecting with such a profile shows an error.
+
+### Volume {#volume}
+
+While streaming, the main window shows a **Volume** slider when the headphones support AVRCP absolute volume. It sets the volume on the headphones themselves, so the audio sent keeps its full resolution. The slider also follows the volume buttons on the headphones.
+
+### Effects apps such as FxSound {#effects-apps}
+
+An effects app (FxSound, an equalizer, ...) takes audio from its own virtual device and plays the processed audio to a real device. Which mode you choose decides whether you hear the effects:
+
+| Setting | What reaches the headphones |
+|:--------|:----------------------------|
+| Virtual Device: *FxSound Speakers* | The audio **before** the effects: what apps send into FxSound |
+| Application: *FxSound* | The audio **after** the effects: what FxSound plays |
+| Virtual Device: FxSound's output device (e.g., VB-CABLE set as FxSound's output) | The audio after the effects (for Windows versions without Application mode) |
 - Windows has no public API for changing the default device. A2DPWB uses the undocumented IPolicyConfig interface, as other audio switching tools do (Windows 10 and 11).
 
 {: .warning }
