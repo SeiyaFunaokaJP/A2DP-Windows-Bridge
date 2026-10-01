@@ -66,7 +66,6 @@ MainFrame::MainFrame()
     service_.set_bt_chip_fw_stem(settings_.bt_chip_fw_stem);
     BtStackTransport::set_afh_policy(settings_.afh);
     BtStackTransport::set_media_keys_enabled(settings_.media_keys);
-    service_.set_volume_sync(settings_.volume_sync);
     service_.set_remember_volume(settings_.remember_volume);
     service_.set_saved_volumes(settings_.saved_volumes);
     service_.set_debug_mode(settings_.debug_mode);
@@ -219,8 +218,6 @@ void MainFrame::create_menu_bar() {
     settings_menu->Check(ID_SETTING_UPDATE_CHECK, settings_.check_updates_on_startup);
     settings_menu->AppendCheckItem(ID_SETTING_MEDIA_KEYS, wxString::FromUTF8(L("settings.media_keys")));
     settings_menu->Check(ID_SETTING_MEDIA_KEYS, settings_.media_keys);
-    settings_menu->AppendCheckItem(ID_SETTING_VOLUME_SYNC, wxString::FromUTF8(L("settings.volume_sync")));
-    settings_menu->Check(ID_SETTING_VOLUME_SYNC, settings_.volume_sync);
     settings_menu->AppendCheckItem(ID_SETTING_REMEMBER_VOLUME, wxString::FromUTF8(L("settings.remember_volume")));
     settings_menu->Check(ID_SETTING_REMEMBER_VOLUME, settings_.remember_volume);
 
@@ -275,7 +272,6 @@ void MainFrame::create_menu_bar() {
     Bind(wxEVT_MENU, &MainFrame::OnToggleMinimizeToTray, this, ID_SETTING_TRAY);
     Bind(wxEVT_MENU, &MainFrame::OnToggleUpdateCheck, this, ID_SETTING_UPDATE_CHECK);
     Bind(wxEVT_MENU, &MainFrame::OnToggleMediaKeys, this, ID_SETTING_MEDIA_KEYS);
-    Bind(wxEVT_MENU, &MainFrame::OnToggleVolumeSync, this, ID_SETTING_VOLUME_SYNC);
     Bind(wxEVT_MENU, &MainFrame::OnToggleRememberVolume, this, ID_SETTING_REMEMBER_VOLUME);
     Bind(wxEVT_MENU, &MainFrame::OnToggleDebugMode, this, ID_SETTING_DEBUG);
     Bind(wxEVT_MENU, &MainFrame::OnOpenLinkQuality, this, ID_OPEN_LINK_QUALITY);
@@ -817,12 +813,6 @@ void MainFrame::OnToggleUpdateCheck(wxCommandEvent &) {
 void MainFrame::OnToggleMediaKeys(wxCommandEvent &) {
     settings_.media_keys = !settings_.media_keys;
     BtStackTransport::set_media_keys_enabled(settings_.media_keys);
-    settings_.save();
-}
-
-void MainFrame::OnToggleVolumeSync(wxCommandEvent &) {
-    settings_.volume_sync = !settings_.volume_sync;
-    service_.set_volume_sync(settings_.volume_sync);
     settings_.save();
 }
 

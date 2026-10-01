@@ -462,6 +462,16 @@ static const char *codec_name_for(AudioCodec c) {
     return "Unknown";
 }
 
+static std::wstring utf8_to_wide(const std::string &s) {
+    std::wstring w;
+    int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    if (len > 0) {
+        w.resize(len);
+        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &w[0], len);
+    }
+    return w;
+}
+
 /* Key of the remembered headphone volume: the device address, upper case */
 static std::string device_volume_key(const std::string &address) {
     std::string key = address;
@@ -1191,7 +1201,6 @@ void A2dpService::streaming_thread_func_inner() {
 
     /* Audio source: the test tone (peer receiver test) or WASAPI capture */
     TestTone test_tone;
-    std::wstring volume_device_id;  /* device whose volume to sync, empty = default */
     if (p.test_tone) {
         LOG_INFO("A2dpService: audio source: test tone at %u Hz", preferred_sr);
     } else switch (cmode) {
@@ -1228,7 +1237,6 @@ void A2dpService::streaming_thread_func_inner() {
                          p.audio_device_name.c_str());
             }
         }
-        volume_device_id = dev_id;
         if (!wasapi_capture.init(preferred_sr, dev_id.c_str())) {
             notify_state(State::Error, L("error.virtual_capture_init"));
             if (p.auto_switch_device && !original_default_device_.empty()) {
@@ -1426,9 +1434,18 @@ void A2dpService::streaming_thread_func_inner() {
         return;
     }
 
-    /* Headphone volume and the Windows volume of the output device that
-     * the audio comes from: one volume (volume_sync.h). Application mode
-     * uses the default output device, where the volume keys act. */
+    /* Headphone volume and a Windows volume: one volume (volume_sync.h).
+     * Auto: the device the audio comes from; in Application mode the
+     * default output device, where the volume keys act. */
+    bool sync_volume = !p.test_tone && p.volume_sync != "off";
+    std::wstring volume_device_id;  /* empty = the default output device */
+    if (p.volume_sync == "device")
+        volume_device_id = utf8_to_wide(p.volume_device_id);
+    else if (cmode == CaptureMode::VirtualDevice)
+        volume_device_id = utf8_to_wide(p.audio_device_id);
+    if (sync_volume)
+        LOG_INFO("A2dpService: volume sync with %s", p.volume_sync == "device"
+                 ? p.volume_device_name.c_str() : "the captured device");
     VolumeSync volume_sync(volume_device_id);
 
     /* Main loop: keep streaming, auto-reconnect on disconnect */
@@ -1437,7 +1454,7 @@ void A2dpService::streaming_thread_func_inner() {
     while (!stop_requested_.load()) {
         Sleep(200);
 
-        volume_sync.tick(volume_sync_.load() && !p.test_tone);
+        volume_sync.tick(sync_volume);
         if (remember_volume_.load())
             remember_volume(volume_key, BtStackTransport::remote_volume());
 

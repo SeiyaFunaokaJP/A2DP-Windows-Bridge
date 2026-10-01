@@ -12,6 +12,30 @@
 #include <cctype>
 #include <cstring>
 
+namespace {
+
+std::wstring utf8_to_wide(const std::string &s) {
+    std::wstring w;
+    int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    if (len > 0) {
+        w.resize(len);
+        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &w[0], len);
+    }
+    return w;
+}
+
+std::string wide_to_utf8(const std::wstring &w) {
+    std::string s;
+    int len = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), nullptr, 0, nullptr, nullptr);
+    if (len > 0) {
+        s.resize(len);
+        WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), &s[0], len, nullptr, nullptr);
+    }
+    return s;
+}
+
+} // namespace
+
 ProfileDialog::ProfileDialog(wxWindow *parent, A2dpService *service,
                              ProfileManager *mgr, int edit_index)
     : wxDialog(parent, wxID_ANY,
@@ -189,6 +213,26 @@ void ProfileDialog::create_ui() {
     auto_switch_ctrl_->SetValue(true);
     codec_grid->Add(auto_switch_ctrl_, 0);
 
+    /* Windows volume synced with the headphones (volume_sync.h) */
+    auto *volume_sync_label = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("capture.volume_sync")));
+    volume_sync_label->SetToolTip(wxString::FromUTF8(L("tooltip.volume_sync")));
+    codec_grid->Add(volume_sync_label, 0, wxALIGN_CENTER_VERTICAL);
+    volume_sync_ctrl_ = new wxChoice(this, wxID_ANY);
+    volume_sync_ctrl_->SetToolTip(wxString::FromUTF8(L("tooltip.volume_sync")));
+    volume_sync_ctrl_->Append(wxString::FromUTF8(L("capture.volume_sync_auto")));
+    volume_sync_ctrl_->Append(wxString::FromUTF8(L("capture.volume_sync_off")));
+    {
+        AudioDeviceEnumerator enumerator;
+        if (enumerator.init()) {
+            volume_devices_ = enumerator.enumerate();
+            enumerator.shutdown();
+        }
+    }
+    for (auto &d : volume_devices_)
+        volume_sync_ctrl_->Append(wxString::FromUTF8(d.display_name));
+    volume_sync_ctrl_->SetSelection(0);
+    codec_grid->Add(volume_sync_ctrl_, 1, wxEXPAND);
+
     /* Max media packet size (advanced) */
     wxString packet_help = wxString::Format(wxString::FromUTF8(L("advanced.max_packet_help")),
         (int)MEDIA_PAYLOAD_LIMIT_MIN, (int)MEDIA_PAYLOAD_LIMIT_MAX, (int)MEDIA_PAYLOAD_LIMIT_DEFAULT);
@@ -304,6 +348,25 @@ void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
     /* Set auto_switch AFTER update_codec_dependent() makes the control visible.
      * wxCheckBox::SetValue on a hidden control can be unreliable on Windows. */
     auto_switch_ctrl_->SetValue(p.auto_switch_device);
+
+    if (p.volume_sync == "off") {
+        volume_sync_ctrl_->SetSelection(1);
+    } else if (p.volume_sync == "device") {
+        std::wstring id = utf8_to_wide(p.volume_device_id);
+        size_t i = 0;
+        while (i < volume_devices_.size() && volume_devices_[i].id != id) i++;
+        if (i == volume_devices_.size()) {
+            /* Not connected now: keep it selectable as it was saved */
+            AudioDeviceInfo missing{};
+            missing.id = id;
+            missing.display_name = p.volume_device_name;
+            volume_devices_.push_back(missing);
+            volume_sync_ctrl_->Append(wxString::Format(
+                wxString::FromUTF8(L("capture.volume_sync_missing")),
+                wxString::FromUTF8(p.volume_device_name)));
+        }
+        volume_sync_ctrl_->SetSelection(static_cast<int>(i) + 2);
+    }
 
     /* Fix sample rate selection after choices are populated */
     if (sr_idx < sample_rate_ctrl_->GetCount())
@@ -813,6 +876,16 @@ void ProfileDialog::OnSave(wxCommandEvent &) {
         p.app_name = apps_[app_sel].display_name;
     }
     p.auto_switch_device = auto_switch_ctrl_->GetValue();
+    int vol_sel = volume_sync_ctrl_->GetSelection();
+    if (vol_sel >= 2 && vol_sel - 2 < static_cast<int>(volume_devices_.size())) {
+        p.volume_sync = "device";
+        p.volume_device_id = wide_to_utf8(volume_devices_[vol_sel - 2].id);
+        p.volume_device_name = volume_devices_[vol_sel - 2].display_name;
+    } else {
+        p.volume_sync = vol_sel == 1 ? "off" : "auto";
+        p.volume_device_id.clear();
+        p.volume_device_name.clear();
+    }
     p.max_media_payload = clamp_media_payload_limit(
         static_cast<uint32_t>(max_packet_ctrl_->GetValue()));
 

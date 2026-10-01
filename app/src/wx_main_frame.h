@@ -37,7 +37,6 @@ enum {
     ID_SETTING_TRAY,
     ID_SETTING_UPDATE_CHECK,
     ID_SETTING_MEDIA_KEYS,
-    ID_SETTING_VOLUME_SYNC,
     ID_SETTING_REMEMBER_VOLUME,
     ID_SETTING_DEBUG,
     ID_OPEN_LINK_QUALITY,
@@ -116,7 +115,6 @@ private:
     void OnToggleMinimizeToTray(wxCommandEvent &evt);
     void OnToggleUpdateCheck(wxCommandEvent &evt);
     void OnToggleMediaKeys(wxCommandEvent &evt);
-    void OnToggleVolumeSync(wxCommandEvent &evt);
     void OnToggleRememberVolume(wxCommandEvent &evt);
     void OnToggleDebugMode(wxCommandEvent &evt);
     void OnOpenLinkQuality(wxCommandEvent &evt);
