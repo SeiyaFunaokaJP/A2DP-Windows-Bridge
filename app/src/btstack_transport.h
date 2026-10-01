@@ -475,6 +475,12 @@ private:
     std::vector<BtAdapterInfo> usb_adapters_;
     bool intel_loader_ = false;     /* ran the Intel bootloader firmware download */
     bool bcm_checked_ = false;      /* Broadcom PatchRAM decided for this init */
+    /* Realtek LMP subversion of HCI init's version read (before the firmware
+     * download), and our own read after init is pending (BTstack thread):
+     * tell whether the firmware got loaded */
+    bool rtk_version_seen_ = false;
+    uint16_t rtk_lmp_first_ = 0;
+    bool rtk_verify_pending_ = false;
     std::string bcm_hcd_path_;      /* must outlive BTstack (chipset keeps the pointer) */
     std::atomic<bool> init_failed_{false};  /* firmware loader gave up: stop waiting */
 
