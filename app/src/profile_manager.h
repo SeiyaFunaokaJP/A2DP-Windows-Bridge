@@ -23,6 +23,8 @@ struct ConnectionProfile {
     std::string codec;            /* auto, ldac, aptxhd, aptxll, aptx, sbc, aac */
     std::string quality;          /* hq, sq, mq */
     bool abr = false;
+    bool codec_fallback = true;   /* use the best codec the device offers when
+                                   * the chosen one is not available (not for Auto) */
     uint32_t sample_rate = 0;     /* 0=auto, 44100, 48000, 88200, 96000 */
     uint32_t bit_depth = 0;       /* 0=auto, 16, 24 */
     std::string capture_mode;     /* "loopback", "virtual", "app" */

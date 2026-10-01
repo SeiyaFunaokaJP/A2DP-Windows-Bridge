@@ -48,6 +48,16 @@ public:
      */
     bool init(const char *usb_path = nullptr);
 
+    /* How the last init() failed */
+    enum class InitFailure {
+        None,
+        NoAnswer,   /* the controller sent no HCI event at all after power on
+                     * (e.g. it hangs on HCI Reset) */
+        Failed,     /* a firmware loader gave up */
+        Timeout     /* the controller answered but did not finish init in time */
+    };
+    InitFailure last_init_failure() const { return last_init_failure_.load(); }
+
     /* Disable HCI packet dump to stdout (call before init for GUI mode) */
     void set_hci_dump_enabled(bool enabled) { hci_dump_enabled_ = enabled; }
 
@@ -258,6 +268,12 @@ public:
          * is no open-source encoder */
         bool aptx_adaptive = false;
         uint8_t aptx_adaptive_seid = 0;
+        /* SEP discovery: audio sink SEPs the remote listed, and how many of
+         * them it reported in use. BTstack does not query the codec of an
+         * SEP in use, so a codec streaming to another device (multipoint)
+         * is missing from the flags above. */
+        uint8_t audio_sinks = 0;
+        uint8_t audio_sinks_in_use = 0;
     };
 
     /* Get discovered remote capabilities (valid after connect_a2dp) */
@@ -279,6 +295,13 @@ private:
 
     /* A2DP-specific event handlers */
     void handle_a2dp_event(uint8_t *packet, uint16_t size);
+    /* AVDTP SEP discovery, observed through the (otherwise unused) AVDTP
+     * sink callback: a2dp.c consumes these events without passing them on */
+    static void sep_observer_trampoline(uint8_t packet_type, uint16_t channel,
+                                        uint8_t *packet, uint16_t size);
+    void handle_sep_event(uint8_t *packet, uint16_t size);
+    uint8_t sep_sinks_ = 0;          /* SEPs of the discovery in progress (BTstack thread) */
+    uint8_t sep_sinks_in_use_ = 0;
     void handle_avrcp_event(uint8_t *packet, uint16_t size);
     void send_pending_volume();  /* BTstack thread */
     void handle_avrcp_operation(uint8_t operation_id, bool pressed);
@@ -302,6 +325,13 @@ private:
     /* hci_init() through hci_power_control(ON). Runs on the BTstack thread,
      * directly or once a pre-HCI firmware loader (Intel) has finished. */
     void setup_hci_and_power_on();
+
+    /* After the run loop has exited (BTstack thread): close the HCI transport
+     * if powering off did not, and reset BTstack's global state, so a later
+     * init() in this process starts from scratch. Without it the profiles
+     * kept stream endpoints and registrations that pointed into the memory
+     * pools init() re-creates. */
+    void deinit_btstack();
 
     /* Intel bootloader firmware download finished (BTstack thread) */
     static void intel_firmware_done(int result);
@@ -346,8 +376,20 @@ private:
     void *inquiry_event_ = nullptr;
     void *cancel_event_ = nullptr;       /* manual-reset; signaled to abort blocking waits */
 
+    /* manual-reset; HCI reached HCI_STATE_OFF (shutdown waits for it) */
+    void *hci_off_event_ = nullptr;
+
     /* Result flags for sync operations */
     std::atomic<bool> init_result_{false};
+    std::atomic<InitFailure> last_init_failure_{InitFailure::None};
+    /* HCI events from the controller since power on, and when hci_power_control(ON)
+     * was called (0 = not yet): tells a controller that never answers from
+     * one that is slow to finish init (firmware download) */
+    std::atomic<uint32_t> hci_events_seen_{0};
+    std::atomic<uint32_t> hci_power_on_tick_{0};
+    /* hci_init() ran in this session (BTstack thread only) */
+    bool hci_initialized_ = false;
+    const void *hci_transport_ = nullptr;   /* hci_transport_t in use */
     std::atomic<bool> connect_result_{false};
     /* ACL handle the A2DP signaling runs on (0xFFFF = none). Disconnections
      * of other links, e.g. a device used before that drops its idle link a

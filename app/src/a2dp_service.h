@@ -118,6 +118,7 @@ public:
 private:
     /* ---- BTstack lifecycle ---- */
     bool ensure_btstack_init();
+    bool init_btstack_transport();  /* one BtStackTransport::init(); transport_mutex_ held */
     void shutdown_btstack();
 
     /* ---- Scanning thread ---- */
@@ -150,6 +151,10 @@ private:
     std::mutex transport_mutex_;
     std::atomic<bool> btstack_ready_{false};
     std::atomic<bool> btstack_init_failed_{false};
+    /* the last failed init: the controller did not answer at all */
+    std::atomic<bool> btstack_no_answer_{false};
+    /* Error text (L() key) for a failed ensure_btstack_init() */
+    const char *btstack_init_error_key() const;
 
     /* ---- Worker thread ---- */
     std::thread worker_thread_;
