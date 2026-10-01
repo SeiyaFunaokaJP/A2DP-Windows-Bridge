@@ -398,7 +398,7 @@ void ProfileDialog::create_ui() {
 }
 
 void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
-    addr_ctrl_->SetValue(wxString::FromUTF8(p.device_address));
+    set_address(wxString::FromUTF8(p.device_address));
     devname_ctrl_->SetValue(wxString::FromUTF8(p.device_name));
     codec_ctrl_->SetSelection(ProfileManager::codec_to_index(p.codec));
     quality_ctrl_->SetSelection(ProfileManager::quality_to_index(p.quality));
@@ -711,7 +711,7 @@ void ProfileDialog::OnDeviceSelect(wxCommandEvent &) {
     auto devices = service_->get_devices();
     if (sel >= 0 && sel < static_cast<int>(devices.size())) {
         auto &d = devices[sel];
-        addr_ctrl_->SetValue(wxString::FromUTF8(d.addr_str));
+        set_address(wxString::FromUTF8(d.addr_str));
         devname_ctrl_->SetValue(wxString::FromUTF8(d.name));
         /* Enable edit/delete only for saved (paired) devices */
         dev_edit_btn_->Enable(d.saved);
@@ -861,8 +861,8 @@ bool format_address_input(const wxString &in, long caret_in, wxString &out, long
 
 void ProfileDialog::update_addr_visual() {
     wxString addr = addr_ctrl_->GetValue();
-    /* Red only once the text cannot become an address; an address still
-     * being typed is checked on Save */
+    /* Typing cannot make the text invalid (OnAddrChange refuses the edit),
+     * so red only for a value set from elsewhere, e.g. an old profile */
     wxString formatted;
     long caret = 0;
     bool valid = format_address_input(addr, 0, formatted, caret);
@@ -872,14 +872,37 @@ void ProfileDialog::update_addr_visual() {
     addr_ctrl_->Refresh();
 }
 
+/* A value from a profile or the device list: kept even if it is not an
+ * address, so it shows in red instead of being dropped */
+void ProfileDialog::set_address(const wxString &addr) {
+    last_addr_ = addr;
+    addr_ctrl_->SetValue(addr);
+}
+
 void ProfileDialog::OnAddrChange(wxCommandEvent &) {
     wxString value = addr_ctrl_->GetValue();
+    long caret_in = addr_ctrl_->GetInsertionPoint();
     wxString formatted;
     long caret = 0;
-    if (format_address_input(value, addr_ctrl_->GetInsertionPoint(), formatted, caret) &&
-        formatted != value) {
-        addr_ctrl_->ChangeValue(formatted);  /* no second wxEVT_TEXT */
-        addr_ctrl_->SetInsertionPoint(caret);
+    if (format_address_input(value, caret_in, formatted, caret)) {
+        if (formatted != value) {
+            addr_ctrl_->ChangeValue(formatted);  /* no second wxEVT_TEXT */
+            addr_ctrl_->SetInsertionPoint(caret);
+        }
+        last_addr_ = formatted;
+    } else if (!format_address_input(last_addr_, 0, formatted, caret)) {
+        /* Already invalid (set from elsewhere): let it be edited freely */
+        last_addr_ = value;
+    } else if (value != last_addr_) {
+        /* A character that is not part of an address, or a 13th digit:
+         * refuse the edit and put the caret back where the input began */
+        long added = static_cast<long>(value.length()) - static_cast<long>(last_addr_.length());
+        long restore = caret_in - (added > 0 ? added : 0);
+        if (restore < 0) restore = 0;
+        if (restore > static_cast<long>(last_addr_.length())) restore = static_cast<long>(last_addr_.length());
+        addr_ctrl_->ChangeValue(last_addr_);
+        addr_ctrl_->SetInsertionPoint(restore);
+        wxBell();
     }
     update_addr_visual();
 }

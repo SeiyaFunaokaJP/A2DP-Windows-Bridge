@@ -36,6 +36,7 @@ private:
     void OnDeviceDelete(wxCommandEvent &evt);
     void OnCaptureChange(wxCommandEvent &evt);
     void OnAddrChange(wxCommandEvent &evt);
+    void set_address(const wxString &addr);
     void update_addr_visual();
     void update_format_info();
     void update_capture_hint();
@@ -47,6 +48,7 @@ private:
 
     /* Controls */
     wxTextCtrl  *addr_ctrl_ = nullptr;
+    wxString     last_addr_;  /* restored when an edit cannot become an address */
     wxTextCtrl  *devname_ctrl_ = nullptr;
     wxListBox   *device_list_ = nullptr;
     wxChoice    *codec_ctrl_ = nullptr;
