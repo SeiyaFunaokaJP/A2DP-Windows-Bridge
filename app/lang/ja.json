@@ -186,6 +186,7 @@
   "settings.debug_mode_enabled": "デバッグモードは A2DPWB の再起動後に有効になります。\n\n設定フォルダーに debug.log が書き出され、「デバッグ」メニューから HCI パケットキャプチャを開始・停止できるようになります（ストリーミング中は 1 時間あたり最大約 0.5 GB）。",
   "settings.debug_mode_disabled": "デバッグモードは A2DPWB の再起動後にオフになります。\n\n既存の debug.log と HCI キャプチャ（.pklg）は、削除するまで設定フォルダーに残ります。",
   "settings.check_updates_on_startup": "起動時にアップデートを確認",
+  "settings.include_prereleases": "アップデート確認にプレリリースを含める",
   "settings.media_keys": "ヘッドホンのボタンで再生を操作",
   "settings.remember_volume": "ヘッドホンの音量を記憶",
   "advanced.max_packet": "最大メディアパケットサイズ（バイト）",

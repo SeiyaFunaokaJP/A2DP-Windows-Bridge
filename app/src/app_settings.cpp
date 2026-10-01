@@ -43,6 +43,7 @@ void AppSettings::load()
     /* Updates */
     check_updates_on_startup = j.value("check_updates_on_startup", check_updates_on_startup);
     last_update_check        = j.value("last_update_check", last_update_check);
+    include_prereleases      = j.value("include_prereleases", include_prereleases);
 
     /* Headphones */
     media_keys = j.value("media_keys", media_keys);
@@ -95,6 +96,7 @@ void AppSettings::save() const
     /* Updates */
     j["check_updates_on_startup"] = check_updates_on_startup;
     j["last_update_check"]        = last_update_check;
+    j["include_prereleases"]      = include_prereleases;
 
     /* Headphones */
     j["media_keys"] = media_keys;
