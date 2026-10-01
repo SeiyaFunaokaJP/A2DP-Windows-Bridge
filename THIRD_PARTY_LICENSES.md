@@ -201,7 +201,11 @@ the NOTICE, or from the patent owners) is the user's responsibility.
 
 - **Source**: <https://github.com/bluekitchen/btstack>
 - **Version**: `v1.8.1-6-g5bc5cbdbe` (commit `5bc5cbdbe`)
-- **Path in project**: `extern/btstack/` (git submodule)
+- **Path in project**: `extern/btstack/` (git submodule). `app/src/hci_transport_h2_winusb.c`
+  is a modified copy of BTstack's `platform/windows/hci_transport_h2_winusb.c`
+  (USB pipe reset on open, HCI event read recovery, bounded close with HCI
+  Reset) that replaces the original in the build; it keeps the BTstack
+  copyright notice and license
 - **License**: BTstack License (BSD-3-Clause-style with a non-commercial clause);
   commercial licenses are available separately from BlueKitchen GmbH
 - **Copyright**: Copyright (C) 2009 BlueKitchen GmbH

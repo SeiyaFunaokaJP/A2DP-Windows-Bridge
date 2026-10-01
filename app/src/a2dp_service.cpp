@@ -744,8 +744,37 @@ void A2dpService::download_firmware() {
 bool A2dpService::ensure_btstack_init() {
     std::lock_guard<std::mutex> lock(transport_mutex_);
     if (btstack_ready_.load()) return true;
-    if (btstack_init_failed_.load()) return false;
 
+    /* Tried again on every call: BtStackTransport::shutdown() releases the
+     * adapter and resets BTstack, so a failed init no longer needs an app
+     * restart. A controller that did not answer at all is reopened once
+     * right away; opening it resets its USB pipes, which can be enough. */
+    const int attempts = 2;
+    for (int attempt = 1; attempt <= attempts; attempt++) {
+        if (attempt > 1) {
+            LOG_WARN("A2dpService: Bluetooth adapter did not answer, opening it again (%d/%d)",
+                     attempt, attempts);
+        }
+        if (init_btstack_transport()) {
+            btstack_ready_.store(true);
+            btstack_init_failed_.store(false);
+            btstack_no_answer_.store(false);
+            return true;
+        }
+        bool no_answer = transport_->last_init_failure() == BtStackTransport::InitFailure::NoAnswer;
+        transport_.reset();
+        btstack_no_answer_.store(no_answer);
+        if (!no_answer) break;
+    }
+    btstack_init_failed_.store(true);
+    return false;
+}
+
+const char *A2dpService::btstack_init_error_key() const {
+    return btstack_no_answer_.load() ? "error.btstack_no_answer" : "error.btstack_init";
+}
+
+bool A2dpService::init_btstack_transport() {
     transport_ = std::make_unique<BtStackTransport>();
     transport_->set_hci_dump_enabled(false);
     transport_->set_hci_capture_enabled(debug_mode_);
@@ -773,12 +802,7 @@ bool A2dpService::ensure_btstack_init() {
         }
     }
 
-    if (!transport_->init(nullptr)) {
-        btstack_init_failed_.store(true);
-        return false;
-    }
-    btstack_ready_.store(true);
-    return true;
+    return transport_->init(nullptr);
 }
 
 void A2dpService::reset_btstack() {
@@ -829,10 +853,7 @@ void A2dpService::scan_thread_func() {
 
 void A2dpService::scan_thread_func_inner() {
     if (!ensure_btstack_init()) {
-        if (btstack_init_failed_.load())
-            notify_state(State::Error, L("error.btstack_init_restart"));
-        else
-            notify_state(State::Error, L("error.btstack_init"));
+        notify_state(State::Error, L(btstack_init_error_key()));
         scanning_.store(false);
         {
             std::lock_guard<std::mutex> lock(cb_mutex_);
@@ -1028,7 +1049,7 @@ void A2dpService::streaming_thread_func_inner() {
     /* Initialize BTstack */
     notify_state(State::Connecting, L("status.initializing_btstack"));
     if (!ensure_btstack_init()) {
-        notify_state(State::Error, L("error.btstack_init"));
+        notify_state(State::Error, L(btstack_init_error_key()));
         running_.store(false);
         return;
     }
@@ -1094,6 +1115,19 @@ void A2dpService::streaming_thread_func_inner() {
     auto caps = transport->get_remote_caps();
     AudioCodec selected_codec = AudioCodec::LDAC;
     bool found = false;
+    /* Status text when the requested codec was replaced (empty = none) */
+    std::string fallback_text;
+
+    auto pick_best = [&caps](AudioCodec &out) {
+        if (caps.ldac)         out = AudioCodec::LDAC;
+        else if (caps.aptx_hd) out = AudioCodec::AptxHD;
+        else if (caps.aptx_ll) out = AudioCodec::AptxLL;
+        else if (caps.aptx)    out = AudioCodec::Aptx;
+        else if (caps.aac)     out = AudioCodec::AAC;
+        else if (caps.sbc)     out = AudioCodec::SBC;
+        else return false;
+        return true;
+    };
 
     if (!auto_codec) {
         switch (requested_codec) {
@@ -1105,27 +1139,40 @@ void A2dpService::streaming_thread_func_inner() {
         case AudioCodec::AAC:    if (caps.aac)     { selected_codec = AudioCodec::AAC;    found = true; } break;
         }
         if (!found) {
-            char msg[256];
+            char msg[512];
             bool aptx_family = (requested_codec == AudioCodec::Aptx ||
                                 requested_codec == AudioCodec::AptxHD ||
                                 requested_codec == AudioCodec::AptxLL);
-            if (aptx_family && caps.aptx_adaptive)
+            if (caps.audio_sinks_in_use > 0)
+                /* The codec may be on an SEP another device streams to
+                 * (multipoint): BTstack does not query SEPs in use */
+                snprintf(msg, sizeof(msg), L("error.codec_sep_in_use"), codec_name_for(requested_codec),
+                         caps.audio_sinks_in_use, caps.audio_sinks);
+            else if (aptx_family && caps.aptx_adaptive)
                 /* Sink offers only aptX Adaptive, which has no open encoder */
                 snprintf(msg, sizeof(msg), L("error.codec_adaptive_only"), codec_name_for(requested_codec));
             else
                 snprintf(msg, sizeof(msg), L("error.codec_not_supported"), codec_name_for(requested_codec));
-            notify_state(State::Error, msg);
-            transport->disconnect();
-            running_.store(false);
-            return;
+
+            if (p.codec_fallback && pick_best(selected_codec)) {
+                found = true;
+                LOG_WARN("A2dpService: codec fallback: %s not available, using %s (%s)",
+                         codec_name_for(requested_codec), codec_name_for(selected_codec), msg);
+                char text[256];
+                snprintf(text, sizeof(text),
+                         L(caps.audio_sinks_in_use > 0 ? "status.connected_fallback_in_use"
+                                                       : "status.connected_fallback"),
+                         codec_name_for(requested_codec), codec_name_for(selected_codec));
+                fallback_text = text;
+            } else {
+                notify_state(State::Error, msg);
+                transport->disconnect();
+                running_.store(false);
+                return;
+            }
         }
     } else {
-        if (caps.ldac)        { selected_codec = AudioCodec::LDAC;   found = true; }
-        else if (caps.aptx_hd){ selected_codec = AudioCodec::AptxHD; found = true; }
-        else if (caps.aptx_ll){ selected_codec = AudioCodec::AptxLL; found = true; }
-        else if (caps.aptx)   { selected_codec = AudioCodec::Aptx;   found = true; }
-        else if (caps.aac)    { selected_codec = AudioCodec::AAC;    found = true; }
-        else if (caps.sbc)    { selected_codec = AudioCodec::SBC;    found = true; }
+        found = pick_best(selected_codec);
     }
     if (!found) {
         notify_state(State::Error, L("error.no_compatible_codec"));
@@ -1363,7 +1410,7 @@ void A2dpService::streaming_thread_func_inner() {
     }
 
     /* Update status */
-    notify_state(State::Streaming, L("status.connected"));
+    notify_state(State::Streaming, fallback_text.empty() ? std::string(L("status.connected")) : fallback_text);
     notify_stream_info({codec_name_for(selected_codec),
                         encoder->get_bitrate_kbps(), sr, use_ch,
                         sr, ch, source_bits});

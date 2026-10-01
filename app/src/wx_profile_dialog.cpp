@@ -196,6 +196,13 @@ void ProfileDialog::create_ui() {
     codec_ctrl_->Bind(wxEVT_CHOICE, &ProfileDialog::OnCodecChange, this);
     codec_grid->Add(codec_ctrl_, 1, wxEXPAND);
 
+    /* Codec fallback */
+    codec_grid->Add(new wxStaticText(this, wxID_ANY, ""), 0);
+    fallback_ctrl_ = new wxCheckBox(this, wxID_ANY, wxString::FromUTF8(L("connection.codec_fallback")));
+    fallback_ctrl_->SetToolTip(wxString::FromUTF8(L("tooltip.codec_fallback")));
+    fallback_ctrl_->SetValue(true);
+    codec_grid->Add(fallback_ctrl_, 0);
+
     /* Quality */
     auto *quality_label = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("connection.quality")));
     quality_label->SetToolTip(wxString::FromUTF8(L("tooltip.quality")));
@@ -396,6 +403,7 @@ void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
     codec_ctrl_->SetSelection(ProfileManager::codec_to_index(p.codec));
     quality_ctrl_->SetSelection(ProfileManager::quality_to_index(p.quality));
     abr_ctrl_->SetValue(p.abr);
+    fallback_ctrl_->SetValue(p.codec_fallback);
     max_packet_ctrl_->SetValue(p.max_media_payload);
 
     int sr_idx = (p.sample_rate == 44100) ? 1 :
@@ -505,6 +513,11 @@ void ProfileDialog::update_codec_dependent() {
     abr_ctrl_->SetForegroundColour(TM().get(abr_enabled ? ThemeColor::TextPrimary : ThemeColor::TextMuted));
     abr_ctrl_->Refresh();
     if (!abr_enabled) abr_ctrl_->SetValue(false);
+    /* Auto already takes the best codec the device offers */
+    bool fallback_enabled = (codec_idx != 0);
+    fallback_ctrl_->Enable(fallback_enabled);
+    fallback_ctrl_->SetForegroundColour(TM().get(fallback_enabled ? ThemeColor::TextPrimary : ThemeColor::TextMuted));
+    fallback_ctrl_->Refresh();
 
     /* Sample rate options */
     int cur_sr = sample_rate_ctrl_->GetSelection();
@@ -899,6 +912,7 @@ void ProfileDialog::OnSave(wxCommandEvent &) {
     p.codec = ProfileManager::index_to_codec(codec_ctrl_->GetSelection());
     p.quality = ProfileManager::index_to_quality(quality_ctrl_->GetSelection());
     p.abr = abr_ctrl_->GetValue();
+    p.codec_fallback = fallback_ctrl_->GetValue();
 
     static const uint32_t rate_values[] = { 0, 44100, 48000, 88200, 96000 };
     int sr_sel = sample_rate_ctrl_->GetSelection();

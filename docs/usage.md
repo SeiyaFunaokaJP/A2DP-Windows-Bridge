@@ -241,14 +241,29 @@ When A2DPWB connects, the headphones advertise a **list of codecs** (AVDTP strea
 
 Auto-select priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
 
-### Explicitly Selected Codec Not Offered: GUI vs CLI
+### Explicitly Selected Codec Not Offered {#codec-fallback}
 
-The GUI and the CLI behave differently when you request a specific codec that the headphones do not list:
+When you request a specific codec that the headphones do not list:
 
 | Mode | Behavior |
 |:-----|:---------|
-| GUI (codec other than Auto) | The connection stops with an error ("Device does not support ..."). If you requested aptX, aptX HD or aptX LL and the headphones offer only aptX Adaptive, the message says so and suggests Auto, AAC or SBC. |
+| GUI, **Use another codec if this one is not available** checked (default) | Connects with the best codec the headphones offer, in the Auto priority order, and the status says which codec is used instead and why. |
+| GUI, option unchecked | The connection stops with an error ("Device does not support ..."). If you requested aptX, aptX HD or aptX LL and the headphones offer only aptX Adaptive, the message says so and suggests Auto, AAC or SBC. |
 | CLI (`-c <codec>`) | Prints `Requested codec ... not available, falling back...` and continues with the Auto priority order. If the headphones offer aptX Adaptive, an extra line notes that it is never selected. |
+
+The option is in **Edit Profile** next to the codec (not used with Auto).
+
+### Codec Missing While the Headphones Are Connected to Another Device {#sep-in-use}
+
+Headphones offer each codec on a stream endpoint (SEP). On a dual (multipoint) connection, an endpoint that streams to the phone or PC is reported as **in use**, and its codec cannot be used until that stream stops. Some headphones also offer high-resolution codecs (LDAC, L2HC, ...) only while a single device is connected. A2DPWB then reports:
+
+```
+BTstack: Remote SEP SEID=6 sink audio, IN USE (codec not queried)
+BTstack: Remote SEPs in use by another connection: 1 of 6 audio sink SEP(s); ...
+BTstack: Capability discovery complete (LDAC=0, ..., 1 of 6 audio sink SEP(s) in use)
+```
+
+and the error says that endpoints are in use by another device. Disconnect the headphones from the phone / PC (or turn dual connection off in the headphones' app) and connect again. A PC whose built-in Bluetooth is still paired with the headphones counts as another device, too.
 
 ### Sample Rate
 
@@ -337,6 +352,12 @@ Both sides count the packets of a stream from its first packet, and after **Stop
 The receiver's adapter is not available to its own Bluetooth stack while the tool runs. Discovery uses a UDP broadcast on port 51201, so both PCs must be on the same network segment (otherwise enter the address). See `tools/linux_sink/README.md` for all options and the statistics protocol.
 
 ## Troubleshooting
+
+### The Bluetooth Adapter Does Not Respond {#adapter-no-answer}
+
+If the adapter sends nothing back after it is opened (it does not answer HCI Reset), A2DPWB gives up after 5 seconds, opens it once more and, if it still does not answer, shows "The Bluetooth adapter does not respond". Unplug the adapter, plug it back in and try again. Restarting A2DPWB is not needed: a failed start releases the adapter and every new start initializes it again.
+
+To keep an adapter from getting stuck, A2DPWB resets its USB pipes when it opens it and sends HCI Reset when it closes it.
 
 ### Pairing Problems After Updating
 

@@ -33,6 +33,7 @@ void ProfileManager::load(uint16_t legacy_max_media_payload) {
             p.codec          = item.value("codec", "auto");
             p.quality        = item.value("quality", "hq");
             p.abr            = item.value("abr", false);
+            p.codec_fallback = item.value("codec_fallback", true);
             p.sample_rate    = item.value("sample_rate", 0u);
             p.bit_depth      = item.value("bit_depth", 0u);
             p.capture_mode     = item.value("capture_mode", std::string("loopback"));
@@ -75,6 +76,7 @@ void ProfileManager::save() const {
             {"codec",          p.codec},
             {"quality",        p.quality},
             {"abr",            p.abr},
+            {"codec_fallback", p.codec_fallback},
             {"sample_rate",    p.sample_rate},
             {"bit_depth",      p.bit_depth},
             {"capture_mode",     p.capture_mode},

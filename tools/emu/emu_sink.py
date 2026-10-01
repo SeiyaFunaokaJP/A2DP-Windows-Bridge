@@ -30,7 +30,13 @@ from bumble.a2dp import (
     VendorSpecificMediaCodecInformation,
     make_audio_sink_service_sdp_records,
 )
-from bumble.avdtp import AVDTP_AUDIO_MEDIA_TYPE, Listener, MediaCodecCapabilities
+from bumble.avdtp import (
+    AVDTP_AUDIO_MEDIA_TYPE,
+    Discover_Response,
+    EndPointInfo,
+    Listener,
+    MediaCodecCapabilities,
+)
 from bumble.controller import Controller
 from bumble.device import Device
 from bumble.host import Host
@@ -114,6 +120,10 @@ class PacketLoggerSnooper(Snooper):
         now = time.time()
         sec, usec = int(now), int((now - int(now)) * 1e6)
         self.file.write(struct.pack('>IIIB', 9 + len(payload), sec, usec, pl_type) + payload)
+
+
+# Codec of each sink_codec_capabilities() entry, in order (for --in-use)
+CODEC_NAMES = ['sbc', 'aac', 'aptx', 'aptxhd', 'aptxll', 'ldac']
 
 
 def sink_codec_capabilities():
@@ -200,8 +210,19 @@ async def main(args):
 
     def on_avdtp_connection(server):
         log.info('AVDTP connection')
-        for capabilities in sink_codec_capabilities():
+        for name, capabilities in zip(CODEC_NAMES, sink_codec_capabilities()):
             sink = server.add_sink(capabilities)
+            if name in args.in_use:
+                # As a multipoint headset streaming this codec to another
+                # device: listed by Discover with in_use = 1
+                sink.__class__ = type('InUseSink', (sink.__class__,), {'in_use': property(lambda self: 1)})
+        if args.in_use:
+            # Bumble's Discover response always reports in_use = 0
+            async def on_discover_command(command):
+                return Discover_Response([
+                    EndPointInfo(e.seid, e.in_use, e.media_type, e.tsep) for e in server.local_endpoints
+                ])
+            server.on_discover_command = on_discover_command
             # Media is checked from the HCI capture with a2dpwb_decode. Bumble
             # would parse every packet as RTP, but classic aptX / aptX LL carry
             # no RTP header, so the parser is bypassed.
@@ -218,5 +239,7 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=9001, help='TCP port for A2DPWB (H4)')
     parser.add_argument('--capture', help='PacketLogger capture of the sink HCI traffic')
     parser.add_argument('--log-level', default='WARNING')
+    parser.add_argument('--in-use', nargs='*', default=[], choices=CODEC_NAMES, metavar='CODEC',
+                        help='report the SEP of these codecs as in use by another device (multipoint)')
     bumble.logging.setup_basic_logging(parser.parse_known_args()[0].log_level)
     asyncio.run(main(parser.parse_args()))

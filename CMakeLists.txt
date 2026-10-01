@@ -91,6 +91,10 @@ if(EXISTS ${BTSTACK_ROOT}/src/hci.c)
     file(GLOB BTSTACK_CLASSIC_SRC ${BTSTACK_ROOT}/src/classic/*.c)
     # Windows platform sources (run loop, WinUSB HCI transport, TLV storage)
     file(GLOB BTSTACK_WINDOWS_SRC ${BTSTACK_ROOT}/platform/windows/*.c)
+    # The WinUSB HCI transport is replaced by a modified copy in app/src
+    # (pipe reset on open, HCI event read recovery, bounded close)
+    list(REMOVE_ITEM BTSTACK_WINDOWS_SRC ${BTSTACK_ROOT}/platform/windows/hci_transport_h2_winusb.c)
+    list(APPEND BTSTACK_WINDOWS_SRC ${CMAKE_SOURCE_DIR}/app/src/hci_transport_h2_winusb.c)
     # PBAP client (phonebook access) is unused by the app and is the only
     # classic source that needs 3rd-party md5 / yxml.
     list(REMOVE_ITEM BTSTACK_CLASSIC_SRC ${BTSTACK_ROOT}/src/classic/pbap_client.c)
