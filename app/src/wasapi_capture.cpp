@@ -8,6 +8,7 @@
  */
 
 #include "wasapi_capture.h"
+#include "debug_log.h"
 #include <cstdio>
 #include <cstring>
 #include <avrt.h>
@@ -455,6 +456,12 @@ void WasapiCapture::capture_loop() {
     HANDLE wait_handles[2] = { stop_event_, buffer_event_ };
     int handle_count = buffer_event_ ? 2 : 1;
 
+    /* Discontinuities of this capture (start one excluded) */
+    const DWORD DISCONTINUITY_START_MS = 500;
+    const DWORD loop_start = GetTickCount();
+    uint32_t disc_count = 0;
+    DWORD disc_tick = 0;
+
     while (running_.load()) {
         DWORD wait_result;
         if (handle_count == 2) {
@@ -493,13 +500,19 @@ void WasapiCapture::capture_loop() {
             }
 
             if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
-                static uint32_t disc_count = 0;
-                static DWORD disc_tick = 0;
-                disc_count++;
                 DWORD now = GetTickCount();
-                if (now - disc_tick >= 2000 || disc_count == 1) {
-                    fprintf(stderr, "WasapiCapture: Data discontinuity (count=%u)\n", disc_count);
-                    disc_tick = now;
+                if (now - loop_start < DISCONTINUITY_START_MS) {
+                    /* Windows usually flags the first buffers after Start():
+                     * nothing was lost */
+                    LOG_INFO("WasapiCapture: Data discontinuity at capture start (expected)");
+                } else {
+                    /* A gap in the captured audio (CPU load, other audio
+                     * apps): counted per capture, reported every 2 s at most */
+                    disc_count++;
+                    if (disc_count == 1 || now - disc_tick >= 2000) {
+                        LOG_WARN("WasapiCapture: Data discontinuity (count=%u)", disc_count);
+                        disc_tick = now;
+                    }
                 }
             }
 
