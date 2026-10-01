@@ -216,6 +216,8 @@ void MainFrame::create_menu_bar() {
     settings_menu->Check(ID_SETTING_TRAY, settings_.minimize_to_tray);
     settings_menu->AppendCheckItem(ID_SETTING_UPDATE_CHECK, wxString::FromUTF8(L("settings.check_updates_on_startup")));
     settings_menu->Check(ID_SETTING_UPDATE_CHECK, settings_.check_updates_on_startup);
+    settings_menu->AppendCheckItem(ID_SETTING_PRERELEASES, wxString::FromUTF8(L("settings.include_prereleases")));
+    settings_menu->Check(ID_SETTING_PRERELEASES, settings_.include_prereleases);
     settings_menu->AppendCheckItem(ID_SETTING_MEDIA_KEYS, wxString::FromUTF8(L("settings.media_keys")));
     settings_menu->Check(ID_SETTING_MEDIA_KEYS, settings_.media_keys);
     settings_menu->AppendCheckItem(ID_SETTING_REMEMBER_VOLUME, wxString::FromUTF8(L("settings.remember_volume")));
@@ -271,6 +273,7 @@ void MainFrame::create_menu_bar() {
     Bind(wxEVT_MENU, &MainFrame::OnToggleStartWithWindows, this, ID_SETTING_START_WIN);
     Bind(wxEVT_MENU, &MainFrame::OnToggleMinimizeToTray, this, ID_SETTING_TRAY);
     Bind(wxEVT_MENU, &MainFrame::OnToggleUpdateCheck, this, ID_SETTING_UPDATE_CHECK);
+    Bind(wxEVT_MENU, &MainFrame::OnTogglePrereleases, this, ID_SETTING_PRERELEASES);
     Bind(wxEVT_MENU, &MainFrame::OnToggleMediaKeys, this, ID_SETTING_MEDIA_KEYS);
     Bind(wxEVT_MENU, &MainFrame::OnToggleRememberVolume, this, ID_SETTING_REMEMBER_VOLUME);
     Bind(wxEVT_MENU, &MainFrame::OnToggleDebugMode, this, ID_SETTING_DEBUG);
@@ -810,6 +813,11 @@ void MainFrame::OnToggleUpdateCheck(wxCommandEvent &) {
     settings_.save();
 }
 
+void MainFrame::OnTogglePrereleases(wxCommandEvent &) {
+    settings_.include_prereleases = !settings_.include_prereleases;
+    settings_.save();
+}
+
 void MainFrame::OnToggleMediaKeys(wxCommandEvent &) {
     settings_.media_keys = !settings_.media_keys;
     BtStackTransport::set_media_keys_enabled(settings_.media_keys);
@@ -868,8 +876,9 @@ void MainFrame::start_update_check(bool silent) {
     if (update_thread_.joinable())
         update_thread_.join(); /* reap the previous, already-finished check */
 
-    update_thread_ = std::thread([this, silent] {
-        UpdateCheckResult r = CheckLatestRelease();
+    bool prereleases = settings_.include_prereleases;
+    update_thread_ = std::thread([this, silent, prereleases] {
+        UpdateCheckResult r = CheckLatestRelease(prereleases);
         auto *evt = new wxThreadEvent(wxEVT_UPDATE_CHECK_DONE);
         evt->SetPayload(r);
         evt->SetInt(silent ? 1 : 0);

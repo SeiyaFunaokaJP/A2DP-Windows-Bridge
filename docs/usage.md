@@ -32,7 +32,7 @@ The graphical interface provides:
 - **Profile management** -- save and load device + codec configurations
 - **Real-time status** -- codec, bitrate, connection state
 - **Link quality** -- **Actions > Link Quality...** (see [Link Quality Window and AFH](#link-quality))
-- **Settings menu** -- language, theme, Start with Windows, Minimize to System Tray, Check for Updates on Startup, Headphone Buttons Control Playback (see [Headphone buttons](#headphone-buttons)), Remember Headphone Volume (see [Volume](#volume)), Debug Mode (adds the **Debug** menu: debug console, HCI capture, peer receiver test)
+- **Settings menu** -- language, theme, Start with Windows, Minimize to System Tray, Check for Updates on Startup, Include Pre-releases in Update Checks (also offer beta releases), Headphone Buttons Control Playback (see [Headphone buttons](#headphone-buttons)), Remember Headphone Volume (see [Volume](#volume)), Debug Mode (adds the **Debug** menu: debug console, HCI capture, peer receiver test)
 
 ## CLI Mode
 

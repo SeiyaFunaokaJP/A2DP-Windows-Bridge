@@ -32,6 +32,8 @@ public:
     /* Updates */
     bool check_updates_on_startup = true;
     std::string last_update_check; /* ISO date of the last automatic check */
+    /* Also offer releases marked as pre-release on GitHub (beta channel) */
+    bool include_prereleases = false;
 
     /* Headphones: their buttons (play/pause, next, previous) act as Windows
      * media keys */
