@@ -46,6 +46,16 @@ void AppSettings::load()
 
     /* Headphones */
     media_keys = j.value("media_keys", media_keys);
+    volume_sync = j.value("volume_sync", volume_sync);
+    remember_volume = j.value("remember_volume", remember_volume);
+    if (j.contains("saved_volumes") && j["saved_volumes"].is_object()) {
+        saved_volumes.clear();
+        for (auto it = j["saved_volumes"].begin(); it != j["saved_volumes"].end(); ++it) {
+            if (!it.value().is_number_integer()) continue;
+            int v = it.value().get<int>();
+            if (v >= 0 && v <= 127) saved_volumes[it.key()] = v;
+        }
+    }
 
     /* Debug */
     debug_mode = j.value("debug_mode", debug_mode);
@@ -89,6 +99,9 @@ void AppSettings::save() const
 
     /* Headphones */
     j["media_keys"] = media_keys;
+    j["volume_sync"] = volume_sync;
+    j["remember_volume"] = remember_volume;
+    j["saved_volumes"] = saved_volumes;
 
     /* Debug */
     j["debug_mode"] = debug_mode;

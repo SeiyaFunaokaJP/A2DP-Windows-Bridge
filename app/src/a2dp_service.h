@@ -25,6 +25,7 @@
 #include <thread>
 #include <memory>
 #include <functional>
+#include <map>
 
 class BtStackTransport;
 class WasapiCapture;
@@ -108,6 +109,19 @@ public:
     /* ---- Debug ---- */
     void set_debug_mode(bool enabled) { debug_mode_ = enabled; }
 
+    /* ---- Headphone volume ---- */
+    /* Keep the Windows volume and the headphones' volume equal while
+     * streaming (volume_sync.h). Takes effect on a running stream. */
+    void set_volume_sync(bool enabled) { volume_sync_.store(enabled); }
+    /* Remember the headphones' volume per device address (upper case
+     * XX:XX:XX:XX:XX:XX) and set it again when they connect. The table is
+     * updated while streaming; saved_volumes_changed() reports (once) that
+     * it changed, for saving. Thread-safe. */
+    void set_remember_volume(bool enabled) { remember_volume_.store(enabled); }
+    void set_saved_volumes(const std::map<std::string, int> &volumes);
+    std::map<std::string, int> saved_volumes() const;
+    bool saved_volumes_changed() { return saved_volumes_changed_.exchange(false); }
+
     /* Force BTstack shutdown so next connect reinitializes with new settings */
     void reset_btstack();
 
@@ -172,6 +186,14 @@ private:
 
     /* ---- Debug ---- */
     bool debug_mode_ = false;
+
+    /* ---- Headphone volume ---- */
+    std::atomic<bool> volume_sync_{true};
+    std::atomic<bool> remember_volume_{false};
+    mutable std::mutex saved_volumes_mutex_;
+    std::map<std::string, int> saved_volumes_;
+    std::atomic<bool> saved_volumes_changed_{false};
+    void remember_volume(const std::string &address, int volume);
 
     /* ---- Firmware ---- */
     bool firmware_present_ = false;

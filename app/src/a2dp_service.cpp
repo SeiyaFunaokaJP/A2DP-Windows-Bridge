@@ -26,11 +26,13 @@
 #include "aac_encoder.h"
 #include "bt_device.h"
 #include "localization.h"
+#include "volume_sync.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <cctype>
 #include <memory>
 #include <vector>
 #include <mutex>
@@ -460,11 +462,40 @@ static const char *codec_name_for(AudioCodec c) {
     return "Unknown";
 }
 
+/* Key of the remembered headphone volume: the device address, upper case */
+static std::string device_volume_key(const std::string &address) {
+    std::string key = address;
+    for (char &c : key) c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
+    return key;
+}
+
 } /* anonymous namespace */
 
 /* ======================================================================== */
 /* A2dpService                                                               */
 /* ======================================================================== */
+
+void A2dpService::set_saved_volumes(const std::map<std::string, int> &volumes) {
+    std::lock_guard<std::mutex> lock(saved_volumes_mutex_);
+    saved_volumes_.clear();
+    for (const auto &kv : volumes)
+        if (kv.second >= 0 && kv.second <= 127)
+            saved_volumes_[device_volume_key(kv.first)] = kv.second;
+}
+
+std::map<std::string, int> A2dpService::saved_volumes() const {
+    std::lock_guard<std::mutex> lock(saved_volumes_mutex_);
+    return saved_volumes_;
+}
+
+void A2dpService::remember_volume(const std::string &address, int volume) {
+    if (volume < 0) return;  /* not known: keep the one saved last */
+    std::lock_guard<std::mutex> lock(saved_volumes_mutex_);
+    auto it = saved_volumes_.find(address);
+    if (it != saved_volumes_.end() && it->second == volume) return;
+    saved_volumes_[address] = volume;
+    saved_volumes_changed_.store(true);
+}
 
 A2dpService::A2dpService() {
     check_firmware_present();
@@ -998,6 +1029,16 @@ void A2dpService::streaming_thread_func_inner() {
 
     if (stop_requested_.load()) { running_.store(false); notify_state(State::Idle, L("status.ready")); return; }
 
+    /* Remembered headphone volume, set as soon as AVRCP connects */
+    const std::string volume_key = device_volume_key(p.device_address);
+    int restore_volume = -1;
+    if (remember_volume_.load()) {
+        std::lock_guard<std::mutex> lock(saved_volumes_mutex_);
+        auto it = saved_volumes_.find(volume_key);
+        if (it != saved_volumes_.end()) restore_volume = it->second;
+    }
+    BtStackTransport::set_restore_volume(restore_volume);
+
     /* Connect */
     notify_state(State::Connecting, L("status.connecting_device"));
     bool connected = transport->connect_a2dp_retrying(
@@ -1150,6 +1191,7 @@ void A2dpService::streaming_thread_func_inner() {
 
     /* Audio source: the test tone (peer receiver test) or WASAPI capture */
     TestTone test_tone;
+    std::wstring volume_device_id;  /* device whose volume to sync, empty = default */
     if (p.test_tone) {
         LOG_INFO("A2dpService: audio source: test tone at %u Hz", preferred_sr);
     } else switch (cmode) {
@@ -1186,6 +1228,7 @@ void A2dpService::streaming_thread_func_inner() {
                          p.audio_device_name.c_str());
             }
         }
+        volume_device_id = dev_id;
         if (!wasapi_capture.init(preferred_sr, dev_id.c_str())) {
             notify_state(State::Error, L("error.virtual_capture_init"));
             if (p.auto_switch_device && !original_default_device_.empty()) {
@@ -1383,11 +1426,20 @@ void A2dpService::streaming_thread_func_inner() {
         return;
     }
 
+    /* Headphone volume and the Windows volume of the output device that
+     * the audio comes from: one volume (volume_sync.h). Application mode
+     * uses the default output device, where the volume keys act. */
+    VolumeSync volume_sync(volume_device_id);
+
     /* Main loop: keep streaming, auto-reconnect on disconnect */
     try {
     int app_ticks = 0;
     while (!stop_requested_.load()) {
         Sleep(200);
+
+        volume_sync.tick(volume_sync_.load() && !p.test_tone);
+        if (remember_volume_.load())
+            remember_volume(volume_key, BtStackTransport::remote_volume());
 
         /* Application capture follows the app: it may quit and start again */
         if (app_mode) {
@@ -1467,6 +1519,8 @@ void A2dpService::streaming_thread_func_inner() {
 
     transport->stop_stream();
     transport->disconnect();
+    volume_sync.stop();
+    BtStackTransport::set_restore_volume(-1);
 
     if (!original_default_device_.empty()) {
         AudioDeviceEnumerator::set_default_device(original_default_device_);

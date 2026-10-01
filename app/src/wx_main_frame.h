@@ -37,6 +37,8 @@ enum {
     ID_SETTING_TRAY,
     ID_SETTING_UPDATE_CHECK,
     ID_SETTING_MEDIA_KEYS,
+    ID_SETTING_VOLUME_SYNC,
+    ID_SETTING_REMEMBER_VOLUME,
     ID_SETTING_DEBUG,
     ID_OPEN_LINK_QUALITY,
     ID_DEBUG_CAPTURE_START,
@@ -114,6 +116,8 @@ private:
     void OnToggleMinimizeToTray(wxCommandEvent &evt);
     void OnToggleUpdateCheck(wxCommandEvent &evt);
     void OnToggleMediaKeys(wxCommandEvent &evt);
+    void OnToggleVolumeSync(wxCommandEvent &evt);
+    void OnToggleRememberVolume(wxCommandEvent &evt);
     void OnToggleDebugMode(wxCommandEvent &evt);
     void OnOpenLinkQuality(wxCommandEvent &evt);
     void OnDebugCaptureStart(wxCommandEvent &evt);
@@ -162,6 +166,8 @@ private:
     wxStaticText  *volume_value_ = nullptr;
     wxTimer        volume_timer_;
     unsigned long  volume_touched_tick_ = 0; /* last slider move by the user */
+    unsigned long  volumes_changed_tick_ = 0; /* remembered volumes not saved yet */
+    void save_remembered_volumes(bool now);
     wxScrolledWindow *profile_scroll_ = nullptr;
     wxBoxSizer    *profile_sizer_ = nullptr;
 

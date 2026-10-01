@@ -6,6 +6,7 @@
 #ifndef APP_SETTINGS_H
 #define APP_SETTINGS_H
 
+#include <map>
 #include <string>
 #include <cstdint>
 
@@ -35,6 +36,13 @@ public:
     /* Headphones: their buttons (play/pause, next, previous) act as Windows
      * media keys */
     bool media_keys = true;
+    /* One volume: the Windows volume and the headphones' volume follow each
+     * other while streaming (volume_sync.h) */
+    bool volume_sync = true;
+    /* Remember the headphones' volume per device and set it again when
+     * they connect. saved_volumes: device address -> AVRCP volume 0-127 */
+    bool remember_volume = false;
+    std::map<std::string, int> saved_volumes;
 
     /* Debug */
     bool debug_mode = false;
