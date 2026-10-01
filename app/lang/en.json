@@ -11,7 +11,6 @@
   "connection.no_devices": "No devices found. Enter address manually.",
   "connection.manual_label": "Manual:",
   "connection.manual": "Manual:",
-  "connection.addr_hint": "XX:XX:XX:XX:XX:XX",
   "connection.device_addr": "Device Address",
   "connection.codec_label": "Codec",
   "connection.codec": "Codec",
