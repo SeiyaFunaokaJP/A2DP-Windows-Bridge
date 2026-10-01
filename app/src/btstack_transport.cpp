@@ -215,6 +215,25 @@ static uint32_t read_vendor_id(const uint8_t *info) {
            ((uint32_t)info[2] << 16) | ((uint32_t)info[3] << 24);
 }
 
+/* LMP subversions Realtek chips report while running their ROM code, before
+ * a firmware download (ROM_LMP_* in BTstack's btstack_chipset_realtek.c;
+ * the lmp_sub of its fw_patch_table_usb entries). Firmware reports a
+ * build-specific value instead. */
+static bool is_realtek_rom_lmp(uint16_t lmp_subver) {
+    switch (lmp_subver) {
+    case 0x1200:  /* RTL8723A */
+    case 0x8723:  /* RTL8723B / D */
+    case 0x8821:  /* RTL8821A / C */
+    case 0x8761:  /* RTL8761A / B / C */
+    case 0x8822:  /* RTL8822B / C */
+    case 0x8852:  /* RTL8852A / B / C */
+    case 0x8851:  /* RTL8851B */
+        return true;
+    default:
+        return false;
+    }
+}
+
 static uint16_t read_codec_id(const uint8_t *info) {
     return (uint16_t)info[4] | ((uint16_t)info[5] << 8);
 }
@@ -664,6 +683,9 @@ void BtStackTransport::setup_hci_and_power_on() {
     }
 
     /* Power on HCI — record start time to measure firmware loading */
+    rtk_version_seen_ = false;
+    rtk_lmp_first_ = 0;
+    rtk_verify_pending_ = false;
     init_start_tick_ = GetTickCount();
     hci_power_on_tick_.store(init_start_tick_ ? init_start_tick_ : 1);
     if (hci_power_control(HCI_POWER_ON) != 0) {
@@ -737,6 +759,26 @@ void BtStackTransport::on_local_version(const uint8_t *packet) {
     fprintf(stderr, "BTstack: Controller %s (company 0x%04X), HCI version %u, "
             "LMP subversion 0x%04X\n",
             company ? company : "unknown", manufacturer, hci_ver, lmp_subver);
+
+    /* Realtek: the first version read of an init comes before the firmware
+     * download, so it tells a chip still on ROM from one that kept the
+     * firmware of an earlier session (no download then) */
+    if (manufacturer == 0x005D && product_id_ != 0) {
+        if (!rtk_version_seen_) rtk_lmp_first_ = lmp_subver;
+        rtk_version_seen_ = true;
+        if (rtk_verify_pending_) {
+            /* Our read after init: the version running now */
+            rtk_verify_pending_ = false;
+            if (is_realtek_rom_lmp(lmp_subver)) {
+                fprintf(stderr, "BTstack: WARNING — Realtek firmware NOT loaded (LMP "
+                        "subversion 0x%04X is the ROM code); check the firmware files\n",
+                        lmp_subver);
+            } else {
+                fprintf(stderr, "BTstack: Realtek firmware loaded (LMP subversion "
+                        "0x%04X -> 0x%04X)\n", rtk_lmp_first_, lmp_subver);
+            }
+        }
+    }
 
     switch (manufacturer) {
     case 0x0046:  /* MediaTek */
@@ -2188,7 +2230,25 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                 uint32_t elapsed = GetTickCount() - init_start_tick_;
                 fprintf(stderr, "BTstack: HCI ready (took %lu ms)\n", (unsigned long)elapsed);
                 if (product_id_ == 0) {
-                    /* Not Realtek: nothing to infer from the timing */
+                    /* Not Realtek: nothing to check */
+                } else if (rtk_version_seen_) {
+                    /* Judged by the LMP subversion, as BTstack's Realtek
+                     * driver does: a chip on ROM reports its ROM code. The
+                     * init time is no guide: firmware loaded in an earlier
+                     * session survives until the adapter loses power, and
+                     * the download is then skipped (fast init). */
+                    if (!is_realtek_rom_lmp(rtk_lmp_first_)) {
+                        fprintf(stderr, "BTstack: Realtek firmware already running from an "
+                                "earlier session (LMP subversion 0x%04X), download skipped\n",
+                                rtk_lmp_first_);
+                    } else if (hci_send_cmd(&hci_read_local_version_information) == ERROR_CODE_SUCCESS) {
+                        /* HCI init read the version only before the download:
+                         * read it again to see what runs now (on_local_version) */
+                        rtk_verify_pending_ = true;
+                    } else {
+                        fprintf(stderr, "BTstack: Realtek firmware download ran (ROM LMP "
+                                "subversion 0x%04X); result not verified\n", rtk_lmp_first_);
+                    }
                 } else if (elapsed < 500) {
                     fprintf(stderr, "BTstack: WARNING — HCI init < 500ms, "
                             "Realtek firmware likely NOT loaded\n");
