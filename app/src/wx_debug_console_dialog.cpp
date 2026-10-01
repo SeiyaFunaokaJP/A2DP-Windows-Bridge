@@ -679,6 +679,10 @@ wxString DebugConsoleDialog::diagnostics_text() const {
         }
         out << wxString::Format(", auto switch %s, max media packet %u\n",
                                 p.auto_switch_device ? "on" : "off", (unsigned)p.max_media_payload);
+        out << "  Volume sync: " << p.volume_sync;
+        if (p.volume_sync == "device")
+            out << " '" << wxString::FromUTF8(p.volume_device_name) << "'";
+        out << "\n";
     } else {
         out << "  (none selected - receiver measurement or not connected)\n";
     }

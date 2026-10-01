@@ -66,6 +66,8 @@ MainFrame::MainFrame()
     service_.set_bt_chip_fw_stem(settings_.bt_chip_fw_stem);
     BtStackTransport::set_afh_policy(settings_.afh);
     BtStackTransport::set_media_keys_enabled(settings_.media_keys);
+    service_.set_remember_volume(settings_.remember_volume);
+    service_.set_saved_volumes(settings_.saved_volumes);
     service_.set_debug_mode(settings_.debug_mode);
     /* Debug mode changes apply after a restart; the Debug menu follows the boot state */
     debug_active_ = settings_.debug_mode;
@@ -148,6 +150,7 @@ MainFrame::~MainFrame() {
         update_thread_.join();
 
     service_.stop_streaming();
+    save_remembered_volumes(true);
 
     if (tray_icon_) {
         tray_icon_->RemoveIcon();
@@ -215,6 +218,8 @@ void MainFrame::create_menu_bar() {
     settings_menu->Check(ID_SETTING_UPDATE_CHECK, settings_.check_updates_on_startup);
     settings_menu->AppendCheckItem(ID_SETTING_MEDIA_KEYS, wxString::FromUTF8(L("settings.media_keys")));
     settings_menu->Check(ID_SETTING_MEDIA_KEYS, settings_.media_keys);
+    settings_menu->AppendCheckItem(ID_SETTING_REMEMBER_VOLUME, wxString::FromUTF8(L("settings.remember_volume")));
+    settings_menu->Check(ID_SETTING_REMEMBER_VOLUME, settings_.remember_volume);
 
     settings_menu->AppendSeparator();
     settings_menu->AppendCheckItem(ID_SETTING_DEBUG, wxString::FromUTF8(L("settings.debug_mode")));
@@ -267,6 +272,7 @@ void MainFrame::create_menu_bar() {
     Bind(wxEVT_MENU, &MainFrame::OnToggleMinimizeToTray, this, ID_SETTING_TRAY);
     Bind(wxEVT_MENU, &MainFrame::OnToggleUpdateCheck, this, ID_SETTING_UPDATE_CHECK);
     Bind(wxEVT_MENU, &MainFrame::OnToggleMediaKeys, this, ID_SETTING_MEDIA_KEYS);
+    Bind(wxEVT_MENU, &MainFrame::OnToggleRememberVolume, this, ID_SETTING_REMEMBER_VOLUME);
     Bind(wxEVT_MENU, &MainFrame::OnToggleDebugMode, this, ID_SETTING_DEBUG);
     Bind(wxEVT_MENU, &MainFrame::OnOpenLinkQuality, this, ID_OPEN_LINK_QUALITY);
 
@@ -597,7 +603,21 @@ void MainFrame::rebuild_profile_list() {
 /* Status Display                                                            */
 /* ======================================================================== */
 
+void MainFrame::save_remembered_volumes(bool now) {
+    if (service_.saved_volumes_changed()) {
+        settings_.saved_volumes = service_.saved_volumes();
+        volumes_changed_tick_ = GetTickCount();
+        if (volumes_changed_tick_ == 0) volumes_changed_tick_ = 1;
+    }
+    /* Wait until the volume settles, not a write per slider step */
+    if (volumes_changed_tick_ && (now || GetTickCount() - volumes_changed_tick_ >= 2000)) {
+        settings_.save();
+        volumes_changed_tick_ = 0;
+    }
+}
+
 void MainFrame::update_volume_row() {
+    save_remembered_volumes(false);
     int vol = BtStackTransport::remote_volume();
     bool show = current_state_ == A2dpService::State::Streaming && vol >= 0;
     if (volume_panel_->IsShown() != show) {
@@ -793,6 +813,12 @@ void MainFrame::OnToggleUpdateCheck(wxCommandEvent &) {
 void MainFrame::OnToggleMediaKeys(wxCommandEvent &) {
     settings_.media_keys = !settings_.media_keys;
     BtStackTransport::set_media_keys_enabled(settings_.media_keys);
+    settings_.save();
+}
+
+void MainFrame::OnToggleRememberVolume(wxCommandEvent &) {
+    settings_.remember_volume = !settings_.remember_volume;
+    service_.set_remember_volume(settings_.remember_volume);
     settings_.save();
 }
 

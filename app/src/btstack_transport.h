@@ -90,6 +90,12 @@ public:
      * in flight, newer values replace the queued one. */
     static int remote_volume();
     static void request_volume(uint8_t volume);
+    /* Volume (0-127) to set on the headphones as soon as AVRCP connects, before
+     * any audio, or -1 to keep their own (default). While set, it follows the
+     * headphones' volume when the link drops, so a reconnect restores the last
+     * one. May be called from any thread. */
+    static void set_restore_volume(int volume);
+    static int restore_volume();
 
     /* Headphone buttons (AVRCP pass-through commands to our Target):
      * play/pause, stop, next and previous are sent to Windows as media keys
