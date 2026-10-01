@@ -13,6 +13,73 @@
 #include <cstring>
 
 namespace {
+const wchar_t ADDR_MASK[] = L"XX:XX:XX:XX:XX:XX";
+
+/* The part of ADDR_MASK not yet typed ("AA:B" -> "X:XX:XX:XX:XX"); empty
+ * once the address is complete or when the text is not the start of one */
+wxString addr_mask_rest(const wxString &text) {
+    size_t n = text.length();
+    if (n >= wcslen(ADDR_MASK)) return wxString();
+    for (size_t i = 0; i < n; i++) {
+        wxUniChar c = text[i];
+        bool ok = (i % 3 == 2) ? c == ':'
+                               : c.IsAscii() && std::isxdigit(static_cast<unsigned char>(c.GetValue()));
+        if (!ok) return wxString();
+    }
+    return wxString(ADDR_MASK + n);
+}
+
+/* Address entry that draws the rest of the mask in grey after the text.
+ * It is only painted, never part of the value, so typing or pasting needs
+ * nothing erased. A plain EDIT, not wxTE_RICH2: with a rich edit SetHint
+ * falls back to putting the hint into the field as real text. */
+class AddressTextCtrl : public wxTextCtrl {
+public:
+    AddressTextCtrl(wxWindow *parent, const wxSize &size)
+        : wxTextCtrl(parent, wxID_ANY, "", wxDefaultPosition, size) {}
+
+    WXLRESULT MSWWindowProc(WXUINT msg, WXWPARAM wp, WXLPARAM lp) override {
+        WXLRESULT r = wxTextCtrl::MSWWindowProc(msg, wp, lp);
+        if (msg == WM_PAINT) draw_mask();
+        return r;
+    }
+
+private:
+    void draw_mask() {
+        wxString text = GetValue();
+        wxString rest = addr_mask_rest(text);
+        if (rest.empty()) return;
+
+        HWND hwnd = GetHWND();
+        RECT rc;
+        ::SendMessageW(hwnd, EM_GETRECT, 0, reinterpret_cast<LPARAM>(&rc));
+        HDC dc = ::GetDC(hwnd);
+        HGDIOBJ old_font = ::SelectObject(dc, reinterpret_cast<HGDIOBJ>(::SendMessageW(hwnd, WM_GETFONT, 0, 0)));
+
+        int x = rc.left, y = rc.top;
+        if (!text.empty()) {
+            /* Just past the last character (EM_POSFROMCHAR gives -1 there) */
+            LRESULT pos = ::SendMessageW(hwnd, EM_POSFROMCHAR, text.length() - 1, 0);
+            SIZE sz = {};
+            wxString last = text.Right(1);
+            ::GetTextExtentPoint32W(dc, last.wc_str(), 1, &sz);
+            x = static_cast<short>(LOWORD(pos)) + sz.cx;
+            y = static_cast<short>(HIWORD(pos));
+        }
+
+        wxColour fg = GetForegroundColour(), bg = GetBackgroundColour();
+        ::SetTextColor(dc, RGB((fg.Red() + bg.Red()) / 2, (fg.Green() + bg.Green()) / 2,
+                               (fg.Blue() + bg.Blue()) / 2));
+        ::SetBkMode(dc, TRANSPARENT);
+        ::IntersectClipRect(dc, rc.left, rc.top, rc.right, rc.bottom);
+        BOOL caret_hidden = ::HideCaret(hwnd);
+        ::TextOutW(dc, x, y, rest.wc_str(), static_cast<int>(rest.length()));
+        if (caret_hidden) ::ShowCaret(hwnd);
+
+        ::SelectObject(dc, old_font);
+        ::ReleaseDC(hwnd, dc);
+    }
+};
 
 std::wstring utf8_to_wide(const std::string &s) {
     std::wstring w;
@@ -98,8 +165,7 @@ void ProfileDialog::create_ui() {
 
     grid2->Add(new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("connection.device_addr"))),
                0, wxALIGN_CENTER_VERTICAL);
-    addr_ctrl_ = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(300, -1), wxTE_RICH2);
-    addr_ctrl_->SetHint(wxString::FromUTF8(L("connection.addr_hint")));
+    addr_ctrl_ = new AddressTextCtrl(this, wxSize(300, -1));
     addr_ctrl_->Bind(wxEVT_TEXT, &ProfileDialog::OnAddrChange, this);
     grid2->Add(addr_ctrl_, 1, wxEXPAND);
 

@@ -11,7 +11,6 @@
   "connection.no_devices": "デバイスが見つかりません。アドレスを手動で入力してください。",
   "connection.manual_label": "手動入力:",
   "connection.manual": "手動入力:",
-  "connection.addr_hint": "XX:XX:XX:XX:XX:XX",
   "connection.device_addr": "デバイスアドレス",
   "connection.codec_label": "コーデック",
   "connection.codec": "コーデック",
