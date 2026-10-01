@@ -880,6 +880,7 @@ bool g_volume_live = false;             /* AVRCP up, run loop takes work */
 std::atomic<int> g_volume{-1};          /* last reported volume, 0-127 */
 std::atomic<int> g_volume_request{-1};  /* queued request, -1 = none */
 std::atomic<bool> g_volume_queued{false};
+std::atomic<int> g_restore_volume{-1};  /* set on AVRCP connect, -1 = none */
 btstack_context_callback_registration_t g_volume_reg;
 /* BTstack thread only */
 bool g_volume_in_flight = false;
@@ -889,6 +890,14 @@ const DWORD VOLUME_RESPONSE_TIMEOUT_MS = 1000;
 
 int BtStackTransport::remote_volume() {
     return g_volume.load();
+}
+
+void BtStackTransport::set_restore_volume(int volume) {
+    g_restore_volume.store(volume < 0 ? -1 : volume > 127 ? 127 : volume);
+}
+
+int BtStackTransport::restore_volume() {
+    return g_restore_volume.load();
 }
 
 void BtStackTransport::request_volume(uint8_t volume) {
@@ -2598,6 +2607,16 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
             g_volume_queued.store(false);  /* a request lost with an earlier run loop */
         }
 
+        /* Remembered volume: set it first, while the AVRCP link is idle, so
+         * the audio does not start at the headphones' own (maybe loud) level */
+        int restore = g_restore_volume.load();
+        if (restore >= 0) {
+            fprintf(stderr, "BTstack: AVRCP restoring volume %d (%d%%)\n",
+                    restore, restore * 100 / 127);
+            g_volume_request.store(restore);
+            send_pending_volume();
+        }
+
         /* Subscribe to volume change notifications */
         avrcp_controller_enable_notification(avrcp_cid_,
             AVRCP_NOTIFICATION_EVENT_VOLUME_CHANGED);
@@ -2619,6 +2638,9 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
             std::lock_guard<std::mutex> lock(g_volume_mutex);
             g_volume_live = false;
         }
+        /* A reconnect restores the volume the headphones had last */
+        if (g_restore_volume.load() >= 0 && g_volume.load() >= 0)
+            g_restore_volume.store(g_volume.load());
         g_volume.store(-1);
         g_volume_request.store(-1);
         break;
@@ -2632,6 +2654,7 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
         /* Re-register notification (AVRCP spec requires re-subscribing after each) */
         avrcp_controller_enable_notification(avrcp_cid_,
             AVRCP_NOTIFICATION_EVENT_VOLUME_CHANGED);
+        send_pending_volume();  /* one that found AVRCP busy */
         break;
     }
 

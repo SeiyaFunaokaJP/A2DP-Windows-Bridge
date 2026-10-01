@@ -42,7 +42,8 @@ public:
 
     /*
      * Initialize the encoder.
-     * mtu: L2CAP MTU size for the media transport channel
+     * mtu: media payload size per packet, RTP header excluded
+     *      (BtStackTransport::get_media_mtu())
      * quality: encoding quality mode
      * sample_rate: input PCM sample rate (44100 or 48000)
      * channels: number of channels (1 or 2)

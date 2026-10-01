@@ -58,6 +58,7 @@ private:
     wxChoice    *audio_dev_ctrl_ = nullptr;
     wxCheckBox  *auto_switch_ctrl_ = nullptr;
     wxSpinCtrl  *max_packet_ctrl_ = nullptr;
+    wxChoice    *volume_sync_ctrl_ = nullptr;  /* Auto, Off, then volume_devices_ */
     wxStaticText *audio_dev_label_ = nullptr;
     wxStaticText *auto_switch_label_ = nullptr;
     wxStaticText *format_info_ = nullptr;
@@ -72,6 +73,7 @@ private:
     wxButton    *dev_del_btn_ = nullptr;
 
     std::vector<AudioDeviceInfo> audio_devices_;
+    std::vector<AudioDeviceInfo> volume_devices_;  /* output devices for volume sync */
     std::vector<AudioAppInfo> apps_;
     std::string saved_app_exe_, saved_app_name_;  /* from the profile being edited */
 };

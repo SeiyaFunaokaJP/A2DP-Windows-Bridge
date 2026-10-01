@@ -31,6 +31,13 @@ struct ConnectionProfile {
     bool auto_switch_device = true;  /* auto-switch default for Virtual Device mode */
     std::string app_exe;          /* executable name for Application mode, e.g. "player.exe" */
     std::string app_name;         /* display name for Application mode */
+    /* Windows volume kept equal to the headphones' volume while streaming
+     * (volume_sync.h): "auto" = the captured device (the default output
+     * device, or the selected one in Virtual Device mode), "off", or
+     * "device" = volume_device_id */
+    std::string volume_sync = "auto";
+    std::string volume_device_id;   /* WASAPI device ID, volume_sync "device" */
+    std::string volume_device_name; /* display name */
     bool test_tone = false;       /* runtime only, not saved: send the test tone
                                    * (test_tone.h) instead of captured audio */
     uint16_t max_media_payload = MEDIA_PAYLOAD_LIMIT_DEFAULT; /* max media packet size (media_payload_limit.h) */
