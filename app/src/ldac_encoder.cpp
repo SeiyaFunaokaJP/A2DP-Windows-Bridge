@@ -14,6 +14,9 @@ extern "C" {
 #endif
 }
 
+/* RTP media header size (BtStackTransport::RTP_HEADER_SIZE) */
+static constexpr int LDAC_RTP_HEADER_SIZE = 12;
+
 LdacEncoder::LdacEncoder() = default;
 
 void LdacEncoder::set_bit_depth(int bits) {
@@ -61,9 +64,15 @@ bool LdacEncoder::init(uint16_t mtu, EncoderQuality quality,
         return false;
     }
 
+    /* libldac wants the AVDTP transport channel (L2CAP) MTU and rejects
+     * anything below 679, but mtu here has the 12-byte RTP header already
+     * subtracted: a sink with the minimum 679-byte MTU would arrive as 667.
+     * libldac sizes its frames to fit (L2CAP MTU - 18), which stays within
+     * the mtu - 1 bytes the sender packs per packet. */
+    const int transport_mtu = static_cast<int>(mtu) + LDAC_RTP_HEADER_SIZE;
     int ret = ldacBT_init_handle_encode(
         static_cast<HANDLE_LDAC_BT>(handle_),
-        static_cast<int>(mtu),
+        transport_mtu,
         eqmid,
         cm,
         static_cast<LDACBT_SMPL_FMT_T>(sample_fmt_),
@@ -72,7 +81,8 @@ bool LdacEncoder::init(uint16_t mtu, EncoderQuality quality,
 
     if (ret != 0) {
         int err = ldacBT_get_error_code(static_cast<HANDLE_LDAC_BT>(handle_));
-        fprintf(stderr, "LdacEncoder: Init failed, error code: 0x%04x\n", err);
+        fprintf(stderr, "LdacEncoder: Init failed, error code: 0x%04x (transport mtu=%d)\n",
+                err, transport_mtu);
         ldacBT_free_handle(static_cast<HANDLE_LDAC_BT>(handle_));
         handle_ = nullptr;
         return false;
