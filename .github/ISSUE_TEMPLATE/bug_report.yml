@@ -15,8 +15,6 @@ body:
       label: A2DPWB version
       description: Shown in Help → About.
       placeholder: e.g. 1.0.6
-    validations:
-      required: true
 
   - type: input
     id: windows
@@ -31,16 +29,12 @@ body:
       label: USB Bluetooth adapter
       description: Product name is enough. Chipset / VID:PID is a bonus if you happen to know it.
       placeholder: e.g. TP-Link UB500 (Realtek RTL8761B, 2357:0604)
-    validations:
-      required: true
 
   - type: input
     id: headphones
     attributes:
       label: Headphones / speaker
       placeholder: e.g. Sony WH-1000XM4
-    validations:
-      required: true
 
   - type: dropdown
     id: codec
@@ -79,8 +73,6 @@ body:
     attributes:
       label: What happened?
       description: What you expected, and what actually happened. A short description is fine.
-    validations:
-      required: true
 
   - type: textarea
     id: steps
