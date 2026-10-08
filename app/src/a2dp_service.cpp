@@ -1413,7 +1413,9 @@ void A2dpService::streaming_thread_func_inner() {
     notify_state(State::Streaming, fallback_text.empty() ? std::string(L("status.connected")) : fallback_text);
     notify_stream_info({codec_name_for(selected_codec),
                         encoder->get_bitrate_kbps(), sr, use_ch,
-                        sr, ch, source_bits});
+                        sr, ch, source_bits,
+                        fallback_text.empty() ? std::string() : std::string(codec_name_for(requested_codec)),
+                        !fallback_text.empty() && caps.audio_sinks_in_use > 0});
 
     /* Save device for future use */
     {
