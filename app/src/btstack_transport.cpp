@@ -41,6 +41,9 @@ extern "C" {
 #include "link_stats.h"
 #include "btstack_uart_tcp_windows.h"
 
+/* hci_transport_h2_winusb.c: HCI traffic with the adapter stopped for good */
+extern "C" int hci_transport_usb_failed(void);
+
 /*
  * Vendor codec IDs (duplicated from avdtp.h to avoid enum conflicts
  * with BTstack's avdtp.h which defines the same AVDTP enumerator names)
@@ -282,6 +285,7 @@ BtStackTransport::BtStackTransport() {
     inquiry_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     cancel_event_ = CreateEventA(nullptr, TRUE, FALSE, nullptr);  /* manual-reset */
     hci_off_event_ = CreateEventA(nullptr, TRUE, FALSE, nullptr); /* manual-reset */
+    probe_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     auto *reg = new btstack_context_callback_registration_t();
     memset(reg, 0, sizeof(*reg));
     media_trigger_reg_ = reg;
@@ -298,6 +302,7 @@ BtStackTransport::~BtStackTransport() {
     CloseHandle(inquiry_event_);
     CloseHandle(cancel_event_);
     CloseHandle(hci_off_event_);
+    CloseHandle(probe_event_);
     delete static_cast<btstack_context_callback_registration_t *>(media_trigger_reg_);
 }
 
@@ -319,6 +324,7 @@ bool BtStackTransport::init(const char *usb_path) {
     last_init_failure_.store(InitFailure::None);
     hci_events_seen_.store(0);
     hci_power_on_tick_.store(0);
+    stalled_.store(false);
 
     /* Launch BTstack run loop in a dedicated thread */
     thread_handle_ = CreateThread(nullptr, 0,
@@ -1444,6 +1450,10 @@ bool BtStackTransport::scan_devices(uint8_t duration_seconds) {
 
 bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
     if (!hci_ready_.load()) return false;
+    if (stalled()) {
+        last_connect_failure_.store(ConnectFailure::Stalled);
+        return false;
+    }
 
     /* BTstack uses bd_addr_t as big-endian, but our addr is little-endian (Windows BTH_ADDR) */
     bd_addr_t addr;
@@ -1499,10 +1509,18 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
     /* Wait for stream establishment (includes signaling connection + SEP discovery) */
     if (!wait_for_event(connect_event_, CONNECT_TIMEOUT_MS)) {
         fprintf(stderr, "BTstack: Connection timed out\n");
-        /* An answer that never came (e.g. a lost SDP response) */
-        last_connect_failure_.store(ConnectFailure::LinkLost);
-        classify_link_lost();
+        bool cancelled = WaitForSingleObject(static_cast<HANDLE>(cancel_event_), 0) == WAIT_OBJECT_0;
+        bool stuck = !cancelled && check_stalled();
+        if (!stuck) {
+            /* An answer that never came (e.g. a lost SDP response) */
+            last_connect_failure_.store(ConnectFailure::LinkLost);
+            classify_link_lost();
+        }
         abort_pending_connection();
+        /* Not the device: trying again on this stack waits in vain. Set
+         * after the abort, whose failed CONNECTION_ESTABLISHED is classified
+         * as a link lost. */
+        if (stuck) last_connect_failure_.store(ConnectFailure::Stalled);
         return false;
     }
 
@@ -1530,6 +1548,107 @@ void BtStackTransport::classify_link_lost() {
         fprintf(stderr, "BTstack: the device ended the link itself (0x%02x)\n", reason);
         last_connect_failure_.store(ConnectFailure::Refused);
     }
+}
+
+bool BtStackTransport::stalled() const {
+    return stalled_.load() || (hci_tcp_.empty() && hci_transport_usb_failed());
+}
+
+/* A query run on the BTstack thread by a caller that may give up waiting
+ * (the run loop of a stuck stack may take it late or never). Owned by both
+ * sides; whichever finishes last frees it. */
+struct StackQuery {
+    btstack_context_callback_registration_t reg = {};
+    HANDLE done_event = nullptr;
+    int (*fn)(StackQuery *) = nullptr;
+    bd_addr_t addr = {};
+    int result = 0;
+    std::atomic<int> refs{2};
+};
+
+static void stack_query_release(StackQuery *q) {
+    if (q->refs.fetch_sub(1) == 1) {
+        CloseHandle(q->done_event);
+        delete q;
+    }
+}
+
+/* Runs fn on the BTstack thread; false if the run loop did not take it
+ * within timeout_ms, else *result is what fn returned */
+static bool run_stack_query(int (*fn)(StackQuery *), const uint8_t *addr, uint32_t timeout_ms, int *result) {
+    auto *q = new StackQuery();
+    q->done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    q->fn = fn;
+    if (addr) memcpy(q->addr, addr, 6);
+    q->reg.callback = [](void *ctx) {
+        auto *r = static_cast<StackQuery *>(ctx);
+        r->result = r->fn(r);
+        SetEvent(r->done_event);
+        stack_query_release(r);
+    };
+    q->reg.context = q;
+    btstack_run_loop_execute_on_main_thread(&q->reg);
+    bool done = WaitForSingleObject(q->done_event, timeout_ms) == WAIT_OBJECT_0;
+    if (done) *result = q->result;
+    else fprintf(stderr, "BTstack: the run loop did not take a request within %u ms\n", timeout_ms);
+    stack_query_release(q);
+    return done;
+}
+
+bool BtStackTransport::controller_responds(uint32_t timeout_ms) {
+    if (!hci_ready_.load() || stalled()) return false;
+    DWORD start = GetTickCount();
+    auto left = [&]() -> uint32_t {
+        DWORD spent = GetTickCount() - start;
+        return spent >= timeout_ms ? 0 : timeout_ms - spent;
+    };
+    ResetEvent(static_cast<HANDLE>(probe_event_));
+    probe_pending_.store(true);
+    /* A command still waiting for its answer holds the next one back */
+    for (int tries = 0;; tries++) {
+        if (tries > 0) {
+            if (left() == 0) {
+                fprintf(stderr, "BTstack: no HCI command could be sent for %u ms\n", timeout_ms);
+                probe_pending_.store(false);
+                return false;
+            }
+            Sleep(50);
+        }
+        int sent = 0;
+        if (!run_stack_query([](StackQuery *) -> int {
+                return hci_can_send_command_packet_now() &&
+                       hci_send_cmd(&hci_read_bd_addr) == ERROR_CODE_SUCCESS;
+            }, nullptr, left() > 0 ? left() : 1, &sent)) {
+            probe_pending_.store(false);
+            return false;
+        }
+        if (sent) break;
+    }
+    bool answered = WaitForSingleObject(static_cast<HANDLE>(probe_event_), left()) == WAIT_OBJECT_0;
+    probe_pending_.store(false);
+    if (!answered)
+        fprintf(stderr, "BTstack: the controller did not answer HCI Read BD_ADDR within %u ms\n", timeout_ms);
+    return answered;
+}
+
+bool BtStackTransport::check_stalled() {
+    if (stalled()) return true;
+    /* Still paging long after the page timeout (~15 s): the controller lost
+     * the Create Connection, or BTstack never got to send it */
+    int paging = 0;
+    bool taken = run_stack_query([](StackQuery *q) -> int {
+            hci_connection_t *c = hci_connection_for_bd_addr_and_type(q->addr, BD_ADDR_TYPE_ACL);
+            return c && (c->state == SEND_CREATE_CONNECTION || c->state == SENT_CREATE_CONNECTION);
+        }, remote_addr_be_, 2000, &paging);
+    const char *why = nullptr;
+    if (!taken) why = "the BTstack run loop does not respond";
+    else if (paging) why = "the controller never finished the connection";
+    else if (!controller_responds(2000)) why = "the controller does not answer HCI commands";
+    if (!why) return false;
+    fprintf(stderr, "BTstack: Bluetooth stack stalled: %s\n", why);
+    fflush(stderr);
+    stalled_.store(true);
+    return true;
 }
 
 bool BtStackTransport::connect_a2dp_retrying(const uint8_t remote_addr[6],
@@ -1948,6 +2067,10 @@ bool BtStackTransport::reconnect() {
         fprintf(stderr, "BTstack: Cannot reconnect — HCI not ready or no stored address\n");
         return false;
     }
+    if (stalled()) {
+        fprintf(stderr, "BTstack: Cannot reconnect — the Bluetooth adapter stopped working\n");
+        return false;
+    }
 
     /* Abort immediately if a cancel is pending (user pressed disconnect) */
     if (WaitForSingleObject(static_cast<HANDLE>(cancel_event_), 0) == WAIT_OBJECT_0) {
@@ -2013,6 +2136,8 @@ bool BtStackTransport::reconnect() {
     /* Wait for connection + capability discovery */
     if (!wait_for_event(connect_event_, CONNECT_TIMEOUT_MS)) {
         fprintf(stderr, "BTstack: Reconnection timed out\n");
+        if (WaitForSingleObject(static_cast<HANDLE>(cancel_event_), 0) != WAIT_OBJECT_0)
+            check_stalled();  /* the caller sees stalled() */
         abort_pending_connection();
         return false;
     }
@@ -2277,6 +2402,11 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
             if (size >= 14 && hci_event_command_complete_get_command_opcode(packet) ==
                                   HCI_OPCODE_HCI_READ_LOCAL_VERSION_INFORMATION) {
                 on_local_version(packet);
+            }
+            /* controller_responds() */
+            if (hci_event_command_complete_get_command_opcode(packet) == HCI_OPCODE_HCI_READ_BD_ADDR &&
+                probe_pending_.exchange(false)) {
+                SetEvent(static_cast<HANDLE>(probe_event_));
             }
             on_radio_command_complete(packet, size);
             break;

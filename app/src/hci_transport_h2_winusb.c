@@ -277,6 +277,37 @@ static int usb_transport_open;
 #define USB_EVENT_IN_MAX_ERRORS 10
 static int usb_event_in_errors;
 static int usb_closing;
+// A2DPWB: HCI traffic with the adapter has stopped for this session (a
+// transfer failed for good, e.g. the adapter was reset or re-enumerated
+// across sleep). BTstack cannot recover from it: it waits for the event of a
+// command that was lost. Read from other threads by hci_transport_usb_failed().
+static volatile LONG usb_failed;
+
+static void usb_set_failed(const char * what, DWORD err){
+    if (usb_closing || !usb_transport_open) return;
+    if (InterlockedExchange(&usb_failed, 1) == 0){
+        fprintf(stderr, "WinUSB: adapter stopped working (%s, error %lu)\n", what, err);
+        fflush(stderr);
+    }
+}
+
+int hci_transport_usb_failed(void){
+    return InterlockedCompareExchange(&usb_failed, 0, 0) != 0;
+}
+
+// A2DPWB: errors of a device handle that no longer reaches the adapter
+static int usb_device_gone(DWORD err){
+    switch (err){
+        case ERROR_DEVICE_NOT_CONNECTED:
+        case ERROR_NO_SUCH_DEVICE:
+        case ERROR_BAD_COMMAND:
+        case ERROR_INVALID_HANDLE:
+        case ERROR_FILE_NOT_FOUND:
+            return 1;
+        default:
+            return 0;
+    }
+}
 
 #ifdef ENABLE_SCO_OVER_HCI
 
@@ -488,6 +519,7 @@ static void usb_recover_event_in(const char * what, DWORD err){
     if (usb_event_in_errors > USB_EVENT_IN_MAX_ERRORS){
         fprintf(stderr, "WinUSB: HCI event pipe keeps failing (%s, error %lu), giving up\n", what, err);
         fflush(stderr);
+        usb_set_failed("HCI event read", err);
         return;
     }
     fprintf(stderr, "WinUSB: HCI event read failed (%s, error %lu), resetting the pipe (%d/%d)\n",
@@ -513,6 +545,8 @@ static void usb_submit_acl_in_transfer(void){
 
 exit_on_error:
 	log_error("usb_submit_acl_in_transfer: winusb last error %lu", GetLastError());
+	// A2DPWB: without a pending read no ACL data arrives again
+	usb_set_failed("ACL read", GetLastError());
 }
 
 #ifdef ENABLE_SCO_OVER_HCI
@@ -803,6 +837,18 @@ static void usb_process_command_out(btstack_data_source_t *ds, btstack_data_sour
 
     btstack_run_loop_disable_data_source_callbacks(ds, DATA_SOURCE_CALLBACK_WRITE);
 
+    // A2DPWB: a command the controller did not take (control pipe timeout,
+    // adapter gone) is lost: BTstack waits for its Command Complete for good
+    DWORD bytes_transferred;
+    if (!WinUsb_GetOverlappedResult(usb_interface_0_handle, &usb_overlapped_command_out, &bytes_transferred, FALSE)){
+        DWORD err = GetLastError();
+        if (err == ERROR_IO_INCOMPLETE){
+            btstack_run_loop_enable_data_source_callbacks(ds, DATA_SOURCE_CALLBACK_WRITE);
+            return;
+        }
+        usb_set_failed("HCI command", err);
+    }
+
     // update stata before submitting transfer
     usb_command_out_active = 0;
 
@@ -814,6 +860,17 @@ static void usb_process_command_out(btstack_data_source_t *ds, btstack_data_sour
 static void usb_process_acl_out(btstack_data_source_t *ds, btstack_data_source_callback_type_t callback_type){
 
     btstack_run_loop_disable_data_source_callbacks(ds, DATA_SOURCE_CALLBACK_WRITE);
+
+    // A2DPWB: an ACL write that failed because the adapter is gone
+    DWORD bytes_transferred;
+    if (!WinUsb_GetOverlappedResult(usb_interface_0_handle, &usb_overlapped_acl_out, &bytes_transferred, FALSE)){
+        DWORD err = GetLastError();
+        if (err == ERROR_IO_INCOMPLETE){
+            btstack_run_loop_enable_data_source_callbacks(ds, DATA_SOURCE_CALLBACK_WRITE);
+            return;
+        }
+        if (usb_device_gone(err)) usb_set_failed("ACL write", err);
+    }
 
     // update stata before submitting transfer
     usb_acl_out_active = 0;
@@ -1164,6 +1221,7 @@ static int usb_try_open_device(const char * device_path){
     // submit all incoming transfers
     usb_event_in_errors = 0;
     usb_closing = 0;
+    InterlockedExchange(&usb_failed, 0);
     usb_submit_event_in_transfer();
     usb_submit_acl_in_transfer();    
 	return 1;
@@ -1462,6 +1520,10 @@ static int usb_send_cmd_packet(uint8_t *packet, int size){
 
 exit_on_error:
 	log_error("winusb: last error %lu", GetLastError());
+	// A2DPWB: nothing is pending, so no completion clears the flag; left set
+	// it blocked every later command and made close wait for the transfer
+	usb_command_out_active = 0;
+	usb_set_failed("HCI command submit", GetLastError());
 	return -1;
 }
 
@@ -1482,6 +1544,9 @@ static int usb_send_acl_packet(uint8_t *packet, int size){
 
 exit_on_error:
 	log_error("winusb: last error %lu", GetLastError());
+	// A2DPWB: as for commands, the flag would block ACL data for good
+	usb_acl_out_active = 0;
+	usb_set_failed("ACL submit", GetLastError());
 	return -1;
 }
 

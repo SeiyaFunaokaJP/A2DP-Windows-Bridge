@@ -146,6 +146,8 @@ public:
         Refused,    /* link up, then ended by the device itself (e.g. it is turning
                      * off or does not accept connections now) */
         AuthFailed, /* authentication / security refused, e.g. a stale link key */
+        Stalled,    /* the adapter or BTstack stopped working (stalled()): only a
+                     * new init() helps */
         Other       /* anything else, e.g. no A2DP service */
     };
     ConnectFailure last_connect_failure() const { return last_connect_failure_.load(); }
@@ -176,6 +178,16 @@ public:
      * a2dp_source_establish_stream() fail with COMMAND_DISALLOWED: close it
      * and wait for the release. */
     void release_leftover_avdtp();
+
+    /* Whether the controller still answers an HCI command (Read BD_ADDR)
+     * within timeout_ms. False when the adapter is gone or BTstack can no
+     * longer send commands, e.g. after the PC slept with the adapter open. */
+    bool controller_responds(uint32_t timeout_ms);
+
+    /* The session cannot be used any more: the WinUSB transport lost the
+     * adapter, or a connect wait timed out on a controller that stopped
+     * answering. Shut down and init() again (a new BtStackTransport). */
+    bool stalled() const;
 
     /* Disconnect from the remote device */
     bool disconnect();
@@ -368,6 +380,12 @@ private:
     void abort_pending_connection();
     /* LinkLost -> Refused when the device ended the link itself */
     void classify_link_lost();
+    /* After a connect wait timed out: is the stack stuck rather than the
+     * remote silent? Sets stalled_. */
+    bool check_stalled();
+    std::atomic<bool> stalled_{false};
+    void *probe_event_ = nullptr;        /* auto-reset; Read BD_ADDR completed */
+    std::atomic<bool> probe_pending_{false};
 
     /* Thread handle */
     void *thread_handle_ = nullptr;
