@@ -123,6 +123,8 @@ private:
     wxString last_state_text_;
     std::vector<wxString> adapter_lines_;
     bool in_adapter_block_ = false;
+    std::vector<wxString> enum_pending_;  /* device lines before the next "found" */
+    bool enum_collecting_ = false;
 };
 
 #endif /* DEBUG_LOG_MODEL_H */

@@ -66,6 +66,8 @@ MainFrame::MainFrame()
     service_.set_bt_chip_fw_stem(settings_.bt_chip_fw_stem);
     BtStackTransport::set_afh_policy(settings_.afh);
     BtStackTransport::set_media_keys_enabled(settings_.media_keys);
+    service_.set_remember_volume(settings_.remember_volume);
+    service_.set_saved_volumes(settings_.saved_volumes);
     service_.set_debug_mode(settings_.debug_mode);
     /* Debug mode changes apply after a restart; the Debug menu follows the boot state */
     debug_active_ = settings_.debug_mode;
@@ -148,6 +150,7 @@ MainFrame::~MainFrame() {
         update_thread_.join();
 
     service_.stop_streaming();
+    save_remembered_volumes(true);
 
     if (tray_icon_) {
         tray_icon_->RemoveIcon();
@@ -213,8 +216,12 @@ void MainFrame::create_menu_bar() {
     settings_menu->Check(ID_SETTING_TRAY, settings_.minimize_to_tray);
     settings_menu->AppendCheckItem(ID_SETTING_UPDATE_CHECK, wxString::FromUTF8(L("settings.check_updates_on_startup")));
     settings_menu->Check(ID_SETTING_UPDATE_CHECK, settings_.check_updates_on_startup);
+    settings_menu->AppendCheckItem(ID_SETTING_PRERELEASES, wxString::FromUTF8(L("settings.include_prereleases")));
+    settings_menu->Check(ID_SETTING_PRERELEASES, settings_.include_prereleases);
     settings_menu->AppendCheckItem(ID_SETTING_MEDIA_KEYS, wxString::FromUTF8(L("settings.media_keys")));
     settings_menu->Check(ID_SETTING_MEDIA_KEYS, settings_.media_keys);
+    settings_menu->AppendCheckItem(ID_SETTING_REMEMBER_VOLUME, wxString::FromUTF8(L("settings.remember_volume")));
+    settings_menu->Check(ID_SETTING_REMEMBER_VOLUME, settings_.remember_volume);
 
     settings_menu->AppendSeparator();
     settings_menu->AppendCheckItem(ID_SETTING_DEBUG, wxString::FromUTF8(L("settings.debug_mode")));
@@ -266,7 +273,9 @@ void MainFrame::create_menu_bar() {
     Bind(wxEVT_MENU, &MainFrame::OnToggleStartWithWindows, this, ID_SETTING_START_WIN);
     Bind(wxEVT_MENU, &MainFrame::OnToggleMinimizeToTray, this, ID_SETTING_TRAY);
     Bind(wxEVT_MENU, &MainFrame::OnToggleUpdateCheck, this, ID_SETTING_UPDATE_CHECK);
+    Bind(wxEVT_MENU, &MainFrame::OnTogglePrereleases, this, ID_SETTING_PRERELEASES);
     Bind(wxEVT_MENU, &MainFrame::OnToggleMediaKeys, this, ID_SETTING_MEDIA_KEYS);
+    Bind(wxEVT_MENU, &MainFrame::OnToggleRememberVolume, this, ID_SETTING_REMEMBER_VOLUME);
     Bind(wxEVT_MENU, &MainFrame::OnToggleDebugMode, this, ID_SETTING_DEBUG);
     Bind(wxEVT_MENU, &MainFrame::OnOpenLinkQuality, this, ID_OPEN_LINK_QUALITY);
 
@@ -348,6 +357,21 @@ void MainFrame::create_ui() {
     });
     vbox->Add(status_panel, 0, wxEXPAND | wxTOP | wxBOTTOM, 6);
 
+    /* ---- Codec in use, and why it is not the profile's (while streaming) ---- */
+    codec_panel_ = new wxPanel(main_panel_);
+    auto *codec_sizer = new wxBoxSizer(wxHORIZONTAL);
+    codec_label_ = new wxStaticText(codec_panel_, wxID_ANY, "");
+    codec_label_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
+    codec_sizer->Add(codec_label_, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 8);
+    codec_fallback_label_ = new wxStaticText(codec_panel_, wxID_ANY, "",
+        wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END);
+    codec_fallback_label_->SetForegroundColour(TM().get(ThemeColor::FirmwareWarning));
+    codec_fallback_label_->SetMinSize(wxSize(0, -1)); /* ellipsized; never widens the row */
+    codec_sizer->Add(codec_fallback_label_, 1, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 8);
+    codec_panel_->SetSizer(codec_sizer);
+    codec_panel_->Show(false);
+    vbox->Add(codec_panel_, 0, wxEXPAND | wxBOTTOM, 6);
+
     /* ---- Headphone volume (AVRCP absolute volume, while streaming) ---- */
     volume_panel_ = new wxPanel(main_panel_);
     auto *volume_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -408,6 +432,8 @@ void MainFrame::apply_theme() {
     SetBackgroundColour(TM().get(ThemeColor::WindowBg));
     volume_label_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
     volume_value_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
+    codec_label_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
+    codec_fallback_label_->SetForegroundColour(TM().get(ThemeColor::FirmwareWarning));
     rebuild_profile_list();
     update_status_display();
     main_panel_->Refresh();
@@ -597,7 +623,21 @@ void MainFrame::rebuild_profile_list() {
 /* Status Display                                                            */
 /* ======================================================================== */
 
+void MainFrame::save_remembered_volumes(bool now) {
+    if (service_.saved_volumes_changed()) {
+        settings_.saved_volumes = service_.saved_volumes();
+        volumes_changed_tick_ = GetTickCount();
+        if (volumes_changed_tick_ == 0) volumes_changed_tick_ = 1;
+    }
+    /* Wait until the volume settles, not a write per slider step */
+    if (volumes_changed_tick_ && (now || GetTickCount() - volumes_changed_tick_ >= 2000)) {
+        settings_.save();
+        volumes_changed_tick_ = 0;
+    }
+}
+
 void MainFrame::update_volume_row() {
+    save_remembered_volumes(false);
     int vol = BtStackTransport::remote_volume();
     bool show = current_state_ == A2dpService::State::Streaming && vol >= 0;
     if (volume_panel_->IsShown() != show) {
@@ -611,6 +651,34 @@ void MainFrame::update_volume_row() {
     if (volume_slider_->GetValue() != percent) volume_slider_->SetValue(percent);
     wxString text = wxString::Format("%d%%", percent);
     if (volume_value_->GetLabel() != text) volume_value_->SetLabel(text);
+}
+
+/* The codec row: the codec in use, and when the profile's codec was not
+ * available, why, with how to get it back in the tooltip */
+void MainFrame::update_codec_row() {
+    const auto &info = current_stream_info_;
+    bool show = current_state_ == A2dpService::State::Streaming && !info.codec.empty();
+    if (show) {
+        codec_label_->SetLabel(wxString::Format(wxString::FromUTF8(L("status.codec_info")),
+            wxString::FromUTF8(info.codec), info.sample_rate / 1000.0));
+        if (info.requested_codec.empty()) {
+            codec_fallback_label_->SetLabel("");
+            codec_label_->UnsetToolTip();
+            codec_fallback_label_->UnsetToolTip();
+        } else {
+            wxString requested = wxString::FromUTF8(info.requested_codec);
+            wxString used = wxString::FromUTF8(info.codec);
+            codec_fallback_label_->SetLabel(wxString::Format(wxString::FromUTF8(
+                L(info.requested_in_use ? "status.codec_fallback_in_use" : "status.codec_fallback")),
+                requested));
+            wxString tip = wxString::Format(wxString::FromUTF8(L("tooltip.codec_fallback_help")),
+                                            requested, used);
+            codec_label_->SetToolTip(tip);
+            codec_fallback_label_->SetToolTip(tip);
+        }
+    }
+    if (codec_panel_->IsShown() != show)
+        codec_panel_->Show(show);
 }
 
 void MainFrame::update_status_display() {
@@ -641,6 +709,7 @@ void MainFrame::update_status_display() {
                             current_state_ == A2dpService::State::Reconnecting);
     disconnect_btn_->Show(show_disconnect);
     fit_status_label();
+    update_codec_row();
 
     if (current_state_ == A2dpService::State::Streaming) {
         stream_info_label_->SetLabel("");
@@ -703,6 +772,9 @@ void MainFrame::OnStatusUpdate(wxThreadEvent &evt) {
     auto payload = evt.GetPayload<StatusPayload>();
     current_state_ = payload.state;
     current_status_text_ = payload.text;
+    /* A new connection gets new stream info; do not show the last one's codec */
+    if (current_state_ == A2dpService::State::Connecting)
+        current_stream_info_ = {};
     update_status_display();
 }
 
@@ -790,9 +862,20 @@ void MainFrame::OnToggleUpdateCheck(wxCommandEvent &) {
     settings_.save();
 }
 
+void MainFrame::OnTogglePrereleases(wxCommandEvent &) {
+    settings_.include_prereleases = !settings_.include_prereleases;
+    settings_.save();
+}
+
 void MainFrame::OnToggleMediaKeys(wxCommandEvent &) {
     settings_.media_keys = !settings_.media_keys;
     BtStackTransport::set_media_keys_enabled(settings_.media_keys);
+    settings_.save();
+}
+
+void MainFrame::OnToggleRememberVolume(wxCommandEvent &) {
+    settings_.remember_volume = !settings_.remember_volume;
+    service_.set_remember_volume(settings_.remember_volume);
     settings_.save();
 }
 
@@ -842,8 +925,9 @@ void MainFrame::start_update_check(bool silent) {
     if (update_thread_.joinable())
         update_thread_.join(); /* reap the previous, already-finished check */
 
-    update_thread_ = std::thread([this, silent] {
-        UpdateCheckResult r = CheckLatestRelease();
+    bool prereleases = settings_.include_prereleases;
+    update_thread_ = std::thread([this, silent, prereleases] {
+        UpdateCheckResult r = CheckLatestRelease(prereleases);
         auto *evt = new wxThreadEvent(wxEVT_UPDATE_CHECK_DONE);
         evt->SetPayload(r);
         evt->SetInt(silent ? 1 : 0);

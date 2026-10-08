@@ -23,6 +23,8 @@ struct ConnectionProfile {
     std::string codec;            /* auto, ldac, aptxhd, aptxll, aptx, sbc, aac */
     std::string quality;          /* hq, sq, mq */
     bool abr = false;
+    bool codec_fallback = true;   /* use the best codec the device offers when
+                                   * the chosen one is not available (not for Auto) */
     uint32_t sample_rate = 0;     /* 0=auto, 44100, 48000, 88200, 96000 */
     uint32_t bit_depth = 0;       /* 0=auto, 16, 24 */
     std::string capture_mode;     /* "loopback", "virtual", "app" */
@@ -31,6 +33,13 @@ struct ConnectionProfile {
     bool auto_switch_device = true;  /* auto-switch default for Virtual Device mode */
     std::string app_exe;          /* executable name for Application mode, e.g. "player.exe" */
     std::string app_name;         /* display name for Application mode */
+    /* Windows volume kept equal to the headphones' volume while streaming
+     * (volume_sync.h): "auto" = the captured device (the default output
+     * device, or the selected one in Virtual Device mode), "off", or
+     * "device" = volume_device_id */
+    std::string volume_sync = "auto";
+    std::string volume_device_id;   /* WASAPI device ID, volume_sync "device" */
+    std::string volume_device_name; /* display name */
     bool test_tone = false;       /* runtime only, not saved: send the test tone
                                    * (test_tone.h) instead of captured audio */
     uint16_t max_media_payload = MEDIA_PAYLOAD_LIMIT_DEFAULT; /* max media packet size (media_payload_limit.h) */

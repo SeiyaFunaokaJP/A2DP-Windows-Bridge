@@ -32,7 +32,7 @@ The graphical interface provides:
 - **Profile management** -- save and load device + codec configurations
 - **Real-time status** -- codec, bitrate, connection state
 - **Link quality** -- **Actions > Link Quality...** (see [Link Quality Window and AFH](#link-quality))
-- **Settings menu** -- language, theme, Start with Windows, Minimize to System Tray, Check for Updates on Startup, Headphone Buttons Control Playback (see [Headphone buttons](#headphone-buttons)), Debug Mode (adds the **Debug** menu: debug console, HCI capture, peer receiver test)
+- **Settings menu** -- language, theme, Start with Windows, Minimize to System Tray, Check for Updates on Startup, Include Pre-releases in Update Checks (also offer beta releases), Headphone Buttons Control Playback (see [Headphone buttons](#headphone-buttons)), Remember Headphone Volume (see [Volume](#volume)), Debug Mode (adds the **Debug** menu: debug console, HCI capture, peer receiver test)
 
 ## CLI Mode
 
@@ -134,13 +134,29 @@ Application mode sends the audio of one app, for example a music player, a brows
 
 - The app does not have to be running. A2DPWB connects to the headphones anyway and starts sending once the app is up. When the app quits during streaming, A2DPWB stays connected and picks the app up again when it is restarted.
 - The app keeps playing on its own output device as well. To hear it only on the headphones, mute that output device (its master volume): this does not affect what A2DPWB captures. Do not mute the app in the Windows Volume Mixer, though, or the headphones get silence too.
-- The app's slider in the Windows Volume Mixer changes the level sent to the headphones (and on its output device). The master volume and the volume keys do not.
+- The app's slider in the Windows Volume Mixer changes the level sent to the headphones (and on its output device). The master volume and the volume keys do not change the audio sent; with the profile's **Windows Volume Sync** on Auto they change the headphones' volume instead (see [Volume](#volume)).
 - Windows converts the audio to the sample rate that A2DPWB asks for, so the device format in Sound settings does not limit it.
 - On Windows 10 before version 2004 (build 19041), Windows has no per-app capture. The profile dialog marks Application as not available on that PC, and connecting with such a profile shows an error.
 
 ### Volume {#volume}
 
 While streaming, the main window shows a **Volume** slider when the headphones support AVRCP absolute volume. It sets the volume on the headphones themselves, so the audio sent keeps its full resolution. The slider also follows the volume buttons and touch controls on the headphones.
+
+**Windows Volume Sync** in the profile makes a Windows volume and the headphones' volume one volume while streaming:
+
+| Choice | Windows volume synced |
+|:-------|:----------------------|
+| Auto (default) | The device A2DPWB captures: the default output device in System Loopback and Application mode, the selected device in Virtual Device mode |
+| Off | None: the Windows volume and the headphones' volume are separate |
+| An output device | That device's volume |
+
+- The headphones' volume buttons and gestures, and the **Volume** slider, move the synced Windows volume, and its slider in Sound settings moves the headphones' volume.
+- The volume keys and the Windows volume flyout always act on the default output device, so they change the headphones' volume only when the default output device is the one synced (as with Auto, except in Virtual Device mode without **Auto-switch default device**).
+- When streaming starts, the Windows volume takes over the headphones' volume; when streaming stops, the device gets back the volume it had before.
+- With Auto, the audio is captured before the Windows volume is applied, so it is still lowered only once, on the headphones. If the synced volume also changes the captured audio, the volume applies twice: choose Off then (see [System-wide effects apps](#effects-apps)).
+- Mute is not synced: muting the output device keeps the PC silent and does not mute the headphones.
+
+**Settings > Remember Headphone Volume** (off by default) saves the headphones' volume for each device and sets it again as soon as they connect, before any audio is sent. Headphones otherwise start at their own last volume, which may be much louder than the volume used last time with A2DPWB (e.g., after using them with a phone).
 
 ### Headphone buttons {#headphone-buttons}
 
@@ -149,7 +165,7 @@ The play/pause, next and previous track controls on the headphones (buttons or t
 - Play and pause both act as the Windows Play/Pause key, so a tap always switches between playing and paused, even if the headphones' idea of the state is out of date.
 - A2DPWB tells the headphones whether audio is playing (from whether there is audio to capture), so headphones that pause when taken off send the right command.
 - Fast forward / rewind (holding a button) have no Windows media key and are ignored.
-- Volume gestures change the headphones' own volume (see [Volume](#volume)); they do not change the Windows volume.
+- Volume gestures change the headphones' own volume; with **Windows Volume Sync** the synced Windows volume follows (see [Volume](#volume)).
 - Turn this off with **Settings > Headphone Buttons Control Playback**, e.g. if another program already reacts to the media keys twice.
 
 This needs AVRCP on the headphones, which nearly all have. Without it, streaming works as usual, just without the buttons.
@@ -165,6 +181,8 @@ A system-wide effects app (an equalizer, a sound enhancer, a virtual surround ap
 | Virtual Device: the effects app's output device (e.g., VB-CABLE set as its output) | The audio after the effects (for Windows versions without Application mode) |
 
 In Application mode, the effects app's output device can be any device: A2DPWB takes what the app plays, not what the device plays, so the device is only somewhere for the audio to go. So that the PC does not play the audio at the same time, choose an output nobody listens to (e.g., a monitor's HDMI audio) or mute that device's master volume. A virtual device such as VB-CABLE also works as a silent place to send it, but it is not required. The device must be enabled and connected.
+
+If the effects app's own virtual device is the Windows default output device, its volume also lowers what the effects app receives. With **Windows Volume Sync** on Auto, a volume change then applies twice (on the effects app's input and on the headphones). Set it to Off in that profile, and use the headphones' volume or the **Volume** slider.
 
 #### Why A2DPWB has no virtual output device of its own {#no-virtual-device}
 
@@ -223,14 +241,29 @@ When A2DPWB connects, the headphones advertise a **list of codecs** (AVDTP strea
 
 Auto-select priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
 
-### Explicitly Selected Codec Not Offered: GUI vs CLI
+### Explicitly Selected Codec Not Offered {#codec-fallback}
 
-The GUI and the CLI behave differently when you request a specific codec that the headphones do not list:
+When you request a specific codec that the headphones do not list:
 
 | Mode | Behavior |
 |:-----|:---------|
-| GUI (codec other than Auto) | The connection stops with an error ("Device does not support ..."). If you requested aptX, aptX HD or aptX LL and the headphones offer only aptX Adaptive, the message says so and suggests Auto, AAC or SBC. |
+| GUI, **Use another codec if this one is not available** checked (default) | Connects with the best codec the headphones offer, in the Auto priority order, and the status says which codec is used instead and why. |
+| GUI, option unchecked | The connection stops with an error ("Device does not support ..."). If you requested aptX, aptX HD or aptX LL and the headphones offer only aptX Adaptive, the message says so and suggests Auto, AAC or SBC. |
 | CLI (`-c <codec>`) | Prints `Requested codec ... not available, falling back...` and continues with the Auto priority order. If the headphones offer aptX Adaptive, an extra line notes that it is never selected. |
+
+The option is in **Edit Profile** next to the codec (not used with Auto).
+
+### Codec Missing While the Headphones Are Connected to Another Device {#sep-in-use}
+
+Headphones offer each codec on a stream endpoint (SEP). On a dual (multipoint) connection, an endpoint that streams to the phone or PC is reported as **in use**, and its codec cannot be used until that stream stops. Some headphones also offer high-resolution codecs (LDAC, L2HC, ...) only while a single device is connected. A2DPWB then reports:
+
+```
+BTstack: Remote SEP SEID=6 sink audio, IN USE (codec not queried)
+BTstack: Remote SEPs in use by another connection: 1 of 6 audio sink SEP(s); ...
+BTstack: Capability discovery complete (LDAC=0, ..., 1 of 6 audio sink SEP(s) in use)
+```
+
+and the error says that endpoints are in use by another device. Disconnect the headphones from the phone / PC (or turn dual connection off in the headphones' app) and connect again. A PC whose built-in Bluetooth is still paired with the headphones counts as another device, too.
 
 ### Sample Rate
 
@@ -319,6 +352,12 @@ Both sides count the packets of a stream from its first packet, and after **Stop
 The receiver's adapter is not available to its own Bluetooth stack while the tool runs. Discovery uses a UDP broadcast on port 51201, so both PCs must be on the same network segment (otherwise enter the address). See `tools/linux_sink/README.md` for all options and the statistics protocol.
 
 ## Troubleshooting
+
+### The Bluetooth Adapter Does Not Respond {#adapter-no-answer}
+
+If the adapter sends nothing back after it is opened (it does not answer HCI Reset), A2DPWB gives up after 5 seconds, opens it once more and, if it still does not answer, shows "The Bluetooth adapter does not respond". Unplug the adapter, plug it back in and try again. Restarting A2DPWB is not needed: a failed start releases the adapter and every new start initializes it again.
+
+To keep an adapter from getting stuck, A2DPWB resets its USB pipes when it opens it and sends HCI Reset when it closes it.
 
 ### Pairing Problems After Updating
 

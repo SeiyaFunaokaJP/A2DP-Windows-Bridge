@@ -36,7 +36,9 @@ enum {
     ID_SETTING_START_WIN,
     ID_SETTING_TRAY,
     ID_SETTING_UPDATE_CHECK,
+    ID_SETTING_PRERELEASES,
     ID_SETTING_MEDIA_KEYS,
+    ID_SETTING_REMEMBER_VOLUME,
     ID_SETTING_DEBUG,
     ID_OPEN_LINK_QUALITY,
     ID_DEBUG_CAPTURE_START,
@@ -95,6 +97,7 @@ private:
     void update_status_display();
     void fit_status_label();
     void update_volume_row();
+    void update_codec_row();
 
     /* ---- Event handlers ---- */
     void OnStatusUpdate(wxThreadEvent &evt);
@@ -113,7 +116,9 @@ private:
     void OnToggleStartWithWindows(wxCommandEvent &evt);
     void OnToggleMinimizeToTray(wxCommandEvent &evt);
     void OnToggleUpdateCheck(wxCommandEvent &evt);
+    void OnTogglePrereleases(wxCommandEvent &evt);
     void OnToggleMediaKeys(wxCommandEvent &evt);
+    void OnToggleRememberVolume(wxCommandEvent &evt);
     void OnToggleDebugMode(wxCommandEvent &evt);
     void OnOpenLinkQuality(wxCommandEvent &evt);
     void OnDebugCaptureStart(wxCommandEvent &evt);
@@ -156,12 +161,17 @@ private:
     wxButton      *disconnect_btn_ = nullptr;
     wxButton      *add_profile_btn_ = nullptr;
     wxPanel       *firmware_bar_ = nullptr;
+    wxPanel       *codec_panel_ = nullptr;
+    wxStaticText  *codec_label_ = nullptr;
+    wxStaticText  *codec_fallback_label_ = nullptr;
     wxPanel       *volume_panel_ = nullptr;
     wxStaticText  *volume_label_ = nullptr;
     wxSlider      *volume_slider_ = nullptr;
     wxStaticText  *volume_value_ = nullptr;
     wxTimer        volume_timer_;
     unsigned long  volume_touched_tick_ = 0; /* last slider move by the user */
+    unsigned long  volumes_changed_tick_ = 0; /* remembered volumes not saved yet */
+    void save_remembered_volumes(bool now);
     wxScrolledWindow *profile_scroll_ = nullptr;
     wxBoxSizer    *profile_sizer_ = nullptr;
 

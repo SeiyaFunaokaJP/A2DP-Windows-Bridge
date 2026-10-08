@@ -12,6 +12,97 @@
 #include <cctype>
 #include <cstring>
 
+namespace {
+const wchar_t ADDR_MASK[] = L"XX:XX:XX:XX:XX:XX";
+
+/* The part of ADDR_MASK not yet typed ("AA:B" -> "X:XX:XX:XX:XX"); empty
+ * once the address is complete or when the text is not the start of one */
+wxString addr_mask_rest(const wxString &text) {
+    size_t n = text.length();
+    if (n >= wcslen(ADDR_MASK)) return wxString();
+    for (size_t i = 0; i < n; i++) {
+        wxUniChar c = text[i];
+        bool ok = (i % 3 == 2) ? c == ':'
+                               : c.IsAscii() && std::isxdigit(static_cast<unsigned char>(c.GetValue()));
+        if (!ok) return wxString();
+    }
+    return wxString(ADDR_MASK + n);
+}
+
+/* Address entry that draws the rest of the mask in grey after the text.
+ * It is only painted, never part of the value, so typing or pasting needs
+ * nothing erased. A plain EDIT, not wxTE_RICH2: with a rich edit SetHint
+ * falls back to putting the hint into the field as real text. */
+class AddressTextCtrl : public wxTextCtrl {
+public:
+    AddressTextCtrl(wxWindow *parent, const wxSize &size)
+        : wxTextCtrl(parent, wxID_ANY, "", wxDefaultPosition, size) {}
+
+    WXLRESULT MSWWindowProc(WXUINT msg, WXWPARAM wp, WXLPARAM lp) override {
+        WXLRESULT r = wxTextCtrl::MSWWindowProc(msg, wp, lp);
+        if (msg == WM_PAINT) draw_mask();
+        return r;
+    }
+
+private:
+    void draw_mask() {
+        wxString text = GetValue();
+        wxString rest = addr_mask_rest(text);
+        if (rest.empty()) return;
+
+        HWND hwnd = GetHWND();
+        RECT rc;
+        ::SendMessageW(hwnd, EM_GETRECT, 0, reinterpret_cast<LPARAM>(&rc));
+        HDC dc = ::GetDC(hwnd);
+        HGDIOBJ old_font = ::SelectObject(dc, reinterpret_cast<HGDIOBJ>(::SendMessageW(hwnd, WM_GETFONT, 0, 0)));
+
+        int x = rc.left, y = rc.top;
+        if (!text.empty()) {
+            /* Just past the last character (EM_POSFROMCHAR gives -1 there) */
+            LRESULT pos = ::SendMessageW(hwnd, EM_POSFROMCHAR, text.length() - 1, 0);
+            SIZE sz = {};
+            wxString last = text.Right(1);
+            ::GetTextExtentPoint32W(dc, last.wc_str(), 1, &sz);
+            x = static_cast<short>(LOWORD(pos)) + sz.cx;
+            y = static_cast<short>(HIWORD(pos));
+        }
+
+        wxColour fg = GetForegroundColour(), bg = GetBackgroundColour();
+        ::SetTextColor(dc, RGB((fg.Red() + bg.Red()) / 2, (fg.Green() + bg.Green()) / 2,
+                               (fg.Blue() + bg.Blue()) / 2));
+        ::SetBkMode(dc, TRANSPARENT);
+        ::IntersectClipRect(dc, rc.left, rc.top, rc.right, rc.bottom);
+        BOOL caret_hidden = ::HideCaret(hwnd);
+        ::TextOutW(dc, x, y, rest.wc_str(), static_cast<int>(rest.length()));
+        if (caret_hidden) ::ShowCaret(hwnd);
+
+        ::SelectObject(dc, old_font);
+        ::ReleaseDC(hwnd, dc);
+    }
+};
+
+std::wstring utf8_to_wide(const std::string &s) {
+    std::wstring w;
+    int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    if (len > 0) {
+        w.resize(len);
+        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &w[0], len);
+    }
+    return w;
+}
+
+std::string wide_to_utf8(const std::wstring &w) {
+    std::string s;
+    int len = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), nullptr, 0, nullptr, nullptr);
+    if (len > 0) {
+        s.resize(len);
+        WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), &s[0], len, nullptr, nullptr);
+    }
+    return s;
+}
+
+} // namespace
+
 ProfileDialog::ProfileDialog(wxWindow *parent, A2dpService *service,
                              ProfileManager *mgr, int edit_index)
     : wxDialog(parent, wxID_ANY,
@@ -74,8 +165,7 @@ void ProfileDialog::create_ui() {
 
     grid2->Add(new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("connection.device_addr"))),
                0, wxALIGN_CENTER_VERTICAL);
-    addr_ctrl_ = new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxSize(300, -1), wxTE_RICH2);
-    addr_ctrl_->SetHint(wxString::FromUTF8(L("connection.addr_hint")));
+    addr_ctrl_ = new AddressTextCtrl(this, wxSize(300, -1));
     addr_ctrl_->Bind(wxEVT_TEXT, &ProfileDialog::OnAddrChange, this);
     grid2->Add(addr_ctrl_, 1, wxEXPAND);
 
@@ -105,6 +195,13 @@ void ProfileDialog::create_ui() {
     codec_ctrl_->SetSelection(0);
     codec_ctrl_->Bind(wxEVT_CHOICE, &ProfileDialog::OnCodecChange, this);
     codec_grid->Add(codec_ctrl_, 1, wxEXPAND);
+
+    /* Codec fallback */
+    codec_grid->Add(new wxStaticText(this, wxID_ANY, ""), 0);
+    fallback_ctrl_ = new wxCheckBox(this, wxID_ANY, wxString::FromUTF8(L("connection.codec_fallback")));
+    fallback_ctrl_->SetToolTip(wxString::FromUTF8(L("tooltip.codec_fallback")));
+    fallback_ctrl_->SetValue(true);
+    codec_grid->Add(fallback_ctrl_, 0);
 
     /* Quality */
     auto *quality_label = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("connection.quality")));
@@ -188,6 +285,26 @@ void ProfileDialog::create_ui() {
     auto_switch_ctrl_->SetToolTip(wxString::FromUTF8(L("tooltip.auto_switch")));
     auto_switch_ctrl_->SetValue(true);
     codec_grid->Add(auto_switch_ctrl_, 0);
+
+    /* Windows volume synced with the headphones (volume_sync.h) */
+    auto *volume_sync_label = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(L("capture.volume_sync")));
+    volume_sync_label->SetToolTip(wxString::FromUTF8(L("tooltip.volume_sync")));
+    codec_grid->Add(volume_sync_label, 0, wxALIGN_CENTER_VERTICAL);
+    volume_sync_ctrl_ = new wxChoice(this, wxID_ANY);
+    volume_sync_ctrl_->SetToolTip(wxString::FromUTF8(L("tooltip.volume_sync")));
+    volume_sync_ctrl_->Append(wxString::FromUTF8(L("capture.volume_sync_auto")));
+    volume_sync_ctrl_->Append(wxString::FromUTF8(L("capture.volume_sync_off")));
+    {
+        AudioDeviceEnumerator enumerator;
+        if (enumerator.init()) {
+            volume_devices_ = enumerator.enumerate();
+            enumerator.shutdown();
+        }
+    }
+    for (auto &d : volume_devices_)
+        volume_sync_ctrl_->Append(wxString::FromUTF8(d.display_name));
+    volume_sync_ctrl_->SetSelection(0);
+    codec_grid->Add(volume_sync_ctrl_, 1, wxEXPAND);
 
     /* Max media packet size (advanced) */
     wxString packet_help = wxString::Format(wxString::FromUTF8(L("advanced.max_packet_help")),
@@ -281,11 +398,12 @@ void ProfileDialog::create_ui() {
 }
 
 void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
-    addr_ctrl_->SetValue(wxString::FromUTF8(p.device_address));
+    set_address(wxString::FromUTF8(p.device_address));
     devname_ctrl_->SetValue(wxString::FromUTF8(p.device_name));
     codec_ctrl_->SetSelection(ProfileManager::codec_to_index(p.codec));
     quality_ctrl_->SetSelection(ProfileManager::quality_to_index(p.quality));
     abr_ctrl_->SetValue(p.abr);
+    fallback_ctrl_->SetValue(p.codec_fallback);
     max_packet_ctrl_->SetValue(p.max_media_payload);
 
     int sr_idx = (p.sample_rate == 44100) ? 1 :
@@ -304,6 +422,25 @@ void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
     /* Set auto_switch AFTER update_codec_dependent() makes the control visible.
      * wxCheckBox::SetValue on a hidden control can be unreliable on Windows. */
     auto_switch_ctrl_->SetValue(p.auto_switch_device);
+
+    if (p.volume_sync == "off") {
+        volume_sync_ctrl_->SetSelection(1);
+    } else if (p.volume_sync == "device") {
+        std::wstring id = utf8_to_wide(p.volume_device_id);
+        size_t i = 0;
+        while (i < volume_devices_.size() && volume_devices_[i].id != id) i++;
+        if (i == volume_devices_.size()) {
+            /* Not connected now: keep it selectable as it was saved */
+            AudioDeviceInfo missing{};
+            missing.id = id;
+            missing.display_name = p.volume_device_name;
+            volume_devices_.push_back(missing);
+            volume_sync_ctrl_->Append(wxString::Format(
+                wxString::FromUTF8(L("capture.volume_sync_missing")),
+                wxString::FromUTF8(p.volume_device_name)));
+        }
+        volume_sync_ctrl_->SetSelection(static_cast<int>(i) + 2);
+    }
 
     /* Fix sample rate selection after choices are populated */
     if (sr_idx < sample_rate_ctrl_->GetCount())
@@ -376,6 +513,11 @@ void ProfileDialog::update_codec_dependent() {
     abr_ctrl_->SetForegroundColour(TM().get(abr_enabled ? ThemeColor::TextPrimary : ThemeColor::TextMuted));
     abr_ctrl_->Refresh();
     if (!abr_enabled) abr_ctrl_->SetValue(false);
+    /* Auto already takes the best codec the device offers */
+    bool fallback_enabled = (codec_idx != 0);
+    fallback_ctrl_->Enable(fallback_enabled);
+    fallback_ctrl_->SetForegroundColour(TM().get(fallback_enabled ? ThemeColor::TextPrimary : ThemeColor::TextMuted));
+    fallback_ctrl_->Refresh();
 
     /* Sample rate options */
     int cur_sr = sample_rate_ctrl_->GetSelection();
@@ -569,7 +711,7 @@ void ProfileDialog::OnDeviceSelect(wxCommandEvent &) {
     auto devices = service_->get_devices();
     if (sel >= 0 && sel < static_cast<int>(devices.size())) {
         auto &d = devices[sel];
-        addr_ctrl_->SetValue(wxString::FromUTF8(d.addr_str));
+        set_address(wxString::FromUTF8(d.addr_str));
         devname_ctrl_->SetValue(wxString::FromUTF8(d.name));
         /* Enable edit/delete only for saved (paired) devices */
         dev_edit_btn_->Enable(d.saved);
@@ -719,8 +861,8 @@ bool format_address_input(const wxString &in, long caret_in, wxString &out, long
 
 void ProfileDialog::update_addr_visual() {
     wxString addr = addr_ctrl_->GetValue();
-    /* Red only once the text cannot become an address; an address still
-     * being typed is checked on Save */
+    /* Typing cannot make the text invalid (OnAddrChange refuses the edit),
+     * so red only for a value set from elsewhere, e.g. an old profile */
     wxString formatted;
     long caret = 0;
     bool valid = format_address_input(addr, 0, formatted, caret);
@@ -730,14 +872,37 @@ void ProfileDialog::update_addr_visual() {
     addr_ctrl_->Refresh();
 }
 
+/* A value from a profile or the device list: kept even if it is not an
+ * address, so it shows in red instead of being dropped */
+void ProfileDialog::set_address(const wxString &addr) {
+    last_addr_ = addr;
+    addr_ctrl_->SetValue(addr);
+}
+
 void ProfileDialog::OnAddrChange(wxCommandEvent &) {
     wxString value = addr_ctrl_->GetValue();
+    long caret_in = addr_ctrl_->GetInsertionPoint();
     wxString formatted;
     long caret = 0;
-    if (format_address_input(value, addr_ctrl_->GetInsertionPoint(), formatted, caret) &&
-        formatted != value) {
-        addr_ctrl_->ChangeValue(formatted);  /* no second wxEVT_TEXT */
-        addr_ctrl_->SetInsertionPoint(caret);
+    if (format_address_input(value, caret_in, formatted, caret)) {
+        if (formatted != value) {
+            addr_ctrl_->ChangeValue(formatted);  /* no second wxEVT_TEXT */
+            addr_ctrl_->SetInsertionPoint(caret);
+        }
+        last_addr_ = formatted;
+    } else if (!format_address_input(last_addr_, 0, formatted, caret)) {
+        /* Already invalid (set from elsewhere): let it be edited freely */
+        last_addr_ = value;
+    } else if (value != last_addr_) {
+        /* A character that is not part of an address, or a 13th digit:
+         * refuse the edit and put the caret back where the input began */
+        long added = static_cast<long>(value.length()) - static_cast<long>(last_addr_.length());
+        long restore = caret_in - (added > 0 ? added : 0);
+        if (restore < 0) restore = 0;
+        if (restore > static_cast<long>(last_addr_.length())) restore = static_cast<long>(last_addr_.length());
+        addr_ctrl_->ChangeValue(last_addr_);
+        addr_ctrl_->SetInsertionPoint(restore);
+        wxBell();
     }
     update_addr_visual();
 }
@@ -770,6 +935,7 @@ void ProfileDialog::OnSave(wxCommandEvent &) {
     p.codec = ProfileManager::index_to_codec(codec_ctrl_->GetSelection());
     p.quality = ProfileManager::index_to_quality(quality_ctrl_->GetSelection());
     p.abr = abr_ctrl_->GetValue();
+    p.codec_fallback = fallback_ctrl_->GetValue();
 
     static const uint32_t rate_values[] = { 0, 44100, 48000, 88200, 96000 };
     int sr_sel = sample_rate_ctrl_->GetSelection();
@@ -813,6 +979,16 @@ void ProfileDialog::OnSave(wxCommandEvent &) {
         p.app_name = apps_[app_sel].display_name;
     }
     p.auto_switch_device = auto_switch_ctrl_->GetValue();
+    int vol_sel = volume_sync_ctrl_->GetSelection();
+    if (vol_sel >= 2 && vol_sel - 2 < static_cast<int>(volume_devices_.size())) {
+        p.volume_sync = "device";
+        p.volume_device_id = wide_to_utf8(volume_devices_[vol_sel - 2].id);
+        p.volume_device_name = volume_devices_[vol_sel - 2].display_name;
+    } else {
+        p.volume_sync = vol_sel == 1 ? "off" : "auto";
+        p.volume_device_id.clear();
+        p.volume_device_name.clear();
+    }
     p.max_media_payload = clamp_media_payload_limit(
         static_cast<uint32_t>(max_packet_ctrl_->GetValue()));
 

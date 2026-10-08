@@ -48,7 +48,9 @@ const Rule RULES[] = {
     {DebugLogModel::STEP_CONNECT, "BTstack: Signaling connection established",     Action::Done,    DetailFrom::Whole},
     {DebugLogModel::STEP_CONNECT, "BTstack: Connection timed out",                 Action::Failed,  DetailFrom::Whole},
     {DebugLogModel::STEP_CONNECT, "a2dp_source_establish_stream failed",           Action::Failed,  DetailFrom::Whole},
+    {DebugLogModel::STEP_CAPS,    "BTstack: Remote SEPs in use by another connection", Action::Warning, DetailFrom::Whole},
     {DebugLogModel::STEP_CAPS,    "BTstack: Capability discovery complete",        Action::Done,    DetailFrom::After},
+    {DebugLogModel::STEP_CODEC,   "A2dpService: codec fallback: ",                 Action::Warning, DetailFrom::After},
     {DebugLogModel::STEP_CODEC,   "A2dpService: codec selected: ",                 Action::Done,    DetailFrom::After},
     {DebugLogModel::STEP_CAPTURE, "WasapiCapture: Format: ",                       Action::Detail,  DetailFrom::After},
     {DebugLogModel::STEP_CAPTURE, "A2dpService: WASAPI capture init OK",           Action::Done,    DetailFrom::After},
@@ -296,13 +298,24 @@ void DebugLogModel::track(const Entry &e) {
     const wxString &t = e.text;
 
     /* ---- Adapter information (independent of connection attempts) ---- */
-    if (t.StartsWith("BtAdapterEnumerator: found")) {
+    if (t.StartsWith("BtAdapterEnumerator: USB ")) {
+        /* Devices of an enumeration come before its "found" line: keep
+         * them (with their indented hints) for the block it starts */
+        if (!enum_collecting_) enum_pending_.clear();
+        enum_collecting_ = true;
+        enum_pending_.push_back(t);
+    } else if (enum_collecting_ && t.StartsWith("  ")) {
+        enum_pending_.push_back(t);
+    } else if (t.StartsWith("BtAdapterEnumerator: found")) {
         adapter_lines_.erase(std::remove_if(adapter_lines_.begin(), adapter_lines_.end(),
             [](const wxString &l) { return l.StartsWith("BtAdapterEnumerator") || l.StartsWith("  "); }),
             adapter_lines_.end());
         adapter_lines_.insert(adapter_lines_.begin(), t);
+        adapter_lines_.insert(adapter_lines_.begin() + 1, enum_pending_.begin(), enum_pending_.end());
+        enum_pending_.clear();
+        enum_collecting_ = false;
         in_adapter_block_ = true;
-    } else if (in_adapter_block_ && t.StartsWith("  ")) {
+    } else if (in_adapter_block_ && (t.StartsWith("  ") || t.StartsWith("BtAdapterEnumerator: no usable"))) {
         /* Keep the enumeration together, ahead of the lines below */
         auto it = std::find_if(adapter_lines_.begin(), adapter_lines_.end(),
             [](const wxString &l) { return !l.StartsWith("BtAdapterEnumerator") && !l.StartsWith("  "); });

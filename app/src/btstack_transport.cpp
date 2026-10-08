@@ -41,6 +41,9 @@ extern "C" {
 #include "link_stats.h"
 #include "btstack_uart_tcp_windows.h"
 
+/* hci_transport_h2_winusb.c: HCI traffic with the adapter stopped for good */
+extern "C" int hci_transport_usb_failed(void);
+
 /*
  * Vendor codec IDs (duplicated from avdtp.h to avoid enum conflicts
  * with BTstack's avdtp.h which defines the same AVDTP enumerator names)
@@ -102,6 +105,9 @@ struct RunLoopRequest {
 
 /* Timeout constants */
 static const uint32_t INIT_TIMEOUT_MS    = 30000;
+/* No HCI event at all this long after power on: the controller does not
+ * answer HCI Reset (BTstack resends it every 200 ms) */
+static const uint32_t INIT_NO_ANSWER_MS  = 5000;
 static const uint32_t CONNECT_TIMEOUT_MS = 30000;  /* Must exceed HCI page timeout (~20s) */
 static const uint32_t STREAM_TIMEOUT_MS  = 10000;
 static const uint32_t DISCONNECT_TIMEOUT_MS = 5000;
@@ -212,6 +218,25 @@ static uint32_t read_vendor_id(const uint8_t *info) {
            ((uint32_t)info[2] << 16) | ((uint32_t)info[3] << 24);
 }
 
+/* LMP subversions Realtek chips report while running their ROM code, before
+ * a firmware download (ROM_LMP_* in BTstack's btstack_chipset_realtek.c;
+ * the lmp_sub of its fw_patch_table_usb entries). Firmware reports a
+ * build-specific value instead. */
+static bool is_realtek_rom_lmp(uint16_t lmp_subver) {
+    switch (lmp_subver) {
+    case 0x1200:  /* RTL8723A */
+    case 0x8723:  /* RTL8723B / D */
+    case 0x8821:  /* RTL8821A / C */
+    case 0x8761:  /* RTL8761A / B / C */
+    case 0x8822:  /* RTL8822B / C */
+    case 0x8852:  /* RTL8852A / B / C */
+    case 0x8851:  /* RTL8851B */
+        return true;
+    default:
+        return false;
+    }
+}
+
 static uint16_t read_codec_id(const uint8_t *info) {
     return (uint16_t)info[4] | ((uint16_t)info[5] << 8);
 }
@@ -259,6 +284,8 @@ BtStackTransport::BtStackTransport() {
     acl_down_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     inquiry_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     cancel_event_ = CreateEventA(nullptr, TRUE, FALSE, nullptr);  /* manual-reset */
+    hci_off_event_ = CreateEventA(nullptr, TRUE, FALSE, nullptr); /* manual-reset */
+    probe_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
     auto *reg = new btstack_context_callback_registration_t();
     memset(reg, 0, sizeof(*reg));
     media_trigger_reg_ = reg;
@@ -274,6 +301,8 @@ BtStackTransport::~BtStackTransport() {
     CloseHandle(acl_down_event_);
     CloseHandle(inquiry_event_);
     CloseHandle(cancel_event_);
+    CloseHandle(hci_off_event_);
+    CloseHandle(probe_event_);
     delete static_cast<btstack_context_callback_registration_t *>(media_trigger_reg_);
 }
 
@@ -291,6 +320,11 @@ bool BtStackTransport::init(const char *usb_path) {
     instance_ = this;
     running_.store(true);
     init_failed_.store(false);
+    init_result_.store(false);
+    last_init_failure_.store(InitFailure::None);
+    hci_events_seen_.store(0);
+    hci_power_on_tick_.store(0);
+    stalled_.store(false);
 
     /* Launch BTstack run loop in a dedicated thread */
     thread_handle_ = CreateThread(nullptr, 0,
@@ -312,13 +346,30 @@ bool BtStackTransport::init(const char *usb_path) {
                 return true;
             }
             if (init_failed_.load()) break;
+            /* A controller that answers nothing will not answer later
+             * either: fail now instead of after INIT_TIMEOUT_MS */
+            uint32_t power_on = hci_power_on_tick_.load();
+            if (power_on != 0 && hci_events_seen_.load() == 0 &&
+                GetTickCount() - power_on >= INIT_NO_ANSWER_MS) {
+                last_init_failure_.store(InitFailure::NoAnswer);
+                break;
+            }
             Sleep(poll_interval);
             elapsed += poll_interval;
         }
     }
 
-    fprintf(stderr, init_failed_.load() ? "BTstack: HCI initialization failed\n"
-                                        : "BTstack: HCI initialization timed out\n");
+    if (init_failed_.load()) {
+        last_init_failure_.store(InitFailure::Failed);
+        fprintf(stderr, "BTstack: HCI initialization failed\n");
+    } else if (last_init_failure_.load() == InitFailure::NoAnswer) {
+        fprintf(stderr, "BTstack: HCI initialization failed — the controller did not answer "
+                "HCI Reset within %lu ms\n", (unsigned long)INIT_NO_ANSWER_MS);
+    } else {
+        last_init_failure_.store(InitFailure::Timeout);
+        fprintf(stderr, "BTstack: HCI initialization timed out\n");
+    }
+    fflush(stderr);
     shutdown();
     return false;
 }
@@ -432,13 +483,39 @@ unsigned long __stdcall BtStackTransport::btstack_thread_proc(void *param) {
     /* Run the event loop (blocks until shutdown) */
     btstack_run_loop_execute();
 
-    /* Run loop has exited. Do NOT call hci_power_control/hci_close here —
-     * they need the run loop to process HCI commands and will block.
-     * Global cleanup (deinit) is handled by shutdown() after this thread exits. */
+    /* Run loop has exited. Do NOT call hci_power_control here — it needs
+     * the run loop to process HCI commands. shutdown() powers off before
+     * stopping the loop; deinit_btstack() only closes what is left. */
     fprintf(stderr, "BTstack: run loop exited, thread finishing\n");
     fflush(stderr);
+    self->deinit_btstack();
 
     return 0;
+}
+
+void BtStackTransport::deinit_btstack() {
+    if (hci_initialized_) {
+        if (hci_get_state() != HCI_STATE_OFF && hci_transport_) {
+            /* Power off did not finish: release the adapter anyway, or the
+             * next open in this process finds the transport still "open" */
+            fprintf(stderr, "BTstack: HCI not off at exit, closing the transport\n");
+            static_cast<const hci_transport_t *>(hci_transport_)->close();
+        }
+        avrcp_target_deinit();
+        avrcp_controller_deinit();
+        avrcp_deinit();
+        a2dp_source_deinit();
+        sdp_client_deinit();
+        sdp_deinit();
+        l2cap_deinit();
+        hci_deinit();
+        hci_initialized_ = false;
+        hci_transport_ = nullptr;
+    }
+    btstack_memory_deinit();
+    btstack_run_loop_deinit();
+    fprintf(stderr, "BTstack: state reset\n");
+    fflush(stderr);
 }
 
 void BtStackTransport::setup_hci_and_power_on() {
@@ -448,11 +525,20 @@ void BtStackTransport::setup_hci_and_power_on() {
             HCI_TRANSPORT_CONFIG_UART, 115200, 0, 0, nullptr, BTSTACK_UART_PARITY_OFF};
         tcp_config.device_name = hci_tcp_.c_str();
         fprintf(stderr, "BTstack: H4 over TCP -> %s\n", tcp_config.device_name);
-        hci_init(hci_transport_h4_instance_for_uart(btstack_uart_tcp_windows_instance()), &tcp_config);
+        hci_transport_ = hci_transport_h4_instance_for_uart(btstack_uart_tcp_windows_instance());
+        hci_init(static_cast<const hci_transport_t *>(hci_transport_), &tcp_config);
+        /* The virtual controller is no Realtek chip, even when a Realtek
+         * adapter is plugged in (it would never answer the vendor commands) */
+        if (product_id_ != 0) {
+            fprintf(stderr, "BTstack: H4 over TCP — ignoring Realtek PID 0x%04X\n", product_id_);
+            product_id_ = 0;
+        }
     } else {
         /* Initialize HCI with WinUSB transport */
+        hci_transport_ = hci_transport_usb_instance();
         hci_init(hci_transport_usb_instance(), nullptr);
     }
+    hci_initialized_ = true;
 
     /* Realtek chipset initialization — only when a Realtek PID is configured.
      * set_product_id() must be called before init() with the detected PID.
@@ -561,6 +647,9 @@ void BtStackTransport::setup_hci_and_power_on() {
     /* Initialize A2DP Source */
     a2dp_source_init();
     a2dp_source_register_packet_handler(&packet_handler_trampoline);
+    /* We register no sink SEPs, so the AVDTP sink callback only receives the
+     * events AVDTP emits to both roles, SEP discovery among them */
+    avdtp_register_sink_packet_handler(&sep_observer_trampoline);
 
     /* Initialize AVRCP (volume control) */
     avrcp_init();
@@ -600,8 +689,17 @@ void BtStackTransport::setup_hci_and_power_on() {
     }
 
     /* Power on HCI — record start time to measure firmware loading */
+    rtk_version_seen_ = false;
+    rtk_lmp_first_ = 0;
+    rtk_verify_pending_ = false;
     init_start_tick_ = GetTickCount();
-    hci_power_control(HCI_POWER_ON);
+    hci_power_on_tick_.store(init_start_tick_ ? init_start_tick_ : 1);
+    if (hci_power_control(HCI_POWER_ON) != 0) {
+        /* The transport did not open: no WinUSB adapter could be claimed */
+        fprintf(stderr, "BTstack: could not open the Bluetooth adapter\n");
+        fflush(stderr);
+        init_failed_.store(true);
+    }
 }
 
 void BtStackTransport::intel_firmware_done(int result) {
@@ -667,6 +765,26 @@ void BtStackTransport::on_local_version(const uint8_t *packet) {
     fprintf(stderr, "BTstack: Controller %s (company 0x%04X), HCI version %u, "
             "LMP subversion 0x%04X\n",
             company ? company : "unknown", manufacturer, hci_ver, lmp_subver);
+
+    /* Realtek: the first version read of an init comes before the firmware
+     * download, so it tells a chip still on ROM from one that kept the
+     * firmware of an earlier session (no download then) */
+    if (manufacturer == 0x005D && product_id_ != 0) {
+        if (!rtk_version_seen_) rtk_lmp_first_ = lmp_subver;
+        rtk_version_seen_ = true;
+        if (rtk_verify_pending_) {
+            /* Our read after init: the version running now */
+            rtk_verify_pending_ = false;
+            if (is_realtek_rom_lmp(lmp_subver)) {
+                fprintf(stderr, "BTstack: WARNING — Realtek firmware NOT loaded (LMP "
+                        "subversion 0x%04X is the ROM code); check the firmware files\n",
+                        lmp_subver);
+            } else {
+                fprintf(stderr, "BTstack: Realtek firmware loaded (LMP subversion "
+                        "0x%04X -> 0x%04X)\n", rtk_lmp_first_, lmp_subver);
+            }
+        }
+    }
 
     switch (manufacturer) {
     case 0x0046:  /* MediaTek */
@@ -880,6 +998,7 @@ bool g_volume_live = false;             /* AVRCP up, run loop takes work */
 std::atomic<int> g_volume{-1};          /* last reported volume, 0-127 */
 std::atomic<int> g_volume_request{-1};  /* queued request, -1 = none */
 std::atomic<bool> g_volume_queued{false};
+std::atomic<int> g_restore_volume{-1};  /* set on AVRCP connect, -1 = none */
 btstack_context_callback_registration_t g_volume_reg;
 /* BTstack thread only */
 bool g_volume_in_flight = false;
@@ -889,6 +1008,14 @@ const DWORD VOLUME_RESPONSE_TIMEOUT_MS = 1000;
 
 int BtStackTransport::remote_volume() {
     return g_volume.load();
+}
+
+void BtStackTransport::set_restore_volume(int volume) {
+    g_restore_volume.store(volume < 0 ? -1 : volume > 127 ? 127 : volume);
+}
+
+int BtStackTransport::restore_volume() {
+    return g_restore_volume.load();
 }
 
 void BtStackTransport::request_volume(uint8_t volume) {
@@ -1180,28 +1307,45 @@ void BtStackTransport::shutdown() {
     g_volume.store(-1);
     g_volume_request.store(-1);
 
-    /* Power off HCI properly so the USB adapter is released.
-     * Without this, the next launch can't open the adapter. */
-    if (hci_ready_.load()) {
+    /* Power off HCI properly so the USB adapter is released, also while the
+     * controller is still initializing (e.g. it never answered HCI Reset):
+     * the transport is closed only on the way to HCI_STATE_OFF. */
+    if (thread_handle_) {
         fprintf(stderr, "BTstack: powering off HCI...\n");
         fflush(stderr);
+        ResetEvent(static_cast<HANDLE>(hci_off_event_));
 
         /* Dispatch hci_power_control(HCI_POWER_OFF) to BTstack thread */
         RunLoopRequest req = {};
         req.done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
         req.reg.callback = [](void *ctx) {
             auto *r = static_cast<RunLoopRequest *>(ctx);
-            hci_power_control(HCI_POWER_OFF);
+            BtStackTransport *self = instance_;
+            r->int_result = 0;
+            if (self && self->hci_initialized_ && hci_get_state() != HCI_STATE_OFF) {
+                hci_power_control(HCI_POWER_OFF);
+                r->int_result = 1;
+            }
             SetEvent(r->done_event);
         };
         req.reg.context = &req;
         btstack_run_loop_execute_on_main_thread(&req.reg);
-        WaitForSingleObject(req.done_event, 3000);
+        bool dispatched = WaitForSingleObject(req.done_event, 3000) == WAIT_OBJECT_0;
         CloseHandle(req.done_event);
 
-        /* Wait for HCI_STATE_OFF event (signals init_event_) */
-        WaitForSingleObject(init_event_, 5000);
-        fprintf(stderr, "BTstack: HCI powered off\n");
+        /* Wait for HCI_STATE_OFF. Its own event: the auto-reset init_event_
+         * used before was already set by HCI_STATE_WORKING, so this returned
+         * at once and the run loop was stopped in the middle of halting —
+         * links up, adapter not closed. */
+        if (dispatched && req.int_result) {
+            if (WaitForSingleObject(static_cast<HANDLE>(hci_off_event_), 5000) == WAIT_OBJECT_0) {
+                fprintf(stderr, "BTstack: HCI powered off\n");
+            } else {
+                fprintf(stderr, "BTstack: HCI power off timed out\n");
+            }
+        } else if (!dispatched) {
+            fprintf(stderr, "BTstack: run loop did not take the power off request\n");
+        }
         fflush(stderr);
     }
 
@@ -1210,11 +1354,19 @@ void BtStackTransport::shutdown() {
     connected_.store(false);
     hci_ready_.store(false);
 
-    /* Request BTstack run loop to exit */
-    btstack_run_loop_trigger_exit();
-
+    /* Request BTstack run loop to exit. From a callback on the run loop: the
+     * exit flag alone is only checked when the loop wakes up, and with no
+     * timer left (HCI off) it waits without a timeout, so the thread did not
+     * end and shutdown() gave up on it after 10 s. */
     if (thread_handle_) {
-        WaitForSingleObject(thread_handle_, 10000);
+        static btstack_context_callback_registration_t exit_reg;
+        exit_reg.callback = [](void *) { btstack_run_loop_trigger_exit(); };
+        exit_reg.context = nullptr;
+        btstack_run_loop_execute_on_main_thread(&exit_reg);
+
+        if (WaitForSingleObject(thread_handle_, 10000) != WAIT_OBJECT_0) {
+            fprintf(stderr, "BTstack: run loop thread did not end\n");
+        }
         CloseHandle(thread_handle_);
         thread_handle_ = nullptr;
     }
@@ -1298,6 +1450,10 @@ bool BtStackTransport::scan_devices(uint8_t duration_seconds) {
 
 bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
     if (!hci_ready_.load()) return false;
+    if (stalled()) {
+        last_connect_failure_.store(ConnectFailure::Stalled);
+        return false;
+    }
 
     /* BTstack uses bd_addr_t as big-endian, but our addr is little-endian (Windows BTH_ADDR) */
     bd_addr_t addr;
@@ -1311,6 +1467,8 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
 
     /* Reset remote capabilities */
     remote_caps_ = {};
+    sep_sinks_ = 0;
+    sep_sinks_in_use_ = 0;
     disconnect_occurred_.store(false);
     last_connect_failure_.store(ConnectFailure::None);
     target_acl_handle_.store(0xFFFF);
@@ -1351,10 +1509,18 @@ bool BtStackTransport::connect_a2dp(const uint8_t remote_addr[6]) {
     /* Wait for stream establishment (includes signaling connection + SEP discovery) */
     if (!wait_for_event(connect_event_, CONNECT_TIMEOUT_MS)) {
         fprintf(stderr, "BTstack: Connection timed out\n");
-        /* An answer that never came (e.g. a lost SDP response) */
-        last_connect_failure_.store(ConnectFailure::LinkLost);
-        classify_link_lost();
+        bool cancelled = WaitForSingleObject(static_cast<HANDLE>(cancel_event_), 0) == WAIT_OBJECT_0;
+        bool stuck = !cancelled && check_stalled();
+        if (!stuck) {
+            /* An answer that never came (e.g. a lost SDP response) */
+            last_connect_failure_.store(ConnectFailure::LinkLost);
+            classify_link_lost();
+        }
         abort_pending_connection();
+        /* Not the device: trying again on this stack waits in vain. Set
+         * after the abort, whose failed CONNECTION_ESTABLISHED is classified
+         * as a link lost. */
+        if (stuck) last_connect_failure_.store(ConnectFailure::Stalled);
         return false;
     }
 
@@ -1382,6 +1548,107 @@ void BtStackTransport::classify_link_lost() {
         fprintf(stderr, "BTstack: the device ended the link itself (0x%02x)\n", reason);
         last_connect_failure_.store(ConnectFailure::Refused);
     }
+}
+
+bool BtStackTransport::stalled() const {
+    return stalled_.load() || (hci_tcp_.empty() && hci_transport_usb_failed());
+}
+
+/* A query run on the BTstack thread by a caller that may give up waiting
+ * (the run loop of a stuck stack may take it late or never). Owned by both
+ * sides; whichever finishes last frees it. */
+struct StackQuery {
+    btstack_context_callback_registration_t reg = {};
+    HANDLE done_event = nullptr;
+    int (*fn)(StackQuery *) = nullptr;
+    bd_addr_t addr = {};
+    int result = 0;
+    std::atomic<int> refs{2};
+};
+
+static void stack_query_release(StackQuery *q) {
+    if (q->refs.fetch_sub(1) == 1) {
+        CloseHandle(q->done_event);
+        delete q;
+    }
+}
+
+/* Runs fn on the BTstack thread; false if the run loop did not take it
+ * within timeout_ms, else *result is what fn returned */
+static bool run_stack_query(int (*fn)(StackQuery *), const uint8_t *addr, uint32_t timeout_ms, int *result) {
+    auto *q = new StackQuery();
+    q->done_event = CreateEventA(nullptr, FALSE, FALSE, nullptr);
+    q->fn = fn;
+    if (addr) memcpy(q->addr, addr, 6);
+    q->reg.callback = [](void *ctx) {
+        auto *r = static_cast<StackQuery *>(ctx);
+        r->result = r->fn(r);
+        SetEvent(r->done_event);
+        stack_query_release(r);
+    };
+    q->reg.context = q;
+    btstack_run_loop_execute_on_main_thread(&q->reg);
+    bool done = WaitForSingleObject(q->done_event, timeout_ms) == WAIT_OBJECT_0;
+    if (done) *result = q->result;
+    else fprintf(stderr, "BTstack: the run loop did not take a request within %u ms\n", timeout_ms);
+    stack_query_release(q);
+    return done;
+}
+
+bool BtStackTransport::controller_responds(uint32_t timeout_ms) {
+    if (!hci_ready_.load() || stalled()) return false;
+    DWORD start = GetTickCount();
+    auto left = [&]() -> uint32_t {
+        DWORD spent = GetTickCount() - start;
+        return spent >= timeout_ms ? 0 : timeout_ms - spent;
+    };
+    ResetEvent(static_cast<HANDLE>(probe_event_));
+    probe_pending_.store(true);
+    /* A command still waiting for its answer holds the next one back */
+    for (int tries = 0;; tries++) {
+        if (tries > 0) {
+            if (left() == 0) {
+                fprintf(stderr, "BTstack: no HCI command could be sent for %u ms\n", timeout_ms);
+                probe_pending_.store(false);
+                return false;
+            }
+            Sleep(50);
+        }
+        int sent = 0;
+        if (!run_stack_query([](StackQuery *) -> int {
+                return hci_can_send_command_packet_now() &&
+                       hci_send_cmd(&hci_read_bd_addr) == ERROR_CODE_SUCCESS;
+            }, nullptr, left() > 0 ? left() : 1, &sent)) {
+            probe_pending_.store(false);
+            return false;
+        }
+        if (sent) break;
+    }
+    bool answered = WaitForSingleObject(static_cast<HANDLE>(probe_event_), left()) == WAIT_OBJECT_0;
+    probe_pending_.store(false);
+    if (!answered)
+        fprintf(stderr, "BTstack: the controller did not answer HCI Read BD_ADDR within %u ms\n", timeout_ms);
+    return answered;
+}
+
+bool BtStackTransport::check_stalled() {
+    if (stalled()) return true;
+    /* Still paging long after the page timeout (~15 s): the controller lost
+     * the Create Connection, or BTstack never got to send it */
+    int paging = 0;
+    bool taken = run_stack_query([](StackQuery *q) -> int {
+            hci_connection_t *c = hci_connection_for_bd_addr_and_type(q->addr, BD_ADDR_TYPE_ACL);
+            return c && (c->state == SEND_CREATE_CONNECTION || c->state == SENT_CREATE_CONNECTION);
+        }, remote_addr_be_, 2000, &paging);
+    const char *why = nullptr;
+    if (!taken) why = "the BTstack run loop does not respond";
+    else if (paging) why = "the controller never finished the connection";
+    else if (!controller_responds(2000)) why = "the controller does not answer HCI commands";
+    if (!why) return false;
+    fprintf(stderr, "BTstack: Bluetooth stack stalled: %s\n", why);
+    fflush(stderr);
+    stalled_.store(true);
+    return true;
 }
 
 bool BtStackTransport::connect_a2dp_retrying(const uint8_t remote_addr[6],
@@ -1800,6 +2067,10 @@ bool BtStackTransport::reconnect() {
         fprintf(stderr, "BTstack: Cannot reconnect — HCI not ready or no stored address\n");
         return false;
     }
+    if (stalled()) {
+        fprintf(stderr, "BTstack: Cannot reconnect — the Bluetooth adapter stopped working\n");
+        return false;
+    }
 
     /* Abort immediately if a cancel is pending (user pressed disconnect) */
     if (WaitForSingleObject(static_cast<HANDLE>(cancel_event_), 0) == WAIT_OBJECT_0) {
@@ -1821,6 +2092,8 @@ bool BtStackTransport::reconnect() {
 
     /* Reset remote capabilities for re-discovery */
     remote_caps_ = {};
+    sep_sinks_ = 0;
+    sep_sinks_in_use_ = 0;
     disconnect_occurred_.store(false);
 
     /* Reset sync event flags.
@@ -1863,6 +2136,8 @@ bool BtStackTransport::reconnect() {
     /* Wait for connection + capability discovery */
     if (!wait_for_event(connect_event_, CONNECT_TIMEOUT_MS)) {
         fprintf(stderr, "BTstack: Reconnection timed out\n");
+        if (WaitForSingleObject(static_cast<HANDLE>(cancel_event_), 0) != WAIT_OBJECT_0)
+            check_stalled();  /* the caller sees stalled() */
         abort_pending_connection();
         return false;
     }
@@ -2068,6 +2343,10 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
 
     if (packet_type == HCI_EVENT_PACKET) {
         uint8_t event_type = hci_event_packet_get_type(packet);
+        /* Events from the controller (not BTstack's own 0x60..0xFE) */
+        if (event_type < 0x60 || event_type == HCI_EVENT_VENDOR_SPECIFIC) {
+            hci_events_seen_.fetch_add(1);
+        }
 
         switch (event_type) {
         case BTSTACK_EVENT_STATE: {
@@ -2076,7 +2355,25 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                 uint32_t elapsed = GetTickCount() - init_start_tick_;
                 fprintf(stderr, "BTstack: HCI ready (took %lu ms)\n", (unsigned long)elapsed);
                 if (product_id_ == 0) {
-                    /* Not Realtek: nothing to infer from the timing */
+                    /* Not Realtek: nothing to check */
+                } else if (rtk_version_seen_) {
+                    /* Judged by the LMP subversion, as BTstack's Realtek
+                     * driver does: a chip on ROM reports its ROM code. The
+                     * init time is no guide: firmware loaded in an earlier
+                     * session survives until the adapter loses power, and
+                     * the download is then skipped (fast init). */
+                    if (!is_realtek_rom_lmp(rtk_lmp_first_)) {
+                        fprintf(stderr, "BTstack: Realtek firmware already running from an "
+                                "earlier session (LMP subversion 0x%04X), download skipped\n",
+                                rtk_lmp_first_);
+                    } else if (hci_send_cmd(&hci_read_local_version_information) == ERROR_CODE_SUCCESS) {
+                        /* HCI init read the version only before the download:
+                         * read it again to see what runs now (on_local_version) */
+                        rtk_verify_pending_ = true;
+                    } else {
+                        fprintf(stderr, "BTstack: Realtek firmware download ran (ROM LMP "
+                                "subversion 0x%04X); result not verified\n", rtk_lmp_first_);
+                    }
                 } else if (elapsed < 500) {
                     fprintf(stderr, "BTstack: WARNING — HCI init < 500ms, "
                             "Realtek firmware likely NOT loaded\n");
@@ -2095,8 +2392,8 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
                 afh_stop();
                 playback_status_stop();
                 hci_ready_.store(false);
-                /* Signal init_event_ so shutdown() can proceed */
-                SetEvent(init_event_);
+                /* shutdown() waits for this */
+                SetEvent(static_cast<HANDLE>(hci_off_event_));
             }
             break;
         }
@@ -2105,6 +2402,11 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
             if (size >= 14 && hci_event_command_complete_get_command_opcode(packet) ==
                                   HCI_OPCODE_HCI_READ_LOCAL_VERSION_INFORMATION) {
                 on_local_version(packet);
+            }
+            /* controller_responds() */
+            if (hci_event_command_complete_get_command_opcode(packet) == HCI_OPCODE_HCI_READ_BD_ADDR &&
+                probe_pending_.exchange(false)) {
+                SetEvent(static_cast<HANDLE>(probe_event_));
             }
             on_radio_command_complete(packet, size);
             break;
@@ -2225,6 +2527,54 @@ void BtStackTransport::handle_packet(uint8_t packet_type, uint16_t channel,
         default:
             break;
         }
+    }
+}
+
+void BtStackTransport::sep_observer_trampoline(uint8_t packet_type, uint16_t channel,
+                                               uint8_t *packet, uint16_t size) {
+    (void)channel;
+    if (instance_ && packet_type == HCI_EVENT_PACKET &&
+        hci_event_packet_get_type(packet) == HCI_EVENT_AVDTP_META) {
+        instance_->handle_sep_event(packet, size);
+    }
+}
+
+void BtStackTransport::handle_sep_event(uint8_t *packet, uint16_t size) {
+    (void)size;
+    switch (hci_event_avdtp_meta_get_subevent_code(packet)) {
+    case AVDTP_SUBEVENT_SIGNALING_SEP_FOUND: {
+        uint8_t seid = avdtp_subevent_signaling_sep_found_get_remote_seid(packet);
+        bool in_use = avdtp_subevent_signaling_sep_found_get_in_use(packet) != 0;
+        uint8_t media = avdtp_subevent_signaling_sep_found_get_media_type(packet);
+        uint8_t type = avdtp_subevent_signaling_sep_found_get_sep_type(packet);
+        if (type == AVDTP_SINK && media == AVDTP_AUDIO) {
+            sep_sinks_++;
+            if (in_use) sep_sinks_in_use_++;
+        }
+        fprintf(stderr, "BTstack: Remote SEP SEID=%u %s %s%s\n", seid,
+                type == AVDTP_SINK ? "sink" : "source",
+                media == AVDTP_AUDIO ? "audio" : media == AVDTP_VIDEO ? "video" : "other",
+                in_use ? ", IN USE (codec not queried)" : "");
+        break;
+    }
+    case AVDTP_SUBEVENT_SIGNALING_SEP_DICOVERY_DONE:
+        /* Counted per discovery: a later one replaces the result */
+        remote_caps_.audio_sinks = sep_sinks_;
+        remote_caps_.audio_sinks_in_use = sep_sinks_in_use_;
+        sep_sinks_ = 0;
+        sep_sinks_in_use_ = 0;
+        fprintf(stderr, "BTstack: SEP discovery done: %u audio sink SEP(s), %u in use\n",
+                remote_caps_.audio_sinks, remote_caps_.audio_sinks_in_use);
+        if (remote_caps_.audio_sinks_in_use > 0) {
+            fprintf(stderr, "BTstack: Remote SEPs in use by another connection: %u of %u audio "
+                    "sink SEP(s); their codecs stay unavailable while the device streams to "
+                    "it (e.g. a phone or PC on a dual connection)\n",
+                    remote_caps_.audio_sinks_in_use, remote_caps_.audio_sinks);
+        }
+        fflush(stderr);
+        break;
+    default:
+        break;
     }
 }
 
@@ -2366,10 +2716,15 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
 
     case A2DP_SUBEVENT_SIGNALING_CAPABILITIES_COMPLETE: {
         /* All SEP capabilities have been discovered */
+        char in_use[64] = "";
+        if (remote_caps_.audio_sinks_in_use > 0) {
+            snprintf(in_use, sizeof(in_use), ", %u of %u audio sink SEP(s) in use",
+                     remote_caps_.audio_sinks_in_use, remote_caps_.audio_sinks);
+        }
         fprintf(stderr, "BTstack: Capability discovery complete (LDAC=%d, aptXHD=%d, aptXLL=%d, aptX=%d, "
-               "aptXAdaptive=%d [not encodable], SBC=%d, AAC=%d)\n",
+               "aptXAdaptive=%d [not encodable], SBC=%d, AAC=%d%s)\n",
                remote_caps_.ldac, remote_caps_.aptx_hd, remote_caps_.aptx_ll, remote_caps_.aptx,
-               remote_caps_.aptx_adaptive, remote_caps_.sbc, remote_caps_.aac);
+               remote_caps_.aptx_adaptive, remote_caps_.sbc, remote_caps_.aac, in_use);
         connected_.store(true);
         connect_result_.store(true);
         signal_event(connect_event_, true);
@@ -2598,6 +2953,16 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
             g_volume_queued.store(false);  /* a request lost with an earlier run loop */
         }
 
+        /* Remembered volume: set it first, while the AVRCP link is idle, so
+         * the audio does not start at the headphones' own (maybe loud) level */
+        int restore = g_restore_volume.load();
+        if (restore >= 0) {
+            fprintf(stderr, "BTstack: AVRCP restoring volume %d (%d%%)\n",
+                    restore, restore * 100 / 127);
+            g_volume_request.store(restore);
+            send_pending_volume();
+        }
+
         /* Subscribe to volume change notifications */
         avrcp_controller_enable_notification(avrcp_cid_,
             AVRCP_NOTIFICATION_EVENT_VOLUME_CHANGED);
@@ -2619,6 +2984,9 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
             std::lock_guard<std::mutex> lock(g_volume_mutex);
             g_volume_live = false;
         }
+        /* A reconnect restores the volume the headphones had last */
+        if (g_restore_volume.load() >= 0 && g_volume.load() >= 0)
+            g_restore_volume.store(g_volume.load());
         g_volume.store(-1);
         g_volume_request.store(-1);
         break;
@@ -2632,6 +3000,7 @@ void BtStackTransport::handle_avrcp_event(uint8_t *packet, uint16_t size) {
         /* Re-register notification (AVRCP spec requires re-subscribing after each) */
         avrcp_controller_enable_notification(avrcp_cid_,
             AVRCP_NOTIFICATION_EVENT_VOLUME_CHANGED);
+        send_pending_volume();  /* one that found AVRCP busy */
         break;
     }
 

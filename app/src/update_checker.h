@@ -16,12 +16,16 @@ struct UpdateCheckResult {
 };
 
 /* Blocking HTTPS request to the GitHub Releases API.
+ * include_prereleases: also consider releases marked as pre-release
+ * (/releases/latest never returns one).
  * Call from a worker thread, never from the GUI thread. */
-UpdateCheckResult CheckLatestRelease();
+UpdateCheckResult CheckLatestRelease(bool include_prereleases);
 
-/* Compare dotted version strings numerically ("1.2.0" > "1.10.0" is false).
- * A leading 'v'/'V' and pre-release suffixes ("-beta") are ignored.
- * Returns <0, 0 or >0 like strcmp. */
+/* Compare version strings with semver precedence: the dotted core numerically
+ * ("1.2.0" > "1.10.0" is false), then a pre-release ranks below its release
+ * ("1.1.0-beta.2" < "1.1.0") and pre-release identifiers compare field by
+ * field ("beta.2" < "beta.10" < "rc.1"). A leading 'v'/'V' and build
+ * metadata ("+abc") are ignored. Returns <0, 0 or >0 like strcmp. */
 int CompareVersions(const std::string &a, const std::string &b);
 
 /* Releases page, used as fallback when the API is unreachable. */

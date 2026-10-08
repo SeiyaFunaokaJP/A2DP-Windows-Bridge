@@ -26,16 +26,19 @@
 #include "aac_encoder.h"
 #include "bt_device.h"
 #include "localization.h"
+#include "volume_sync.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
+#include <cctype>
 #include <memory>
 #include <vector>
 #include <mutex>
 #include <windows.h>
 #include <avrt.h>
+#include <powrprof.h>
 
 /* ======================================================================== */
 /* SPSC ring buffer for WASAPI → encode thread                               */
@@ -460,17 +463,66 @@ static const char *codec_name_for(AudioCodec c) {
     return "Unknown";
 }
 
+static std::wstring utf8_to_wide(const std::string &s) {
+    std::wstring w;
+    int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
+    if (len > 0) {
+        w.resize(len);
+        MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &w[0], len);
+    }
+    return w;
+}
+
+/* Key of the remembered headphone volume: the device address, upper case */
+static std::string device_volume_key(const std::string &address) {
+    std::string key = address;
+    for (char &c : key) c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
+    return key;
+}
+
 } /* anonymous namespace */
 
 /* ======================================================================== */
 /* A2dpService                                                               */
 /* ======================================================================== */
 
+void A2dpService::set_saved_volumes(const std::map<std::string, int> &volumes) {
+    std::lock_guard<std::mutex> lock(saved_volumes_mutex_);
+    saved_volumes_.clear();
+    for (const auto &kv : volumes)
+        if (kv.second >= 0 && kv.second <= 127)
+            saved_volumes_[device_volume_key(kv.first)] = kv.second;
+}
+
+std::map<std::string, int> A2dpService::saved_volumes() const {
+    std::lock_guard<std::mutex> lock(saved_volumes_mutex_);
+    return saved_volumes_;
+}
+
+void A2dpService::remember_volume(const std::string &address, int volume) {
+    if (volume < 0) return;  /* not known: keep the one saved last */
+    std::lock_guard<std::mutex> lock(saved_volumes_mutex_);
+    auto it = saved_volumes_.find(address);
+    if (it != saved_volumes_.end() && it->second == volume) return;
+    saved_volumes_[address] = volume;
+    saved_volumes_changed_.store(true);
+}
+
 A2dpService::A2dpService() {
     check_firmware_present();
+
+    /* Without a window, also while the app sits in the tray */
+    DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS params = {};
+    params.Callback = &A2dpService::on_power_event;
+    params.Context = this;
+    HPOWERNOTIFY handle = nullptr;
+    DWORD err = PowerRegisterSuspendResumeNotification(DEVICE_NOTIFY_CALLBACK, &params, &handle);
+    if (err == ERROR_SUCCESS) power_notify_ = handle;
+    else LOG_WARN("A2dpService: no sleep / resume notifications (error %lu)", (unsigned long)err);
 }
 
 A2dpService::~A2dpService() {
+    if (power_notify_) PowerUnregisterSuspendResumeNotification(static_cast<HPOWERNOTIFY>(power_notify_));
     stop_streaming();
     /* A joinable std::thread must be joined before destruction or
      * std::terminate is called. Blocks briefly if the worker is still
@@ -700,11 +752,85 @@ void A2dpService::download_firmware() {
 /* BTstack lifecycle                                                         */
 /* ======================================================================== */
 
+/* Wait for the controller to answer when checking a stack before use */
+static const uint32_t CONTROLLER_PROBE_MS = 2000;
+/* Time for a USB adapter to come back after resume before it is opened */
+static const unsigned long RESUME_SETTLE_MS = 3000;
+
+unsigned long __stdcall A2dpService::on_power_event(void *context, unsigned long type, void *) {
+    auto *self = static_cast<A2dpService *>(context);
+    if (type == PBT_APMSUSPEND) {
+        LOG_INFO("A2dpService: the PC is going to sleep");
+    } else if (type == PBT_APMRESUMEAUTOMATIC || type == PBT_APMRESUMESUSPEND) {
+        /* Both may come for one resume; the first one counts */
+        if (!self->btstack_stale_.exchange(true)) {
+            LOG_INFO("A2dpService: the PC resumed from sleep, Bluetooth will be restarted");
+            unsigned long now = GetTickCount();
+            self->resume_tick_.store(now ? now : 1);
+        }
+    }
+    return 0;
+}
+
+void A2dpService::wait_after_resume() {
+    unsigned long resumed = resume_tick_.load();
+    if (resumed == 0) return;
+    unsigned long since = GetTickCount() - resumed;
+    if (since >= RESUME_SETTLE_MS) return;
+    LOG_INFO("A2dpService: waiting %lu ms for the adapter after resume", RESUME_SETTLE_MS - since);
+    while (GetTickCount() - resumed < RESUME_SETTLE_MS && !stop_requested_.load())
+        Sleep(100);
+}
+
 bool A2dpService::ensure_btstack_init() {
     std::lock_guard<std::mutex> lock(transport_mutex_);
-    if (btstack_ready_.load()) return true;
-    if (btstack_init_failed_.load()) return false;
+    if (btstack_ready_.load()) {
+        /* A stack that stopped working stays so until it is started anew
+         * (issues #42, #43: only an app restart helped) */
+        const char *why = nullptr;
+        if (btstack_stale_.load())
+            why = "the PC resumed from sleep";
+        else if (!transport_->controller_responds(CONTROLLER_PROBE_MS))
+            why = "the Bluetooth adapter stopped answering";
+        if (!why) return true;
+        LOG_WARN("A2dpService: restarting BTstack: %s", why);
+        transport_->shutdown();
+        transport_.reset();
+        btstack_ready_.store(false);
+    }
+    btstack_stale_.store(false);
+    wait_after_resume();
 
+    /* Tried again on every call: BtStackTransport::shutdown() releases the
+     * adapter and resets BTstack, so a failed init no longer needs an app
+     * restart. A controller that did not answer at all is reopened once
+     * right away; opening it resets its USB pipes, which can be enough. */
+    const int attempts = 2;
+    for (int attempt = 1; attempt <= attempts; attempt++) {
+        if (attempt > 1) {
+            LOG_WARN("A2dpService: Bluetooth adapter did not answer, opening it again (%d/%d)",
+                     attempt, attempts);
+        }
+        if (init_btstack_transport()) {
+            btstack_ready_.store(true);
+            btstack_init_failed_.store(false);
+            btstack_no_answer_.store(false);
+            return true;
+        }
+        bool no_answer = transport_->last_init_failure() == BtStackTransport::InitFailure::NoAnswer;
+        transport_.reset();
+        btstack_no_answer_.store(no_answer);
+        if (!no_answer) break;
+    }
+    btstack_init_failed_.store(true);
+    return false;
+}
+
+const char *A2dpService::btstack_init_error_key() const {
+    return btstack_no_answer_.load() ? "error.btstack_no_answer" : "error.btstack_init";
+}
+
+bool A2dpService::init_btstack_transport() {
     transport_ = std::make_unique<BtStackTransport>();
     transport_->set_hci_dump_enabled(false);
     transport_->set_hci_capture_enabled(debug_mode_);
@@ -732,12 +858,7 @@ bool A2dpService::ensure_btstack_init() {
         }
     }
 
-    if (!transport_->init(nullptr)) {
-        btstack_init_failed_.store(true);
-        return false;
-    }
-    btstack_ready_.store(true);
-    return true;
+    return transport_->init(nullptr);
 }
 
 void A2dpService::reset_btstack() {
@@ -752,6 +873,17 @@ void A2dpService::shutdown_btstack() {
         transport_.reset();
     }
     btstack_ready_.store(false);
+}
+
+BtStackTransport *A2dpService::restart_btstack(const char *why) {
+    LOG_WARN("A2dpService: restarting BTstack: %s", why);
+    shutdown_btstack();
+    if (!ensure_btstack_init()) {
+        LOG_ERROR("A2dpService: BTstack restart failed");
+        return nullptr;
+    }
+    transport_->set_media_payload_limit(active_profile_.max_media_payload);
+    return transport_.get();
 }
 
 /* ======================================================================== */
@@ -788,10 +920,7 @@ void A2dpService::scan_thread_func() {
 
 void A2dpService::scan_thread_func_inner() {
     if (!ensure_btstack_init()) {
-        if (btstack_init_failed_.load())
-            notify_state(State::Error, L("error.btstack_init_restart"));
-        else
-            notify_state(State::Error, L("error.btstack_init"));
+        notify_state(State::Error, L(btstack_init_error_key()));
         scanning_.store(false);
         {
             std::lock_guard<std::mutex> lock(cb_mutex_);
@@ -987,7 +1116,7 @@ void A2dpService::streaming_thread_func_inner() {
     /* Initialize BTstack */
     notify_state(State::Connecting, L("status.initializing_btstack"));
     if (!ensure_btstack_init()) {
-        notify_state(State::Error, L("error.btstack_init"));
+        notify_state(State::Error, L(btstack_init_error_key()));
         running_.store(false);
         return;
     }
@@ -998,16 +1127,43 @@ void A2dpService::streaming_thread_func_inner() {
 
     if (stop_requested_.load()) { running_.store(false); notify_state(State::Idle, L("status.ready")); return; }
 
+    /* Remembered headphone volume, set as soon as AVRCP connects */
+    const std::string volume_key = device_volume_key(p.device_address);
+    int restore_volume = -1;
+    if (remember_volume_.load()) {
+        std::lock_guard<std::mutex> lock(saved_volumes_mutex_);
+        auto it = saved_volumes_.find(volume_key);
+        if (it != saved_volumes_.end()) restore_volume = it->second;
+    }
+    BtStackTransport::set_restore_volume(restore_volume);
+
     /* Connect */
     notify_state(State::Connecting, L("status.connecting_device"));
-    bool connected = transport->connect_a2dp_retrying(
-        target_addr,
-        [this]() { return stop_requested_.load(); },
-        [this](int attempt, int attempts) {
-            char text[256];
-            snprintf(text, sizeof(text), L("status.connecting_retry"), attempt, attempts);
-            notify_state(State::Connecting, text);
-        });
+    auto connect_device = [&](BtStackTransport *t) {
+        return t->connect_a2dp_retrying(
+            target_addr,
+            [this]() { return stop_requested_.load(); },
+            [this](int attempt, int attempts) {
+                char text[256];
+                snprintf(text, sizeof(text), L("status.connecting_retry"), attempt, attempts);
+                notify_state(State::Connecting, text);
+            });
+    };
+    bool connected = connect_device(transport);
+    if (!connected && !stop_requested_.load() &&
+        transport->last_connect_failure() == BtStackTransport::ConnectFailure::Stalled) {
+        /* Not the device: the stack it went through stopped working */
+        notify_state(State::Connecting, L("status.initializing_btstack"));
+        transport = restart_btstack("the Bluetooth adapter stopped working");
+        if (!transport) {
+            notify_state(State::Error, L(btstack_init_error_key()));
+            running_.store(false);
+            return;
+        }
+        if (stop_requested_.load()) { running_.store(false); notify_state(State::Idle, L("status.ready")); return; }
+        notify_state(State::Connecting, L("status.connecting_device"));
+        connected = connect_device(transport);
+    }
     if (!connected) {
         if (stop_requested_.load()) {
             running_.store(false);
@@ -1015,6 +1171,9 @@ void A2dpService::streaming_thread_func_inner() {
             return;
         }
         switch (transport->last_connect_failure()) {
+        case BtStackTransport::ConnectFailure::Stalled:
+            notify_state(State::Error, L("error.btstack_no_answer"));
+            break;
         case BtStackTransport::ConnectFailure::NoAnswer:
             notify_state(State::Error, L("error.connect_no_answer"));
             break;
@@ -1043,6 +1202,19 @@ void A2dpService::streaming_thread_func_inner() {
     auto caps = transport->get_remote_caps();
     AudioCodec selected_codec = AudioCodec::LDAC;
     bool found = false;
+    /* Status text when the requested codec was replaced (empty = none) */
+    std::string fallback_text;
+
+    auto pick_best = [&caps](AudioCodec &out) {
+        if (caps.ldac)         out = AudioCodec::LDAC;
+        else if (caps.aptx_hd) out = AudioCodec::AptxHD;
+        else if (caps.aptx_ll) out = AudioCodec::AptxLL;
+        else if (caps.aptx)    out = AudioCodec::Aptx;
+        else if (caps.aac)     out = AudioCodec::AAC;
+        else if (caps.sbc)     out = AudioCodec::SBC;
+        else return false;
+        return true;
+    };
 
     if (!auto_codec) {
         switch (requested_codec) {
@@ -1054,27 +1226,40 @@ void A2dpService::streaming_thread_func_inner() {
         case AudioCodec::AAC:    if (caps.aac)     { selected_codec = AudioCodec::AAC;    found = true; } break;
         }
         if (!found) {
-            char msg[256];
+            char msg[512];
             bool aptx_family = (requested_codec == AudioCodec::Aptx ||
                                 requested_codec == AudioCodec::AptxHD ||
                                 requested_codec == AudioCodec::AptxLL);
-            if (aptx_family && caps.aptx_adaptive)
+            if (caps.audio_sinks_in_use > 0)
+                /* The codec may be on an SEP another device streams to
+                 * (multipoint): BTstack does not query SEPs in use */
+                snprintf(msg, sizeof(msg), L("error.codec_sep_in_use"), codec_name_for(requested_codec),
+                         caps.audio_sinks_in_use, caps.audio_sinks);
+            else if (aptx_family && caps.aptx_adaptive)
                 /* Sink offers only aptX Adaptive, which has no open encoder */
                 snprintf(msg, sizeof(msg), L("error.codec_adaptive_only"), codec_name_for(requested_codec));
             else
                 snprintf(msg, sizeof(msg), L("error.codec_not_supported"), codec_name_for(requested_codec));
-            notify_state(State::Error, msg);
-            transport->disconnect();
-            running_.store(false);
-            return;
+
+            if (p.codec_fallback && pick_best(selected_codec)) {
+                found = true;
+                LOG_WARN("A2dpService: codec fallback: %s not available, using %s (%s)",
+                         codec_name_for(requested_codec), codec_name_for(selected_codec), msg);
+                char text[256];
+                snprintf(text, sizeof(text),
+                         L(caps.audio_sinks_in_use > 0 ? "status.connected_fallback_in_use"
+                                                       : "status.connected_fallback"),
+                         codec_name_for(requested_codec), codec_name_for(selected_codec));
+                fallback_text = text;
+            } else {
+                notify_state(State::Error, msg);
+                transport->disconnect();
+                running_.store(false);
+                return;
+            }
         }
     } else {
-        if (caps.ldac)        { selected_codec = AudioCodec::LDAC;   found = true; }
-        else if (caps.aptx_hd){ selected_codec = AudioCodec::AptxHD; found = true; }
-        else if (caps.aptx_ll){ selected_codec = AudioCodec::AptxLL; found = true; }
-        else if (caps.aptx)   { selected_codec = AudioCodec::Aptx;   found = true; }
-        else if (caps.aac)    { selected_codec = AudioCodec::AAC;    found = true; }
-        else if (caps.sbc)    { selected_codec = AudioCodec::SBC;    found = true; }
+        found = pick_best(selected_codec);
     }
     if (!found) {
         notify_state(State::Error, L("error.no_compatible_codec"));
@@ -1312,10 +1497,12 @@ void A2dpService::streaming_thread_func_inner() {
     }
 
     /* Update status */
-    notify_state(State::Streaming, L("status.connected"));
+    notify_state(State::Streaming, fallback_text.empty() ? std::string(L("status.connected")) : fallback_text);
     notify_stream_info({codec_name_for(selected_codec),
                         encoder->get_bitrate_kbps(), sr, use_ch,
-                        sr, ch, source_bits});
+                        sr, ch, source_bits,
+                        fallback_text.empty() ? std::string() : std::string(codec_name_for(requested_codec)),
+                        !fallback_text.empty() && caps.audio_sinks_in_use > 0});
 
     /* Save device for future use */
     {
@@ -1383,11 +1570,29 @@ void A2dpService::streaming_thread_func_inner() {
         return;
     }
 
+    /* Headphone volume and a Windows volume: one volume (volume_sync.h).
+     * Auto: the device the audio comes from; in Application mode the
+     * default output device, where the volume keys act. */
+    bool sync_volume = !p.test_tone && p.volume_sync != "off";
+    std::wstring volume_device_id;  /* empty = the default output device */
+    if (p.volume_sync == "device")
+        volume_device_id = utf8_to_wide(p.volume_device_id);
+    else if (cmode == CaptureMode::VirtualDevice)
+        volume_device_id = utf8_to_wide(p.audio_device_id);
+    if (sync_volume)
+        LOG_INFO("A2dpService: volume sync with %s", p.volume_sync == "device"
+                 ? p.volume_device_name.c_str() : "the captured device");
+    VolumeSync volume_sync(volume_device_id);
+
     /* Main loop: keep streaming, auto-reconnect on disconnect */
     try {
     int app_ticks = 0;
     while (!stop_requested_.load()) {
         Sleep(200);
+
+        volume_sync.tick(sync_volume);
+        if (remember_volume_.load())
+            remember_volume(volume_key, BtStackTransport::remote_volume());
 
         /* Application capture follows the app: it may quit and start again */
         if (app_mode) {
@@ -1401,12 +1606,34 @@ void A2dpService::streaming_thread_func_inner() {
             }
         }
 
-        if (transport->check_disconnected()) {
-            LOG_WARN("A2dpService: connection lost, attempting reconnect");
+        /* Sleep, or an adapter that stopped working, leaves a stack that
+         * reports no disconnect: it is started anew and the device
+         * connected again on it */
+        bool lost = transport->check_disconnected();
+        const char *restart_why = nullptr;
+        if (btstack_stale_.load())
+            restart_why = "the PC resumed from sleep";
+        else if (transport->stalled())
+            restart_why = "the Bluetooth adapter stopped working";
+        if (lost || restart_why) {
+            if (restart_why) LOG_WARN("A2dpService: %s, reconnecting", restart_why);
+            else LOG_WARN("A2dpService: connection lost, attempting reconnect");
             notify_state(State::Reconnecting, L("status.connection_lost"));
 
             g_ctx.transport.store(nullptr);
             g_ctx.encoder.store(nullptr);
+
+            /* A new stack knows neither the device nor the stream: connect
+             * and configure in full until that succeeds */
+            bool fresh_stack = false;
+            auto connect_on_fresh_stack = [&]() {
+                if (!transport->connect_a2dp(target_addr)) return false;
+                if (transport->configure_codec(selected_codec, sr, static_cast<uint8_t>(use_ch)) &&
+                    transport->start_stream())
+                    return true;
+                transport->disconnect();
+                return false;
+            };
 
             bool reconnected = false;
             for (int attempt = 1; attempt <= 10 && !stop_requested_.load(); attempt++) {
@@ -1419,7 +1646,23 @@ void A2dpService::streaming_thread_func_inner() {
 
                 if (stop_requested_.load()) break;
 
-                if (transport->reconnect()) {
+                if (!restart_why) {
+                    if (!transport) restart_why = "the last restart failed";
+                    else if (btstack_stale_.load()) restart_why = "the PC resumed from sleep";
+                    else if (transport->stalled()) restart_why = "the Bluetooth adapter stopped working";
+                }
+                if (restart_why) {
+                    transport = restart_btstack(restart_why);
+                    restart_why = nullptr;
+                    if (!transport) {
+                        LOG_WARN("A2dpService: reconnect attempt %d failed (no Bluetooth adapter)", attempt);
+                        continue;
+                    }
+                    fresh_stack = true;
+                    if (stop_requested_.load()) break;
+                }
+
+                if (fresh_stack ? connect_on_fresh_stack() : transport->reconnect()) {
                     LOG_INFO("A2dpService: reconnected on attempt %d", attempt);
                     reconnected = true;
                     break;
@@ -1465,8 +1708,12 @@ void A2dpService::streaming_thread_func_inner() {
     g_ctx.transport.store(nullptr);
     g_ctx.ring.destroy();
 
-    transport->stop_stream();
-    transport->disconnect();
+    if (transport) {  /* none after a failed BTstack restart */
+        transport->stop_stream();
+        transport->disconnect();
+    }
+    volume_sync.stop();
+    BtStackTransport::set_restore_volume(-1);
 
     if (!original_default_device_.empty()) {
         AudioDeviceEnumerator::set_default_device(original_default_device_);

@@ -9,6 +9,7 @@
  */
 
 #include "bt_adapter_enum.h"
+#include "debug_log.h"
 
 #include <windows.h>
 #include <setupapi.h>
@@ -19,6 +20,10 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
 /* BTstack Realtek chipset API (C linkage) */
 extern "C" {
@@ -431,9 +436,31 @@ std::vector<FirmwareFileEntry> BtAdapterEnumerator::scan_firmware_files(const st
     return result;
 }
 
+/* Enumeration report lines: level 'I' (info), 'W' (warning) or ' ' (detail
+ * line, indented). Printed only when it differs from the previous report:
+ * enumerate() runs several times per start (firmware check, BTstack init,
+ * settings), and repeating unchanged lines only buried the ones that matter. */
+using ReportLine = std::pair<char, std::string>;
+
+static void print_report(const std::vector<ReportLine> &report)
+{
+    static std::mutex mutex;
+    static std::vector<ReportLine> last;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (report == last) return;
+    last = report;
+    for (const auto &l : report) {
+        if (l.first == 'W')      LOG_WARN("%s", l.second.c_str());
+        else if (l.first == 'I') LOG_INFO("%s", l.second.c_str());
+        else                     fprintf(stderr, "%s\n", l.second.c_str());
+    }
+}
+
 std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
 {
     std::vector<BtAdapterInfo> result;
+    std::vector<ReportLine> report;
+    int skipped = 0;
 
     HDEVINFO dev_info = SetupDiGetClassDevsA(
         &GUID_DEVINTERFACE_USB_DEVICE, nullptr, nullptr,
@@ -513,23 +540,32 @@ std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
                       _strnicmp(service.c_str(), "usbhub", 6) != 0;
         if (is_bt || winusb || bt_vid || has_bluetooth_compat_id(dev_info, dev_data) ||
             _stricmp(setup_class.c_str(), "Bluetooth") == 0) {
-            fprintf(stderr, "BtAdapterEnumerator: USB %04X:%04X driver=%s class=%s -> %s%s%s\n",
-                    vid, pid, service.empty() ? "(none)" : service.c_str(),
-                    setup_class.empty() ? "(none)" : setup_class.c_str(),
-                    is_bt ? (vendor_class ? "adapter (vendor class FF/01/01)" : "adapter")
-                          : "skipped",
-                    is_bt || why.empty() ? "" : ": ", is_bt ? "" : why.c_str());
+            /* A device on another driver (e.g. the PC's built-in Bluetooth
+             * on the Windows driver) is expected and only informational; a
+             * WinUSB device that cannot be used is worth a warning */
+            bool warn = !is_bt && winusb;
+            char line[512];
+            snprintf(line, sizeof(line), "BtAdapterEnumerator: USB %04X:%04X driver=%s class=%s -> %s%s%s",
+                     vid, pid, service.empty() ? "(none)" : service.c_str(),
+                     setup_class.empty() ? "(none)" : setup_class.c_str(),
+                     is_bt ? (vendor_class ? "adapter (vendor class FF/01/01)" : "adapter")
+                           : "skipped",
+                     is_bt || why.empty() ? "" : ": ", is_bt ? "" : why.c_str());
+            report.push_back({warn ? 'W' : 'I', line});
+            if (!is_bt) skipped++;
+            const char *hint = nullptr;
             if (service.empty())
-                fprintf(stderr, "  no driver installed: install WinUSB with Zadig\n");
+                hint = "  no driver installed: install WinUSB with Zadig";
             else if (_stricmp(service.c_str(), "usbccgp") == 0)
-                fprintf(stderr, "  composite device: WinUSB must replace the whole device "
-                        "in Zadig, not one of its interfaces\n");
+                hint = "  composite device: WinUSB must replace the whole device "
+                       "in Zadig, not one of its interfaces";
             else if (!winusb)
-                fprintf(stderr, "  not bound to WinUSB: usable only once Zadig replaces "
-                        "this driver with WinUSB\n");
+                hint = "  not bound to WinUSB (Windows uses it): usable only once Zadig "
+                       "replaces this driver with WinUSB";
             else if (why.rfind("open failed (error 5)", 0) == 0)
-                fprintf(stderr, "  WinUSB allows one user at a time: close any other "
-                        "A2DPWB or tool holding the adapter\n");
+                hint = "  WinUSB allows one user at a time: close any other "
+                       "A2DPWB or tool holding the adapter";
+            if (hint) report.push_back({' ', hint});
         }
 
         if (is_bt) {
@@ -559,11 +595,20 @@ std::vector<BtAdapterInfo> BtAdapterEnumerator::enumerate()
 
     SetupDiDestroyDeviceInfoList(dev_info);
 
-    fprintf(stderr, "BtAdapterEnumerator: found %zu adapter(s)\n", result.size());
+    char line[512];
+    snprintf(line, sizeof(line), "BtAdapterEnumerator: found %zu adapter(s)", result.size());
+    report.push_back({'I', line});
     for (const auto &a : result) {
-        fprintf(stderr, "  %s (vid=%04X pid=%04X rtk_pid=0x%04X vendor=%s)\n",
-                a.display_name.c_str(), a.vid, a.pid, a.realtek_pid, vendor_name(a.vendor));
+        snprintf(line, sizeof(line), "  %s (vid=%04X pid=%04X rtk_pid=0x%04X vendor=%s)",
+                 a.display_name.c_str(), a.vid, a.pid, a.realtek_pid, vendor_name(a.vendor));
+        report.push_back({' ', line});
     }
+    if (result.empty() && skipped > 0) {
+        snprintf(line, sizeof(line), "BtAdapterEnumerator: no usable adapter; %d Bluetooth "
+                 "device(s) skipped (see the lines above)", skipped);
+        report.push_back({'W', line});
+    }
+    print_report(report);
 
     return result;
 }

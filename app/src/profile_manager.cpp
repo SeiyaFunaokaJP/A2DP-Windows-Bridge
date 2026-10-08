@@ -33,6 +33,7 @@ void ProfileManager::load(uint16_t legacy_max_media_payload) {
             p.codec          = item.value("codec", "auto");
             p.quality        = item.value("quality", "hq");
             p.abr            = item.value("abr", false);
+            p.codec_fallback = item.value("codec_fallback", true);
             p.sample_rate    = item.value("sample_rate", 0u);
             p.bit_depth      = item.value("bit_depth", 0u);
             p.capture_mode     = item.value("capture_mode", std::string("loopback"));
@@ -41,6 +42,11 @@ void ProfileManager::load(uint16_t legacy_max_media_payload) {
             p.auto_switch_device = item.value("auto_switch_device", true);
             p.app_exe          = item.value("app_exe", std::string());
             p.app_name         = item.value("app_name", std::string());
+            p.volume_sync      = item.value("volume_sync", std::string("auto"));
+            p.volume_device_id = item.value("volume_device_id", std::string());
+            p.volume_device_name = item.value("volume_device_name", std::string());
+            if (p.volume_sync != "off" && (p.volume_sync != "device" || p.volume_device_id.empty()))
+                p.volume_sync = "auto";
             if (item.contains("max_media_payload")) {
                 int v = item.value("max_media_payload", static_cast<int>(MEDIA_PAYLOAD_LIMIT_DEFAULT));
                 p.max_media_payload = clamp_media_payload_limit(v > 0 ? static_cast<uint32_t>(v) : 0u);
@@ -70,6 +76,7 @@ void ProfileManager::save() const {
             {"codec",          p.codec},
             {"quality",        p.quality},
             {"abr",            p.abr},
+            {"codec_fallback", p.codec_fallback},
             {"sample_rate",    p.sample_rate},
             {"bit_depth",      p.bit_depth},
             {"capture_mode",     p.capture_mode},
@@ -78,6 +85,9 @@ void ProfileManager::save() const {
             {"auto_switch_device", p.auto_switch_device},
             {"app_exe",          p.app_exe},
             {"app_name",         p.app_name},
+            {"volume_sync",      p.volume_sync},
+            {"volume_device_id", p.volume_device_id},
+            {"volume_device_name", p.volume_device_name},
             {"max_media_payload", p.max_media_payload}
         });
     }

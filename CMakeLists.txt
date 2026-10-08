@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(a2dpwb VERSION 1.0.16 LANGUAGES C CXX)
+project(a2dpwb VERSION 1.0.17 LANGUAGES C CXX)
+
+# Pre-release suffix such as "-beta.1", empty for a release. It is part of the
+# version the app reports and compares in its update check (1.1.0-beta.1 <
+# 1.1.0), so it must match the release tag (v1.1.0-beta.1).
+set(A2DPWB_VERSION_SUFFIX "")
+set(A2DPWB_VERSION "${PROJECT_VERSION}${A2DPWB_VERSION_SUFFIX}")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -91,6 +97,10 @@ if(EXISTS ${BTSTACK_ROOT}/src/hci.c)
     file(GLOB BTSTACK_CLASSIC_SRC ${BTSTACK_ROOT}/src/classic/*.c)
     # Windows platform sources (run loop, WinUSB HCI transport, TLV storage)
     file(GLOB BTSTACK_WINDOWS_SRC ${BTSTACK_ROOT}/platform/windows/*.c)
+    # The WinUSB HCI transport is replaced by a modified copy in app/src
+    # (pipe reset on open, HCI event read recovery, bounded close)
+    list(REMOVE_ITEM BTSTACK_WINDOWS_SRC ${BTSTACK_ROOT}/platform/windows/hci_transport_h2_winusb.c)
+    list(APPEND BTSTACK_WINDOWS_SRC ${CMAKE_SOURCE_DIR}/app/src/hci_transport_h2_winusb.c)
     # PBAP client (phonebook access) is unused by the app and is the only
     # classic source that needs 3rd-party md5 / yxml.
     list(REMOVE_ITEM BTSTACK_CLASSIC_SRC ${BTSTACK_ROOT}/src/classic/pbap_client.c)

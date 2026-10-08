@@ -25,6 +25,7 @@
 #include <thread>
 #include <memory>
 #include <functional>
+#include <map>
 
 class BtStackTransport;
 class WasapiCapture;
@@ -63,6 +64,10 @@ public:
         uint32_t    source_sample_rate = 0;
         uint32_t    source_channels = 0;
         uint32_t    source_bit_depth = 0;
+        /* Codec fallback: the profile's codec the device did not offer
+         * (empty when the profile's codec is in use) */
+        std::string requested_codec;
+        bool        requested_in_use = false; /* maybe on an endpoint another device streams to */
     };
 
     /* ---- Callbacks (called from worker threads, must be thread-safe) ---- */
@@ -108,6 +113,16 @@ public:
     /* ---- Debug ---- */
     void set_debug_mode(bool enabled) { debug_mode_ = enabled; }
 
+    /* ---- Headphone volume ---- */
+    /* Remember the headphones' volume per device address (upper case
+     * XX:XX:XX:XX:XX:XX) and set it again when they connect. The table is
+     * updated while streaming; saved_volumes_changed() reports (once) that
+     * it changed, for saving. Thread-safe. */
+    void set_remember_volume(bool enabled) { remember_volume_.store(enabled); }
+    void set_saved_volumes(const std::map<std::string, int> &volumes);
+    std::map<std::string, int> saved_volumes() const;
+    bool saved_volumes_changed() { return saved_volumes_changed_.exchange(false); }
+
     /* Force BTstack shutdown so next connect reinitializes with new settings */
     void reset_btstack();
 
@@ -118,7 +133,23 @@ public:
 private:
     /* ---- BTstack lifecycle ---- */
     bool ensure_btstack_init();
+    bool init_btstack_transport();  /* one BtStackTransport::init(); transport_mutex_ held */
     void shutdown_btstack();
+    /* Streaming thread: BTstack shut down and initialized again, for a stack
+     * that stopped working or is left from before sleep. The new transport,
+     * or nullptr if init failed. */
+    BtStackTransport *restart_btstack(const char *why);
+    /* Give the adapter time to come back after the PC resumed from sleep */
+    void wait_after_resume();
+
+    /* ---- Sleep / resume ---- */
+    static unsigned long __stdcall on_power_event(void *context, unsigned long type, void *setting);
+    void *power_notify_ = nullptr;  /* HPOWERNOTIFY */
+    /* The PC resumed from sleep since BTstack was initialized: the adapter
+     * lost power or was re-enumerated, so the stack is restarted before the
+     * next use (an app restart was needed before) */
+    std::atomic<bool> btstack_stale_{false};
+    std::atomic<unsigned long> resume_tick_{0};  /* GetTickCount() of the last resume, 0 = none */
 
     /* ---- Scanning thread ---- */
     void scan_thread_func();
@@ -150,6 +181,10 @@ private:
     std::mutex transport_mutex_;
     std::atomic<bool> btstack_ready_{false};
     std::atomic<bool> btstack_init_failed_{false};
+    /* the last failed init: the controller did not answer at all */
+    std::atomic<bool> btstack_no_answer_{false};
+    /* Error text (L() key) for a failed ensure_btstack_init() */
+    const char *btstack_init_error_key() const;
 
     /* ---- Worker thread ---- */
     std::thread worker_thread_;
@@ -172,6 +207,13 @@ private:
 
     /* ---- Debug ---- */
     bool debug_mode_ = false;
+
+    /* ---- Headphone volume ---- */
+    std::atomic<bool> remember_volume_{false};
+    mutable std::mutex saved_volumes_mutex_;
+    std::map<std::string, int> saved_volumes_;
+    std::atomic<bool> saved_volumes_changed_{false};
+    void remember_volume(const std::string &address, int volume);
 
     /* ---- Firmware ---- */
     bool firmware_present_ = false;

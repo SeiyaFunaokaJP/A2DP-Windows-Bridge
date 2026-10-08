@@ -54,6 +54,7 @@ add_executable(A2DPWB WIN32
     src/btstack_link_key_db_file.c
     src/config_path.cpp
     src/a2dp_service.cpp
+    src/volume_sync.cpp
     src/wx_app.cpp
     src/wx_main_frame.cpp
     src/wx_profile_dialog.cpp
@@ -136,11 +137,12 @@ target_link_libraries(A2DPWB PRIVATE
     winhttp        # Update check (GitHub Releases API)
     iphlpapi       # GetAdaptersAddresses (finding the measuring receiver)
     wlanapi        # Wi-Fi survey for AFH host channel classification
+    powrprof       # PowerRegisterSuspendResumeNotification (restart Bluetooth after sleep)
 )
 
 # Application version
 target_compile_definitions(A2DPWB PRIVATE
-    APP_VERSION="${PROJECT_VERSION}"
+    APP_VERSION="${A2DPWB_VERSION}"
 )
 
 # LDAC ABR (Adaptive Bit Rate) support - available when libldac includes abr/
@@ -209,7 +211,7 @@ find_package(Git QUIET)
 set(A2DPWB_DIST_DIR ${CMAKE_BINARY_DIR}/dist)
 add_custom_target(A2DPWB_dist
     COMMAND ${CMAKE_COMMAND}
-        -DAPP_VERSION=${PROJECT_VERSION}
+        -DAPP_VERSION=${A2DPWB_VERSION}
         -DAPP_EXE=$<TARGET_FILE:A2DPWB>
         -DBUILD_CONFIG=$<CONFIG>
         -DSRC_DIR=${CMAKE_SOURCE_DIR}
@@ -218,7 +220,7 @@ add_custom_target(A2DPWB_dist
         -DDIST_ROOT=${A2DPWB_DIST_DIR}
         -DGIT_EXE=${GIT_EXECUTABLE}
         -P ${CMAKE_SOURCE_DIR}/cmake/make_dist.cmake
-    COMMENT "Packaging ${A2DPWB_DIST_DIR}/A2DPWB-${PROJECT_VERSION}-win64.zip"
+    COMMENT "Packaging ${A2DPWB_DIST_DIR}/A2DPWB-${A2DPWB_VERSION}-win64.zip"
     VERBATIM
 )
 add_dependencies(A2DPWB_dist A2DPWB)

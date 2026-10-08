@@ -36,6 +36,7 @@ private:
     void OnDeviceDelete(wxCommandEvent &evt);
     void OnCaptureChange(wxCommandEvent &evt);
     void OnAddrChange(wxCommandEvent &evt);
+    void set_address(const wxString &addr);
     void update_addr_visual();
     void update_format_info();
     void update_capture_hint();
@@ -47,17 +48,20 @@ private:
 
     /* Controls */
     wxTextCtrl  *addr_ctrl_ = nullptr;
+    wxString     last_addr_;  /* restored when an edit cannot become an address */
     wxTextCtrl  *devname_ctrl_ = nullptr;
     wxListBox   *device_list_ = nullptr;
     wxChoice    *codec_ctrl_ = nullptr;
     wxChoice    *quality_ctrl_ = nullptr;
     wxCheckBox  *abr_ctrl_ = nullptr;
+    wxCheckBox  *fallback_ctrl_ = nullptr;
     wxChoice    *sample_rate_ctrl_ = nullptr;
     wxChoice    *bit_depth_ctrl_ = nullptr;
     wxChoice    *capture_ctrl_ = nullptr;
     wxChoice    *audio_dev_ctrl_ = nullptr;
     wxCheckBox  *auto_switch_ctrl_ = nullptr;
     wxSpinCtrl  *max_packet_ctrl_ = nullptr;
+    wxChoice    *volume_sync_ctrl_ = nullptr;  /* Auto, Off, then volume_devices_ */
     wxStaticText *audio_dev_label_ = nullptr;
     wxStaticText *auto_switch_label_ = nullptr;
     wxStaticText *format_info_ = nullptr;
@@ -72,6 +76,7 @@ private:
     wxButton    *dev_del_btn_ = nullptr;
 
     std::vector<AudioDeviceInfo> audio_devices_;
+    std::vector<AudioDeviceInfo> volume_devices_;  /* output devices for volume sync */
     std::vector<AudioAppInfo> apps_;
     std::string saved_app_exe_, saved_app_name_;  /* from the profile being edited */
 };
