@@ -357,6 +357,21 @@ void MainFrame::create_ui() {
     });
     vbox->Add(status_panel, 0, wxEXPAND | wxTOP | wxBOTTOM, 6);
 
+    /* ---- Codec in use, and why it is not the profile's (while streaming) ---- */
+    codec_panel_ = new wxPanel(main_panel_);
+    auto *codec_sizer = new wxBoxSizer(wxHORIZONTAL);
+    codec_label_ = new wxStaticText(codec_panel_, wxID_ANY, "");
+    codec_label_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
+    codec_sizer->Add(codec_label_, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, 8);
+    codec_fallback_label_ = new wxStaticText(codec_panel_, wxID_ANY, "",
+        wxDefaultPosition, wxDefaultSize, wxST_ELLIPSIZE_END);
+    codec_fallback_label_->SetForegroundColour(TM().get(ThemeColor::FirmwareWarning));
+    codec_fallback_label_->SetMinSize(wxSize(0, -1)); /* ellipsized; never widens the row */
+    codec_sizer->Add(codec_fallback_label_, 1, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 8);
+    codec_panel_->SetSizer(codec_sizer);
+    codec_panel_->Show(false);
+    vbox->Add(codec_panel_, 0, wxEXPAND | wxBOTTOM, 6);
+
     /* ---- Headphone volume (AVRCP absolute volume, while streaming) ---- */
     volume_panel_ = new wxPanel(main_panel_);
     auto *volume_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -417,6 +432,8 @@ void MainFrame::apply_theme() {
     SetBackgroundColour(TM().get(ThemeColor::WindowBg));
     volume_label_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
     volume_value_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
+    codec_label_->SetForegroundColour(TM().get(ThemeColor::TextPrimary));
+    codec_fallback_label_->SetForegroundColour(TM().get(ThemeColor::FirmwareWarning));
     rebuild_profile_list();
     update_status_display();
     main_panel_->Refresh();
@@ -636,6 +653,34 @@ void MainFrame::update_volume_row() {
     if (volume_value_->GetLabel() != text) volume_value_->SetLabel(text);
 }
 
+/* The codec row: the codec in use, and when the profile's codec was not
+ * available, why, with how to get it back in the tooltip */
+void MainFrame::update_codec_row() {
+    const auto &info = current_stream_info_;
+    bool show = current_state_ == A2dpService::State::Streaming && !info.codec.empty();
+    if (show) {
+        codec_label_->SetLabel(wxString::Format(wxString::FromUTF8(L("status.codec_info")),
+            wxString::FromUTF8(info.codec), info.sample_rate / 1000.0));
+        if (info.requested_codec.empty()) {
+            codec_fallback_label_->SetLabel("");
+            codec_label_->UnsetToolTip();
+            codec_fallback_label_->UnsetToolTip();
+        } else {
+            wxString requested = wxString::FromUTF8(info.requested_codec);
+            wxString used = wxString::FromUTF8(info.codec);
+            codec_fallback_label_->SetLabel(wxString::Format(wxString::FromUTF8(
+                L(info.requested_in_use ? "status.codec_fallback_in_use" : "status.codec_fallback")),
+                requested));
+            wxString tip = wxString::Format(wxString::FromUTF8(L("tooltip.codec_fallback_help")),
+                                            requested, used);
+            codec_label_->SetToolTip(tip);
+            codec_fallback_label_->SetToolTip(tip);
+        }
+    }
+    if (codec_panel_->IsShown() != show)
+        codec_panel_->Show(show);
+}
+
 void MainFrame::update_status_display() {
     wxColour color;
     const char *label;
@@ -664,6 +709,7 @@ void MainFrame::update_status_display() {
                             current_state_ == A2dpService::State::Reconnecting);
     disconnect_btn_->Show(show_disconnect);
     fit_status_label();
+    update_codec_row();
 
     if (current_state_ == A2dpService::State::Streaming) {
         stream_info_label_->SetLabel("");
@@ -726,6 +772,9 @@ void MainFrame::OnStatusUpdate(wxThreadEvent &evt) {
     auto payload = evt.GetPayload<StatusPayload>();
     current_state_ = payload.state;
     current_status_text_ = payload.text;
+    /* A new connection gets new stream info; do not show the last one's codec */
+    if (current_state_ == A2dpService::State::Connecting)
+        current_stream_info_ = {};
     update_status_display();
 }
 

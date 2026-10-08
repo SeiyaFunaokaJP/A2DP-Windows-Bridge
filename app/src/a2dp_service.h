@@ -64,6 +64,10 @@ public:
         uint32_t    source_sample_rate = 0;
         uint32_t    source_channels = 0;
         uint32_t    source_bit_depth = 0;
+        /* Codec fallback: the profile's codec the device did not offer
+         * (empty when the profile's codec is in use) */
+        std::string requested_codec;
+        bool        requested_in_use = false; /* maybe on an endpoint another device streams to */
     };
 
     /* ---- Callbacks (called from worker threads, must be thread-safe) ---- */
