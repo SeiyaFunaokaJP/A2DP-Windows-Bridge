@@ -38,6 +38,7 @@
 #include <mutex>
 #include <windows.h>
 #include <avrt.h>
+#include <powrprof.h>
 
 /* ======================================================================== */
 /* SPSC ring buffer for WASAPI → encode thread                               */
@@ -509,9 +510,19 @@ void A2dpService::remember_volume(const std::string &address, int volume) {
 
 A2dpService::A2dpService() {
     check_firmware_present();
+
+    /* Without a window, also while the app sits in the tray */
+    DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS params = {};
+    params.Callback = &A2dpService::on_power_event;
+    params.Context = this;
+    HPOWERNOTIFY handle = nullptr;
+    DWORD err = PowerRegisterSuspendResumeNotification(DEVICE_NOTIFY_CALLBACK, &params, &handle);
+    if (err == ERROR_SUCCESS) power_notify_ = handle;
+    else LOG_WARN("A2dpService: no sleep / resume notifications (error %lu)", (unsigned long)err);
 }
 
 A2dpService::~A2dpService() {
+    if (power_notify_) PowerUnregisterSuspendResumeNotification(static_cast<HPOWERNOTIFY>(power_notify_));
     stop_streaming();
     /* A joinable std::thread must be joined before destruction or
      * std::terminate is called. Blocks briefly if the worker is still
@@ -741,9 +752,54 @@ void A2dpService::download_firmware() {
 /* BTstack lifecycle                                                         */
 /* ======================================================================== */
 
+/* Wait for the controller to answer when checking a stack before use */
+static const uint32_t CONTROLLER_PROBE_MS = 2000;
+/* Time for a USB adapter to come back after resume before it is opened */
+static const unsigned long RESUME_SETTLE_MS = 3000;
+
+unsigned long __stdcall A2dpService::on_power_event(void *context, unsigned long type, void *) {
+    auto *self = static_cast<A2dpService *>(context);
+    if (type == PBT_APMSUSPEND) {
+        LOG_INFO("A2dpService: the PC is going to sleep");
+    } else if (type == PBT_APMRESUMEAUTOMATIC || type == PBT_APMRESUMESUSPEND) {
+        /* Both may come for one resume; the first one counts */
+        if (!self->btstack_stale_.exchange(true)) {
+            LOG_INFO("A2dpService: the PC resumed from sleep, Bluetooth will be restarted");
+            unsigned long now = GetTickCount();
+            self->resume_tick_.store(now ? now : 1);
+        }
+    }
+    return 0;
+}
+
+void A2dpService::wait_after_resume() {
+    unsigned long resumed = resume_tick_.load();
+    if (resumed == 0) return;
+    unsigned long since = GetTickCount() - resumed;
+    if (since >= RESUME_SETTLE_MS) return;
+    LOG_INFO("A2dpService: waiting %lu ms for the adapter after resume", RESUME_SETTLE_MS - since);
+    while (GetTickCount() - resumed < RESUME_SETTLE_MS && !stop_requested_.load())
+        Sleep(100);
+}
+
 bool A2dpService::ensure_btstack_init() {
     std::lock_guard<std::mutex> lock(transport_mutex_);
-    if (btstack_ready_.load()) return true;
+    if (btstack_ready_.load()) {
+        /* A stack that stopped working stays so until it is started anew
+         * (issues #42, #43: only an app restart helped) */
+        const char *why = nullptr;
+        if (btstack_stale_.load())
+            why = "the PC resumed from sleep";
+        else if (!transport_->controller_responds(CONTROLLER_PROBE_MS))
+            why = "the Bluetooth adapter stopped answering";
+        if (!why) return true;
+        LOG_WARN("A2dpService: restarting BTstack: %s", why);
+        transport_->shutdown();
+        transport_.reset();
+        btstack_ready_.store(false);
+    }
+    btstack_stale_.store(false);
+    wait_after_resume();
 
     /* Tried again on every call: BtStackTransport::shutdown() releases the
      * adapter and resets BTstack, so a failed init no longer needs an app
@@ -817,6 +873,17 @@ void A2dpService::shutdown_btstack() {
         transport_.reset();
     }
     btstack_ready_.store(false);
+}
+
+BtStackTransport *A2dpService::restart_btstack(const char *why) {
+    LOG_WARN("A2dpService: restarting BTstack: %s", why);
+    shutdown_btstack();
+    if (!ensure_btstack_init()) {
+        LOG_ERROR("A2dpService: BTstack restart failed");
+        return nullptr;
+    }
+    transport_->set_media_payload_limit(active_profile_.max_media_payload);
+    return transport_.get();
 }
 
 /* ======================================================================== */
@@ -1072,14 +1139,31 @@ void A2dpService::streaming_thread_func_inner() {
 
     /* Connect */
     notify_state(State::Connecting, L("status.connecting_device"));
-    bool connected = transport->connect_a2dp_retrying(
-        target_addr,
-        [this]() { return stop_requested_.load(); },
-        [this](int attempt, int attempts) {
-            char text[256];
-            snprintf(text, sizeof(text), L("status.connecting_retry"), attempt, attempts);
-            notify_state(State::Connecting, text);
-        });
+    auto connect_device = [&](BtStackTransport *t) {
+        return t->connect_a2dp_retrying(
+            target_addr,
+            [this]() { return stop_requested_.load(); },
+            [this](int attempt, int attempts) {
+                char text[256];
+                snprintf(text, sizeof(text), L("status.connecting_retry"), attempt, attempts);
+                notify_state(State::Connecting, text);
+            });
+    };
+    bool connected = connect_device(transport);
+    if (!connected && !stop_requested_.load() &&
+        transport->last_connect_failure() == BtStackTransport::ConnectFailure::Stalled) {
+        /* Not the device: the stack it went through stopped working */
+        notify_state(State::Connecting, L("status.initializing_btstack"));
+        transport = restart_btstack("the Bluetooth adapter stopped working");
+        if (!transport) {
+            notify_state(State::Error, L(btstack_init_error_key()));
+            running_.store(false);
+            return;
+        }
+        if (stop_requested_.load()) { running_.store(false); notify_state(State::Idle, L("status.ready")); return; }
+        notify_state(State::Connecting, L("status.connecting_device"));
+        connected = connect_device(transport);
+    }
     if (!connected) {
         if (stop_requested_.load()) {
             running_.store(false);
@@ -1087,6 +1171,9 @@ void A2dpService::streaming_thread_func_inner() {
             return;
         }
         switch (transport->last_connect_failure()) {
+        case BtStackTransport::ConnectFailure::Stalled:
+            notify_state(State::Error, L("error.btstack_no_answer"));
+            break;
         case BtStackTransport::ConnectFailure::NoAnswer:
             notify_state(State::Error, L("error.connect_no_answer"));
             break;
@@ -1519,12 +1606,34 @@ void A2dpService::streaming_thread_func_inner() {
             }
         }
 
-        if (transport->check_disconnected()) {
-            LOG_WARN("A2dpService: connection lost, attempting reconnect");
+        /* Sleep, or an adapter that stopped working, leaves a stack that
+         * reports no disconnect: it is started anew and the device
+         * connected again on it */
+        bool lost = transport->check_disconnected();
+        const char *restart_why = nullptr;
+        if (btstack_stale_.load())
+            restart_why = "the PC resumed from sleep";
+        else if (transport->stalled())
+            restart_why = "the Bluetooth adapter stopped working";
+        if (lost || restart_why) {
+            if (restart_why) LOG_WARN("A2dpService: %s, reconnecting", restart_why);
+            else LOG_WARN("A2dpService: connection lost, attempting reconnect");
             notify_state(State::Reconnecting, L("status.connection_lost"));
 
             g_ctx.transport.store(nullptr);
             g_ctx.encoder.store(nullptr);
+
+            /* A new stack knows neither the device nor the stream: connect
+             * and configure in full until that succeeds */
+            bool fresh_stack = false;
+            auto connect_on_fresh_stack = [&]() {
+                if (!transport->connect_a2dp(target_addr)) return false;
+                if (transport->configure_codec(selected_codec, sr, static_cast<uint8_t>(use_ch)) &&
+                    transport->start_stream())
+                    return true;
+                transport->disconnect();
+                return false;
+            };
 
             bool reconnected = false;
             for (int attempt = 1; attempt <= 10 && !stop_requested_.load(); attempt++) {
@@ -1537,7 +1646,23 @@ void A2dpService::streaming_thread_func_inner() {
 
                 if (stop_requested_.load()) break;
 
-                if (transport->reconnect()) {
+                if (!restart_why) {
+                    if (!transport) restart_why = "the last restart failed";
+                    else if (btstack_stale_.load()) restart_why = "the PC resumed from sleep";
+                    else if (transport->stalled()) restart_why = "the Bluetooth adapter stopped working";
+                }
+                if (restart_why) {
+                    transport = restart_btstack(restart_why);
+                    restart_why = nullptr;
+                    if (!transport) {
+                        LOG_WARN("A2dpService: reconnect attempt %d failed (no Bluetooth adapter)", attempt);
+                        continue;
+                    }
+                    fresh_stack = true;
+                    if (stop_requested_.load()) break;
+                }
+
+                if (fresh_stack ? connect_on_fresh_stack() : transport->reconnect()) {
                     LOG_INFO("A2dpService: reconnected on attempt %d", attempt);
                     reconnected = true;
                     break;
@@ -1583,8 +1708,10 @@ void A2dpService::streaming_thread_func_inner() {
     g_ctx.transport.store(nullptr);
     g_ctx.ring.destroy();
 
-    transport->stop_stream();
-    transport->disconnect();
+    if (transport) {  /* none after a failed BTstack restart */
+        transport->stop_stream();
+        transport->disconnect();
+    }
     volume_sync.stop();
     BtStackTransport::set_restore_volume(-1);
 

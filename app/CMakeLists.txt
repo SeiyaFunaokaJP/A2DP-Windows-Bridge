@@ -137,6 +137,7 @@ target_link_libraries(A2DPWB PRIVATE
     winhttp        # Update check (GitHub Releases API)
     iphlpapi       # GetAdaptersAddresses (finding the measuring receiver)
     wlanapi        # Wi-Fi survey for AFH host channel classification
+    powrprof       # PowerRegisterSuspendResumeNotification (restart Bluetooth after sleep)
 )
 
 # Application version

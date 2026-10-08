@@ -135,6 +135,21 @@ private:
     bool ensure_btstack_init();
     bool init_btstack_transport();  /* one BtStackTransport::init(); transport_mutex_ held */
     void shutdown_btstack();
+    /* Streaming thread: BTstack shut down and initialized again, for a stack
+     * that stopped working or is left from before sleep. The new transport,
+     * or nullptr if init failed. */
+    BtStackTransport *restart_btstack(const char *why);
+    /* Give the adapter time to come back after the PC resumed from sleep */
+    void wait_after_resume();
+
+    /* ---- Sleep / resume ---- */
+    static unsigned long __stdcall on_power_event(void *context, unsigned long type, void *setting);
+    void *power_notify_ = nullptr;  /* HPOWERNOTIFY */
+    /* The PC resumed from sleep since BTstack was initialized: the adapter
+     * lost power or was re-enumerated, so the stack is restarted before the
+     * next use (an app restart was needed before) */
+    std::atomic<bool> btstack_stale_{false};
+    std::atomic<unsigned long> resume_tick_{0};  /* GetTickCount() of the last resume, 0 = none */
 
     /* ---- Scanning thread ---- */
     void scan_thread_func();
