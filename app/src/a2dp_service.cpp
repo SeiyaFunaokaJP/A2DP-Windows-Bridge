@@ -24,6 +24,7 @@
 #include "aptx_encoder.h"
 #include "a2dp_sbc_encoder.h"
 #include "aac_encoder.h"
+#include "lhdcv5_encoder.h"
 #include "bt_device.h"
 #include "localization.h"
 #include "volume_sync.h"
@@ -341,7 +342,8 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
             uint16_t mtu = transport->get_media_mtu();
             if (mtu == 0) mtu = 679;
             uint32_t max_raw = (g_ctx.active_codec == AudioCodec::LDAC ||
-                                g_ctx.active_codec == AudioCodec::SBC) ? (mtu - 1) : mtu;
+                                g_ctx.active_codec == AudioCodec::SBC) ? (mtu - 1) :
+                               (g_ctx.active_codec == AudioCodec::LHDCV5) ? (mtu - 2) : mtu;
             if (g_ctx.active_codec == AudioCodec::Aptx ||
                 g_ctx.active_codec == AudioCodec::AptxLL) {
                 /* aptX and aptX LL are sent without the 12-byte RTP header, so
@@ -367,6 +369,10 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
              * emits whole packets on irregular calls). */
             uint32_t pcm_frames_per_codec_frame = encoder->get_pcm_frames_per_codec_frame();
             uint32_t first_ts = g_ctx.timestamp;
+            uint32_t sent_packets = 0;
+            /* Send queue backlog before this round's packets go in: what the
+             * radio has not managed to send yet (LHDC V5 ABR input) */
+            uint32_t queue_before = transport->get_queue_depth();
 
             while (offset + bytes_per_encode <= pcm_bytes) {
                 uint32_t out_size = static_cast<uint32_t>(g_ctx.encode_buffer.size());
@@ -379,6 +385,7 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
                     if (accum_size + out_size > max_raw && accum_frames > 0) {
                         transport->send_media(accum, accum_size, first_ts,
                             static_cast<uint8_t>(accum_frames), g_ctx.active_codec);
+                        sent_packets++;
                         accum_size = 0;
                         accum_frames = 0;
                         first_ts = g_ctx.timestamp;
@@ -397,6 +404,7 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
             if (accum_frames > 0) {
                 transport->send_media(accum, accum_size, first_ts,
                     static_cast<uint8_t>(accum_frames), g_ctx.active_codec);
+                sent_packets++;
             }
 
             uint32_t remaining = pcm_bytes - offset;
@@ -419,6 +427,14 @@ static DWORD WINAPI encode_thread_func(LPVOID) {
                         if (t) queue_depth = t->get_queue_depth();
                         ldac->abr_adjust(queue_depth);
                     }
+                }
+            }
+            /* LHDC V5 ABR: Android steps its policy once per media packet
+             * sent, with the queue length seen when enqueueing */
+            if (g_ctx.abr_enabled && encoder->codec_type() == AudioCodec::LHDCV5 && sent_packets > 0) {
+                LhdcV5Encoder *lhdc = static_cast<LhdcV5Encoder *>(encoder);
+                if (lhdc->is_abr_enabled()) {
+                    for (uint32_t i = 0; i < sent_packets; i++) lhdc->abr_adjust(queue_before);
                 }
             }
 
@@ -459,6 +475,7 @@ static const char *codec_name_for(AudioCodec c) {
     case AudioCodec::Aptx:   return "aptX";
     case AudioCodec::SBC:    return "SBC";
     case AudioCodec::AAC:    return "AAC";
+    case AudioCodec::LHDCV5: return "LHDC V5";
     }
     return "Unknown";
 }
@@ -1104,6 +1121,7 @@ void A2dpService::streaming_thread_func_inner() {
     case 4: requested_codec = AudioCodec::Aptx;   break;
     case 5: requested_codec = AudioCodec::SBC;    break;
     case 6: requested_codec = AudioCodec::AAC;    break;
+    case 7: requested_codec = AudioCodec::LHDCV5; break;
     }
 
     EncoderQuality quality = EncoderQuality::High;
@@ -1210,6 +1228,8 @@ void A2dpService::streaming_thread_func_inner() {
         else if (caps.aptx_hd) out = AudioCodec::AptxHD;
         else if (caps.aptx_ll) out = AudioCodec::AptxLL;
         else if (caps.aptx)    out = AudioCodec::Aptx;
+        /* LHDC V5 is experimental: ranked below the tested codecs, above AAC / SBC */
+        else if (caps.lhdcv5)  out = AudioCodec::LHDCV5;
         else if (caps.aac)     out = AudioCodec::AAC;
         else if (caps.sbc)     out = AudioCodec::SBC;
         else return false;
@@ -1224,6 +1244,7 @@ void A2dpService::streaming_thread_func_inner() {
         case AudioCodec::Aptx:   if (caps.aptx)    { selected_codec = AudioCodec::Aptx;   found = true; } break;
         case AudioCodec::SBC:    if (caps.sbc)     { selected_codec = AudioCodec::SBC;    found = true; } break;
         case AudioCodec::AAC:    if (caps.aac)     { selected_codec = AudioCodec::AAC;    found = true; } break;
+        case AudioCodec::LHDCV5: if (caps.lhdcv5)  { selected_codec = AudioCodec::LHDCV5; found = true; } break;
         }
         if (!found) {
             char msg[512];
@@ -1270,9 +1291,9 @@ void A2dpService::streaming_thread_func_inner() {
 
     g_ctx.active_codec = selected_codec;
     LOG_INFO("A2dpService: codec selected: %s (caps: ldac=%d aptxhd=%d aptxll=%d aptx=%d "
-             "aptx_adaptive=%d[unsupported] aac=%d sbc=%d)",
+             "aptx_adaptive=%d[unsupported] aac=%d sbc=%d lhdcv5=%d)",
              codec_name_for(selected_codec), caps.ldac, caps.aptx_hd, caps.aptx_ll, caps.aptx,
-             caps.aptx_adaptive, caps.aac, caps.sbc);
+             caps.aptx_adaptive, caps.aac, caps.sbc, caps.lhdcv5);
 
     /* Initialize audio capture */
     notify_state(State::Connecting, L("status.initializing_audio"));
@@ -1289,6 +1310,8 @@ void A2dpService::streaming_thread_func_inner() {
     uint32_t codec_max_sr = 48000;
     if (selected_codec == AudioCodec::LDAC) {
         codec_max_sr = 96000;
+    } else if (selected_codec == AudioCodec::LHDCV5) {
+        codec_max_sr = 192000;
     }
 
     /* If auto, query device native rate (the test tone runs at 48 kHz) */
@@ -1330,6 +1353,16 @@ void A2dpService::streaming_thread_func_inner() {
                      "(remote/codec supported rate)",
                      codec_name_for(selected_codec), aptx_sr, preferred_sr);
             preferred_sr = aptx_sr;
+        }
+    }
+
+    /* LHDC V5: 44.1 / 48 / 96 / 192 kHz, only the rates the sink lists */
+    if (selected_codec == AudioCodec::LHDCV5) {
+        uint32_t lhdc_sr = transport->pick_lhdcv5_sample_rate(preferred_sr);
+        if (lhdc_sr != preferred_sr) {
+            LOG_INFO("A2dpService: LHDC V5: using %u Hz capture instead of %u Hz "
+                     "(remote/codec supported rate)", lhdc_sr, preferred_sr);
+            preferred_sr = lhdc_sr;
         }
     }
 
@@ -1419,8 +1452,15 @@ void A2dpService::streaming_thread_func_inner() {
     g_ctx.active_channels = use_ch;
     LOG_INFO("A2dpService: WASAPI capture init OK (sr=%u ch=%u use_ch=%u)", sr, ch, use_ch);
 
+    /* LHDC V5: the bit depth is part of the stream configuration (24-bit
+     * unless the profile says 16-bit or the sink lacks 24-bit) */
+    uint8_t lhdc_bits = 16;
+    if (selected_codec == AudioCodec::LHDCV5 &&
+        ProfileManager::bit_depth_to_index(p.bit_depth) != 1 && caps.lhdcv5_24bit())
+        lhdc_bits = 24;
+
     /* Configure codec */
-    if (!transport->configure_codec(selected_codec, sr, static_cast<uint8_t>(use_ch))) {
+    if (!transport->configure_codec(selected_codec, sr, static_cast<uint8_t>(use_ch), lhdc_bits)) {
         transport->disconnect();
         running_.store(false);
         /* A user stop cancels the blocking wait — that's not an error */
@@ -1451,6 +1491,21 @@ void A2dpService::streaming_thread_func_inner() {
         running_.store(false);
         return;
 #endif
+#ifdef LHDCV5_ENCODER_AVAILABLE
+    case AudioCodec::LHDCV5: {
+        auto lhdc = std::make_unique<LhdcV5Encoder>();
+        lhdc->set_peer_bitrate_limits(caps.lhdcv5_bitrate_limits());
+        lhdc->set_abr(p.abr);
+        encoder = std::move(lhdc);
+        break;
+    }
+#else
+    case AudioCodec::LHDCV5:
+        notify_state(State::Error, L("error.codec_not_supported"));
+        transport->disconnect();
+        running_.store(false);
+        return;
+#endif
     }
 
     int bit_depth_index = ProfileManager::bit_depth_to_index(p.bit_depth);
@@ -1461,6 +1516,9 @@ void A2dpService::streaming_thread_func_inner() {
     } else if (selected_codec == AudioCodec::AptxHD && bit_depth_index != 1) {
         /* aptX HD carries 24-bit PCM: feed it int32 (top 24 bits encoded) */
         static_cast<AptxHdEncoder *>(encoder.get())->set_bit_depth(24);
+        use_24bit = true;
+    } else if (selected_codec == AudioCodec::LHDCV5 && lhdc_bits == 24) {
+        static_cast<LhdcV5Encoder *>(encoder.get())->set_bit_depth(24);
         use_24bit = true;
     }
     LOG_INFO("A2dpService: encoder config: bit_depth_index=%d use_24bit=%d mtu=%u",
@@ -1475,8 +1533,8 @@ void A2dpService::streaming_thread_func_inner() {
 
     g_ctx.bytes_per_sample = use_24bit ? 4 : 2;
 
-    bool abr = p.abr && (selected_codec == AudioCodec::LDAC);
-    if (abr) {
+    bool abr = p.abr && (selected_codec == AudioCodec::LDAC || selected_codec == AudioCodec::LHDCV5);
+    if (abr && selected_codec == AudioCodec::LDAC) {
         LdacEncoder *ldac = static_cast<LdacEncoder *>(encoder.get());
         if (!ldac->init_abr(100)) abr = false;
     }

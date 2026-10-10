@@ -3,7 +3,7 @@
  *
  * Abstract interface for Bluetooth audio codec encoders.
  * Implementations: LdacEncoder, AptxHdEncoder, AptxLlEncoder, AptxEncoder,
- *                  SbcEncoder, AacEncoder
+ *                  SbcEncoder, AacEncoder, LhdcV5Encoder
  *
  * SPDX-License-Identifier: MIT
  */
@@ -21,6 +21,7 @@ enum class AudioCodec {
     SBC,
     AAC,
     Aptx,      /* classic aptX (appended: keep existing enumerator values stable) */
+    LHDCV5,    /* LHDC V5 (experimental; appended for the same reason) */
 };
 
 /* Quality mode (codec-specific interpretation) */
@@ -45,7 +46,8 @@ public:
      * mtu: media payload size per packet, RTP header excluded
      *      (BtStackTransport::get_media_mtu())
      * quality: encoding quality mode
-     * sample_rate: input PCM sample rate (44100 or 48000)
+     * sample_rate: input PCM sample rate (44100 or 48000; LDAC up to 96000,
+     *              LHDC V5 up to 192000)
      * channels: number of channels (1 or 2)
      */
     virtual bool init(uint16_t mtu, EncoderQuality quality,

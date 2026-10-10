@@ -77,6 +77,40 @@ else()
         "Run: git submodule add https://github.com/pali/libopenaptx.git extern/libopenaptx")
 endif()
 
+# --- LHDC V5 encoder (portable C port of the AOSP Rust encoder, Apache-2.0) ---
+# Experimental codec. The port's 12 sources are compiled as one static library;
+# the 192 kHz default context size (~117 KB, heap-allocated) is kept.
+set(LHDCV5_SRC_DIR ${CMAKE_SOURCE_DIR}/extern/lhdcv5-enc)
+
+if(EXISTS ${LHDCV5_SRC_DIR}/src/lhdcv5_api.c)
+    add_library(lhdcv5_enc STATIC
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_math.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_arith.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_bitout.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_fft.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_level.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_header.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_freq.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_tables.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_workspace.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_process.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_cirbuf.c
+        ${LHDCV5_SRC_DIR}/src/lhdcv5_api.c
+    )
+    target_include_directories(lhdcv5_enc PUBLIC ${LHDCV5_SRC_DIR}/include)
+    target_include_directories(lhdcv5_enc PRIVATE ${LHDCV5_SRC_DIR}/src)
+    if(MSVC)
+        # Third-party code; keep its warnings out of the build log
+        target_compile_options(lhdcv5_enc PRIVATE /W1 /utf-8)
+    else()
+        target_compile_options(lhdcv5_enc PRIVATE -w -O2)
+    endif()
+    message(STATUS "LHDC V5 encoder: Found and configured")
+else()
+    message(STATUS "LHDC V5 encoder not found at ${LHDCV5_SRC_DIR}. LHDC V5 codec will be disabled. "
+        "Run: git submodule update --init --recursive")
+endif()
+
 # --- BTstack Bluetooth stack (user-mode HCI/L2CAP/AVDTP via WinUSB) ---
 set(BTSTACK_ROOT ${CMAKE_SOURCE_DIR}/extern/btstack)
 

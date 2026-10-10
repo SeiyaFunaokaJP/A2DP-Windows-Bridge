@@ -10,7 +10,7 @@ has_children: true
 Windows 向け Bluetooth A2DP オーディオストリーミングツール（全コーデック対応）
 {: .fs-6 .fw-300 }
 
-USB Bluetooth アダプターを WinUSB モードで使用し、**LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC** でシステム音声をストリーミングします。カーネルドライバーやテスト署名は不要です。
+USB Bluetooth アダプターを WinUSB モードで使用し、**LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC**（および試験的に **LHDC V5**）でシステム音声をストリーミングします。カーネルドライバーやテスト署名は不要です。
 
 [セットアップ](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [GitHub](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge){: .btn .fs-5 .mb-4 .mb-md-0 }
@@ -27,6 +27,7 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LDAC、aptX HD
 | aptX | 352/384 kbps | 44.1/48 kHz | 16 bit | -- |
 | AAC | 128/192/256 kbps | 44.1/48 kHz | 16 bit | 約 150 ms |
 | SBC | 最大約 345 kbps | 44.1/48 kHz | 16 bit | 約 150 ms |
+| LHDC V5 🧪 | 320/500/1000 kbps、ABR 160--400 kbps | 44.1/48/96/192 kHz | 16/24 bit | -- |
 
 ### プラットフォーム別のコーデック対応（ヘッドホンへの送信）
 
@@ -38,12 +39,16 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LDAC、aptX HD
 | aptX | ✅ | ✅ | ✅ | ✅ |
 | AAC | ❌ | ✅ | ❌ Ubuntu のパッケージに含まれない | ✅ |
 | SBC | ✅ | ✅ | ✅ | ✅ |
+| LHDC V5 | ❌ | ❌ | ❌ | 🧪 実験的 |
 | aptX Adaptive | ❌ | ❌ | ❌ | ❌ |
 
 ✅ 対応 · 🧪 実験的 · ❌ 非対応。どの列も送信側（PC → ヘッドホン）です。「標準」は A2DPWB を使わない OS 自身の Bluetooth オーディオで、Ubuntu の列は Ubuntu 26.04 の PipeWire（`libspa-0.2-bluetooth`）が持つコーデックです。
 
 {: .warning }
 **aptX HD・aptX Low Latency は実験的な対応です。** Android / PipeWire の実装に合わせ、エンコード→デコードの往復テストは通っていますが、実機のヘッドホンでの検証はまだです。表のレイテンシーは一般的な目安で、A2DPWB で測定した値ではありません。
+
+{: .warning }
+**LHDC V5 は実験的な対応です。** Google が Android 17（AOSP、Apache-2.0）に追加した LHDC V5 エンコーダーの C 移植版を使用しています。移植版は AOSP の Rust 版エンコーダーとビット単位で一致することを確認済みで、A2DP のシグナリングは Android の `a2dp_vendor_lhdcv5` に合わせています。実機の LHDC ヘッドホンでの検証はまだです。対応するのはロッシーの LHDC V5 のみで、LHDC V2/V3（従来機）とロスレスの「LHDC-RAW」にはオープンソースのエンコーダーがありません。自動選択では LHDC V5 は LDAC・aptX 系より下、AAC・SBC より上に位置します。
 
 {: .note }
 **クラシック aptX だけが目的なら**、Windows 10 標準の Bluetooth スタックがクラシック aptX に対応しています（aptX HD・aptX LL・aptX Adaptive は非対応）。その場合 A2DPWB は不要です。A2DPWB が主に役立つのは LDAC・aptX HD・aptX Low Latency です。
@@ -71,7 +76,7 @@ A2DPWB 本体は Windows 専用で、x64 ビルドのみです。Linux 側のツ
 | Sony WH-1000XM4（ヘッドホン） | Windows 11 + TP-Link UB500 | LDAC、AAC、SBC | ✅ 再生できる（XM4 は aptX 非対応） |
 | TP-Link UB500（Realtek RTL8761BU、アダプター） | Windows 11、WinUSB、linux-firmware の `rtl8761bu` | – | ✅ |
 | 測定用受信機 `tools/linux_sink` | Windows 11 + UB500 → Ubuntu 26.04（実際の無線） | SBC、AAC、aptX、aptX HD、aptX LL、LDAC | ✅ 受信・測定できる |
-| 仮想リンク `tools/emu`（Bumble） | Windows 11、無線なし | SBC、AAC、aptX、aptX HD、aptX LL、LDAC | ✅ エンドツーエンドテストに合格 |
+| 仮想リンク `tools/emu`（Bumble） | Windows 11、無線なし | SBC、AAC、aptX、aptX HD、aptX LL、LDAC、LHDC V5 | ✅ エンドツーエンドテストに合格 |
 
 Windows 10 の実機ではまだ試していません。その他のアダプターは[推奨アダプター](setup#adapters)を参照してください。
 
@@ -117,7 +122,7 @@ A2DPWB は Windows の Bluetooth スタックを完全にバイパスします�
 
 - **マルチコーデック**: LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC（自動ネゴシエーション対応）
 - **3 つのキャプチャモード**: システムループバック、仮想オーディオデバイスルーティング、または 1 つのアプリの出力
-- **LDAC ABR**: 不安定な接続時のアダプティブビットレート
+- **ABR**: 不安定な接続時のアダプティブビットレート（LDAC と LHDC V5）
 - **自動再接続**: 切断時に自動再接続（最大 10 回）
 - **通信品質と AFH**: 送信内容・RSSI・使用中のチャネルを表示し、避けるべき Wi-Fi チャネルをアダプターに伝えます（[使い方](usage#link-quality)を参照）
 - **ヘッドホン操作（AVRCP）**: ヘッドホンや Windows の音量と連動する音量スライダー、ヘッドホンの再生/一時停止・曲送り・曲戻しで PC の再生を操作（[使い方](usage#headphone-buttons) を参照）

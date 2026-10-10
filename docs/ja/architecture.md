@@ -185,6 +185,7 @@ Windows Audio Session API を使用してシステム音声出力をリアルタ
 | aptX | libopenaptx | 352/384 kbps (44.1/48 kHz) | 16-bit ステレオ、RTP ヘッダーなし |
 | AAC | fdk-aac | 最大 256 kbps | AAC-LC、LATM トランスポート |
 | SBC | BTstack Bluedroid | 最大約 345 kbps | A2DP 必須ベースライン |
+| LHDC V5 | lhdcv5-enc（AOSP エンコーダーの C 移植版） | 320/500/1000 kbps、ABR 160–400 kbps | 試験的。16/24 bit、5 ms フレーム、2 バイトのメディアペイロードヘッダー、RTP ヘッダーあり |
 
 すべてのエンコーダーは `AudioEncoder` インターフェースの `encode()` と `get_frame_size()` メソッドを実装しています。
 
@@ -201,6 +202,7 @@ libopenaptx は 4 ステレオサンプル単位のパック済み 24-bit リト
 | aptX HD | Qualcomm (0x000000D7) | 0x0024 |
 | aptX Low Latency | CSR (0x0000000A) または Qualcomm (0x000000D7) | 0x0002 |
 | aptX Adaptive | Qualcomm (0x000000D7) | 0x00AD（検出のみ、選択されない） |
+| LHDC V5 | Savitech (0x0000053A) | 0x4C35 |
 
 AAC と SBC は A2DP 仕様で定義された標準コーデック ID を使用します。
 
@@ -209,8 +211,9 @@ AAC と SBC は A2DP 仕様で定義された標準コーデック ID を使用�
 - **aptX**: 7 バイト（バイト 6 = サンプルレート / チャネルモード）
 - **aptX HD**: 11 バイト（バイト 6 は aptX と同じ、加えて予約 4 バイト）。ステレオ必須
 - **aptX LL**: 8 バイト。シンクが拡張（"new caps"）フラグを立てている場合は 17 バイト。A2DPWB は aptX LL エンドポイントを 1 つだけ登録し、シンクが使用した Vendor ID でストリームを設定します
+- **LHDC V5**（試験的）: 11 バイト（Android `a2dp_vendor_lhdcv5_constants.h`）。バイト 6 がサンプルレート（0x20 44.1k、0x10 48k、0x04 96k、0x01 192k）、バイト 7 がビット深度（0x04 16 bit、0x02 24 bit）とシンクの最小/最大ビットレート制限、バイト 8 がコーデックサブバージョン（0x01 = V5 ver.1）と 0x10 = 5 ms フレーム、バイト 9-10 がオプション機能（低遅延、ロスレス、JAS、AR、META。A2DPWB はいずれも提示しません）。ステレオのみ。シンクのビットレート制限は Android と同様に設定へそのまま返し、エンコーダーにも適用します。メディアパケットには 2 バイトのペイロードヘッダー（フレーム数 << 2、遅延ビットは 0、続いてシーケンス番号）が付きます
 
-**RTP ヘッダーの有無**: LDAC・aptX HD・AAC・SBC のメディアパケットには 12 バイトの RTP ヘッダーが付きます。aptX と aptX LL は（Android や PipeWire と同様に）RTP ヘッダー**なし**で送信するため、L2CAP MTU 全体を aptX フレームに使えます。
+**RTP ヘッダーの有無**: LDAC・aptX HD・AAC・SBC・LHDC V5 のメディアパケットには 12 バイトの RTP ヘッダーが付きます。aptX と aptX LL は（Android や PipeWire と同様に）RTP ヘッダー**なし**で送信するため、L2CAP MTU 全体を aptX フレームに使えます。
 
 **aptX Adaptive** にはオープンソースのエンコーダーがない（libopenaptx も未実装）ため、A2DPWB は登録も選択もしません。シンクが通知した場合はログに記録するだけで、シンクがクラシック aptX を別途通知していればそちらを使用します。
 
@@ -229,4 +232,4 @@ AAC と SBC は A2DP 仕様で定義された標準コーデック ID を使用�
 - **セカンドアダプター推奨**: Windows には内蔵 Bluetooth、A2DPWB には専用 USB アダプターを使用
 - 一部の Bluetooth アダプターのファームウェアは達成可能なビットレートを制限する場合がある
 - USB Bluetooth 5.0 以上のアダプターは LDAC に適している
-- 自動コーデック選択の優先順位: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
+- 自動コーデック選択の優先順位: LDAC > aptX HD > aptX LL > aptX > LHDC V5（試験的） > AAC > SBC

@@ -33,6 +33,7 @@ A2DPWB のソースコードは MIT ライセンスです。ただし、配布�
 | [libldac (AOSP)](https://android.googlesource.com/platform/external/libldac) | android-15.0.0_r36-4-geeee1a3 | Apache-2.0 | LDAC エンコーダー |
 | [libopenaptx](https://github.com/pali/libopenaptx) | 0.2.0 | LGPL-2.1+ | aptX / aptX HD / aptX LL エンコーダー |
 | [fdk-aac](https://github.com/mstorsjo/fdk-aac) | v2.0.3-158-gd8e6b1a | FDK AAC License | AAC-LC エンコーダー |
+| [LHDC-V5-Encoder](https://github.com/WillyBilly06/LHDC-V5-Encoder)（AOSP エンコーダーの C 移植版） | commit 3f9d198 | Apache-2.0（FFT 部分は BSD-3-Clause、KISS FFT） | LHDC V5 エンコーダー（試験的） |
 | [wxWidgets](https://www.wxwidgets.org/) | 3.2.6 | wxWindows Library Licence 3.1 | GUI フレームワーク |
 | zlib（wxWidgets 内蔵） | 1.2.13.1 | zlib ライセンス | 圧縮（PNG 対応） |
 | libpng（wxWidgets 内蔵） | 1.6.37 | PNG Reference Library License v2 | PNG 画像 |
@@ -56,6 +57,10 @@ BTstack のライセンスは BSD-3-Clause **ではなく**、OSI 承認のオ�
 ### LDAC 認証
 
 libldac の NOTICE には "Taking the certification process is required to use LDAC in your products."（LDAC を製品で使用するには認証プロセスを受ける必要がある）と記載されています。[sony.net/Products/LDAC/aosp](https://www.sony.net/Products/LDAC/aosp/) を参照してください。A2DPWB のような無償・非商用のアプリにこの認証が適用されるかどうかは確認できていません。A2DPWB は認証を受けていません。
+
+### LHDC の商標と認証
+
+LHDC は Savitech Corp. のコーデックで、HWA（Hi-Res Wireless Audio）アライアンスが推進しています。A2DPWB が使用するエンコーダーは Google が AOSP（Android 17）で公開したものに由来する Apache-2.0 のコードですが、Apache-2.0 は商標の使用権を与えるものではなく、LHDC 対応を謳う製品は通常 Savitech / HWA の認証を受けます。A2DPWB は認証を受けていません。LHDC V5 対応は試験的・非商用の相互運用機能です。
 
 ### libopenaptx のバージョン
 

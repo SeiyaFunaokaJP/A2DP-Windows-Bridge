@@ -13,3 +13,6 @@
 [submodule "extern/json"]
 	path = extern/json
 	url = https://github.com/nlohmann/json.git
+[submodule "extern/lhdcv5-enc"]
+	path = extern/lhdcv5-enc
+	url = https://github.com/WillyBilly06/LHDC-V5-Encoder.git
