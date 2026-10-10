@@ -95,24 +95,22 @@ System Loopback does not take the audio away from the default playback device: i
 
 ## How It Works
 
-```
-Audio Source
-  |
-  +-- System Loopback: default playback device (all system audio)
-  +-- Virtual Device:  selected virtual audio device (per-app routing)
-  +-- Application:     one app and its child processes (process loopback)
-  |
-  v
-WASAPI Loopback Capture (PCM)
-  |
-  v
-Audio Encoder (LDAC / aptX HD / aptX LL / aptX / AAC / SBC)
-  |
-  v
-BTstack (A2DP Source -> AVDTP -> L2CAP -> HCI)
-  |
-  v
-WinUSB -> USB Bluetooth Adapter -> Headphones
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
+flowchart TD
+    s1["System loopback"]
+    s2["Virtual device"]
+    s3["Application (process loopback)"]
+    s1 & s2 & s3 --> cap["WASAPI loopback capture (PCM)"]
+    cap --> enc["Audio encoder: LDAC / aptX family / LHDC V5 / AAC / SBC"]
+    enc --> bt["BTstack: A2DP Source → AVDTP → L2CAP → HCI"]
+    bt --> usb["WinUSB → USB Bluetooth adapter"]
+    usb -.-> hp["Headphones"]
 ```
 
 A2DPWB bypasses the Windows Bluetooth stack entirely. It communicates directly with a USB Bluetooth adapter through WinUSB, using [BTstack](https://github.com/bluekitchen/btstack) to implement the full Bluetooth protocol stack in user-mode.

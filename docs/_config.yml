@@ -38,3 +38,7 @@ defaults:
 exclude:
   - Gemfile
   - Gemfile.lock
+
+# Render ```mermaid code blocks (architecture diagrams)
+mermaid:
+  version: "11.4.1"

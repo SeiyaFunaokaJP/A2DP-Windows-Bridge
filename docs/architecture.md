@@ -24,6 +24,26 @@ Low Latency without requiring a kernel driver.
 
 Uses **BTstack + WinUSB** — entirely user-mode, no driver signing needed.
 
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
+flowchart TB
+    src["Windows audio: system loopback / virtual device / one app"]
+    subgraph exe["A2DPWB.exe (user mode)"]
+        ui["GUI (wxWidgets) / CLI (--cli)"] --> svc["A2DP Service: connection lifecycle, codec selection"]
+        svc --> cap["WASAPI capture"]
+        cap -- PCM --> enc["Encoder: LDAC / aptX family / LHDC V5 / AAC / SBC"]
+        enc --> bt["BTstack: HCI / L2CAP / AVDTP / A2DP"]
+    end
+    src --> cap
+    bt -- WinUSB API --> usb["USB Bluetooth adapter (WinUSB driver via Zadig)"]
+    usb -. Bluetooth .-> hp["Headphones / speakers"]
+```
+
 ## Transport: BTstack + WinUSB
 
 Bypasses the Windows Bluetooth stack entirely by communicating directly with a
@@ -54,6 +74,26 @@ user-mode.
 5. BTstack establishes an ACL connection and opens L2CAP channels (PSM 0x0019)
 6. AVDTP signaling discovers remote SEPs and negotiates codecs
 7. Encoded audio is sent as AVDTP media packets over L2CAP
+
+```mermaid
+sequenceDiagram
+    participant App as A2DPWB (BTstack)
+    participant Ad as USB adapter
+    participant Sink as Headphones
+    App->>Ad: Open via WinUSB, HCI reset / init
+    opt Realtek, Intel, Broadcom
+        App->>Ad: Firmware upload
+    end
+    App->>Sink: ACL connection
+    Note over App,Sink: SSP Just Works on first connect (link key saved)
+    App->>Sink: L2CAP channel, PSM 0x0019 (AVDTP signaling)
+    App->>Sink: AVDTP DISCOVER / GET_CAPABILITIES
+    Sink-->>App: Stream endpoints and codecs
+    App->>Sink: SET_CONFIGURATION (selected codec), OPEN, START
+    loop While streaming
+        App->>Sink: AVDTP media packets over L2CAP
+    end
+```
 
 ## Module Structure
 
@@ -116,26 +156,21 @@ A2DPWB.exe
 
 ## Data Flow
 
-```
-System Audio Output
-       │
-       ▼
- WASAPI Loopback Capture (device mix format, usually float32, 44.1-96 kHz)
-       │
-       ▼
- Audio Encoder (LDAC / aptX HD / aptX LL / aptX / AAC / SBC)
-       │
-       ▼
- A2DP Service → BtStackTransport::send_media()
-       │
-       ▼
- BTstack A2DP Source → AVDTP → L2CAP → HCI
-       │
-       ▼
- WinUSB → USB Bluetooth Adapter → Bluetooth Radio
-       │
-       ▼
- Headphones / Speakers
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
+flowchart TD
+    out["System audio output (loopback / virtual device / one app)"]
+    out --> cap["WASAPI loopback capture (usually float32, 44.1–96 kHz)"]
+    cap --> conv["A2DP Service: PCM conversion to 16 / 32-bit integer"]
+    conv --> enc["Audio encoder: LDAC / aptX family / LHDC V5 / AAC / SBC"]
+    enc --> stack["BtStackTransport::send_media() → AVDTP → L2CAP → HCI"]
+    stack --> usb["WinUSB → USB Bluetooth adapter → radio"]
+    usb -.-> hp["Headphones / speakers"]
 ```
 
 ## Key Modules
@@ -151,6 +186,22 @@ Central connection lifecycle manager. Coordinates:
 - Connection state machine (idle → connecting → streaming → reconnecting, error)
 - Auto-reconnect logic on unexpected disconnection
 - Media packet sending with codec-specific framing
+
+The connection state machine (`A2dpService::State`):
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Connecting: Start
+    Connecting --> Streaming: stream started
+    Connecting --> Idle: stopped
+    Connecting --> Error: init / connect / codec failure
+    Streaming --> Reconnecting: connection lost
+    Reconnecting --> Streaming: reconnected
+    Reconnecting --> Error: reconnect failed
+    Streaming --> Idle: Stop
+    Error --> Connecting: Start again
+```
 
 ### BTstack Transport (`btstack_transport.cpp`)
 
