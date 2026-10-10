@@ -312,6 +312,8 @@ static void audio_callback(
     uint32_t pcm_frames_per_codec_frame = encoder->get_pcm_frames_per_codec_frame();
     uint32_t first_ts = g_timestamp;
     uint32_t sent_packets = 0;
+    /* Send queue backlog before this round's packets go in (LHDC V5 ABR input) */
+    uint32_t queue_before = transport->get_queue_depth();
 
     while (offset + bytes_per_encode <= pcm_bytes) {
         uint32_t out_size = static_cast<uint32_t>(g_encode_buffer.size());
@@ -378,12 +380,11 @@ static void audio_callback(
             }
         }
     }
-    /* LHDC V5 ABR: Android steps its policy once per media packet sent */
+    /* LHDC V5 ABR: Android steps its policy once per media packet sent, with
+     * the queue length seen when enqueueing */
     if (g_abr_enabled && encoder->codec_type() == AudioCodec::LHDCV5 && sent_packets > 0) {
         LhdcV5Encoder *lhdc = static_cast<LhdcV5Encoder *>(encoder);
-        BtStackTransport *abr_transport = g_transport.load();
-        uint32_t queue_depth = abr_transport ? abr_transport->get_queue_depth() : 0;
-        for (uint32_t i = 0; i < sent_packets; i++) lhdc->abr_adjust(queue_depth);
+        for (uint32_t i = 0; i < sent_packets; i++) lhdc->abr_adjust(queue_before);
     }
 }
 
