@@ -96,16 +96,19 @@ System Loopback does not take the audio away from the default playback device: i
 ## How It Works
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
 flowchart TD
-    subgraph src["Audio source"]
-        direction LR
-        s1["System loopback<br/>default playback device"]
-        s2["Virtual device<br/>per-app routing"]
-        s3["Application<br/>process loopback"]
-    end
-    src --> cap["WASAPI loopback capture (PCM)"]
-    cap --> enc["Audio encoder<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
-    enc --> bt["BTstack<br/>A2DP Source → AVDTP → L2CAP → HCI"]
+    s1["System loopback"]
+    s2["Virtual device"]
+    s3["Application (process loopback)"]
+    s1 & s2 & s3 --> cap["WASAPI loopback capture (PCM)"]
+    cap --> enc["Audio encoder: LDAC / aptX family / LHDC V5 / AAC / SBC"]
+    enc --> bt["BTstack: A2DP Source → AVDTP → L2CAP → HCI"]
     bt --> usb["WinUSB → USB Bluetooth adapter"]
     usb -.-> hp["Headphones"]
 ```

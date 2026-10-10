@@ -41,4 +41,4 @@ exclude:
 
 # Render ```mermaid code blocks (architecture diagrams)
 mermaid:
-  version: "10.9.1"
+  version: "11.4.1"

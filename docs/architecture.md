@@ -25,23 +25,22 @@ Low Latency without requiring a kernel driver.
 Uses **BTstack + WinUSB** — entirely user-mode, no driver signing needed.
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
 flowchart TB
-    src["Windows audio<br/>system loopback / virtual device / one app"]
+    src["Windows audio: system loopback / virtual device / one app"]
     subgraph exe["A2DPWB.exe (user mode)"]
-        direction TB
-        ui["GUI (wxWidgets) / CLI (--cli)"]
-        svc["A2DP Service<br/>connection lifecycle, codec selection"]
-        cap["WASAPI Capture"]
-        enc["Encoder<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
-        bt["BTstack<br/>HCI / L2CAP / AVDTP / A2DP"]
-        ui --> svc
-        svc --> cap
-        svc --> bt
-        cap -- PCM --> enc
-        enc -- frames --> bt
+        ui["GUI (wxWidgets) / CLI (--cli)"] --> svc["A2DP Service: connection lifecycle, codec selection"]
+        svc --> cap["WASAPI capture"]
+        cap -- PCM --> enc["Encoder: LDAC / aptX family / LHDC V5 / AAC / SBC"]
+        enc --> bt["BTstack: HCI / L2CAP / AVDTP / A2DP"]
     end
     src --> cap
-    bt -- WinUSB API --> usb["USB Bluetooth adapter<br/>(WinUSB driver via Zadig)"]
+    bt -- WinUSB API --> usb["USB Bluetooth adapter (WinUSB driver via Zadig)"]
     usb -. Bluetooth .-> hp["Headphones / speakers"]
 ```
 
@@ -158,22 +157,20 @@ A2DPWB.exe
 ## Data Flow
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
 flowchart TD
-    out["System audio output<br/>(loopback / virtual device / one app)"]
-    cap["WASAPI loopback capture"]
-    conv["A2DP Service: PCM conversion"]
-    enc["Audio encoder<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
-    send["A2DP Service → BtStackTransport::send_media()"]
-    stack["BTstack A2DP Source → AVDTP → L2CAP → HCI"]
-    usb["WinUSB → USB Bluetooth adapter → radio"]
-    hp["Headphones / speakers"]
-    out --> cap
-    cap -- "mix format, usually float32, 44.1–96 kHz" --> conv
-    conv -- "16 / 32-bit integer PCM" --> enc
-    enc -- "encoded frames" --> send
-    send -- "media payload (RTP header except aptX, aptX LL)" --> stack
-    stack --> usb
-    usb -.-> hp
+    out["System audio output (loopback / virtual device / one app)"]
+    out --> cap["WASAPI loopback capture (usually float32, 44.1–96 kHz)"]
+    cap --> conv["A2DP Service: PCM conversion to 16 / 32-bit integer"]
+    conv --> enc["Audio encoder: LDAC / aptX family / LHDC V5 / AAC / SBC"]
+    enc --> stack["BtStackTransport::send_media() → AVDTP → L2CAP → HCI"]
+    stack --> usb["WinUSB → USB Bluetooth adapter → radio"]
+    usb -.-> hp["Headphones / speakers"]
 ```
 
 ## Key Modules

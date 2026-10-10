@@ -67,23 +67,22 @@ Windows 10 has not been tried on real hardware yet. Other adapters: see [Recomme
 ## Architecture
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
 flowchart TB
-    src["Windows audio<br/>system loopback / virtual device / one app"]
+    src["Windows audio: system loopback / virtual device / one app"]
     subgraph exe["A2DPWB.exe (user mode)"]
-        direction TB
-        ui["GUI (wxWidgets) / CLI (--cli)"]
-        svc["A2DP Service<br/>connection lifecycle, codec selection"]
-        cap["WASAPI Capture"]
-        enc["Encoder<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
-        bt["BTstack<br/>HCI / L2CAP / AVDTP / A2DP"]
-        ui --> svc
-        svc --> cap
-        svc --> bt
-        cap -- PCM --> enc
-        enc -- frames --> bt
+        ui["GUI (wxWidgets) / CLI (--cli)"] --> svc["A2DP Service: connection lifecycle, codec selection"]
+        svc --> cap["WASAPI capture"]
+        cap -- PCM --> enc["Encoder: LDAC / aptX family / LHDC V5 / AAC / SBC"]
+        enc --> bt["BTstack: HCI / L2CAP / AVDTP / A2DP"]
     end
     src --> cap
-    bt -- WinUSB API --> usb["USB Bluetooth adapter<br/>(WinUSB driver via Zadig)"]
+    bt -- WinUSB API --> usb["USB Bluetooth adapter (WinUSB driver via Zadig)"]
     usb -. Bluetooth .-> hp["Headphones / speakers"]
 ```
 

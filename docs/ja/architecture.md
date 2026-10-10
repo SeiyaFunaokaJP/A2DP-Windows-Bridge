@@ -23,23 +23,22 @@ A2DP Windows Bridge (A2DPWB) は Windows で LDAC、aptX HD、aptX Low Latency�
 **BTstack + WinUSB** を使用 -- 完全にユーザーモードで動作し、ドライバー署名は不要です。
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
 flowchart TB
-    src["Windows の音声<br/>システムループバック / 仮想デバイス / アプリ単位"]
+    src["Windows の音声: システムループバック / 仮想デバイス / アプリ単位"]
     subgraph exe["A2DPWB.exe（ユーザーモード）"]
-        direction TB
-        ui["GUI (wxWidgets) / CLI (--cli)"]
-        svc["A2DP Service<br/>接続ライフサイクル、コーデック選択"]
-        cap["WASAPI キャプチャ"]
-        enc["エンコーダー<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
-        bt["BTstack<br/>HCI / L2CAP / AVDTP / A2DP"]
-        ui --> svc
-        svc --> cap
-        svc --> bt
-        cap -- PCM --> enc
-        enc -- フレーム --> bt
+        ui["GUI (wxWidgets) / CLI (--cli)"] --> svc["A2DP Service: 接続ライフサイクル、コーデック選択"]
+        svc --> cap["WASAPI キャプチャ"]
+        cap -- PCM --> enc["エンコーダー: LDAC / aptX 系 / LHDC V5 / AAC / SBC"]
+        enc --> bt["BTstack: HCI / L2CAP / AVDTP / A2DP"]
     end
     src --> cap
-    bt -- WinUSB API --> usb["USB Bluetooth アダプター<br/>(Zadig で WinUSB ドライバー)"]
+    bt -- WinUSB API --> usb["USB Bluetooth アダプター（Zadig で WinUSB ドライバー）"]
     usb -. Bluetooth .-> hp["ヘッドホン / スピーカー"]
 ```
 
@@ -149,22 +148,20 @@ A2DPWB.exe
 ## データフロー
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
 flowchart TD
-    out["システム音声出力<br/>(ループバック / 仮想デバイス / アプリ単位)"]
-    cap["WASAPI ループバックキャプチャ"]
-    conv["A2DP Service: PCM 変換"]
-    enc["オーディオエンコーダー<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
-    send["A2DP Service → BtStackTransport::send_media()"]
-    stack["BTstack A2DP Source → AVDTP → L2CAP → HCI"]
-    usb["WinUSB → USB Bluetooth アダプター → 無線"]
-    hp["ヘッドホン / スピーカー"]
-    out --> cap
-    cap -- "デバイスのミックス形式、通常 float32、44.1〜96 kHz" --> conv
-    conv -- "16 / 32-bit 整数 PCM" --> enc
-    enc -- "エンコード済みフレーム" --> send
-    send -- "メディアペイロード（aptX、aptX LL 以外は RTP ヘッダー付き）" --> stack
-    stack --> usb
-    usb -.-> hp
+    out["システム音声出力（ループバック / 仮想デバイス / アプリ単位）"]
+    out --> cap["WASAPI ループバックキャプチャ（通常 float32、44.1〜96 kHz）"]
+    cap --> conv["A2DP Service: 16 / 32-bit 整数 PCM に変換"]
+    conv --> enc["オーディオエンコーダー: LDAC / aptX 系 / LHDC V5 / AAC / SBC"]
+    enc --> stack["BtStackTransport::send_media() → AVDTP → L2CAP → HCI"]
+    stack --> usb["WinUSB → USB Bluetooth アダプター → 無線"]
+    usb -.-> hp["ヘッドホン / スピーカー"]
 ```
 
 ## 主要モジュール

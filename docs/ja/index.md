@@ -97,16 +97,19 @@ A2DPWB は WASAPI でオーディオをキャプチャし、3 つのモードを
 ## 動作の仕組み
 
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 480
+    rankSpacing: 30
+---
 flowchart TD
-    subgraph src["オーディオソース"]
-        direction LR
-        s1["システムループバック<br/>既定の再生デバイス"]
-        s2["仮想デバイス<br/>アプリ別ルーティング"]
-        s3["アプリ<br/>プロセスループバック"]
-    end
-    src --> cap["WASAPI ループバックキャプチャ (PCM)"]
-    cap --> enc["オーディオエンコーダー<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
-    enc --> bt["BTstack<br/>A2DP Source → AVDTP → L2CAP → HCI"]
+    s1["システムループバック"]
+    s2["仮想デバイス"]
+    s3["アプリ（プロセスループバック）"]
+    s1 & s2 & s3 --> cap["WASAPI ループバックキャプチャ (PCM)"]
+    cap --> enc["オーディオエンコーダー: LDAC / aptX 系 / LHDC V5 / AAC / SBC"]
+    enc --> bt["BTstack: A2DP Source → AVDTP → L2CAP → HCI"]
     bt --> usb["WinUSB → USB Bluetooth アダプター"]
     usb -.-> hp["ヘッドホン"]
 ```
