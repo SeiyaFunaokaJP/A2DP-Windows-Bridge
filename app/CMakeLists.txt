@@ -1,5 +1,5 @@
 # A2DP Windows Bridge (A2DPWB)
-# Captures system audio via WASAPI, encodes with LDAC/aptX HD/aptX LL/aptX/SBC/AAC,
+# Captures system audio via WASAPI, encodes with LDAC/aptX HD/aptX LL/aptX/SBC/AAC/LHDC V5,
 # and streams over Bluetooth via BTstack (WinUSB).
 # GUI frontend via wxWidgets.
 
@@ -43,6 +43,7 @@ add_executable(A2DPWB WIN32
     src/aptx_encoder.cpp
     src/a2dp_sbc_encoder.cpp
     src/aac_encoder.cpp
+    src/lhdcv5_encoder.cpp
     src/bt_device.cpp
     src/bt_adapter_enum.cpp
     src/btstack_transport.cpp
@@ -95,6 +96,12 @@ endif()
 # libopenaptx (aptX / aptX HD codec)
 if(TARGET openaptx)
     target_link_libraries(A2DPWB PRIVATE openaptx)
+endif()
+
+# LHDC V5 encoder (experimental)
+if(TARGET lhdcv5_enc)
+    target_link_libraries(A2DPWB PRIVATE lhdcv5_enc)
+    target_compile_definitions(A2DPWB PRIVATE LHDCV5_ENCODER_AVAILABLE=1)
 endif()
 
 # BTstack (user-mode Bluetooth stack via WinUSB)

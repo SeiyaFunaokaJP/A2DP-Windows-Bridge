@@ -8,7 +8,7 @@
  *   SBC               Bluedroid SBC decoder (BTstack 3rd-party/bluedroid)
  *   AAC               fdk-aac (LATM, muxConfigPresent=1)
  *   aptX / HD / LL    libopenaptx 0.2.0
- *   LDAC              no open-source decoder: frame headers are validated only
+ *   LDAC, LHDC V5     no open-source decoder: frame headers are validated only
  *
  * Decoded audio is written to WAV files next to the dump. The report on
  * stdout lists each configuration, packet/frame counts and every
@@ -57,7 +57,7 @@ static uint32_t be32(const uint8_t *p) {
 /* Codec configuration (AVDTP Media Codec capability)                       */
 /* ------------------------------------------------------------------------ */
 
-enum class Codec { Unknown, SBC, AAC, Aptx, AptxHD, AptxLL, LDAC };
+enum class Codec { Unknown, SBC, AAC, Aptx, AptxHD, AptxLL, LDAC, LHDCV5 };
 
 static const char *codec_name(Codec c) {
     switch (c) {
@@ -67,6 +67,7 @@ static const char *codec_name(Codec c) {
     case Codec::AptxHD: return "aptX HD";
     case Codec::AptxLL: return "aptX LL";
     case Codec::LDAC:   return "LDAC";
+    case Codec::LHDCV5: return "LHDC V5";
     default:            return "unknown";
     }
 }
@@ -79,9 +80,13 @@ static const char *codec_file_tag(Codec c) {
     case Codec::AptxHD: return "aptxhd";
     case Codec::AptxLL: return "aptxll";
     case Codec::LDAC:   return "ldac";
+    case Codec::LHDCV5: return "lhdcv5";
     default:            return "unknown";
     }
 }
+
+/* LDAC and LHDC V5 have no open-source decoder: frame headers are validated only */
+static bool headers_only(Codec c) { return c == Codec::LDAC || c == Codec::LHDCV5; }
 
 struct CodecConfig {
     Codec codec = Codec::Unknown;
@@ -94,6 +99,9 @@ struct CodecConfig {
     int sbc_min_bitpool = 0, sbc_max_bitpool = 0;
     /* LDAC frame header ids: sampling rate id and channel config id */
     int ldac_sr_id = -1, ldac_ch_id = -1;
+    /* LHDC V5: samples per 5 ms frame (240 / 480 / 960) and bit depth */
+    uint32_t lhdc_frame_samples = 0;
+    int lhdc_bits = 0;
 
     /* A2DPWB sends classic aptX and aptX LL without an RTP header */
     bool has_rtp() const { return codec != Codec::Aptx && codec != Codec::AptxLL; }
@@ -211,6 +219,24 @@ static CodecConfig parse_media_codec(const uint8_t *p, size_t n) {
                 c.ldac_ch_id == 2 ? "stereo" : "?");
             if (c.ldac_sr_id < 0 || c.ldac_ch_id < 0)
                 c.desc += " (INVALID: not exactly one option per field)";
+            return c;
+        }
+        if (vendor == 0x53A && vcodec == 0x4C35 && vlen >= 5) {
+            /* Android a2dp_vendor_lhdcv5_constants.h: P6 sample rate, P7[2:0]
+             * bit depth | P7[7:4] bit rate limits, P8 version / frame length,
+             * P9-P10 features. Stereo only. */
+            c.codec = Codec::LHDCV5;
+            c.channels = 2;
+            uint8_t sr = v[0] & 0x35;
+            c.sample_rate = sr == 0x20 ? 44100 : sr == 0x10 ? 48000 : sr == 0x04 ? 96000 : sr == 0x01 ? 192000 : 0;
+            c.lhdc_frame_samples = c.sample_rate == 192000 ? 960 : c.sample_rate == 96000 ? 480 : 240;
+            uint8_t bits = v[1] & 0x07;
+            c.lhdc_bits = bits == 0x04 ? 16 : bits == 0x02 ? 24 : bits == 0x01 ? 32 : 0;
+            bool ver1 = (v[2] & 0x0F) == 0x01, f5ms = (v[2] & 0x10) != 0;
+            c.desc = strf("LHDC V5 %u Hz, %d-bit, stereo, max/min bit rate bits 0x%02X, features 0x%02X 0x%02X",
+                c.sample_rate, c.lhdc_bits, v[1] & 0xF0, v[3], v[4]);
+            if (c.sample_rate == 0 || c.lhdc_bits == 0 || !ver1 || !f5ms)
+                c.desc += " (INVALID: not exactly one option per field, or not V5 ver.1 / 5 ms)";
             return c;
         }
         c.desc = strf("vendor codec 0x%08X:0x%04X (not supported by this tool)", vendor, vcodec);
@@ -333,6 +359,7 @@ public:
         case Codec::AptxLL:
         case Codec::AptxHD: decode_aptx(pl, pn); break;
         case Codec::LDAC:   check_ldac(pl, pn); break;
+        case Codec::LHDCV5: check_lhdcv5(pl, pn); break;
         default: break;
         }
     }
@@ -369,8 +396,8 @@ public:
             }
             double audio_s = cfg_.sample_rate ? (double)samples_ / cfg_.sample_rate : 0.0;
             printf("  Frames        : %llu (%s)\n", (unsigned long long)frames_,
-                   cfg_.codec == Codec::LDAC ? "headers validated; LDAC has no open-source decoder"
-                                             : "decoded");
+                   headers_only(cfg_.codec) ? "headers validated; this codec has no open-source decoder"
+                                            : "decoded");
             if (audio_s > 0) {
                 printf("  Audio         : %.3f s of audio at %u Hz%s\n", audio_s, cfg_.sample_rate,
                        wall > 0 ? strf(" (%.1f%% of the streaming time)", 100.0 * audio_s / wall).c_str() : "");
@@ -381,6 +408,13 @@ public:
                 printf("  LDAC frames   : %llu-%llu bytes incl. 3-byte header, %llu-%llu frames per packet\n",
                        (unsigned long long)ldac_min_frame_, (unsigned long long)ldac_max_frame_,
                        (unsigned long long)ldac_min_fpp_, (unsigned long long)ldac_max_fpp_);
+            }
+            if (cfg_.codec == Codec::LHDCV5 && ldac_frame_bytes_ > 0 && frames_ > 0) {
+                printf("  LHDC frames   : %llu-%llu bytes incl. 2-byte header, %llu-%llu frames per packet, "
+                       "%llu sequence gaps\n",
+                       (unsigned long long)ldac_min_frame_, (unsigned long long)ldac_max_frame_,
+                       (unsigned long long)ldac_min_fpp_, (unsigned long long)ldac_max_fpp_,
+                       (unsigned long long)lhdc_seq_gaps_);
             }
             if (!wav_.path().empty() && samples_ > 0)
                 printf("  WAV           : %s\n", wav_.path().c_str());
@@ -553,12 +587,50 @@ private:
         }
     }
 
+    /* LHDC V5 (A2DPWB / Android a2dp_vendor_lhdcv5_encoder.cc): 2-byte media
+     * payload header [frames << 2 | latency] [sequence], then frames each
+     * starting with a 2-byte LE header whose low 10 bits are the encoded
+     * bytes per channel (frame = 2 + 2 * that, stereo). */
+    void check_lhdcv5(const uint8_t *p, size_t n) {
+        if (n < 2) { issue("LHDC V5: media payload shorter than its 2-byte header"); return; }
+        unsigned announced = p[0] >> 2;
+        uint8_t seq = p[1];
+        if (lhdc_have_seq_ && (uint8_t)(lhdc_last_seq_ + 1) != seq) lhdc_seq_gaps_++;
+        lhdc_have_seq_ = true;
+        lhdc_last_seq_ = seq;
+        size_t off = 2;
+        uint64_t got = 0;
+        while (off < n) {
+            if (n - off < 2) { issue("LHDC V5: trailing bytes after the last frame"); break; }
+            size_t per_ch = (size_t)(p[off] | (p[off + 1] << 8)) & 0x3FF;
+            size_t total = 2 + 2 * per_ch;
+            if (per_ch == 0) { issue("LHDC V5: frame header with zero length"); break; }
+            if (off + total > n) { issue("LHDC V5: frame runs past the end of the packet"); break; }
+            got++;
+            frames_++;
+            samples_ += cfg_.lhdc_frame_samples;
+            ldac_frame_bytes_ += total;
+            if (ldac_min_frame_ == 0 || total < ldac_min_frame_) ldac_min_frame_ = total;
+            if (total > ldac_max_frame_) ldac_max_frame_ = total;
+            off += total;
+        }
+        if (got) {
+            if (ldac_min_fpp_ == 0 || got < ldac_min_fpp_) ldac_min_fpp_ = got;
+            if (got > ldac_max_fpp_) ldac_max_fpp_ = got;
+        }
+        if ((uint64_t)announced != got)
+            issue("LHDC V5: media payload header frame count differs from frames in packet");
+    }
+
     int index_;
     uint16_t handle_;
     double start_;
     CodecConfig cfg_;
     WavWriter wav_;
     std::map<std::string, Issue> issues_;
+    bool lhdc_have_seq_ = false;
+    uint8_t lhdc_last_seq_ = 0;
+    uint64_t lhdc_seq_gaps_ = 0;
 
     uint64_t packets_ = 0, payload_bytes_ = 0, frames_ = 0, samples_ = 0;
     double first_t_ = 0, last_t_ = 0, max_gap_ = 0;
@@ -821,7 +893,7 @@ private:
         finish_session(handle);
         int index = (int)sessions_.size() + 1;
         std::string wav;
-        if (write_wav_ && cfg.codec != Codec::Unknown && cfg.codec != Codec::LDAC)
+        if (write_wav_ && cfg.codec != Codec::Unknown && !headers_only(cfg.codec))
             wav = strf("%s.%d.%s.wav", prefix_.c_str(), index, codec_file_tag(cfg.codec));
         sessions_.push_back(std::make_unique<Session>(index, handle, now_, cfg, wav));
         active_[handle] = sessions_.back().get();

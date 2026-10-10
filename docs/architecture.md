@@ -204,6 +204,7 @@ Captures system audio output in real-time using Windows Audio Session API.
 | aptX | libopenaptx | 352/384 kbps (44.1/48 kHz) | 16-bit stereo, no RTP header |
 | AAC | fdk-aac | up to 256 kbps | AAC-LC, LATM transport |
 | SBC | BTstack Bluedroid | up to ~345 kbps | Mandatory A2DP baseline |
+| LHDC V5 | lhdcv5-enc (C port of the AOSP encoder) | 320/500/1000 kbps, ABR 160–400 kbps | Experimental; 16/24-bit, 5 ms frames, 2-byte media payload header, RTP header |
 
 All encoders implement the `AudioEncoder` interface with `encode()` and
 `get_frame_size()` methods.
@@ -224,6 +225,7 @@ Non-standard codecs are registered as Vendor Specific in AVDTP:
 | aptX HD | Qualcomm (0x000000D7) | 0x0024 |
 | aptX Low Latency | CSR (0x0000000A) or Qualcomm (0x000000D7) | 0x0002 |
 | aptX Adaptive | Qualcomm (0x000000D7) | 0x00AD (detected only, never selected) |
+| LHDC V5 | Savitech (0x0000053A) | 0x4C35 |
 
 AAC and SBC use standard A2DP codec IDs defined in the A2DP specification.
 
@@ -235,9 +237,18 @@ Codec information element sizes (including the 6-byte vendor/codec ID):
 - **aptX LL**: 8 bytes, or 17 bytes when the sink sets the extended
   ("new caps") flag. A2DPWB registers one aptX LL endpoint and configures the
   stream with the vendor ID the sink used
+- **LHDC V5**: 11 bytes (Android `a2dp_vendor_lhdcv5_constants.h`): byte 6
+  sample rates (0x20 44.1k, 0x10 48k, 0x04 96k, 0x01 192k), byte 7 bit depth
+  (0x04 16-bit, 0x02 24-bit) and the sink's min/max bit rate limits, byte 8
+  codec sub-version (0x01 = V5 ver.1) and 0x10 = 5 ms frames, bytes 9-10
+  optional features (low latency, lossless, JAS, AR, META), none of which
+  A2DPWB offers. Stereo only. The sink's bit rate limits are echoed back in the
+  configuration and applied to the encoder, as Android does. Media packets
+  carry a 2-byte payload header: frame count << 2 (latency bits 0) and a
+  sequence number
 
-**RTP vs no RTP**: LDAC, aptX HD, AAC and SBC media packets carry the 12-byte
-RTP header. aptX and aptX LL are sent **without** an RTP header (as Android and
+**RTP vs no RTP**: LDAC, aptX HD, AAC, SBC and LHDC V5 media packets carry the
+12-byte RTP header. aptX and aptX LL are sent **without** an RTP header (as Android and
 PipeWire do), so the whole L2CAP MTU is available for aptX frames.
 
 **aptX Adaptive** has no open-source encoder (libopenaptx does not implement
@@ -263,4 +274,4 @@ only logs it; classic aptX is used if the sink lists that separately.
   dedicated USB adapter for A2DPWB
 - Some Bluetooth adapters' firmware limits achievable bitrate
 - USB Bluetooth 5.0+ adapters generally work well for LDAC
-- Auto codec selection priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
+- Auto codec selection priority: LDAC > aptX HD > aptX LL > aptX > LHDC V5 (experimental) > AAC > SBC

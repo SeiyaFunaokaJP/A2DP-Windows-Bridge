@@ -21,6 +21,7 @@ All versions below are the ones pinned in this repository (git submodules under
 | libldac (AOSP) | `android-15.0.0_r36-4-geeee1a3` (commit `eeee1a3`) | Apache-2.0 | Sony Corporation | LDAC audio encoding |
 | libopenaptx | 0.2.0 (tag `0.2.0`, commit `2459ed4`) | LGPL-2.1-or-later | Aurelien Jacobs, Pali Rohár | aptX / aptX HD / aptX LL audio encoding (decoding in `a2dpwb_decode`, §12) |
 | fdk-aac | `v2.0.3-158-gd8e6b1a` (commit `d8e6b1a`) | FDK-AAC | Fraunhofer-Gesellschaft | AAC-LC audio encoding (decoding in `a2dpwb_decode`, §12) |
+| LHDC-V5-Encoder (C port of the AOSP LHDC V5 encoder) | commit `3f9d198` | Apache-2.0; `src/lhdcv5_fft.c` BSD-3-Clause | The Android Open Source Project; Mark Borgerding (KISS FFT) | LHDC V5 audio encoding (experimental), §14 |
 | BTstack | `v1.8.1-6-g5bc5cbdbe` (commit `5bc5cbdbe`) | LicenseRef-BTstack (BSD-3-Clause-style **with a non-commercial clause**) | BlueKitchen GmbH | User-mode Bluetooth stack |
 | Bluedroid SBC codec (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/bluedroid/`) | Apache-2.0 | Broadcom Corporation; The Android Open Source Project; Open Interface North America, Inc. | SBC audio encoding (decoder also compiled; decoding in `a2dpwb_decode`, §12) |
 | rijndael (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/rijndael/`) | Public domain | Philip J. Erdelsky | AES (used by BTstack) |
@@ -49,6 +50,7 @@ The release zip contains:
 | `licenses/Apache-2.0.txt` | Apache License 2.0 text (covers the Bluedroid SBC codec) |
 | `licenses/fdk-aac-NOTICE.txt` | Fraunhofer FDK AAC Codec Library license (`extern/fdk-aac/NOTICE`) |
 | `licenses/libopenaptx-LGPL-2.1.txt` | GNU LGPL 2.1 text for libopenaptx |
+| `licenses/lhdcv5-enc-LICENSE.txt` | LHDC V5 encoder license (Apache-2.0 text, `extern/lhdcv5-enc/LICENSE`); its KISS FFT notice is in §14 of this document |
 | `licenses/nlohmann-json-LICENSE.MIT.txt` | nlohmann/json MIT license (`extern/json/LICENSE.MIT`) |
 | `licenses/wxWidgets-licence.txt` | wxWindows Library Licence 3.1 (`docs/licence.txt` in wxWidgets) |
 | `licenses/wxWidgets-lgpl.txt` | GNU Library General Public License 2 (`docs/lgpl.txt` in wxWidgets) |
@@ -508,12 +510,96 @@ When changing `requirements.txt`, re-check and update this table.
 
 ---
 
+## 14. LHDC-V5-Encoder (C port of the AOSP LHDC V5 encoder)
+
+- **Source**: <https://github.com/WillyBilly06/LHDC-V5-Encoder>
+- **Version**: commit `3f9d198` (2026-07-24; the repository's only release state)
+- **Path in project**: `extern/lhdcv5-enc/` (git submodule)
+- **Origin**: a C99 translation of the Rust LHDC V5 encoder Google added to
+  AOSP for Android 17
+  (`platform/packages/modules/Bluetooth`, branch `android17-release`,
+  `system/audio/codecs/lhdcv5/`, Apache-2.0, Copyright (C) 2025 The Android
+  Open Source Project). Before it was added here, the port was compiled with
+  MSVC and compared with the AOSP Rust crate built from that branch:
+  identical output over 114 configurations (44.1/48/96/192 kHz, 16/24-bit,
+  bit rate indexes 0-13, several MTU / interval settings, mid-stream bit rate
+  switches; about 18.5 MB of encoded data).
+- **License**: Apache License 2.0 (`LICENSE`; file headers carry
+  `SPDX-License-Identifier: Apache-2.0` and the AOSP copyright). The FFT,
+  `src/lhdcv5_fft.c`, is derived from KISS FFT and carries
+  `Copyright (c) 2003-2010, Mark Borgerding. All rights reserved.` with
+  `SPDX-License-Identifier: BSD-3-Clause`.
+- **SPDX**: `Apache-2.0 AND BSD-3-Clause`
+- **Usage**: LHDC V5 audio encoding (experimental). Not linked into
+  `a2dpwb_decode`.
+
+### License Texts
+
+The Apache 2.0 text is shipped as `licenses/lhdcv5-enc-LICENSE.txt`. The
+port ships no separate notice file for its KISS FFT part, so the BSD-3-Clause
+license it refers to is reproduced here for the binary distribution:
+
+```
+Copyright (c) 2003-2010, Mark Borgerding. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors
+   may be used to endorse or promote products derived from this software
+   without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+```
+
+### Obligations
+
+- Include a copy of the Apache 2.0 license when distributing (shipped as
+  `licenses/lhdcv5-enc-LICENSE.txt`)
+- Retain all copyright, patent, trademark, and attribution notices; the
+  repository has no NOTICE file
+- Reproduce the KISS FFT copyright notice and BSD-3-Clause conditions with
+  binary distributions (above)
+- Mark modified files with prominent notices if changes are made (A2DPWB
+  compiles the sources unmodified)
+
+### Trademark, Patents and Certification
+
+LHDC is a codec of Savitech Corp., promoted by the Hi-Res Wireless Audio
+(HWA) alliance. Apache-2.0 grants a patent license only for the
+contributions of the code's licensors (here Google) and grants no trademark
+rights; the port's README notes that codec licensing / certification
+requirements should be checked before shipping a commercial product that
+advertises LHDC support. A2DPWB is a free, non-commercial application and has
+not been certified by Savitech or HWA. Its LHDC V5 support is experimental
+interoperability work and is marked as such in the user interface.
+
+---
+
 ## License Compatibility Matrix
 
 | Component | License | Compatible with MIT? | Notes |
 |-----------|---------|---------------------|-------|
 | A2DPWB (project) | MIT | — | Project license |
 | libldac | Apache-2.0 | Yes | Permissive; NOTICE must accompany binaries |
+| LHDC-V5-Encoder | Apache-2.0 AND BSD-3-Clause | Yes | Permissive; KISS FFT notice reproduced in §14 |
 | Bluedroid SBC | Apache-2.0 | Yes | Permissive |
 | libopenaptx | LGPL-2.1+ | Yes (with care) | Must allow library replacement / relinking |
 | fdk-aac | FDK AAC License | Yes | Source of fdk-aac must be offered free of charge; no patent license |

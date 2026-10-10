@@ -55,9 +55,10 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxll    # aptX Low Latency
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aptx      # aptX
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aac       # AAC
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c sbc       # SBC
+A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5    # LHDC V5（試験的）
 ```
 
-自動選択の優先順位: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
+自動選択の優先順位: LDAC > aptX HD > aptX LL > aptX > LHDC V5（試験的） > AAC > SBC
 
 指定したコーデックをヘッドホンが提供していない場合、CLI は Auto の優先順位でフォールバックします。aptX Adaptive は選択されません -- [aptX ファミリーと aptX Adaptive の互換性](#aptx-compatibility)を参照してください。
 
@@ -240,7 +241,7 @@ A2DPWB は 3 種類の aptX コーデックに対応しており、いずれも 
 - **ヘッドホンがクラシック aptX も通知している場合** -- Qualcomm は aptX Adaptive を aptX / aptX HD と下位互換があると案内しているため、多くの aptX Adaptive 対応ヘッドホンがこれに該当します。この場合 A2DPWB はクラシック aptX を直接選択します。aptX はヘッドホンの一覧にある独立したコーデックであり、aptX Adaptive の縮退モードではありません。
 - **ヘッドホンが aptX Adaptive のみを通知している場合**（クラシック aptX・aptX HD・aptX LL がない） -- A2DPWB では aptX を使えません。Auto は優先順位に従って次のコーデック（通常は AAC か SBC）を選びます。
 
-自動選択の優先順位: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
+自動選択の優先順位: LDAC > aptX HD > aptX LL > aptX > LHDC V5（試験的） > AAC > SBC
 
 ### 指定したコーデックがない場合 {#codec-fallback}
 

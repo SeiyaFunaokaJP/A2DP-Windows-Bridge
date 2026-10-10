@@ -200,7 +200,8 @@ public:
      * Must be called after connect_a2dp() succeeds.
      * If codec is not supported by remote, returns false.
      */
-    bool configure_codec(AudioCodec codec, uint32_t sample_rate, uint8_t channels);
+    bool configure_codec(AudioCodec codec, uint32_t sample_rate, uint8_t channels,
+                         uint8_t bits_per_sample = 16 /* LHDC V5: 16 or 24 */);
 
     /* Start A2DP streaming. Blocks until AVDTP Start is acknowledged. */
     bool start_stream();
@@ -286,6 +287,15 @@ public:
          * is no open-source encoder */
         bool aptx_adaptive = false;
         uint8_t aptx_adaptive_seid = 0;
+        /* LHDC V5 (0x053A / 0x4C35, experimental): set when the SEP is
+         * usable (V5 ver.1, 5 ms frames, a known sample rate and bit
+         * depth); lhdcv5_info holds its 11 codec info bytes */
+        bool lhdcv5 = false;
+        uint8_t lhdcv5_seid = 0;
+        uint8_t lhdcv5_info[11] = {};
+        bool lhdcv5_24bit() const { return (lhdcv5_info[7] & 0x02) != 0; }
+        uint8_t lhdcv5_rates() const { return lhdcv5_info[6] & 0x35; }
+        uint8_t lhdcv5_bitrate_limits() const { return lhdcv5_info[7] & 0xF0; }
         /* SEP discovery: audio sink SEPs the remote listed, and how many of
          * them it reported in use. BTstack does not query the codec of an
          * SEP in use, so a codec streaming to another device (multipoint)
@@ -303,6 +313,13 @@ public:
      * `wanted` unchanged for other codecs or when no better choice exists.
      */
     uint32_t pick_aptx_sample_rate(AudioCodec codec, uint32_t wanted) const;
+
+    /*
+     * For LHDC V5: choose a capture sample rate (44100 / 48000 / 96000 /
+     * 192000) the remote advertises, preferring `wanted`; 88200 maps to
+     * 96000. Returns `wanted` when the remote lists none of them.
+     */
+    uint32_t pick_lhdcv5_sample_rate(uint32_t wanted) const;
 
 private:
     /* BTstack event handler (static, dispatches to instance) */
@@ -454,6 +471,7 @@ private:
     uint8_t aptx_local_seid_ = 0;
     uint8_t sbc_local_seid_ = 0;
     uint8_t aac_local_seid_ = 0;
+    uint8_t lhdcv5_local_seid_ = 0;
 
     /* Stream endpoint pointers (owned by BTstack) */
     avdtp_stream_endpoint *ldac_ep_ = nullptr;
@@ -462,12 +480,15 @@ private:
     avdtp_stream_endpoint *aptx_ep_ = nullptr;
     avdtp_stream_endpoint *sbc_ep_ = nullptr;
     avdtp_stream_endpoint *aac_ep_ = nullptr;
+    avdtp_stream_endpoint *lhdcv5_ep_ = nullptr;
 
     /* Remote capabilities discovered during connection */
     RemoteCodecCaps remote_caps_;
 
     /* Selected codec and config */
     AudioCodec selected_codec_ = AudioCodec::LDAC;
+    uint8_t bits_per_sample_ = 16;   /* LHDC V5 configuration (16 / 24) */
+    uint8_t lhdcv5_seq_ = 0;         /* LHDC V5 media payload header sequence number */
     uint32_t sample_rate_ = 48000;
     uint8_t channels_ = 2;
 

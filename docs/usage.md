@@ -54,9 +54,10 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxll    # aptX Low Latency
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aptx      # aptX
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aac       # AAC
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c sbc       # SBC
+A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5    # LHDC V5 (experimental)
 ```
 
-Auto-select priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
+Auto-select priority: LDAC > aptX HD > aptX LL > aptX > LHDC V5 (experimental) > AAC > SBC
 
 If the requested codec is not offered by the headphones, the CLI falls back to the Auto priority order. aptX Adaptive is never selected -- see [aptX Family and aptX Adaptive Compatibility](#aptx-compatibility).
 
@@ -239,7 +240,7 @@ When A2DPWB connects, the headphones advertise a **list of codecs** (AVDTP strea
 - **The headphones also list classic aptX** -- Many aptX Adaptive headphones do, because Qualcomm markets aptX Adaptive as backward compatible with aptX / aptX HD. In that case A2DPWB selects classic aptX directly; it is a separate codec in the headphones' list, not a reduced mode of aptX Adaptive.
 - **The headphones list only aptX Adaptive** (no classic aptX, aptX HD or aptX LL) -- aptX is not possible with A2DPWB. Auto picks the next codec in the priority order, typically AAC or SBC.
 
-Auto-select priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
+Auto-select priority: LDAC > aptX HD > aptX LL > aptX > LHDC V5 (experimental) > AAC > SBC
 
 ### Explicitly Selected Codec Not Offered {#codec-fallback}
 

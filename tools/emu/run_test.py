@@ -9,8 +9,9 @@ with a2dpwb_decode:
   - A2DPWB streams the requested codec and a2dpwb_decode finds no problem,
     on the sent side and on the received side
   - the sink received every media packet / frame A2DPWB sent
-  - decoded audio (all codecs but LDAC) is identical on both sides and is
-    the test tone: 1 kHz left, 1.5 kHz right, amplitude 0.5
+  - decoded audio (all codecs but LDAC and LHDC V5, which have no open-source
+    decoder) is identical on both sides and is the test tone: 1 kHz left,
+    1.5 kHz right, amplitude 0.5
 
 Outputs (captures, logs, reports, WAV) go to tools/emu/out/<codec>/.
 Exit code 0 when every codec passed. Uses only the Python standard library;
@@ -36,11 +37,12 @@ VENV_PYTHON = os.path.join(HERE, '.venv', 'Scripts', 'python.exe')
 SINK_ADDRESS = '00:A2:D0:00:00:02'
 BASE_PORT = 9101
 
-CODECS = ['sbc', 'aac', 'aptx', 'aptxhd', 'aptxll', 'ldac']
+CODECS = ['sbc', 'aac', 'aptx', 'aptxhd', 'aptxll', 'ldac', 'lhdcv5']
 CONFIG_PATTERN = {  # a2dpwb_decode's "Configuration :" line
     'sbc': r'SBC \d', 'aac': r'AAC ', 'aptx': r'aptX \d', 'aptxhd': r'aptX HD \d',
-    'aptxll': r'aptX LL \d', 'ldac': r'LDAC \d',
+    'aptxll': r'aptX LL \d', 'ldac': r'LDAC \d', 'lhdcv5': r'LHDC V5 \d',
 }
+NO_DECODER = {'ldac', 'lhdcv5'}  # frame headers are validated, audio is not decoded
 TONES = ((1000.0, 0.5), (1500.0, 0.5))  # (frequency, amplitude) per channel, as --test-tone
 
 
@@ -175,7 +177,7 @@ def run_codec(args, codec, port):
         if (sent['audio_s'] or 0) < 0.9 * args.duration:
             failures.append(f'only {sent["audio_s"]} s of audio for --duration {args.duration}')
         detail = f'{sent["packets"]} packets, {sent["frames"]} frames, {sent["audio_s"]} s'
-        if codec != 'ldac':
+        if codec not in NO_DECODER:
             if not (sent['wav'] and received['wav']):
                 failures.append('no decoded WAV')
             else:

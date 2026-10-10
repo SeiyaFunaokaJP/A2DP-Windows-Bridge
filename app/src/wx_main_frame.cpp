@@ -485,6 +485,7 @@ void MainFrame::rebuild_profile_list() {
             else if (p.codec == "aptx")   codec_str = "aptX";
             else if (p.codec == "sbc")    codec_str = "SBC";
             else if (p.codec == "aac")    codec_str = "AAC";
+            else if (p.codec == "lhdcv5") codec_str = "LHDC V5";
             else if (p.codec == "auto")   codec_str = L("codec.auto");
             else                          codec_str = p.codec.c_str();
 
@@ -506,6 +507,9 @@ void MainFrame::rebuild_profile_list() {
             } else if (p.codec == "sbc") {
                 static const char *rates[] = {"~345", "~249", "~153"};
                 snprintf(quality_buf, sizeof(quality_buf), "%s(%skbps)", q_name, rates[q_idx]);
+            } else if (p.codec == "lhdcv5") {
+                static const int rates[] = {1000, 500, 320};
+                snprintf(quality_buf, sizeof(quality_buf), "%s(%dkbps)", q_name, rates[q_idx]);
             } else {
                 snprintf(quality_buf, sizeof(quality_buf), "%s", q_name);
             }

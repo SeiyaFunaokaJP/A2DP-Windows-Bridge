@@ -192,6 +192,7 @@ void ProfileDialog::create_ui() {
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.aptx")));
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.sbc")));
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.aac")));
+    codec_ctrl_->Append(wxString::FromUTF8(L("codec.lhdc_v5_experimental")));
     codec_ctrl_->SetSelection(0);
     codec_ctrl_->Bind(wxEVT_CHOICE, &ProfileDialog::OnCodecChange, this);
     codec_grid->Add(codec_ctrl_, 1, wxEXPAND);
@@ -474,8 +475,9 @@ void ProfileDialog::populate_from_profile(const ConnectionProfile &p) {
 void ProfileDialog::update_codec_dependent() {
     int codec_idx = codec_ctrl_->GetSelection();
     bool is_ldac = (codec_idx == 1);
-    bool quality_enabled = (codec_idx == 0 || codec_idx == 1 || codec_idx == 5 || codec_idx == 6);
-    bool abr_enabled = (codec_idx == 0 || codec_idx == 1);
+    bool is_lhdc = (codec_idx == 7);
+    bool quality_enabled = (codec_idx == 0 || codec_idx == 1 || codec_idx == 5 || codec_idx == 6 || is_lhdc);
+    bool abr_enabled = (codec_idx == 0 || codec_idx == 1 || is_lhdc);
 
     /* Rebuild quality items with codec-specific bitrate info */
     int cur_q = quality_ctrl_->GetSelection();
@@ -496,6 +498,11 @@ void ProfileDialog::update_codec_dependent() {
         quality_ctrl_->Append(wxString::Format("%s (~345kbps)", wxString::FromUTF8(L("quality.high"))));
         quality_ctrl_->Append(wxString::Format("%s (~240kbps)", wxString::FromUTF8(L("quality.standard"))));
         quality_ctrl_->Append(wxString::Format("%s (~150kbps)", wxString::FromUTF8(L("quality.mobile"))));
+        break;
+    case 7: /* LHDC V5 (the sink may cap the maximum) */
+        quality_ctrl_->Append(wxString::Format("%s (1000kbps)", wxString::FromUTF8(L("quality.high"))));
+        quality_ctrl_->Append(wxString::Format("%s (500kbps)", wxString::FromUTF8(L("quality.standard"))));
+        quality_ctrl_->Append(wxString::Format("%s (320kbps)", wxString::FromUTF8(L("quality.mobile"))));
         break;
     default: /* Auto or codecs without quality control */
         quality_ctrl_->Append(wxString::FromUTF8(L("quality.high")));
@@ -525,7 +532,8 @@ void ProfileDialog::update_codec_dependent() {
     sample_rate_ctrl_->Append(wxString::FromUTF8(L("codec.auto")));
     sample_rate_ctrl_->Append("44100 Hz");
     sample_rate_ctrl_->Append("48000 Hz");
-    if (is_ldac) {
+    if (is_ldac || is_lhdc) {
+        /* LHDC V5 has no 88.2 kHz: that choice is streamed at 96 kHz */
         sample_rate_ctrl_->Append("88200 Hz");
         sample_rate_ctrl_->Append("96000 Hz");
     }
@@ -535,7 +543,7 @@ void ProfileDialog::update_codec_dependent() {
         sample_rate_ctrl_->SetSelection(0);
 
     /* Bit depth */
-    bool bd_enabled = (codec_idx == 1);
+    bool bd_enabled = (codec_idx == 1 || is_lhdc);
     int cur_bd = bit_depth_ctrl_->GetSelection();
     bit_depth_ctrl_->Clear();
     if (bd_enabled) {
@@ -927,7 +935,7 @@ void ProfileDialog::OnSave(wxCommandEvent &) {
     p.device_name = devname_ctrl_->GetValue().utf8_string();
 
     /* Auto-generate internal name from device + codec */
-    static const char *codec_short[] = { "Auto", "LDAC", "aptX HD", "aptX LL", "aptX", "SBC", "AAC" };
+    static const char *codec_short[] = { "Auto", "LDAC", "aptX HD", "aptX LL", "aptX", "SBC", "AAC", "LHDC V5" };
     std::string auto_name = p.device_name.empty() ? p.device_address : p.device_name;
     int ci = codec_ctrl_->GetSelection();
     if (ci >= 0 && ci < (int)(sizeof(codec_short) / sizeof(codec_short[0]))) { auto_name += " "; auto_name += codec_short[ci]; }

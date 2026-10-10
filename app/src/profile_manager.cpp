@@ -141,6 +141,7 @@ int ProfileManager::codec_to_index(const std::string &codec) {
     if (codec == "aptx")   return 4;
     if (codec == "sbc")    return 5;
     if (codec == "aac")    return 6;
+    if (codec == "lhdcv5") return 7;
     return 0;
 }
 
@@ -152,6 +153,7 @@ std::string ProfileManager::index_to_codec(int index) {
     case 4: return "aptx";
     case 5: return "sbc";
     case 6: return "aac";
+    case 7: return "lhdcv5";
     default: return "auto";
     }
 }
