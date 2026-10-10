@@ -179,6 +179,9 @@ endif()
 
 # Embed language files into the executable at configure time
 file(GLOB LANG_FILES "${CMAKE_CURRENT_SOURCE_DIR}/lang/*.json")
+# Re-run the configure step when a language file changes, so the embedded
+# strings cannot go stale in an incremental build
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${LANG_FILES})
 set(EMBEDDED_LANG_ENTRIES "")
 foreach(LANG_FILE ${LANG_FILES})
     get_filename_component(LANG_CODE ${LANG_FILE} NAME_WE)

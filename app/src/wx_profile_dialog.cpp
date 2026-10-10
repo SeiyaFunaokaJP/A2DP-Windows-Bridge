@@ -192,7 +192,7 @@ void ProfileDialog::create_ui() {
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.aptx")));
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.sbc")));
     codec_ctrl_->Append(wxString::FromUTF8(L("codec.aac")));
-    codec_ctrl_->Append(wxString::FromUTF8(L("codec.lhdc_v5_experimental")));
+    codec_ctrl_->Append(wxString::FromUTF8(L("codec.lhdc_v5")));
     codec_ctrl_->SetSelection(0);
     codec_ctrl_->Bind(wxEVT_CHOICE, &ProfileDialog::OnCodecChange, this);
     codec_grid->Add(codec_ctrl_, 1, wxEXPAND);

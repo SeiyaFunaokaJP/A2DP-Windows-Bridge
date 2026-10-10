@@ -418,8 +418,7 @@ static void print_usage(const char *prog) {
     printf("  (default)    Launch GUI application\n");
     printf("  --cli        Run in command-line mode\n");
     printf("\nOptions (CLI mode):\n");
-    printf("  -c <codec>   Codec: ldac, aptxhd, aptxll, aptx, sbc, aac, lhdcv5 (experimental),\n");
-    printf("               auto (default: auto)\n");
+    printf("  -c <codec>   Codec: ldac, aptxhd, aptxll, aptx, sbc, aac, lhdcv5, auto (default: auto)\n");
     printf("  -q <mode>    Quality mode: hq (990kbps), sq (660kbps), mq (330kbps)\n");
     printf("               LDAC; LHDC V5: hq 1000, sq 500, mq 320 kbps. Default: hq\n");
     printf("  -d <addr>    Bluetooth device address (XX:XX:XX:XX:XX:XX)\n");
@@ -984,7 +983,7 @@ int main(int argc, char *argv[]) {
 
     /* CLI mode */
     printf("A2DP Windows Bridge (A2DPWB)\n");
-    printf("Codecs: LDAC | aptX HD | aptX Low Latency | aptX | AAC | SBC | LHDC V5 (experimental)\n");
+    printf("Codecs: LDAC | aptX HD | aptX Low Latency | aptX | AAC | SBC | LHDC V5\n");
     printf("===================================================\n\n");
 
     /* Parse command-line arguments */
