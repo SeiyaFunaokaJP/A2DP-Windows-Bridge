@@ -8,6 +8,7 @@
  *   - aptX (Qualcomm/APT classic, 352/384 kbps)
  *   - AAC (MPEG-2/4 AAC-LC, up to 256 kbps)
  *   - SBC (mandatory A2DP codec, up to ~345 kbps)
+ *   - LHDC V5 (Savitech, up to 1000 kbps, 24-bit, experimental)
  *
  * Main entry point. Orchestrates:
  *   1. Bluetooth device discovery and selection
@@ -42,6 +43,7 @@
 #include "aac_encoder.h"
 #include "aptxll_encoder.h"
 #include "aptx_encoder.h"
+#include "lhdcv5_encoder.h"
 #include "bt_device.h"
 #include "btstack_transport.h"
 #include "config_path.h"
@@ -284,9 +286,11 @@ static void audio_callback(
 
     uint16_t mtu = transport->get_media_mtu();
     if (mtu == 0) mtu = 679;
-    /* Reserve 1 byte for LDAC/SBC media payload header (added by send_media) */
+    /* Reserve 1 byte for the LDAC/SBC media payload header, 2 for LHDC V5
+     * (added by send_media) */
     uint32_t max_raw = (g_active_codec == AudioCodec::LDAC ||
-                        g_active_codec == AudioCodec::SBC) ? (mtu - 1) : mtu;
+                        g_active_codec == AudioCodec::SBC) ? (mtu - 1) :
+                       (g_active_codec == AudioCodec::LHDCV5) ? (mtu - 2) : mtu;
     if (g_active_codec == AudioCodec::Aptx || g_active_codec == AudioCodec::AptxLL) {
         /* aptX / aptX LL have no RTP header: the full L2CAP MTU is payload */
         max_raw = static_cast<uint32_t>(mtu) + BtStackTransport::RTP_HEADER_SIZE;
@@ -307,6 +311,9 @@ static void audio_callback(
      * (RTP timestamp of the next frame); see a2dp_service.cpp */
     uint32_t pcm_frames_per_codec_frame = encoder->get_pcm_frames_per_codec_frame();
     uint32_t first_ts = g_timestamp;
+    uint32_t sent_packets = 0;
+    /* Send queue backlog before this round's packets go in (LHDC V5 ABR input) */
+    uint32_t queue_before = transport->get_queue_depth();
 
     while (offset + bytes_per_encode <= pcm_bytes) {
         uint32_t out_size = static_cast<uint32_t>(g_encode_buffer.size());
@@ -323,6 +330,7 @@ static void audio_callback(
                 transport->send_media(
                     accum, accum_size, first_ts,
                     static_cast<uint8_t>(accum_frames), g_active_codec);
+                sent_packets++;
                 accum_size = 0;
                 accum_frames = 0;
                 first_ts = g_timestamp;
@@ -344,6 +352,7 @@ static void audio_callback(
         transport->send_media(
             accum, accum_size, first_ts,
             static_cast<uint8_t>(accum_frames), g_active_codec);
+        sent_packets++;
     }
 
     /* Save leftover PCM samples for next callback */
@@ -370,6 +379,12 @@ static void audio_callback(
                 ldac->abr_adjust(queue_depth);
             }
         }
+    }
+    /* LHDC V5 ABR: Android steps its policy once per media packet sent, with
+     * the queue length seen when enqueueing */
+    if (g_abr_enabled && encoder->codec_type() == AudioCodec::LHDCV5 && sent_packets > 0) {
+        LhdcV5Encoder *lhdc = static_cast<LhdcV5Encoder *>(encoder);
+        for (uint32_t i = 0; i < sent_packets; i++) lhdc->abr_adjust(queue_before);
     }
 }
 
@@ -403,12 +418,12 @@ static void print_usage(const char *prog) {
     printf("  (default)    Launch GUI application\n");
     printf("  --cli        Run in command-line mode\n");
     printf("\nOptions (CLI mode):\n");
-    printf("  -c <codec>   Codec: ldac, aptxhd, aptxll, aptx, sbc, aac, auto (default: auto)\n");
+    printf("  -c <codec>   Codec: ldac, aptxhd, aptxll, aptx, sbc, aac, lhdcv5, auto (default: auto)\n");
     printf("  -q <mode>    Quality mode: hq (990kbps), sq (660kbps), mq (330kbps)\n");
-    printf("               Only affects LDAC. Default: hq\n");
+    printf("               LDAC; LHDC V5: hq 1000, sq 500, mq 320 kbps. Default: hq\n");
     printf("  -d <addr>    Bluetooth device address (XX:XX:XX:XX:XX:XX)\n");
     printf("               If not specified, scans for compatible devices\n");
-    printf("  -a           Enable LDAC ABR (Adaptive Bit Rate)\n");
+    printf("  -a           Enable ABR (Adaptive Bit Rate; LDAC and LHDC V5)\n");
     printf("  -m <mode>    Capture mode: loopback, virtual (default: loopback)\n");
     printf("  --audio-device <id>  Audio device ID for virtual mode\n");
     printf("  -l           List available Bluetooth audio devices and exit\n");
@@ -421,7 +436,7 @@ static void print_usage(const char *prog) {
     printf("  --afh <auto|off|6,11>  AFH: avoid the Wi-Fi channels heard strongly (auto), none,\n");
     printf("               or these Wi-Fi channels (default: as set in the GUI, else auto)\n");
     printf("  -h           Show this help\n");
-    printf("\nCodec priority (auto mode): LDAC > aptX HD > aptX LL > aptX > AAC > SBC\n");
+    printf("\nCodec priority (auto mode): LDAC > aptX HD > aptX LL > aptX > LHDC V5 > AAC > SBC\n");
 }
 
 static EncoderQuality parse_quality(const char *mode) {
@@ -440,6 +455,7 @@ static const char *codec_name_str(AudioCodec codec) {
     case AudioCodec::Aptx:   return "aptX";
     case AudioCodec::SBC:    return "SBC";
     case AudioCodec::AAC:    return "AAC";
+    case AudioCodec::LHDCV5: return "LHDC V5";
     }
     return "Unknown";
 }
@@ -492,6 +508,7 @@ static bool find_best_btstack_codec(const BtStackTransport::RemoteCodecCaps &cap
         case AudioCodec::Aptx:   if (caps.aptx)    { *selected_codec = AudioCodec::Aptx;   return true; } break;
         case AudioCodec::SBC:    if (caps.sbc)     { *selected_codec = AudioCodec::SBC;    return true; } break;
         case AudioCodec::AAC:    if (caps.aac)     { *selected_codec = AudioCodec::AAC;    return true; } break;
+        case AudioCodec::LHDCV5: if (caps.lhdcv5)  { *selected_codec = AudioCodec::LHDCV5; return true; } break;
         }
         printf("Requested codec %s not available, falling back...\n",
                codec_name_str(requested_codec));
@@ -500,11 +517,12 @@ static bool find_best_btstack_codec(const BtStackTransport::RemoteCodecCaps &cap
                    "classic aptX is used only if the device lists it too)\n");
     }
 
-    /* Priority: LDAC > aptX HD > aptX LL > aptX > AAC > SBC */
+    /* Priority: LDAC > aptX HD > aptX LL > aptX > LHDC V5 (experimental) > AAC > SBC */
     if (caps.ldac)    { *selected_codec = AudioCodec::LDAC;   return true; }
     if (caps.aptx_hd) { *selected_codec = AudioCodec::AptxHD; return true; }
     if (caps.aptx_ll) { *selected_codec = AudioCodec::AptxLL; return true; }
     if (caps.aptx)    { *selected_codec = AudioCodec::Aptx;   return true; }
+    if (caps.lhdcv5)  { *selected_codec = AudioCodec::LHDCV5; return true; }
     if (caps.aac)     { *selected_codec = AudioCodec::AAC;    return true; }
     if (caps.sbc)     { *selected_codec = AudioCodec::SBC;    return true; }
 
@@ -693,9 +711,13 @@ static int run_streaming(const uint8_t target_addr[6],
         return 1;
     }
 
+    /* LHDC V5: 24-bit when the sink supports it (part of the stream configuration) */
+    uint8_t lhdc_bits = (selected_codec == AudioCodec::LHDCV5 &&
+                         transport.get_remote_caps().lhdcv5_24bit()) ? 24 : 16;
+
     /* Configure stream */
     if (!transport.configure_codec(selected_codec, sample_rate,
-                                    static_cast<uint8_t>(g_active_channels))) {
+                                    static_cast<uint8_t>(g_active_channels), lhdc_bits)) {
         fprintf(stderr, "Failed to configure %s stream\n", codec_name_str(selected_codec));
         transport.disconnect();
         transport.shutdown();
@@ -733,6 +755,22 @@ static int run_streaming(const uint8_t target_addr[6],
         transport.shutdown();
         return 1;
 #endif
+#ifdef LHDCV5_ENCODER_AVAILABLE
+    case AudioCodec::LHDCV5: {
+        auto lhdc = std::make_unique<LhdcV5Encoder>();
+        lhdc->set_peer_bitrate_limits(transport.get_remote_caps().lhdcv5_bitrate_limits());
+        lhdc->set_abr(enable_abr);
+        if (lhdc_bits == 24) lhdc->set_bit_depth(24);
+        encoder = std::move(lhdc);
+        break;
+    }
+#else
+    case AudioCodec::LHDCV5:
+        fprintf(stderr, "LHDC V5 encoder not available (extern/lhdcv5-enc not built)\n");
+        transport.disconnect();
+        transport.shutdown();
+        return 1;
+#endif
     }
 
     if (!encoder->init(media_mtu, quality, sample_rate, g_active_channels)) {
@@ -744,8 +782,12 @@ static int run_streaming(const uint8_t target_addr[6],
 
     /* Set sample width for audio callback based on encoder bit depth */
     g_encoder_sample_bytes = (selected_codec == AudioCodec::LDAC ||
-                              selected_codec == AudioCodec::AptxHD) ? 4 : 2;
+                              selected_codec == AudioCodec::AptxHD ||
+                              (selected_codec == AudioCodec::LHDCV5 && lhdc_bits == 24)) ? 4 : 2;
 
+    if (enable_abr && selected_codec == AudioCodec::LHDCV5) {
+        g_abr_enabled = static_cast<LhdcV5Encoder *>(encoder.get())->is_abr_enabled();
+    }
     if (enable_abr && selected_codec == AudioCodec::LDAC) {
         LdacEncoder *ldac = static_cast<LdacEncoder *>(encoder.get());
         if (ldac->init_abr(100)) {
@@ -941,7 +983,7 @@ int main(int argc, char *argv[]) {
 
     /* CLI mode */
     printf("A2DP Windows Bridge (A2DPWB)\n");
-    printf("Codecs: LDAC | aptX HD | aptX Low Latency | aptX | AAC | SBC\n");
+    printf("Codecs: LDAC | aptX HD | aptX Low Latency | aptX | AAC | SBC | LHDC V5\n");
     printf("===================================================\n\n");
 
     /* Parse command-line arguments */
@@ -978,10 +1020,13 @@ int main(int argc, char *argv[]) {
             } else if (_stricmp(argv[i], "aac") == 0) {
                 requested_codec = AudioCodec::AAC;
                 auto_codec = false;
+            } else if (_stricmp(argv[i], "lhdcv5") == 0) {
+                requested_codec = AudioCodec::LHDCV5;
+                auto_codec = false;
             } else if (_stricmp(argv[i], "auto") == 0) {
                 auto_codec = true;
             } else {
-                fprintf(stderr, "Unknown codec '%s'. Use: ldac, aptxhd, aptxll, aptx, sbc, aac, auto\n",
+                fprintf(stderr, "Unknown codec '%s'. Use: ldac, aptxhd, aptxll, aptx, sbc, aac, lhdcv5, auto\n",
                         argv[i]);
                 return 1;
             }

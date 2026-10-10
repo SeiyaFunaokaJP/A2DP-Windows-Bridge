@@ -20,7 +20,7 @@ struct ConnectionProfile {
     std::string name;
     std::string device_address;   /* XX:XX:XX:XX:XX:XX */
     std::string device_name;
-    std::string codec;            /* auto, ldac, aptxhd, aptxll, aptx, sbc, aac */
+    std::string codec;            /* auto, ldac, aptxhd, aptxll, aptx, sbc, aac, lhdcv5 */
     std::string quality;          /* hq, sq, mq */
     bool abr = false;
     bool codec_fallback = true;   /* use the best codec the device offers when
@@ -71,7 +71,7 @@ public:
     /* Find profile index by name. Returns -1 if not found. */
     int find_by_name(const std::string &name) const;
 
-    /* Convert codec string to combo index (0=Auto,1=LDAC,2=aptXHD,3=aptXLL,4=aptX,5=SBC,6=AAC) */
+    /* Convert codec string to combo index (0=Auto,1=LDAC,2=aptXHD,3=aptXLL,4=aptX,5=SBC,6=AAC,7=LHDCV5) */
     static int codec_to_index(const std::string &codec);
 
     /* Convert combo index to codec string */

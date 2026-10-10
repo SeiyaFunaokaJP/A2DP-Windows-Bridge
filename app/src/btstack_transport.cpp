@@ -60,6 +60,8 @@ extern "C" int hci_transport_usb_failed(void);
 /* aptX Adaptive: no open-source encoder; detected for logging only */
 #define APTXAD_VENDOR_ID    0x000000D7u  /* Qualcomm Technologies International, Ltd */
 #define APTXAD_CODEC_ID     0x00ADu      /* aptX Adaptive */
+#define LHDCV5_VENDOR_ID    0x0000053Au  /* Savitech Corp. */
+#define LHDCV5_CODEC_ID     0x4C35u      /* LHDC V5 ("L5") */
 
 /* Singleton for static callback dispatch */
 BtStackTransport *BtStackTransport::instance_ = nullptr;
@@ -195,6 +197,37 @@ static const uint16_t APTXLL_INITIAL_LEVEL = 360 * 3 / 2;
 static const uint16_t APTXLL_GOOD_LEVEL    = 180 * 3 / 2;
 static const uint8_t  APTXLL_SRA_MAX_RATE  = 50;  /* x/10000 */
 static const uint8_t  APTXLL_SRA_AVG_TIME  = 1;   /* seconds */
+
+/* LHDC V5 (Android a2dp_vendor_lhdcv5_constants.h, A2DP_LHDCV5_CODEC_LEN=13
+ * counting LOSC + media type + codec type): vendor(4) + codec(2) + 5 bytes
+ *   P6[5:0] sample rates: 0x20=44.1k 0x10=48k 0x04=96k 0x01=192k
+ *   P7[2:0] bit depth: 0x04=16 0x02=24 0x01=32; P7[5:4] max bit rate
+ *           (0x00=1000k 0x10=400k 0x20=500k 0x30=900k); P7[7:6] min bit
+ *           rate (0x00=64k 0x40=160k 0x80=256k 0xC0=400k)
+ *   P8[3:0] codec sub-version bitmap (0x01 = V5 ver.1); P8[4] 0x10 = 5 ms frames
+ *   P9 features: 0x40 Low Latency, 0x80/0x20/0x10 lossless, 0x04 META,
+ *           0x02 JAS, 0x01 3D AR; P10[7] lossless raw
+ * Stereo only (no channel mode byte). Sent WITH an RTP header and a 2-byte
+ * media payload header: [frames << 2 | latency(0)] [sequence number]. */
+static const uint16_t LHDCV5_INFO_LEN = 11;
+static const uint8_t LHDCV5_SR_44100  = 0x20;
+static const uint8_t LHDCV5_SR_48000  = 0x10;
+static const uint8_t LHDCV5_SR_96000  = 0x04;
+static const uint8_t LHDCV5_SR_192000 = 0x01;
+static const uint8_t LHDCV5_SR_MASK   = 0x35;
+static const uint8_t LHDCV5_BITS_16   = 0x04;
+static const uint8_t LHDCV5_BITS_24   = 0x02;
+static const uint8_t LHDCV5_BITS_MASK = 0x07;
+static const uint8_t LHDCV5_BITRATE_LIMITS_MASK = 0xF0;  /* P7 max | min bit rate */
+static const uint8_t LHDCV5_VERSION_1 = 0x01;
+static const uint8_t LHDCV5_VERSION_MASK = 0x0F;
+static const uint8_t LHDCV5_FRAME_5MS = 0x10;
+/* Local capabilities: all rates, 16/24-bit, 64..1000 kbps, V5 ver.1, 5 ms,
+ * no optional features (no low latency, lossless, JAS, AR, META) */
+static const uint8_t LHDCV5_CAPS_P6 = LHDCV5_SR_MASK;
+static const uint8_t LHDCV5_CAPS_P7 = LHDCV5_BITS_16 | LHDCV5_BITS_24;
+static const uint8_t LHDCV5_CAPS_P8 = LHDCV5_VERSION_1 | LHDCV5_FRAME_5MS;
+static const uint8_t LHDCV5_MPL_HDR_LEN = 2;
 
 /* Persistent SET_CONFIGURATION codec info. a2dp_source_set_config_other()
  * stores only the pointer (remote_configuration.media_codec_information) and
@@ -968,6 +1001,36 @@ void BtStackTransport::register_codec_endpoints() {
             fprintf(stderr, "BTstack: WARNING — failed to register AAC endpoint\n");
         }
     }
+
+#ifdef LHDCV5_ENCODER_AVAILABLE
+    /* LHDC V5 endpoint (experimental) — 11 bytes, see LHDCV5_CAPS_P6.. */
+    {
+        static uint8_t lhdcv5_caps[LHDCV5_INFO_LEN];
+        static uint8_t lhdcv5_config[LHDCV5_INFO_LEN];
+        memset(lhdcv5_caps, 0, sizeof(lhdcv5_caps));
+        write_vendor_codec_id(lhdcv5_caps, LHDCV5_VENDOR_ID, LHDCV5_CODEC_ID);
+        lhdcv5_caps[6] = LHDCV5_CAPS_P6;
+        lhdcv5_caps[7] = LHDCV5_CAPS_P7;
+        lhdcv5_caps[8] = LHDCV5_CAPS_P8;
+        memset(lhdcv5_config, 0, sizeof(lhdcv5_config));
+        write_vendor_codec_id(lhdcv5_config, LHDCV5_VENDOR_ID, LHDCV5_CODEC_ID);
+        lhdcv5_config[6] = LHDCV5_SR_48000;
+        lhdcv5_config[7] = LHDCV5_BITS_24;
+        lhdcv5_config[8] = LHDCV5_CAPS_P8;
+
+        lhdcv5_ep_ = a2dp_source_create_stream_endpoint(
+            AVDTP_AUDIO, AVDTP_CODEC_NON_A2DP,
+            lhdcv5_caps, sizeof(lhdcv5_caps),
+            lhdcv5_config, sizeof(lhdcv5_config)
+        );
+        if (lhdcv5_ep_) {
+            lhdcv5_local_seid_ = avdtp_local_seid(lhdcv5_ep_);
+            fprintf(stderr, "BTstack: Registered LHDC V5 endpoint (SEID=%u)\n", lhdcv5_local_seid_);
+        } else {
+            fprintf(stderr, "BTstack: WARNING — failed to register LHDC V5 endpoint\n");
+        }
+    }
+#endif
 }
 
 /* ======================================================================== */
@@ -1771,7 +1834,25 @@ uint32_t BtStackTransport::pick_aptx_sample_rate(AudioCodec codec, uint32_t want
     return wanted;  /* remote lists neither; configure_codec will reject */
 }
 
-bool BtStackTransport::configure_codec(AudioCodec codec, uint32_t sample_rate, uint8_t channels) {
+uint32_t BtStackTransport::pick_lhdcv5_sample_rate(uint32_t wanted) const {
+    uint8_t rates = remote_caps_.lhdcv5_rates();
+    auto has = [rates](uint8_t bit) { return (rates & bit) != 0; };
+    if (wanted == 88200) wanted = 96000;  /* LHDC has no 88.2 kHz */
+    if (wanted == 44100  && has(LHDCV5_SR_44100))  return 44100;
+    if (wanted == 48000  && has(LHDCV5_SR_48000))  return 48000;
+    if (wanted == 96000  && has(LHDCV5_SR_96000))  return 96000;
+    if (wanted == 192000 && has(LHDCV5_SR_192000)) return 192000;
+    /* Unsupported by the remote: the nearest common rate, preferring 48 kHz;
+     * WASAPI resamples to the requested rate */
+    if (has(LHDCV5_SR_48000))  return 48000;
+    if (has(LHDCV5_SR_44100))  return 44100;
+    if (has(LHDCV5_SR_96000))  return 96000;
+    if (has(LHDCV5_SR_192000)) return 192000;
+    return wanted;  /* remote lists none; configure_codec will reject */
+}
+
+bool BtStackTransport::configure_codec(AudioCodec codec, uint32_t sample_rate, uint8_t channels,
+                                       uint8_t bits_per_sample) {
     if (!connected_.load()) return false;
 
     /* Clear stale stream event from any previous attempt */
@@ -1781,6 +1862,8 @@ bool BtStackTransport::configure_codec(AudioCodec codec, uint32_t sample_rate, u
     selected_codec_ = codec;
     sample_rate_ = sample_rate;
     channels_ = channels;
+    bits_per_sample_ = bits_per_sample;
+    lhdcv5_seq_ = 0;
 
     /* Determine local and remote SEIDs based on codec */
     uint8_t local = 0, remote = 0;
@@ -1814,6 +1897,11 @@ bool BtStackTransport::configure_codec(AudioCodec codec, uint32_t sample_rate, u
         if (!remote_caps_.aac) return false;
         local = aac_local_seid_;
         remote = remote_caps_.aac_seid;
+        break;
+    case AudioCodec::LHDCV5:
+        if (!remote_caps_.lhdcv5) return false;
+        local = lhdcv5_local_seid_;
+        remote = remote_caps_.lhdcv5_seid;
         break;
     }
 
@@ -1887,6 +1975,33 @@ bool BtStackTransport::configure_codec(AudioCodec codec, uint32_t sample_rate, u
         /* Always stereo on the wire; AptxEncoder duplicates mono input */
         config_info[6] = freq | APTX_CH_STEREO;
         config_len = 7;
+        break;
+    }
+    case AudioCodec::LHDCV5: {
+        /* Android A2dpCodecConfigLhdcV5Base::setCodecConfig: one rate and
+         * one bit depth, the sink's bit rate limits echoed back, V5 ver.1,
+         * 5 ms frames, no optional features. Stereo only on the wire. */
+        uint8_t freq = (sample_rate == 44100)  ? LHDCV5_SR_44100 :
+                       (sample_rate == 48000)  ? LHDCV5_SR_48000 :
+                       (sample_rate == 96000)  ? LHDCV5_SR_96000 :
+                       (sample_rate == 192000) ? LHDCV5_SR_192000 : 0;
+        if (!(freq & remote_caps_.lhdcv5_rates())) {
+            fprintf(stderr, "BTstack: LHDC V5: remote does not support %u Hz (rates=0x%02x)\n",
+                    sample_rate, remote_caps_.lhdcv5_rates());
+            return false;
+        }
+        uint8_t bits = (bits_per_sample == 24) ? LHDCV5_BITS_24 : LHDCV5_BITS_16;
+        if (!(bits & remote_caps_.lhdcv5_info[7])) {
+            fprintf(stderr, "BTstack: LHDC V5: remote does not support %u-bit (depths=0x%02x)\n",
+                    bits_per_sample, remote_caps_.lhdcv5_info[7] & LHDCV5_BITS_MASK);
+            return false;
+        }
+        memset(config_info, 0, LHDCV5_INFO_LEN);
+        write_vendor_codec_id(config_info, LHDCV5_VENDOR_ID, LHDCV5_CODEC_ID);
+        config_info[6] = freq;
+        config_info[7] = bits | remote_caps_.lhdcv5_bitrate_limits();
+        config_info[8] = LHDCV5_CAPS_P8;
+        config_len = LHDCV5_INFO_LEN;
         break;
     }
     case AudioCodec::SBC:
@@ -2149,7 +2264,7 @@ bool BtStackTransport::reconnect() {
     }
 
     /* Re-configure codec with same settings */
-    if (!configure_codec(selected_codec_, sample_rate_, channels_)) {
+    if (!configure_codec(selected_codec_, sample_rate_, channels_, bits_per_sample_)) {
         fprintf(stderr, "BTstack: Reconnect codec config failed\n");
         disconnect();
         return false;
@@ -2247,10 +2362,12 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
         MediaPacket &slot = media_queue_[media_queue_head_];
 
         /* Build the media payload. SBC and LDAC start with a 1-byte media
-         * payload header; aptX, aptX HD, aptX LL and AAC carry the raw payload.
-         * Classic aptX and aptX LL additionally go out without an RTP header
-         * (slot.no_rtp), matching Android (A2DP_APTX_OFFSET) and PipeWire. */
-        uint32_t header = (codec == AudioCodec::LDAC || codec == AudioCodec::SBC) ? 1 : 0;
+         * payload header, LHDC V5 with a 2-byte one; aptX, aptX HD, aptX LL
+         * and AAC carry the raw payload. Classic aptX and aptX LL additionally
+         * go out without an RTP header (slot.no_rtp), matching Android
+         * (A2DP_APTX_OFFSET) and PipeWire. */
+        uint32_t header = (codec == AudioCodec::LDAC || codec == AudioCodec::SBC) ? 1 :
+                          (codec == AudioCodec::LHDCV5) ? LHDCV5_MPL_HDR_LEN : 0;
         if (size + header > sizeof(slot.data)) {
             /* get_media_mtu() keeps encoders below this; report if it happens anyway */
             send_failure_count_.fetch_add(1);
@@ -2260,7 +2377,13 @@ bool BtStackTransport::send_media(const uint8_t *data, uint32_t size,
                         size + header, (unsigned)sizeof(slot.data));
             return false;
         }
-        if (header) {
+        if (codec == AudioCodec::LHDCV5) {
+            /* Android a2dp_vendor_lhdcv5_encoder.cc / A2DP_VendorBuildCodecHeaderLhdcV5:
+             * byte 0 = frame count << A2DP_LHDC_HDR_NUM_SHIFT (2), latency
+             * bits 1..0 = 0; byte 1 = packet sequence number */
+            slot.data[0] = (uint8_t)((frames & 0x3F) << 2);
+            slot.data[1] = lhdcv5_seq_++;
+        } else if (header) {
             /* Frame count in the low 4 bits, no fragmentation: A2DP spec (SBC),
              * AOSP A2DP_LDAC_HDR_NUM_MSK and PipeWire struct rtp_payload (LDAC) */
             slot.data[0] = frames & 0x0F;
@@ -2677,6 +2800,32 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
                 fprintf(stderr, "BTstack: Remote supports aptX Adaptive (SEID=%u) — never selected "
                         "(no open encoder); classic aptX is used only if the remote lists it\n",
                         remote_seid);
+            } else if (vid == LHDCV5_VENDOR_ID && cid == LHDCV5_CODEC_ID) {
+                /* 11 bytes expected; usable when it is V5 ver.1 with 5 ms
+                 * frames and lists at least one rate and bit depth we encode */
+                bool usable = false;
+                if (info_len >= LHDCV5_INFO_LEN) {
+                    uint8_t rates = info[6] & LHDCV5_SR_MASK;
+                    uint8_t depths = info[7] & (LHDCV5_BITS_16 | LHDCV5_BITS_24);
+                    bool ver1 = (info[8] & LHDCV5_VERSION_MASK & LHDCV5_VERSION_1) != 0;
+                    bool f5ms = (info[8] & LHDCV5_FRAME_5MS) != 0;
+                    usable = rates != 0 && depths != 0 && ver1 && f5ms;
+                }
+#ifndef LHDCV5_ENCODER_AVAILABLE
+                usable = false;
+#endif
+                if (usable && !remote_caps_.lhdcv5) {
+                    remote_caps_.lhdcv5 = true;
+                    remote_caps_.lhdcv5_seid = remote_seid;
+                    memcpy(remote_caps_.lhdcv5_info, info, LHDCV5_INFO_LEN);
+                }
+                fprintf(stderr, "BTstack: Remote supports LHDC V5 (SEID=%u, len=%u, rates=0x%02x, "
+                        "depth/bitrate=0x%02x, version=0x%02x, features=0x%02x 0x%02x)%s\n",
+                        remote_seid, info_len,
+                        info_len >= 7 ? info[6] : 0, info_len >= 8 ? info[7] : 0,
+                        info_len >= 9 ? info[8] : 0, info_len >= 10 ? info[9] : 0,
+                        info_len >= 11 ? info[10] : 0,
+                        usable ? "" : " - not usable (version / frame length / rates), ignored");
             } else if (vid == APTX_VENDOR_ID && cid == APTX_CODEC_ID) {
                 uint8_t aptx_caps = (info_len >= 7) ? info[6] : 0;
                 /* Stereo is the only mode we send; skip mono-only sinks */
@@ -2722,9 +2871,10 @@ void BtStackTransport::handle_a2dp_event(uint8_t *packet, uint16_t size) {
                      remote_caps_.audio_sinks_in_use, remote_caps_.audio_sinks);
         }
         fprintf(stderr, "BTstack: Capability discovery complete (LDAC=%d, aptXHD=%d, aptXLL=%d, aptX=%d, "
-               "aptXAdaptive=%d [not encodable], SBC=%d, AAC=%d%s)\n",
+               "aptXAdaptive=%d [not encodable], SBC=%d, AAC=%d, LHDCV5=%d%s)\n",
                remote_caps_.ldac, remote_caps_.aptx_hd, remote_caps_.aptx_ll, remote_caps_.aptx,
-               remote_caps_.aptx_adaptive, remote_caps_.sbc, remote_caps_.aac, in_use);
+               remote_caps_.aptx_adaptive, remote_caps_.sbc, remote_caps_.aac, remote_caps_.lhdcv5,
+               in_use);
         connected_.store(true);
         connect_result_.store(true);
         signal_event(connect_event_, true);

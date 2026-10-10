@@ -29,7 +29,7 @@ A2DPWB.exe
 - **デバイスアドレス** -- 手動入力、ペアリング済みデバイスから選択、またはプロファイル画面の **デバイスを検索**（USB アダプターで近くのデバイスを検索）。入力・貼り付けたアドレスはその場で整形されます: `AA:BB:CC:DD:EE:FF`、`aa-bb-cc-dd-ee-ff`、`AABBCCDDEEFF`、`AA BB CC DD EE FF` はどれも `AA:BB:CC:DD:EE:FF` になります
 - **コーデック選択** -- Auto / LDAC / aptX HD / aptX LL / aptX / SBC / AAC
 - **LDAC 品質** -- HQ (990 kbps) / SQ (660 kbps) / MQ (330 kbps)
-- **LDAC ABR** -- 不安定な接続時のアダプティブビットレート切替
+- **ABR** -- 不安定な接続時のアダプティブビットレート切替（LDAC と LHDC V5 で表示）
 - **プロファイル管理** -- デバイス + コーデック設定の保存・読み込み
 - **リアルタイムステータス** -- コーデック、ビットレート、接続状態
 - **通信品質** -- **操作 > 通信品質...**（[通信品質ウィンドウと AFH](#link-quality)を参照）
@@ -55,9 +55,10 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxll    # aptX Low Latency
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aptx      # aptX
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c aac       # AAC
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c sbc       # SBC
+A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5    # LHDC V5（試験的）
 ```
 
-自動選択の優先順位: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
+自動選択の優先順位: LDAC > aptX HD > aptX LL > aptX > LHDC V5（試験的） > AAC > SBC
 
 指定したコーデックをヘッドホンが提供していない場合、CLI は Auto の優先順位でフォールバックします。aptX Adaptive は選択されません -- [aptX ファミリーと aptX Adaptive の互換性](#aptx-compatibility)を参照してください。
 
@@ -69,13 +70,14 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q sq   # 660 kbps
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q mq   # 330 kbps
 ```
 
-### LDAC ABR（アダプティブビットレート）
+### ABR（アダプティブビットレート）
 
 ```bash
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -a
+A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -a
 ```
 
-ABR は Bluetooth 接続が不安定な場合にビットレートを自動的に下げ、安定すると引き上げます。
+ABR は Bluetooth 接続が不安定な場合にビットレートを自動的に下げ、安定すると引き上げます。LDAC は品質モード間を移動し、LHDC V5 は Android と同じ方針で 160〜400 kbps の範囲で動きます。
 
 ### デバイス検出
 
@@ -94,7 +96,7 @@ A2DPWB.exe --cli -l
 | `-d <addr>` | ヘッドホンの Bluetooth アドレス（`AA:BB:CC:DD:EE:FF`） |
 | `-c <codec>` | `ldac`、`aptxhd`、`aptxll`、`aptx`、`aac`、`sbc`、`auto`（既定: `auto`） |
 | `-q <mode>` | LDAC 品質: `hq`（既定）、`sq`、`mq` |
-| `-a` | LDAC ABR |
+| `-a` | ABR（LDAC と LHDC V5） |
 | `-m <mode>` | キャプチャモード: `loopback`（既定）、`virtual` |
 | `--audio-device <id>` | `-m virtual` で使うオーディオデバイスの ID |
 | `-u <path>` | アダプターの USB デバイスパス（複数接続している場合） |
@@ -240,7 +242,7 @@ A2DPWB は 3 種類の aptX コーデックに対応しており、いずれも 
 - **ヘッドホンがクラシック aptX も通知している場合** -- Qualcomm は aptX Adaptive を aptX / aptX HD と下位互換があると案内しているため、多くの aptX Adaptive 対応ヘッドホンがこれに該当します。この場合 A2DPWB はクラシック aptX を直接選択します。aptX はヘッドホンの一覧にある独立したコーデックであり、aptX Adaptive の縮退モードではありません。
 - **ヘッドホンが aptX Adaptive のみを通知している場合**（クラシック aptX・aptX HD・aptX LL がない） -- A2DPWB では aptX を使えません。Auto は優先順位に従って次のコーデック（通常は AAC か SBC）を選びます。
 
-自動選択の優先順位: LDAC > aptX HD > aptX LL > aptX > AAC > SBC
+自動選択の優先順位: LDAC > aptX HD > aptX LL > aptX > LHDC V5（試験的） > AAC > SBC
 
 ### 指定したコーデックがない場合 {#codec-fallback}
 

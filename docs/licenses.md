@@ -32,6 +32,7 @@ The A2DPWB source code is MIT-licensed. The distributed `A2DPWB.exe` includes BT
 | [libldac (AOSP)](https://android.googlesource.com/platform/external/libldac) | android-15.0.0_r36-4-geeee1a3 | Apache-2.0 | LDAC encoder |
 | [libopenaptx](https://github.com/pali/libopenaptx) | 0.2.0 | LGPL-2.1+ | aptX / aptX HD / aptX LL encoder |
 | [fdk-aac](https://github.com/mstorsjo/fdk-aac) | v2.0.3-158-gd8e6b1a | FDK AAC License | AAC-LC encoder |
+| [LHDC-V5-Encoder](https://github.com/WillyBilly06/LHDC-V5-Encoder) (C port of the AOSP encoder) | commit 3f9d198 | Apache-2.0 (FFT: BSD-3-Clause, KISS FFT) | LHDC V5 encoder (experimental) |
 | [wxWidgets](https://www.wxwidgets.org/) | 3.2.6 | wxWindows Library Licence 3.1 | GUI framework |
 | zlib (built into wxWidgets) | 1.2.13.1 | zlib license | Compression (PNG support) |
 | libpng (built into wxWidgets) | 1.6.37 | PNG Reference Library License v2 | PNG images |
@@ -53,6 +54,10 @@ Because `A2DPWB.exe` contains BTstack, this restriction applies to the distribut
 ### LDAC Certification
 
 The libldac NOTICE states: "Taking the certification process is required to use LDAC in your products." See [sony.net/Products/LDAC/aosp](https://www.sony.net/Products/LDAC/aosp/). It has not been verified whether Sony's certification process applies to a free, non-commercial application such as A2DPWB; A2DPWB has not been certified.
+
+### LHDC Trademark and Certification
+
+LHDC is a codec of Savitech Corp., promoted by the Hi-Res Wireless Audio (HWA) alliance. The encoder A2DPWB uses is Apache-2.0 code derived from the one Google published in AOSP (Android 17), but Apache-2.0 grants no trademark rights, and products that advertise LHDC normally go through Savitech / HWA certification. A2DPWB has not been certified; the LHDC V5 support is an experimental, non-commercial interoperability feature.
 
 ### libopenaptx Version
 
