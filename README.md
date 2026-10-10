@@ -66,26 +66,25 @@ Windows 10 has not been tried on real hardware yet. Other adapters: see [Recomme
 
 ## Architecture
 
-```
-+-----------------------------------------------+
-|  A2DPWB.exe                                   |
-|                                               |
-|  +- GUI (wxWidgets) ------+  +- CLI ---------+|
-|  | Device / adapter select |  | --cli mode    ||
-|  | Codec / quality config  |  | Same core     ||
-|  | Profile management      |  |               ||
-|  | Status display          |  |               ||
-|  +-------------------------+  +---------------+|
-|                                               |
-|  +- Core -------------------------------------+|
-|  | WASAPI Capture (Loopback / Virtual Device) ||
-|  | Encoder (LDAC / aptX HD / aptX LL / aptX / AAC / SBC) |
-|  | A2DP Service (connection lifecycle)        ||
-|  | BTstack (HCI / L2CAP / AVDTP / A2DP)      ||
-|  +--------------------------------------------+|
-|                 WinUSB API                     |
-+-----------------------+-----------------------+
-                USB Bluetooth Adapter
+```mermaid
+flowchart TB
+    src["Windows audio<br/>system loopback / virtual device / one app"]
+    subgraph exe["A2DPWB.exe (user mode)"]
+        direction TB
+        ui["GUI (wxWidgets) / CLI (--cli)"]
+        svc["A2DP Service<br/>connection lifecycle, codec selection"]
+        cap["WASAPI Capture"]
+        enc["Encoder<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
+        bt["BTstack<br/>HCI / L2CAP / AVDTP / A2DP"]
+        ui --> svc
+        svc --> cap
+        svc --> bt
+        cap -- PCM --> enc
+        enc -- frames --> bt
+    end
+    src --> cap
+    bt -- WinUSB API --> usb["USB Bluetooth adapter<br/>(WinUSB driver via Zadig)"]
+    usb -. Bluetooth .-> hp["Headphones / speakers"]
 ```
 
 ### Components

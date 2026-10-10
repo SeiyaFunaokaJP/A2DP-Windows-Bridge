@@ -96,24 +96,19 @@ A2DPWB は WASAPI でオーディオをキャプチャし、3 つのモードを
 
 ## 動作の仕組み
 
-```
-オーディオソース
-  |
-  +-- システムループバック: 既定の再生デバイス（全システム音声）
-  +-- 仮想デバイス:  選択した仮想オーディオデバイス（アプリ別ルーティング）
-  +-- アプリ:        1 つのアプリとその子プロセス（プロセスループバック）
-  |
-  v
-WASAPI ループバックキャプチャ (PCM)
-  |
-  v
-オーディオエンコーダー (LDAC / aptX HD / aptX LL / aptX / AAC / SBC)
-  |
-  v
-BTstack (A2DP Source -> AVDTP -> L2CAP -> HCI)
-  |
-  v
-WinUSB -> USB Bluetooth アダプター -> ヘッドホン
+```mermaid
+flowchart TD
+    subgraph src["オーディオソース"]
+        direction LR
+        s1["システムループバック<br/>既定の再生デバイス"]
+        s2["仮想デバイス<br/>アプリ別ルーティング"]
+        s3["アプリ<br/>プロセスループバック"]
+    end
+    src --> cap["WASAPI ループバックキャプチャ (PCM)"]
+    cap --> enc["オーディオエンコーダー<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
+    enc --> bt["BTstack<br/>A2DP Source → AVDTP → L2CAP → HCI"]
+    bt --> usb["WinUSB → USB Bluetooth アダプター"]
+    usb -.-> hp["ヘッドホン"]
 ```
 
 A2DPWB は Windows の Bluetooth スタックを完全にバイパスします。[BTstack](https://github.com/bluekitchen/btstack) を使用して WinUSB 経由で USB Bluetooth アダプターと直接通信し、Bluetooth プロトコルスタック全体をユーザーモードで実装します。

@@ -22,6 +22,27 @@ A2DP Windows Bridge (A2DPWB) は Windows で LDAC、aptX HD、aptX Low Latency�
 
 **BTstack + WinUSB** を使用 -- 完全にユーザーモードで動作し、ドライバー署名は不要です。
 
+```mermaid
+flowchart TB
+    src["Windows の音声<br/>システムループバック / 仮想デバイス / アプリ単位"]
+    subgraph exe["A2DPWB.exe（ユーザーモード）"]
+        direction TB
+        ui["GUI (wxWidgets) / CLI (--cli)"]
+        svc["A2DP Service<br/>接続ライフサイクル、コーデック選択"]
+        cap["WASAPI キャプチャ"]
+        enc["エンコーダー<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
+        bt["BTstack<br/>HCI / L2CAP / AVDTP / A2DP"]
+        ui --> svc
+        svc --> cap
+        svc --> bt
+        cap -- PCM --> enc
+        enc -- フレーム --> bt
+    end
+    src --> cap
+    bt -- WinUSB API --> usb["USB Bluetooth アダプター<br/>(Zadig で WinUSB ドライバー)"]
+    usb -. Bluetooth .-> hp["ヘッドホン / スピーカー"]
+```
+
 ## トランスポート: BTstack + WinUSB
 
 Windows の Bluetooth スタックを完全にバイパスし、WinUSB（Microsoft 署名済み汎用 USB ドライバー）経由で USB Bluetooth アダプターと直接通信します。ソース公開の Bluetooth スタック（非商用ライセンス）である BTstack が HCI、L2CAP、AVDTP、A2DP をユーザーモードで実装します。
@@ -45,6 +66,26 @@ Windows の Bluetooth スタックを完全にバイパスし、WinUSB（Microso
 5. BTstack が ACL 接続を確立し、L2CAP チャネル (PSM 0x0019) を開く
 6. AVDTP シグナリングでリモート SEP を検出し、コーデックをネゴシエーション
 7. エンコード済み音声が L2CAP 経由の AVDTP メディアパケットとして送信
+
+```mermaid
+sequenceDiagram
+    participant App as A2DPWB (BTstack)
+    participant Ad as USB アダプター
+    participant Sink as ヘッドホン
+    App->>Ad: WinUSB で開く、HCI リセット / 初期化
+    opt Realtek、Intel、Broadcom
+        App->>Ad: ファームウェアのアップロード
+    end
+    App->>Sink: ACL 接続
+    Note over App,Sink: 初回は SSP Just Works でペアリング（リンクキーを保存）
+    App->>Sink: L2CAP チャネル、PSM 0x0019（AVDTP シグナリング）
+    App->>Sink: AVDTP DISCOVER / GET_CAPABILITIES
+    Sink-->>App: ストリームエンドポイントとコーデック
+    App->>Sink: SET_CONFIGURATION（選んだコーデック）、OPEN、START
+    loop ストリーミング中
+        App->>Sink: L2CAP 経由の AVDTP メディアパケット
+    end
+```
 
 ## モジュール構成
 
@@ -107,26 +148,23 @@ A2DPWB.exe
 
 ## データフロー
 
-```
-システム音声出力
-       │
-       ▼
- WASAPI ループバックキャプチャ (デバイスのミックス形式、通常 float32、44.1〜96 kHz)
-       │
-       ▼
- オーディオエンコーダー (LDAC / aptX HD / aptX LL / aptX / AAC / SBC)
-       │
-       ▼
- A2DP Service → BtStackTransport::send_media()
-       │
-       ▼
- BTstack A2DP Source → AVDTP → L2CAP → HCI
-       │
-       ▼
- WinUSB → USB Bluetooth アダプター → Bluetooth 無線
-       │
-       ▼
- ヘッドホン / スピーカー
+```mermaid
+flowchart TD
+    out["システム音声出力<br/>(ループバック / 仮想デバイス / アプリ単位)"]
+    cap["WASAPI ループバックキャプチャ"]
+    conv["A2DP Service: PCM 変換"]
+    enc["オーディオエンコーダー<br/>LDAC / aptX HD / aptX LL / aptX / LHDC V5 / AAC / SBC"]
+    send["A2DP Service → BtStackTransport::send_media()"]
+    stack["BTstack A2DP Source → AVDTP → L2CAP → HCI"]
+    usb["WinUSB → USB Bluetooth アダプター → 無線"]
+    hp["ヘッドホン / スピーカー"]
+    out --> cap
+    cap -- "デバイスのミックス形式、通常 float32、44.1〜96 kHz" --> conv
+    conv -- "16 / 32-bit 整数 PCM" --> enc
+    enc -- "エンコード済みフレーム" --> send
+    send -- "メディアペイロード（aptX、aptX LL 以外は RTP ヘッダー付き）" --> stack
+    stack --> usb
+    usb -.-> hp
 ```
 
 ## 主要モジュール
@@ -141,6 +179,22 @@ A2DPWB.exe
 - 接続ステートマシン（idle → connecting → streaming → reconnecting、error）
 - 予期しない切断時の自動再接続ロジック
 - コーデック固有のフレーミングによるメディアパケット送信
+
+接続ステートマシン（`A2dpService::State`）:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Connecting: 開始
+    Connecting --> Streaming: ストリーム開始
+    Connecting --> Idle: 停止
+    Connecting --> Error: 初期化 / 接続 / コーデックの失敗
+    Streaming --> Reconnecting: 接続断
+    Reconnecting --> Streaming: 再接続成功
+    Reconnecting --> Error: 再接続失敗
+    Streaming --> Idle: 停止
+    Error --> Connecting: 再度開始
+```
 
 ### BTstack Transport (`btstack_transport.cpp`)
 
