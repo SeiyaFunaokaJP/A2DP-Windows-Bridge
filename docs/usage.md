@@ -28,7 +28,7 @@ The graphical interface provides:
 - **Device address** -- enter manually, select from paired devices, or **Scan Devices** in the profile dialog (nearby devices, found with the USB adapter). Typed or pasted addresses are formatted as you go: `AA:BB:CC:DD:EE:FF`, `aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` and `AA BB CC DD EE FF` all become `AA:BB:CC:DD:EE:FF`
 - **Codec selection** -- Auto / LDAC / aptX HD / aptX LL / aptX / SBC / AAC
 - **LDAC quality** -- HQ (990 kbps) / SQ (660 kbps) / MQ (330 kbps)
-- **LDAC ABR** -- Adaptive Bit Rate toggle for unstable connections
+- **ABR** -- Adaptive Bit Rate toggle for unstable connections (shown for LDAC and LHDC V5)
 - **Profile management** -- save and load device + codec configurations
 - **Real-time status** -- codec, bitrate, connection state
 - **Link quality** -- **Actions > Link Quality...** (see [Link Quality Window and AFH](#link-quality))
@@ -69,13 +69,14 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q sq   # 660 kbps
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q mq   # 330 kbps
 ```
 
-### LDAC ABR (Adaptive Bit Rate)
+### ABR (Adaptive Bit Rate)
 
 ```bash
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -a
+A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -a
 ```
 
-ABR automatically lowers the bitrate when the Bluetooth connection is unstable, and raises it when conditions improve.
+ABR automatically lowers the bitrate when the Bluetooth connection is unstable, and raises it when conditions improve. LDAC moves between its quality modes; LHDC V5 follows Android's policy and stays between 160 and 400 kbps.
 
 ### Device Discovery
 
@@ -94,7 +95,7 @@ Device listing uses the Windows Bluetooth API via your **built-in** Bluetooth ad
 | `-d <addr>` | Bluetooth address of the headphones (`AA:BB:CC:DD:EE:FF`) |
 | `-c <codec>` | `ldac`, `aptxhd`, `aptxll`, `aptx`, `aac`, `sbc`, `auto` (default: `auto`) |
 | `-q <mode>` | LDAC quality: `hq` (default), `sq`, `mq` |
-| `-a` | LDAC ABR |
+| `-a` | ABR (LDAC and LHDC V5) |
 | `-m <mode>` | Capture mode: `loopback` (default), `virtual` |
 | `--audio-device <id>` | Audio device ID for `-m virtual` |
 | `-u <path>` | USB device path of the adapter (when several are connected) |

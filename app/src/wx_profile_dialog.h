@@ -53,6 +53,7 @@ private:
     wxListBox   *device_list_ = nullptr;
     wxChoice    *codec_ctrl_ = nullptr;
     wxChoice    *quality_ctrl_ = nullptr;
+    wxStaticText *abr_spacer_ = nullptr;  /* grid cell left of the ABR box, hidden with it */
     wxCheckBox  *abr_ctrl_ = nullptr;
     wxCheckBox  *fallback_ctrl_ = nullptr;
     wxChoice    *sample_rate_ctrl_ = nullptr;

@@ -215,8 +215,9 @@ void ProfileDialog::create_ui() {
     quality_ctrl_->SetSelection(0);
     codec_grid->Add(quality_ctrl_, 1, wxEXPAND);
 
-    /* ABR */
-    codec_grid->Add(new wxStaticText(this, wxID_ANY, ""), 0);
+    /* ABR (shown only for codecs that have it: LDAC, LHDC V5, Auto) */
+    abr_spacer_ = new wxStaticText(this, wxID_ANY, "");
+    codec_grid->Add(abr_spacer_, 0);
     abr_ctrl_ = new wxCheckBox(this, wxID_ANY, wxString::FromUTF8(L("connection.abr")));
     abr_ctrl_->SetToolTip(wxString::FromUTF8(L("tooltip.abr")));
     codec_grid->Add(abr_ctrl_, 0);
@@ -516,9 +517,9 @@ void ProfileDialog::update_codec_dependent() {
         quality_ctrl_->SetSelection(0);
 
     quality_ctrl_->Enable(quality_enabled);
-    abr_ctrl_->Enable(abr_enabled);
-    abr_ctrl_->SetForegroundColour(TM().get(abr_enabled ? ThemeColor::TextPrimary : ThemeColor::TextMuted));
-    abr_ctrl_->Refresh();
+    /* Codecs without ABR: hide the row instead of greying it out */
+    abr_spacer_->Show(abr_enabled);
+    abr_ctrl_->Show(abr_enabled);
     if (!abr_enabled) abr_ctrl_->SetValue(false);
     /* Auto already takes the best codec the device offers */
     bool fallback_enabled = (codec_idx != 0);

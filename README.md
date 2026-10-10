@@ -168,7 +168,7 @@ The graphical interface provides:
 - Device selection (paired devices, or a scan for nearby devices with the USB adapter)
 - Codec selection (Auto / LDAC / aptX HD / aptX LL / aptX / SBC / AAC)
 - LDAC quality mode (HQ 990 kbps / SQ 660 kbps / MQ 330 kbps)
-- LDAC ABR (Adaptive Bit Rate) toggle
+- ABR (Adaptive Bit Rate) toggle, shown for LDAC and LHDC V5
 - Connection profile management (save / load device + codec settings)
 - Real-time status display (codec, bitrate, connection state)
 - Link quality window (what is sent, RSSI, AFH channels)
@@ -193,7 +193,7 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q hq   # 990 kbps (default)
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q sq   # 660 kbps
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q mq   # 330 kbps
 
-# Enable LDAC ABR (Adaptive Bit Rate)
+# Enable ABR (Adaptive Bit Rate; LDAC and LHDC V5)
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -a
 
 # Virtual audio device capture (e.g. VB-CABLE)

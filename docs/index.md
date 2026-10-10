@@ -121,7 +121,7 @@ A2DPWB bypasses the Windows Bluetooth stack entirely. It communicates directly w
 
 - **Multi-codec**: LDAC, aptX HD, aptX Low Latency, aptX, AAC, SBC with automatic negotiation
 - **Three capture modes**: System loopback, virtual audio device routing, or one application's output
-- **LDAC ABR**: Adaptive Bit Rate for unstable connections
+- **ABR**: Adaptive Bit Rate for unstable connections (LDAC and LHDC V5)
 - **Auto-reconnect**: Reconnects on disconnection (up to 10 attempts)
 - **Link quality and AFH**: Shows what is sent, the RSSI and the channels in use; tells the adapter which Wi-Fi channels to avoid (see [Usage](usage#link-quality))
 - **Headphone controls (AVRCP)**: Volume slider synced with the headphones and the Windows volume; their play/pause, next and previous buttons control playback on the PC (see [Usage](usage#headphone-buttons))

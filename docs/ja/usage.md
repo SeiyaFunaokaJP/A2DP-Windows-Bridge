@@ -29,7 +29,7 @@ A2DPWB.exe
 - **デバイスアドレス** -- 手動入力、ペアリング済みデバイスから選択、またはプロファイル画面の **デバイスを検索**（USB アダプターで近くのデバイスを検索）。入力・貼り付けたアドレスはその場で整形されます: `AA:BB:CC:DD:EE:FF`、`aa-bb-cc-dd-ee-ff`、`AABBCCDDEEFF`、`AA BB CC DD EE FF` はどれも `AA:BB:CC:DD:EE:FF` になります
 - **コーデック選択** -- Auto / LDAC / aptX HD / aptX LL / aptX / SBC / AAC
 - **LDAC 品質** -- HQ (990 kbps) / SQ (660 kbps) / MQ (330 kbps)
-- **LDAC ABR** -- 不安定な接続時のアダプティブビットレート切替
+- **ABR** -- 不安定な接続時のアダプティブビットレート切替（LDAC と LHDC V5 で表示）
 - **プロファイル管理** -- デバイス + コーデック設定の保存・読み込み
 - **リアルタイムステータス** -- コーデック、ビットレート、接続状態
 - **通信品質** -- **操作 > 通信品質...**（[通信品質ウィンドウと AFH](#link-quality)を参照）
@@ -70,13 +70,14 @@ A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q sq   # 660 kbps
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q mq   # 330 kbps
 ```
 
-### LDAC ABR（アダプティブビットレート）
+### ABR（アダプティブビットレート）
 
 ```bash
 A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -a
+A2DPWB.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -a
 ```
 
-ABR は Bluetooth 接続が不安定な場合にビットレートを自動的に下げ、安定すると引き上げます。
+ABR は Bluetooth 接続が不安定な場合にビットレートを自動的に下げ、安定すると引き上げます。LDAC は品質モード間を移動し、LHDC V5 は Android と同じ方針で 160〜400 kbps の範囲で動きます。
 
 ### デバイス検出
 
@@ -95,7 +96,7 @@ A2DPWB.exe --cli -l
 | `-d <addr>` | ヘッドホンの Bluetooth アドレス（`AA:BB:CC:DD:EE:FF`） |
 | `-c <codec>` | `ldac`、`aptxhd`、`aptxll`、`aptx`、`aac`、`sbc`、`auto`（既定: `auto`） |
 | `-q <mode>` | LDAC 品質: `hq`（既定）、`sq`、`mq` |
-| `-a` | LDAC ABR |
+| `-a` | ABR（LDAC と LHDC V5） |
 | `-m <mode>` | キャプチャモード: `loopback`（既定）、`virtual` |
 | `--audio-device <id>` | `-m virtual` で使うオーディオデバイスの ID |
 | `-u <path>` | アダプターの USB デバイスパス（複数接続している場合） |
