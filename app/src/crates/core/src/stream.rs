@@ -499,7 +499,16 @@ impl Drop for DefaultDeviceGuard {
 /// Why a stack is restarted after sleep (also in the log and the flow)
 pub(crate) const RESUMED: &str = "the PC resumed from sleep";
 const ADAPTER_STOPPED: &str = "the Bluetooth adapter stopped working";
-const RECONNECT_ATTEMPTS: u32 = 10;
+/// A new stack (sleep, a stopped adapter): the adapter may take a while to
+/// come back
+const RESTART_ATTEMPTS: u32 = 10;
+/// A link that faded (out of range) on a working stack: headphones that do
+/// not answer three pages are not about to (turned off ones are not retried)
+const LINK_LOSS_ATTEMPTS: u32 = 3;
+
+fn reconnect_attempts(restarted: bool) -> u32 {
+    if restarted { RESTART_ATTEMPTS } else { LINK_LOSS_ATTEMPTS }
+}
 
 /// What the streaming loop does about the link
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1232,7 +1241,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         let mut codec_gone = false;
         let mut fresh_stack = false;
         let mut attempt = 0u32;
-        while attempt < RECONNECT_ATTEMPTS {
+        let mut restarted = false;
+        loop {
             if stopped() {
                 break;
             }
@@ -1242,9 +1252,14 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                 tracing::info!("{why}, reconnecting");
                 restart_why = Some(why);
             }
+            restarted |= restart_why.is_some();
+            let attempts = reconnect_attempts(restarted);
+            if attempt >= attempts {
+                break;
+            }
             attempt += 1;
-            inner.notify(lost_state, Msg::with("status.reconnect_attempt", &[&attempt, &RECONNECT_ATTEMPTS]));
-            tracing::debug!("reconnect: attempt {attempt}/{RECONNECT_ATTEMPTS} in 3000 ms");
+            inner.notify(lost_state, Msg::with("status.reconnect_attempt", &[&attempt, &attempts]));
+            tracing::debug!("reconnect: attempt {attempt}/{attempts} in 3000 ms");
             // React to a stop within the wait
             let until = Instant::now() + Duration::from_secs(3);
             while Instant::now() < until && !stopped() {

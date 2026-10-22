@@ -42,9 +42,12 @@ const READY_WAIT: Duration = Duration::from_secs(5);
 /// `le_find` before connecting, for the address type and name (v1 GUI)
 const FIND_TIMEOUT: Duration = Duration::from_secs(8);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-/// Set-ups after a lost stream (v1 GUI; the command line tries 3 times)
-const RECONNECT_ATTEMPTS: u32 = 10;
+/// Set-ups after a lost stream (v1's command line; its GUI tried 10 times,
+/// up to 40 s each)
+const RECONNECT_ATTEMPTS: u32 = 3;
 const RECONNECT_WAIT: Duration = Duration::from_secs(3);
+/// One scan for headphones that were turned off; short to see a stop
+const OFF_FIND: Duration = Duration::from_secs(2);
 /// The codec name the UI shows (v1)
 pub const CODEC_NAME: &str = "LC3 (LE Audio)";
 
@@ -314,12 +317,15 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     };
 
     // Audio at the LC3 rate
-    let mut default_guard = DefaultDeviceGuard(None);
-    if let SourceRequest::VirtualDevice { id, name, auto_switch: true } = &req.source
-        && !id.is_empty()
-    {
-        default_guard = DefaultDeviceGuard::switch_to(id, name);
-    }
+    let switch_default = || match &req.source {
+        SourceRequest::VirtualDevice { id, name, auto_switch: true } if !id.is_empty() => {
+            DefaultDeviceGuard::switch_to(id, name)
+        }
+        _ => DefaultDeviceGuard(None),
+    };
+    let mut default_guard = switch_default();
+    // Restored while the headphones are off: switched again when they are back
+    let mut switch_default_again = false;
     let mut audio = match LeAudioPath::start(&req.source, &started, host.stats().clone()) {
         Ok(a) => Some(a),
         Err(e) => {
@@ -381,22 +387,40 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         }
 
         // A device or CIS went away: tear down and set it up again
-        tracing::warn!("LE Audio stream lost, reconnecting");
         tracing::debug!("le stream: lost after {} s of the session", session_start.elapsed().as_secs());
-        inner.notify(StreamState::Reconnecting, Msg::new("status.connection_lost"));
+        let off = device_turned_off(inner, &host, &devices);
+        if !off {
+            tracing::warn!("LE Audio stream lost, reconnecting");
+            inner.notify(StreamState::Reconnecting, Msg::new("status.connection_lost"));
+        }
         if let Some(a) = audio.take() {
             a.stop();
         }
         host.le_stop_stream();
+        let mut lost_state = StreamState::Reconnecting;
+        if off {
+            // As the A2DP stream: nothing to retry until they advertise again
+            tracing::info!("the headphones were turned off or disconnected themselves");
+            inner.notify(StreamState::Idle, Msg::new("status.device_off"));
+            // Windows plays through the device before meanwhile (#132)
+            if default_guard.0.is_some() {
+                default_guard = DefaultDeviceGuard(None);
+                switch_default_again = true;
+            }
+            if !wait_for_device(inner, &host, req.device) {
+                lost_for_good = true;
+                break;
+            }
+            tracing::info!("the headphones are back, resuming");
+            lost_state = StreamState::Connecting;
+            inner.notify(lost_state, Msg::new("status.device_back"));
+        }
         let mut restored = None;
         for attempt in 1..=RECONNECT_ATTEMPTS {
             if stopped() {
                 break;
             }
-            inner.notify(
-                StreamState::Reconnecting,
-                Msg::with("status.reconnect_attempt", &[&attempt, &RECONNECT_ATTEMPTS]),
-            );
+            inner.notify(lost_state, Msg::with("status.reconnect_attempt", &[&attempt, &RECONNECT_ATTEMPTS]));
             tracing::debug!(
                 "le stream: reconnect attempt {attempt}/{RECONNECT_ATTEMPTS} in {} ms",
                 RECONNECT_WAIT.as_millis()
@@ -435,6 +459,10 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                 break;
             }
         };
+        if switch_default_again {
+            default_guard = switch_default();
+            switch_default_again = false;
+        }
         report(&started, audio.as_ref());
     }
 
@@ -458,6 +486,45 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     if !lost_for_good {
         ready();
     }
+}
+
+/// A device of the stream ended the link itself (turned off, or its user
+/// switched it away), as `stream::device_turned_off`; the disconnection may
+/// come a moment after the stream broke
+fn device_turned_off(inner: &Inner, host: &BtHost, devices: &[[u8; 6]]) -> bool {
+    let until = Instant::now() + Duration::from_millis(1500);
+    loop {
+        let off = host
+            .le_devices()
+            .iter()
+            .any(|d| devices.contains(&d.addr.addr) && !d.connected && matches!(d.last_error, 0x13 | 0x15));
+        if off {
+            return true;
+        }
+        if Instant::now() >= until || inner.stop_requested() {
+            return false;
+        }
+        inner.wait_tick(Duration::from_millis(100));
+    }
+}
+
+/// The headphones were turned off: waits until they advertise again (true).
+/// False when the session ends instead (stopped, sleep, a stopped adapter).
+fn wait_for_device(inner: &Inner, host: &BtHost, device: [u8; 6]) -> bool {
+    inner.waiting_for_device(true);
+    let t = Instant::now();
+    let back = loop {
+        if inner.stop_requested() || inner.power.suspending() || inner.power.stale() || host.stalled() {
+            break false;
+        }
+        if host.le_find(device, OFF_FIND).is_some() {
+            break true;
+        }
+        inner.wait_tick(Duration::from_millis(200));
+    };
+    tracing::debug!("le device off: waited {} s, back {back}", t.elapsed().as_secs());
+    inner.waiting_for_device(false);
+    back
 }
 
 /// Finds (address type, name, current RPA) and connects each device in

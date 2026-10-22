@@ -193,6 +193,8 @@ pub struct LeDeviceInfo {
     pub name: String,
     pub connected: bool,
     pub ready: bool,
+    /// HCI reason the link last went down (0 since a connect)
+    pub last_error: u8,
     pub sink_locations: u32,
     pub sink_ases: usize,
     /// Short summary of the sink PAC records

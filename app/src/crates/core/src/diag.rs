@@ -1608,6 +1608,7 @@ mod tests {
                 name: "Earbuds".into(),
                 connected: true,
                 ready: true,
+                last_error: 0,
                 sink_locations: 3,
                 sink_ases: 2,
                 pacs: String::new(),

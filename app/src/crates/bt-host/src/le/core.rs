@@ -1316,6 +1316,7 @@ impl<'a> LeCtx<'a> {
                 name: d.name.clone(),
                 connected: d.connected(),
                 ready: d.ready,
+                last_error: d.last_error,
                 sink_locations: d.sink_locations,
                 sink_ases: d.sink_ase_count(),
                 pacs: d
