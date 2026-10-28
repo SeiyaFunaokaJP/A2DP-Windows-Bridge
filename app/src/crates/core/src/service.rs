@@ -587,10 +587,7 @@ impl Inner {
             // Claimed by this stream either way: the next one replaces the stack
             let own_link = h.take_link_from_device(device);
             if streamed && own_link {
-                tracing::info!(
-                    "keeping BTstack: {} connected to the PC by itself on it",
-                    bt_host::addr_str(&device)
-                );
+                tracing::info!("keeping BTstack: {} connected to the PC by itself on it", bt_host::addr_str(&device));
             } else if streamed {
                 tracing::info!("restarting BTstack: a stream ran on it before");
                 self.shutdown_host();
