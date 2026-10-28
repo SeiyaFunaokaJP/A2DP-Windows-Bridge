@@ -215,15 +215,6 @@ ko.RestoreChoiceText=WinUSB 드라이버를 제거하고 블루투스 어댑터�
 zhcn.RestoreChoiceText=移除 WinUSB 驱动程序，将蓝牙适配器还给 Windows。Windows 会请求管理员权限。
 zhtw.RestoreChoiceText=移除 WinUSB 驅動程式，將藍牙介面卡交還給 Windows。Windows 會要求系統管理員權限。
 
-en.RestoreV1Note=A2DP Windows Bridge v1 is still on this PC and needs WinUSB too: leave this off to keep using the adapter with v1.
-ja.RestoreV1Note=この PC には A2DP Windows Bridge v1 が残っていて、v1 も WinUSB を使います。v1 でアダプターを使い続けるならオフのままにしてください。
-de.RestoreV1Note=A2DP Windows Bridge v1 ist noch auf diesem PC und braucht WinUSB ebenfalls: Lassen Sie dies aus, um den Adapter weiter mit v1 zu verwenden.
-fr.RestoreV1Note=A2DP Windows Bridge v1 est encore sur ce PC et a aussi besoin de WinUSB : laissez cette option désactivée pour continuer à utiliser l'adaptateur avec v1.
-es.RestoreV1Note=A2DP Windows Bridge v1 sigue en este equipo y también necesita WinUSB: deje esta opción desactivada para seguir usando el adaptador con v1.
-ko.RestoreV1Note=이 PC에는 A2DP Windows Bridge v1이 남아 있으며 v1도 WinUSB를 사용합니다. v1에서 어댑터를 계속 사용하려면 이 옵션을 끈 채로 두세요.
-zhcn.RestoreV1Note=此电脑上仍有 A2DP Windows Bridge v1，它也需要 WinUSB：如需继续在 v1 中使用该适配器，请不要勾选此项。
-zhtw.RestoreV1Note=此電腦上仍有 A2DP Windows Bridge v1，它也需要 WinUSB：若要繼續在 v1 中使用該介面卡，請勿勾選此項。
-
 en.DeleteChoice=Delete user data
 ja.DeleteChoice=ユーザーデータを削除する
 de.DeleteChoice=Benutzerdaten löschen
@@ -280,6 +271,43 @@ es.AppLanguage=es
 ko.AppLanguage=ko
 zhcn.AppLanguage=zh-CN
 zhtw.AppLanguage=zh-TW
+
+; The Ready page, when an earlier version is uninstalled first (ReadyNote)
+en.OldVersionsText=Setup first uninstalls the earlier versions of A2DP Windows Bridge found on this PC (%1). Your settings, device pairings and firmware are kept.
+ja.OldVersionsText=セットアップは最初に、この PC にある以前のバージョンの A2DP Windows Bridge（%1）をアンインストールします。設定、デバイスのペアリング、ファームウェアはそのまま残ります。
+de.OldVersionsText=Setup deinstalliert zuerst die früheren Versionen von A2DP Windows Bridge auf diesem PC (%1). Ihre Einstellungen, Gerätekopplungen und Firmware bleiben erhalten.
+fr.OldVersionsText=L'installation désinstalle d'abord les versions précédentes d'A2DP Windows Bridge trouvées sur ce PC (%1). Vos réglages, appairages et firmware sont conservés.
+es.OldVersionsText=El instalador desinstala primero las versiones anteriores de A2DP Windows Bridge que hay en este equipo (%1). Su configuración, emparejamientos y firmware se conservan.
+ko.OldVersionsText=설치 프로그램은 먼저 이 PC에 있는 이전 버전의 A2DP Windows Bridge(%1)를 제거합니다. 설정, 기기 페어링, 펌웨어는 그대로 유지됩니다.
+zhcn.OldVersionsText=安装程序会先卸载此电脑上早期版本的 A2DP Windows Bridge（%1）。您的设置、设备配对和固件都会保留。
+zhtw.OldVersionsText=安裝程式會先解除安裝此電腦上舊版本的 A2DP Windows Bridge（%1）。您的設定、裝置配對和韌體都會保留。
+
+en.OldV1=v1
+ja.OldV1=v1
+de.OldV1=v1
+fr.OldV1=v1
+es.OldV1=v1
+ko.OldV1=v1
+zhcn.OldV1=v1
+zhtw.OldV1=v1
+
+en.OldNsis=2.0.0 to 2.0.2-beta.5
+ja.OldNsis=2.0.0 から 2.0.2-beta.5 まで
+de.OldNsis=2.0.0 bis 2.0.2-beta.5
+fr.OldNsis=2.0.0 à 2.0.2-beta.5
+es.OldNsis=2.0.0 a 2.0.2-beta.5
+ko.OldNsis=2.0.0~2.0.2-beta.5
+zhcn.OldNsis=2.0.0 至 2.0.2-beta.5
+zhtw.OldNsis=2.0.0 至 2.0.2-beta.5
+
+en.OldSep=,%_
+ja.OldSep=、
+de.OldSep=,%_
+fr.OldSep=,%_
+es.OldSep=,%_
+ko.OldSep=,%_
+zhcn.OldSep=、
+zhtw.OldSep=、
 
 ; An update's wording (UpdateWording), in place of Setup's installation messages
 en.UpdateTitle=Update - %1
@@ -448,6 +476,10 @@ var
   UpdateMode, PassiveMode, KeepV1, CoreWasRunning, RunWasSet, HadDesktopIcon, DeleteData, RestoreChosen: Boolean;
   { Setup replaces an installation: this one, the NSIS one of 2.0.x or v1 }
   IsUpgrade: Boolean;
+  { An earlier version is uninstalled first: v1, the NSIS one of 2.0.x }
+  OldV1, OldNsis: Boolean;
+  { The Ready page's list below its note (ReadyNote) }
+  ReadyMemoGap, ReadyMemoBottom: Integer;
 
 function HasParam(const Name: String): Boolean;
 var
@@ -817,6 +849,37 @@ begin
     WizardSelectTasks('!desktopicon');
 end;
 
+{ The Ready page says that the earlier versions found go first, under its
+  label, in plain wrapped text (issue #86: say plainly that they go; the
+  list below cut off the end of a longer text). The list keeps its bottom.
+  Runs on every visit of the page: UpdateWording sets the label anew. }
+procedure ReadyNote;
+var
+  Found, Sep: String;
+begin
+  if not (OldV1 or OldNsis) then
+    Exit;
+  if ReadyMemoBottom = 0 then begin
+    ReadyMemoGap := WizardForm.ReadyMemo.Top - (WizardForm.ReadyLabel.Top + WizardForm.ReadyLabel.Height);
+    ReadyMemoBottom := WizardForm.ReadyMemo.Top + WizardForm.ReadyMemo.Height;
+  end;
+  Sep := CustomMessage('OldSep');
+  StringChangeEx(Sep, '%_', ' ', True);
+  Found := '';
+  if OldV1 then
+    Found := CustomMessage('OldV1');
+  if OldNsis then begin
+    if Found <> '' then
+      Found := Found + Sep;
+    Found := Found + CustomMessage('OldNsis');
+  end;
+  WizardForm.ReadyLabel.Caption := WizardForm.ReadyLabel.Caption + #13#10#13#10 +
+    FmtMessage(CustomMessage('OldVersionsText'), [Found]);
+  WizardForm.ReadyLabel.AdjustHeight;
+  WizardForm.ReadyMemo.Top := WizardForm.ReadyLabel.Top + WizardForm.ReadyLabel.Height + ReadyMemoGap;
+  WizardForm.ReadyMemo.Height := ReadyMemoBottom - WizardForm.ReadyMemo.Top;
+end;
+
 { ...except the pages Setup shows anyway: Ready, the list of programs to
   close (closed, the default) and Finished. Next is clicked once the page
   is up (BM_CLICK posted: a click during the page change is lost). }
@@ -824,6 +887,8 @@ procedure CurPageChanged(CurPageID: Integer);
 begin
   if IsUpgrade then
     UpdateWording(CurPageID);
+  if CurPageID = wpReady then
+    ReadyNote;
   if PassiveMode and ((CurPageID = wpReady) or (CurPageID = wpPreparing) or (CurPageID = wpFinished)) then
     PostMessage(WizardForm.NextButton.Handle, $00F5, 0, 0);
 end;
@@ -848,6 +913,8 @@ begin
     (not KeepV1 and (RegKeyExists(HKCU, V1UninstKey) or RegKeyExists(HKLM, V1UninstKey)));
   if IsUpgrade then
     Log('Updating an earlier installation');
+  OldNsis := RegKeyExists(HKCU, NsisUninstKey);
+  OldV1 := not KeepV1 and (RegKeyExists(HKCU, V1UninstKey) or RegKeyExists(HKLM, V1UninstKey));
   { Asked once: an update of this installation has its language. Nobody to
     ask in silent and passive mode. }
   if not RegKeyExists(HKCU, UninstKey) and not WizardSilent and not PassiveMode and
@@ -937,9 +1004,11 @@ begin
     FindClose(Find);
 end;
 
-{ Adds a choice of the uninstall page below Top: a bold check box and the
-  text under it; returns the box, and Top below the text }
-function AddChoice(Page: TNewNotebookPage; const Caption, Text: String; Checked: Boolean; var Top: Integer): TNewCheckBox;
+{ Adds a choice of the uninstall page below Top, from Left and Width wide:
+  a bold check box and the text under it; returns the box, and Top below
+  the text }
+function AddChoice(Page: TNewNotebookPage; const Caption, Text: String; Checked: Boolean;
+  Left, Width: Integer; var Top: Integer): TNewCheckBox;
 var
   Hint: TNewStaticText;
 begin
@@ -948,18 +1017,18 @@ begin
   Result.Caption := Caption;
   Result.Font.Style := [fsBold];
   Result.Checked := Checked;
-  Result.Left := 0;
+  Result.Left := Left;
   Result.Top := Top;
-  Result.Width := Page.ClientWidth;
+  Result.Width := Width;
   Result.Height := ScaleY(20);
   Hint := TNewStaticText.Create(Page);
   Hint.Parent := Page;
   Hint.AutoSize := False;
   Hint.WordWrap := True;
   Hint.Caption := Text;
-  Hint.Left := ScaleX(20);
+  Hint.Left := Left + ScaleX(20);
   Hint.Top := Top + ScaleY(22);
-  Hint.Width := Page.ClientWidth - ScaleX(20);
+  Hint.Width := Width - ScaleX(20);
   Hint.AdjustHeight;
   Top := Hint.Top + Hint.Height + ScaleY(14);
 end;
@@ -967,9 +1036,11 @@ end;
 { The uninstall's choices on a page of the uninstall wizard itself (issue
   86: a dialog box of its own looked out of place), before anything is
   removed: give the adapters back to Windows (only when A2DPWB put one on
-  WinUSB) and delete the user data, both on by default. v1 (running, or
-  installed) uses the adapter through WinUSB too: then the restore is off,
-  and the page says why. Uninstall goes on, Cancel stops the uninstall.
+  WinUSB) and delete the user data, both on by default. No word of v1: Setup
+  uninstalled it, and the running v2 core holds v1's mutex too (issue #86:
+  "v1 is still on this PC" with no v1). The choices line up with the page
+  description, as on Setup's pages. Uninstall goes on, Cancel stops the
+  uninstall.
   Silent mode shows no page and chooses neither: nobody to ask, and a silent
   uninstall must not raise a UAC prompt. }
 procedure InitializeUninstallProgressForm();
@@ -977,31 +1048,33 @@ var
   Page, ProgressPage: TNewNotebookPage;
   RestoreBox, DeleteBox: TNewCheckBox;
   UninstallButton: TNewButton;
-  PageName, PageDescription, Text: String;
-  V1Present: Boolean;
-  Top: Integer;
+  PageName, PageDescription: String;
+  Left, Width, Top: Integer;
 begin
   RestoreChosen := False;
   DeleteData := False;
   if UninstallSilent then
     Exit;
-  V1Present := CheckForMutexes(V1Mutex) or RegKeyExists(HKCU, V1UninstKey) or RegKeyExists(HKLM, V1UninstKey);
   ProgressPage := UninstallProgressForm.InnerNotebook.ActivePage;
   Page := TNewNotebookPage.Create(UninstallProgressForm);
   Page.Notebook := UninstallProgressForm.InnerNotebook;
   Page.Parent := UninstallProgressForm.InnerNotebook;
   Page.Align := alClient;
+  { Setup's pages: the content starts under the description and keeps the
+    same margin on the right (the notebook here is wider) }
+  Left := UninstallProgressForm.PageDescriptionLabel.Left - UninstallProgressForm.InnerNotebook.Left;
+  if Left < 0 then
+    Left := 0;
+  Width := UninstallProgressForm.ClientWidth - 2 * UninstallProgressForm.PageDescriptionLabel.Left;
+  if Width > Page.ClientWidth - Left then
+    Width := Page.ClientWidth - Left;
   Top := 0;
   RestoreBox := nil;
-  if CanRestoreDrivers then begin
-    Text := CustomMessage('RestoreChoiceText');
-    if V1Present then
-      Text := Text + ' ' + CustomMessage('RestoreV1Note');
-    RestoreBox := AddChoice(Page, CustomMessage('RestoreChoice'), Text, not V1Present, Top);
-  end;
+  if CanRestoreDrivers then
+    RestoreBox := AddChoice(Page, CustomMessage('RestoreChoice'), CustomMessage('RestoreChoiceText'), True, Left, Width, Top);
   { Only the settings folder itself, not one A2DPWB_CONFIG_DIR names }
   DeleteBox := AddChoice(Page, CustomMessage('DeleteChoice'),
-    FmtMessage(CustomMessage('DeleteChoiceText'), [ExpandConstant('{userappdata}\A2DPWB')]), True, Top);
+    FmtMessage(CustomMessage('DeleteChoiceText'), [ExpandConstant('{userappdata}\A2DPWB')]), True, Left, Width, Top);
 
   UninstallProgressForm.InnerNotebook.ActivePage := Page;
   PageName := UninstallProgressForm.PageNameLabel.Caption;
@@ -1012,7 +1085,10 @@ begin
   UninstallButton := TNewButton.Create(UninstallProgressForm);
   UninstallButton.Parent := UninstallProgressForm;
   UninstallButton.Caption := CustomMessage('UninstallButton');
-  UninstallButton.Width := UninstallProgressForm.CancelButton.Width;
+  { Wide enough for its caption ("アンインストール(&U)" was cut off) }
+  UninstallButton.Width := UninstallProgressForm.CalculateButtonWidth([CustomMessage('UninstallButton')]);
+  if UninstallButton.Width < UninstallProgressForm.CancelButton.Width then
+    UninstallButton.Width := UninstallProgressForm.CancelButton.Width;
   UninstallButton.Height := UninstallProgressForm.CancelButton.Height;
   UninstallButton.Top := UninstallProgressForm.CancelButton.Top;
   UninstallButton.Left := UninstallProgressForm.CancelButton.Left - UninstallButton.Width - ScaleX(10);
