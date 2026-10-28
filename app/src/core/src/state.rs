@@ -43,25 +43,24 @@ pub struct BalloonRequest {
 /// the tray" hint was shown once
 const TRAY_HINT_SHOWN: &str = "tray_hint_shown";
 
-/// The low-battery balloon: below this level (percent)
-const BATTERY_LOW: u8 = 20;
-/// It is shown again only after the level was back at this (charged)
-const BATTERY_REARM: u8 = 25;
+/// The low-battery balloon is shown again only after the level was back
+/// this much above the setting's level (charged)
+const BATTERY_REARM_MARGIN: u8 = 5;
 
 /// How long a restart for a save waits for a newer request to take over
 /// ([`CoreState::restart_profile`])
 const RESTART_COALESCE: std::time::Duration = std::time::Duration::from_millis(250);
 
 /// Whether a battery report shows the low-battery balloon: once when the
-/// level is below [`BATTERY_LOW`] (also the first report of a connection),
-/// again only after it was back at [`BATTERY_REARM`] or more. `warned` is
-/// cleared for each connection.
-fn battery_low_alert(warned: &mut bool, level: u8) -> bool {
-    if level >= BATTERY_REARM {
+/// level is below `low` (the setting; also the first report of a
+/// connection), again only after it was back [`BATTERY_REARM_MARGIN`]
+/// above. Never when `low` is 0. `warned` is cleared for each connection.
+fn battery_low_alert(warned: &mut bool, level: u8, low: u8) -> bool {
+    if level >= low.saturating_add(BATTERY_REARM_MARGIN) {
         *warned = false;
         return false;
     }
-    if level < BATTERY_LOW && !*warned {
+    if level < low && !*warned {
         *warned = true;
         return true;
     }
@@ -282,6 +281,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         minimize_to_tray: s.minimize_to_tray,
         tray_click_opens_window: s.tray_click_opens_window,
         notify_connected: s.notify_connected,
+        battery_low_percent: s.battery_low_percent,
         check_updates_on_startup: s.check_updates_on_startup,
         include_prereleases: s.include_prereleases,
         media_keys: s.media_keys,
@@ -327,6 +327,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.minimize_to_tray = s.minimize_to_tray;
     c.tray_click_opens_window = s.tray_click_opens_window;
     c.notify_connected = s.notify_connected;
+    c.battery_low_percent = s.battery_low_percent;
     c.check_updates_on_startup = s.check_updates_on_startup;
     c.include_prereleases = s.include_prereleases;
     c.media_keys = s.media_keys;
@@ -1307,10 +1308,11 @@ impl CoreState {
                 stream.battery = Some(v);
                 stream.battery_refused = false;
                 let mut warned = self.battery_warned.load(Ordering::Acquire);
-                let alert = battery_low_alert(&mut warned, v);
+                let low = self.service.settings().battery_low_percent;
+                let alert = battery_low_alert(&mut warned, v, low);
                 self.battery_warned.store(warned, Ordering::Release);
                 if alert {
-                    self.battery_low(&s, v);
+                    self.battery_low(&s, v, low);
                 }
             }
         }
@@ -1597,9 +1599,9 @@ impl CoreState {
 
     /// The streamed headphones' battery went low: a balloon, once per
     /// connection ([`battery_low_alert`])
-    fn battery_low(&self, s: &Snapshot, level: u8) {
+    fn battery_low(&self, s: &Snapshot, level: u8, low: u8) {
         let device = streamed_device(s).unwrap_or("A2DP Windows Bridge");
-        tracing::info!("battery: {device} at {level}%, below {BATTERY_LOW}%: balloon");
+        tracing::info!("battery: {device} at {level}%, below {low}%: balloon");
         let template = self.tr("notify.battery_low", "%s: battery low (%d%%)");
         // No title: Windows heads the notification with the app's name
         // already (issue #86: the name three times)
@@ -2931,14 +2933,20 @@ mod tests {
         let mut warned = false;
         let alerts: Vec<bool> = [50, 30, 20, 19, 15, 10, 22, 18, 25, 19, 5]
             .into_iter()
-            .map(|v| battery_low_alert(&mut warned, v))
+            .map(|v| battery_low_alert(&mut warned, v, 20))
             .collect();
         // Below 20 once; back at 22 is not enough, 25 rearms it
         assert_eq!(alerts, [false, false, false, true, false, false, false, false, false, true, false]);
         // A connection that starts low warns at its first report
         let mut warned = false;
-        assert!(battery_low_alert(&mut warned, 12));
-        assert!(!battery_low_alert(&mut warned, 11));
+        assert!(battery_low_alert(&mut warned, 12, 20));
+        assert!(!battery_low_alert(&mut warned, 11, 20));
+        // Below 5 %: 10 is not low; 0 never warns
+        let mut warned = false;
+        assert!(!battery_low_alert(&mut warned, 10, 5));
+        assert!(battery_low_alert(&mut warned, 4, 5));
+        let mut warned = false;
+        assert!(!battery_low_alert(&mut warned, 0, 0));
     }
 
     #[test]

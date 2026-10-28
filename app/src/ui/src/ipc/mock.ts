@@ -157,6 +157,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     minimize_to_tray: true,
     tray_click_opens_window: false,
     notify_connected: true,
+    battery_low_percent: 20,
     check_updates_on_startup: true,
     include_prereleases: false,
     media_keys: true,

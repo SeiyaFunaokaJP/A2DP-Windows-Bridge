@@ -145,6 +145,18 @@ describe("tray", () => {
     await waitFor(() => expect(core.state.snap!.settings.notify_connected).toBe(false));
     expect(toggle).not.toBeChecked();
   });
+
+  it("chooses when the low battery is notified, or never (issue #86)", async () => {
+    const { core } = start("#/settings");
+    const select = (await screen.findByRole("combobox", { name: t("ui.settings.battery_low") })) as HTMLSelectElement;
+    expect([...select.options].map((o) => o.text)).toEqual(["Below 20%", "Below 10%", "Below 5%", "Never"]);
+    expect(select).toHaveDisplayValue("Below 20%");
+    fireEvent.change(select, { target: { value: "5" } });
+    await waitFor(() => expect(core.state.snap!.settings.battery_low_percent).toBe(5));
+    fireEvent.change(select, { target: { value: "0" } });
+    await waitFor(() => expect(core.state.snap!.settings.battery_low_percent).toBe(0));
+    expect(select).toHaveDisplayValue("Never");
+  });
 });
 
 describe("Home", () => {

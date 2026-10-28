@@ -102,9 +102,11 @@ export function ConnectButton(props: { onError?: (e: unknown) => void; compact?:
   );
 }
 
-export function VolumeControl() {
+/** The volume of the device in use; `off`: a device not connected, whose
+ *  card keeps the slider disabled so the cards stay alike (issue #86) */
+export function VolumeControl(props: { off?: boolean }) {
   const { core } = useApp();
-  const vol = () => core.state.snap?.stream.volume ?? null;
+  const vol = () => (props.off ? null : (core.state.snap?.stream.volume ?? null));
   // The value under the pointer while dragging, so the core's echo of an
   // older value does not make the thumb jump back
   const [held, setHeld] = createSignal<number | null>(null);
@@ -239,8 +241,10 @@ export const FALLBACK_NOTE_MS = 5000;
 let noteShown: { key: string; at: number } | null = null;
 
 /** The codec in two lines (issue #86): its name, then what it runs with in
- *  a badge; `aside` goes beside the badge (the flyout's link quality) */
-export function CodecBadge(props: { compact?: boolean; aside?: JSX.Element }) {
+ *  a badge; `aside` goes beside the badge (the flyout's link quality).
+ *  `picker` takes the name's place: the codec chosen right there (Home,
+ *  the flyout). */
+export function CodecBadge(props: { compact?: boolean; aside?: JSX.Element; picker?: JSX.Element }) {
   const { core } = useApp();
   const info = () => core.state.snap?.stream.info ?? null;
   const name = () => {
@@ -290,7 +294,7 @@ export function CodecBadge(props: { compact?: boolean; aside?: JSX.Element }) {
             <Show when={i().requested_codec}>
               <Icon name="warning" class="st-warn" title={fallbackHelp()} />
             </Show>
-            <strong class="ellipsis">{name()}</strong>
+            {props.picker ?? <strong class="ellipsis">{name()}</strong>}
             <Show when={noteFresh()}>
               <span class="codec-note ellipsis">{fallbackNote()}</span>
             </Show>

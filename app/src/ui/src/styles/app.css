@@ -524,6 +524,38 @@ option {
 .capture-source > .select {
   flex: 1;
 }
+/* The capture source's format, read only, beside it (issue #86) */
+.format-box {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  min-height: 2rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--fs-14);
+  font-variant-numeric: tabular-nums;
+}
+.format-box > * {
+  padding: 0 var(--s3);
+}
+.format-box > .num + .num {
+  border-left: 1px solid var(--border-strong);
+}
+.format-box > .icon {
+  padding-right: 0;
+}
+.format-box.st-warn {
+  border-color: var(--warn);
+  color: var(--warn-text);
+}
+.capture-about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  white-space: pre-line;
+}
 .field-error,
 .field-warn {
   display: inline-flex;
@@ -691,6 +723,22 @@ option {
 .section-actions {
   display: flex;
   gap: var(--s2);
+}
+/* AFH: the mode and its channels in the heading (issue #86); Auto and Off
+   show theirs read only */
+.afh-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--s2);
+}
+.afh-channels {
+  width: 6.5rem;
+}
+.afh-channels:read-only {
+  color: var(--text-2);
+  cursor: default;
 }
 .empty {
   display: flex;

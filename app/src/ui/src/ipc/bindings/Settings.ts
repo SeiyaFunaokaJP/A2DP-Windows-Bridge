@@ -18,7 +18,11 @@ tray_click_opens_window: boolean,
  * A notification when a device connects: its codec, what the codec
  * runs with, the battery (on by default)
  */
-notify_connected: boolean, check_updates_on_startup: boolean, include_prereleases: boolean, 
+notify_connected: boolean, 
+/**
+ * The low-battery notification: below this level (percent), 0: never
+ */
+battery_low_percent: number, check_updates_on_startup: boolean, include_prereleases: boolean, 
 /**
  * The headphones' buttons act as Windows media keys (every device)
  */

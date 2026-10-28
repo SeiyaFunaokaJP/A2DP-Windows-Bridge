@@ -78,22 +78,18 @@
   flex: 1;
 }
 
-/* A choice made in place: Home's codec */
-.mini-picker {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  flex: 1;
-  min-width: 0;
+/* The codec chosen on the device's card (Home, the flyout), in the name's
+   place (issue #86) */
+.select.codec-picker {
+  min-width: 9rem;
+  width: 14rem;
+  max-width: 100%;
 }
-.mini-picker > .icon {
-  flex: none;
-}
-.mini-picker .select {
-  flex: 1;
-  min-width: 0;
-}
-.mini-picker select {
-  width: 100%;
+.codec-info .codec-picker select,
+.fly-title .codec-picker select {
+  min-height: 1.75rem;
+  font-size: var(--fs-14);
+  font-weight: 600;
   text-overflow: ellipsis;
 }
+

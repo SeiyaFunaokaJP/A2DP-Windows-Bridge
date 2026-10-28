@@ -62,7 +62,7 @@ describe("choices", () => {
 describe("not in place", () => {
   it("is not on Home, which has the codec instead (issue #86)", async () => {
     start("#/home");
-    await screen.findByRole("combobox", { name: "Codec" });
+    await screen.findAllByRole("button", { name: "Connect" });
     expect(screen.queryByRole("combobox", { name: "Capture Source" })).toBeNull();
   });
 

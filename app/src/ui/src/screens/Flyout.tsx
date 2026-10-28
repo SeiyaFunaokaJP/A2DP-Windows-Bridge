@@ -1,6 +1,7 @@
 // The tray flyout (360×440): everyday control without the main window.
 // As Home's card (issue #86): the ring, and beside it the device chooser
-// in the title's place, battery and state, the codec and link quality;
+// in the title's place, battery and state, the codec (chosen right there)
+// and link quality;
 // then the volume, the big Connect / Disconnect and "Open app". No close
 // button: the flyout hides on Escape and when it loses the focus. Its
 // window is as tall as the page (issue #86: no empty space).
@@ -29,6 +30,8 @@ import {
 } from "../components/stream";
 import { t, tm } from "../i18n";
 import { IpcError } from "../ipc/types";
+import { audioEntries, entryOf } from "../lib/profile";
+import { CodecPicker } from "./Home";
 
 export function Flyout() {
   const app = useApp();
@@ -36,6 +39,7 @@ export function Flyout() {
   const snap = () => core.state.snap!;
   const stream = () => snap().stream;
   const profile = () => currentProfile(snap());
+  const entry = () => entryOf(audioEntries(snap()), profile());
   const [reqError, setReqError] = createSignal<IpcError | null>(null);
   const { fixFor, dialog } = useFixes();
   onCleanup(core.wantLink());
@@ -90,7 +94,10 @@ export function Flyout() {
               <span class="ellipsis">{statusText(stream())}</span>
             </div>
           </div>
-          <CodecBadge aside={<QualityIndicator />} />
+          <CodecBadge
+            aside={<QualityIndicator />}
+            picker={<Show when={entry()}>{(e) => <CodecPicker entry={e()} />}</Show>}
+          />
         </div>
       </header>
 
