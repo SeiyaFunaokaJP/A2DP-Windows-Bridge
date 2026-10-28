@@ -69,6 +69,12 @@ pub struct State {
     /// Device of the last ACL link that came up (also one the device
     /// opened itself, e.g. headphones turned back on)
     pub acl_up_from: Option<[u8; 6]>,
+    /// Devices that asked to connect to the PC (Connection Request), until
+    /// their link is up
+    pub acl_requests: Vec<[u8; 6]>,
+    /// The ACL links up now (handle, device, opened by the device itself
+    /// and not streamed on yet)
+    pub acl_links: Vec<(u16, [u8; 6], bool)>,
     /// ACL handle of the A2DP signaling channel
     pub a2dp_con_handle: Option<u16>,
     pub remote_caps: RemoteCaps,
