@@ -478,6 +478,7 @@
   "ui.diag.clear": "消去",
   "ui.diag.no_log": "まだログがありません",
   "ui.diag.open_logs": "ログフォルダーを開く",
+  "ui.diag.logs_unmasked": "このフォルダーのファイルは伏せ字になっていません。Bluetooth アドレスや Windows のユーザー名が含まれます。ログを共有するときは「診断情報をコピー」か診断パッケージを使ってください。",
   "ui.diag.show_in_explorer": "エクスプローラーで表示",
   "ui.diag.bundle": "診断パッケージを保存",
   "ui.diag.report": "問題を報告",

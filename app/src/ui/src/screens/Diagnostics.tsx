@@ -965,6 +965,7 @@ function LogPanel(props: { view: LogView }) {
           {t("ui.diag.clear")}
         </Button>
         <span class="log-tools-gap" />
+        <span class="hint">{t("ui.diag.logs_unmasked")}</span>
         <Button icon="folder_open" kind="subtle" disabled={!logDir()} onClick={() => void core.transport.openFolder(logDir())}>
           {t("ui.diag.open_logs")}
         </Button>

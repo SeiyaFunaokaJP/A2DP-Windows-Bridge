@@ -478,6 +478,7 @@
   "ui.diag.clear": "Leeren",
   "ui.diag.no_log": "Noch keine Protokollzeilen",
   "ui.diag.open_logs": "Protokollordner öffnen",
+  "ui.diag.logs_unmasked": "Die Dateien dort sind nicht maskiert: Sie enthalten Bluetooth-Adressen und Ihren Windows-Benutzernamen. Zum Teilen eines Protokolls „Diagnose kopieren“ oder das Diagnosepaket verwenden.",
   "ui.diag.show_in_explorer": "Im Explorer anzeigen",
   "ui.diag.bundle": "Diagnosepaket speichern",
   "ui.diag.report": "Problem melden",

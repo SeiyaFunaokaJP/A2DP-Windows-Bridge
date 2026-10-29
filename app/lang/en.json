@@ -478,6 +478,7 @@
   "ui.diag.clear": "Clear",
   "ui.diag.no_log": "No log lines yet",
   "ui.diag.open_logs": "Open log folder",
+  "ui.diag.logs_unmasked": "The files there are not masked: they contain Bluetooth addresses and your Windows user name. To share a log, use Copy Diagnostics or the diagnostic bundle.",
   "ui.diag.show_in_explorer": "Show in Explorer",
   "ui.diag.bundle": "Save Diagnostic Bundle",
   "ui.diag.report": "Report a problem",

@@ -281,7 +281,13 @@ function Logging(props: { value: DevLog; save: (v: DevLog) => Promise<boolean> }
         title={t("ui.dev.log_files")}
         actions={
           <>
-            <Button icon="folder_open" kind="subtle" disabled={!logDir()} onClick={() => void core.transport.openFolder(logDir())}>
+            <Button
+              icon="folder_open"
+              kind="subtle"
+              disabled={!logDir()}
+              title={t("ui.diag.logs_unmasked")}
+              onClick={() => void core.transport.openFolder(logDir())}
+            >
               {t("ui.diag.open_logs")}
             </Button>
             <Button icon="arrow_reset" disabled={!changed()} onClick={() => void props.save({ ...DEFAULT_LOG })}>
