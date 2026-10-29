@@ -478,7 +478,7 @@
   "ui.diag.clear": "Effacer",
   "ui.diag.no_log": "Aucune ligne de journal pour l'instant",
   "ui.diag.open_logs": "Ouvrir le dossier des journaux",
-  "ui.diag.logs_unmasked": "Les fichiers de ce dossier ne sont pas masqués : ils contiennent des adresses Bluetooth et votre nom d’utilisateur Windows. Pour partager un journal, utilisez « Copier le diagnostic » ou le paquet de diagnostic.",
+  "ui.diag.logs_unmasked": "Non masqué : contient les adresses Bluetooth et votre nom d’utilisateur Windows",
   "ui.diag.show_in_explorer": "Afficher dans l'Explorateur",
   "ui.diag.bundle": "Enregistrer le paquet de diagnostic",
   "ui.diag.report": "Signaler un problème",

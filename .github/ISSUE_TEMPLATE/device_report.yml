@@ -81,5 +81,4 @@ body:
       label: Notes
       description: |
         Dropouts, latency, stability, sample rate, impressions — anything you noticed.
-        To add a log, paste **Diagnostics → Copy Diagnostics** (Bluetooth addresses masked by default) or attach the diagnostic bundle.
-        Please do not attach files from the log folder directly: they are not masked and contain Bluetooth addresses and your Windows user name.
+        Logs are welcome. **Diagnostics → Copy Diagnostics** masks Bluetooth addresses; files from the log folder are not masked.

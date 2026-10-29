@@ -478,7 +478,7 @@
   "ui.diag.clear": "清除",
   "ui.diag.no_log": "尚無記錄行",
   "ui.diag.open_logs": "開啟記錄資料夾",
-  "ui.diag.logs_unmasked": "此資料夾中的檔案未經遮蔽：其中包含藍牙位址和你的 Windows 使用者名稱。分享記錄時，請使用「複製診斷資訊」或診斷套件。",
+  "ui.diag.logs_unmasked": "未遮蔽：包含藍牙位址和你的 Windows 使用者名稱",
   "ui.diag.show_in_explorer": "在檔案總管中顯示",
   "ui.diag.bundle": "儲存診斷套件",
   "ui.diag.report": "回報問題",
