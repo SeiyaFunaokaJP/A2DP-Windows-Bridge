@@ -477,6 +477,7 @@
   "ui.diag.clear": "清除",
   "ui.diag.no_log": "暂无日志行",
   "ui.diag.open_logs": "打开日志文件夹",
+  "ui.diag.logs_unmasked": "未隐藏：包含 Bluetooth 地址和你的 Windows 用户名",
   "ui.diag.show_in_explorer": "在资源管理器中显示",
   "ui.diag.bundle": "保存诊断包",
   "ui.diag.report": "报告问题",

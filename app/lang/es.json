@@ -477,6 +477,7 @@
   "ui.diag.clear": "Borrar",
   "ui.diag.no_log": "Aún no hay líneas de registro",
   "ui.diag.open_logs": "Abrir la carpeta de registros",
+  "ui.diag.logs_unmasked": "Sin ocultar: incluye direcciones Bluetooth y su nombre de usuario de Windows",
   "ui.diag.show_in_explorer": "Mostrar en el Explorador",
   "ui.diag.bundle": "Guardar paquete de diagnóstico",
   "ui.diag.report": "Informar de un problema",

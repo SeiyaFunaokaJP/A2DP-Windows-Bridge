@@ -477,6 +477,7 @@
   "ui.diag.clear": "지우기",
   "ui.diag.no_log": "아직 로그 줄이 없습니다",
   "ui.diag.open_logs": "로그 폴더 열기",
+  "ui.diag.logs_unmasked": "가리지 않음: Bluetooth 주소와 Windows 사용자 이름이 포함됩니다",
   "ui.diag.show_in_explorer": "탐색기에서 표시",
   "ui.diag.bundle": "진단 패키지 저장",
   "ui.diag.report": "문제 보고",

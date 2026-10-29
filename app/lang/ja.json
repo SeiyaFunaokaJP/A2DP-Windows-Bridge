@@ -477,6 +477,7 @@
   "ui.diag.clear": "消去",
   "ui.diag.no_log": "まだログがありません",
   "ui.diag.open_logs": "ログフォルダーを開く",
+  "ui.diag.logs_unmasked": "伏せ字なし: Bluetooth アドレスや Windows のユーザー名を含みます",
   "ui.diag.show_in_explorer": "エクスプローラーで表示",
   "ui.diag.bundle": "診断パッケージを保存",
   "ui.diag.report": "問題を報告",

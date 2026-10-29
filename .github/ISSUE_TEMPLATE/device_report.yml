@@ -79,4 +79,6 @@ body:
     id: notes
     attributes:
       label: Notes
-      description: Dropouts, latency, stability, sample rate, impressions — anything you noticed.
+      description: |
+        Dropouts, latency, stability, sample rate, impressions — anything you noticed.
+        Logs are welcome. **Diagnostics → Copy Diagnostics** masks Bluetooth addresses; files from the log folder are not masked.

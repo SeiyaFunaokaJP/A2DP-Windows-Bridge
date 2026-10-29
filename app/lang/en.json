@@ -477,6 +477,7 @@
   "ui.diag.clear": "Clear",
   "ui.diag.no_log": "No log lines yet",
   "ui.diag.open_logs": "Open log folder",
+  "ui.diag.logs_unmasked": "Not masked: includes Bluetooth addresses and your Windows user name",
   "ui.diag.show_in_explorer": "Show in Explorer",
   "ui.diag.bundle": "Save Diagnostic Bundle",
   "ui.diag.report": "Report a problem",
