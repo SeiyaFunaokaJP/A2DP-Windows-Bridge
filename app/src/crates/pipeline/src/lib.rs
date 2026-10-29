@@ -73,6 +73,9 @@ pub struct PipelineConfig {
     /// Adaptive bit rate: the encoder's own [`Encoder::abr_active`]
     pub abr: bool,
     pub buffer: BufferPreset,
+    /// True while the audio is to be sent as silence (the headphones'
+    /// volume is 0, [`bt_host::BtHost::volume_is_zero`]); None: never
+    pub mute: Option<Box<dyn Fn() -> bool + Send>>,
 }
 
 /// The capture thread's end: copies captured audio into the ring
@@ -299,7 +302,7 @@ fn encode_thread(
     mut sink: MediaSink,
     control: &Control,
 ) -> MediaSink {
-    let PipelineConfig { mut encoder, input, channels, mtu, abr, .. } = config;
+    let PipelineConfig { mut encoder, input, channels, mtu, abr, mute, .. } = config;
     let _priority = thread_priority();
     let kind = encoder.kind();
     let fmt = encoder.pcm_format();
@@ -327,6 +330,7 @@ fn encode_thread(
     let mut last_round: Option<Instant> = None;
     let mut window = RoundStats::new();
     let mut live = abr.then(|| live_codec(encoder.as_ref()));
+    let mut muted = false;
     tracing::debug!(
         "encode thread: {kind}, {:?} {} ch -> {fmt:?} {out_ch} ch at {} Hz, {per_encode} frames per encode, \
          {per_codec_frame} per codec frame (rtp timestamp step), rounds of {round_frames} frames, output buffer {} \
@@ -386,6 +390,15 @@ fn encode_thread(
             read_buf[..a.len()].copy_from_slice(a);
             read_buf[a.len()..bytes].copy_from_slice(b);
             chunk.commit_all();
+        }
+        let now_muted = mute.as_ref().is_some_and(|m| m());
+        if now_muted != muted {
+            muted = now_muted;
+            tracing::info!("encode thread: {}", if muted { "volume 0, sending silence" } else { "audio again" });
+        }
+        if muted {
+            // Zero is silence in every input sample format
+            read_buf[..bytes].fill(0);
         }
         let raw = &read_buf[..bytes];
         match fmt {
@@ -570,6 +583,8 @@ mod tests {
     struct Calls {
         adjust: AtomicU32,
         reset: AtomicU32,
+        /// Blocks encoded with a sample other than 0
+        loud: AtomicU32,
     }
 
     struct Mock(Arc<Calls>);
@@ -587,7 +602,12 @@ mod tests {
         fn max_output_bytes(&self) -> usize {
             16
         }
-        fn encode(&mut self, _pcm: Pcm<'_>, out: &mut [u8]) -> Result<Encoded, EncoderError> {
+        fn encode(&mut self, pcm: Pcm<'_>, out: &mut [u8]) -> Result<Encoded, EncoderError> {
+            if let Pcm::I16(s) = pcm
+                && s.iter().any(|&v| v != 0)
+            {
+                self.0.loud.fetch_add(1, Ordering::Relaxed);
+            }
             out[0] = 0;
             Ok(Encoded { bytes: 1, frames: 1 })
         }
@@ -648,6 +668,7 @@ mod tests {
             mtu: 1011,
             abr: true,
             buffer: BufferPreset::Standard,
+            mute: None,
         };
         let (pipeline, mut input) = Pipeline::start(config, sink, stats.clone());
         // Published before the stream info goes out
@@ -702,6 +723,7 @@ mod tests {
             mtu: 600,
             abr: false,
             buffer: BufferPreset::Standard,
+            mute: None,
         };
         let (pipeline, _input) = Pipeline::start(config, sink, stats.clone());
         assert_eq!(stats.live_codec(), None);
@@ -720,6 +742,7 @@ mod tests {
             mtu: 600,
             abr: true,
             buffer: BufferPreset::Standard,
+            mute: None,
         };
         let (pipeline, mut input) = Pipeline::start(config, sink, stats.clone());
         let audio = vec![0u8; 480 * 4];
@@ -746,6 +769,42 @@ mod tests {
 
         pipeline.reset();
         assert!(wait(&|| calls.reset.load(Ordering::Relaxed) == 1));
+        assert!(pipeline.stop().is_some());
+    }
+
+    #[test]
+    fn volume_0_sends_silence() {
+        let calls = Arc::new(Calls::default());
+        let stats = Arc::new(LinkStats::default());
+        let (sink, _consumer, _streaming) = bt_host::media::detached_queue(stats.clone());
+        let zero = Arc::new(AtomicBool::new(true));
+        let config = PipelineConfig {
+            encoder: Box::new(Mock(calls.clone())),
+            input: InputFormat { sample_rate: 48000, channels: 2, sample: SampleType::I16 },
+            channels: 2,
+            mtu: 600,
+            abr: false,
+            buffer: BufferPreset::Standard,
+            mute: Some(Box::new({
+                let zero = zero.clone();
+                move || zero.load(Ordering::Acquire)
+            })),
+        };
+        let (pipeline, mut input) = Pipeline::start(config, sink, stats.clone());
+        let audio: Vec<u8> = (0..480 * 2).flat_map(|i| (i as i16 + 1).to_le_bytes()).collect();
+        let pushed = |input: &mut CaptureInput| {
+            let before = stats.capture_frames.load(Ordering::Relaxed);
+            for _ in 0..10 {
+                input.push(&audio);
+            }
+            std::thread::sleep(Duration::from_millis(200));
+            stats.capture_frames.load(Ordering::Relaxed) > before
+        };
+        assert!(pushed(&mut input));
+        assert_eq!(calls.loud.load(Ordering::Relaxed), 0);
+        zero.store(false, Ordering::Release);
+        assert!(pushed(&mut input));
+        assert!(calls.loud.load(Ordering::Relaxed) > 0);
         assert!(pipeline.stop().is_some());
     }
 }

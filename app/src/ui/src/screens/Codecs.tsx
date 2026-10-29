@@ -225,8 +225,9 @@ export function Codecs() {
     }
   };
   const autoAll = () => snap().settings.auto_codec;
-  // A card, or its "...", clicked under Auto-select (issue #86 round 8)
-  const [locked, setLocked] = createSignal(false);
+  // A card, or its "...", clicked under Auto-select (issue #86 round 8):
+  // what follows once it is turned off (null: the dialog is closed)
+  const [locked, setLocked] = createSignal<(() => void) | null>(null);
 
   return (
     <div class="page codecs">
@@ -265,21 +266,22 @@ export function Codecs() {
         <For each={entries().map((e) => e.key)}>
           {(key) => {
             const entry = entryByKey(entries, key);
-            return <DeviceCodecs entry={entry()} hide={hide()} auto={autoAll()} onLocked={() => setLocked(true)} />;
+            return <DeviceCodecs entry={entry()} hide={hide()} auto={autoAll()} onLocked={(then) => setLocked(() => then)} />;
           }}
         </For>
       </Show>
       <Dialog
-        open={locked()}
+        open={locked() !== null}
         title={t("ui.codecs.auto_dialog_title")}
         confirm={t("ui.codecs.auto_dialog_disable")}
         cancel={t("modal.cancel")}
-        onConfirm={() => {
-          setLocked(false);
-          // The codec stays as Auto-select left it: the user chooses next
-          void saveSettings(app, { auto_codec: false });
+        onConfirm={async () => {
+          const then = locked();
+          setLocked(null);
+          // Then the card clicked is chosen, or its "..." opens (issue #86)
+          if (await saveSettings(app, { auto_codec: false })) then?.();
         }}
-        onCancel={() => setLocked(false)}
+        onCancel={() => setLocked(null)}
       >
         <p>{t("ui.codecs.auto_dialog_text")}</p>
       </Dialog>
@@ -288,7 +290,13 @@ export function Codecs() {
 }
 
 /** One device: its activity, name, address and tags, then its codec cards */
-function DeviceCodecs(props: { entry: AudioEntry; hide: boolean; auto: boolean; onLocked: () => void }) {
+function DeviceCodecs(props: {
+  entry: AudioEntry;
+  hide: boolean;
+  auto: boolean;
+  /** A card clicked while Auto-select is on: `then` once it is turned off */
+  onLocked: (then: () => void) => void;
+}) {
   const app = useApp();
   const snap = () => app.core.state.snap!;
   const e = () => props.entry;
@@ -611,7 +619,7 @@ function DeviceCodecs(props: { entry: AudioEntry; hide: boolean; auto: boolean; 
                 dragging={dragging() === c.id}
                 describedBy={hintId}
                 onPick={() => void choose(c.id)}
-                onReadOnly={props.onLocked}
+                onReadOnly={(settings) => props.onLocked(() => (settings ? setSettingsOf(c) : void choose(c.id)))}
                 onSettings={() => setSettingsOf(c)}
                 onMove={(by) => moveBy(c.id, by)}
               />

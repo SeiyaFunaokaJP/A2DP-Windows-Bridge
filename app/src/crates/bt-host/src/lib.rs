@@ -1468,6 +1468,14 @@ impl BtHost {
         u8::try_from(self.controls.volume.load(Ordering::Acquire)).ok()
     }
 
+    /// For the encode thread: true while the headphones' volume is 0 (sent
+    /// or reported). Many headphones still play faintly at absolute volume
+    /// 0, so the audio is silenced there too (issue #86).
+    pub fn volume_is_zero(&self) -> impl Fn() -> bool + Send + 'static {
+        let controls = self.controls.clone();
+        move || controls.volume.load(Ordering::Acquire) == 0
+    }
+
     /// Sets the headphones' volume; while one request is in flight, newer
     /// values replace the queued one
     pub fn request_volume(&self, volume: u8) {

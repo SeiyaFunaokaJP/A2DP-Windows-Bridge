@@ -42,9 +42,9 @@ export function CodecCard(props: {
   readOnly?: boolean;
   support: CodecSupport | null;
   onPick: () => void;
-  /** The card or its "..." clicked while read-only: offers to turn
-   *  Auto-select off (issue #86 round 8) */
-  onReadOnly?: () => void;
+  /** The card or its "..." (`settings`) clicked while read-only: offers to
+   *  turn Auto-select off (issue #86 round 8) */
+  onReadOnly?: (settings: boolean) => void;
   onSettings: () => void;
   /** The card can be dragged (and moved with Alt+arrow keys) into the
    *  device's order (issue #86 round 8) */
@@ -72,7 +72,7 @@ export function CodecCard(props: {
         class="codec-card"
         classList={{ on: props.selected, ro: props.readOnly, orderable: props.orderable }}
         onClick={() => {
-          if (props.readOnly) props.onReadOnly?.();
+          if (props.readOnly) props.onReadOnly?.(false);
         }}
       >
         <input
@@ -135,7 +135,7 @@ export function CodecCard(props: {
         label={t("ui.profile.codec_settings", name())}
         aria-haspopup="dialog"
         disabled={props.disabled && !props.readOnly}
-        onClick={() => (props.readOnly ? props.onReadOnly?.() : props.onSettings())}
+        onClick={() => (props.readOnly ? props.onReadOnly?.(true) : props.onSettings())}
       />
     </div>
   );

@@ -954,7 +954,15 @@ fn start_pipeline(
 ) -> (Pipeline, CaptureInput) {
     let abr = encoder.abr_active();
     Pipeline::start(
-        PipelineConfig { encoder, input: input_format(format), channels, mtu, abr, buffer: BufferPreset::Standard },
+        PipelineConfig {
+            encoder,
+            input: input_format(format),
+            channels,
+            mtu,
+            abr,
+            buffer: BufferPreset::Standard,
+            mute: Some(Box::new(host.volume_is_zero())),
+        },
         sink,
         host.stats().clone(),
     )
