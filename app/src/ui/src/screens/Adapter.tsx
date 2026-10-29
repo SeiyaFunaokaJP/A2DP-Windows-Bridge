@@ -468,39 +468,57 @@ function AfhSection() {
     const c = parseAfhChannels(channels());
     if (c && c !== afh()) void saveSettings(app, { afh: c });
   };
+  // Auto: the Wi-Fi channels the running stack avoids now (empty while none
+  // or no stack runs)
+  onCleanup(app.core.wantLink());
+  const avoided = () => {
+    const l = app.core.link();
+    return l.length ? l[l.length - 1].afh_avoided.replace(/\s+/g, "") : "";
+  };
+  // One box for the channels (issue #86): Auto shows what it chose, Off
+  // nothing, both read only; Manual takes the user's
+  const shown = () => (manual() ? channels() : mode() === "auto" ? avoided() : "");
   return (
-    <Section id={AFH_SECTION} title={t("receiver.afh")}>
+    <Section
+      id={AFH_SECTION}
+      title={t("receiver.afh")}
+      actions={
+        <div class="afh-control">
+          <Segmented
+            label={t("receiver.afh")}
+            value={manual() ? "manual" : mode()}
+            options={[
+              { value: "auto", label: t("receiver.afh_auto") },
+              { value: "off", label: t("receiver.afh_off") },
+              { value: "manual", label: t("receiver.afh_manual") },
+            ]}
+            onChange={(v) => {
+              setManual(v === "manual");
+              if (v === "manual") saveChannels();
+              else void saveSettings(app, { afh: v });
+            }}
+          />
+          <input
+            class="input mono afh-channels"
+            placeholder={manual() ? "6,11" : ""}
+            value={shown()}
+            readOnly={!manual()}
+            aria-label={t("receiver.afh_channels")}
+            aria-describedby="afh-channels-err"
+            aria-invalid={bad() ? "true" : undefined}
+            onInput={(e) => setChannels(e.currentTarget.value)}
+            onBlur={() => manual() && saveChannels()}
+            onKeyDown={(e) => manual() && e.key === "Enter" && saveChannels()}
+          />
+        </div>
+      }
+    >
       <p class="hint">{t("receiver.afh_tooltip")}</p>
-      <Segmented
-        label={t("receiver.afh")}
-        value={manual() ? "manual" : mode()}
-        options={[
-          { value: "auto", label: t("receiver.afh_auto") },
-          { value: "off", label: t("receiver.afh_off") },
-          { value: "manual", label: t("receiver.afh_manual") },
-        ]}
-        onChange={(v) => {
-          setManual(v === "manual");
-          if (v === "manual") saveChannels();
-          else void saveSettings(app, { afh: v });
-        }}
-      />
-      <Show when={manual()}>
-        <Field label={t("receiver.afh_channels")} hint={t("ui.adapter.afh_channels_hint")} error={bad() ? t("ui.adapter.afh_bad") : null}>
-          {(id, described) => (
-            <input
-              id={id}
-              class="input mono narrow"
-              placeholder="6,11"
-              value={channels()}
-              aria-describedby={described}
-              aria-invalid={bad() ? "true" : undefined}
-              onInput={(e) => setChannels(e.currentTarget.value)}
-              onBlur={saveChannels}
-              onKeyDown={(e) => e.key === "Enter" && saveChannels()}
-            />
-          )}
-        </Field>
+      <Show when={bad()}>
+        <span class="field-error" id="afh-channels-err" role="alert">
+          <Icon name="error_circle" />
+          {t("ui.adapter.afh_bad")}
+        </span>
       </Show>
     </Section>
   );

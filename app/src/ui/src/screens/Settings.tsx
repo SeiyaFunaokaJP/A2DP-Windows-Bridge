@@ -102,6 +102,24 @@ export function Settings() {
           checked={s().notify_connected}
           onChange={(v) => set({ notify_connected: v })}
         />
+        <div class="row">
+          <span class="row-text">
+            <span class="row-label">{t("ui.settings.battery_low")}</span>
+            <span id="battery-low-help" class="hint">
+              {t("ui.settings.battery_low_hint")}
+            </span>
+          </span>
+          <Select<number>
+            value={s().battery_low_percent}
+            label={t("ui.settings.battery_low")}
+            describedBy="battery-low-help"
+            options={[
+              ...[20, 10, 5].map((p) => ({ value: p, label: t("ui.settings.battery_low_below", p) })),
+              { value: 0, label: t("ui.settings.battery_low_never") },
+            ]}
+            onChange={(v) => set({ battery_low_percent: v })}
+          />
+        </div>
       </Section>
 
       <Section

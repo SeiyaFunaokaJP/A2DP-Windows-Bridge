@@ -106,7 +106,7 @@ Si la recherche ne le trouve pas, saisissez l'adresse Bluetooth sous **Manuel :*
 a2dpwb-core.exe --cli --scan
 ```
 
-Le casque démarre avec **Auto** comme codec (**Codecs**) et l'audio du système comme source de capture (**Périphériques audio**) ; les valeurs par défaut donnent le meilleur son. Voir [Utilisation](usage) pour tout le reste.
+Le casque démarre avec **Auto** comme codec (**Codecs**) et l'audio du système comme source de sortie (**Périphériques audio**) ; les valeurs par défaut donnent le meilleur son. Voir [Utilisation](usage) pour tout le reste.
 
 ---
 

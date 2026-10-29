@@ -960,13 +960,13 @@ fn start_pipeline(
     )
 }
 
-/// Marks the stack as having carried a stream when the session ends (after
-/// any restart during it)
-struct StreamedMark<'a>(&'a Inner);
+/// Marks the stack as having carried a stream to the device when the
+/// session ends (after any restart during it)
+struct StreamedMark<'a>(&'a Inner, [u8; 6]);
 
 impl Drop for StreamedMark<'_> {
     fn drop(&mut self) {
-        self.0.mark_streamed();
+        self.0.mark_streamed(self.1);
     }
 }
 
@@ -986,7 +986,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let session_start = Instant::now();
 
     inner.notify(StreamState::Connecting, Msg::new("status.initializing_btstack"));
-    let mut host = match inner.host_for_stream() {
+    let mut host = match inner.host_for_stream(req.device) {
         Ok(h) => h,
         Err(m) => {
             tracing::debug!("stream: no stack after {} ms: {}", session_start.elapsed().as_millis(), m.english());
@@ -1050,7 +1050,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
     };
     // However the session ends, the next one starts on a new stack
-    let _streamed = StreamedMark(inner);
+    let _streamed = StreamedMark(inner, req.device);
     inner.record_codecs(&addr, KnownCodecs::of(&remote));
     tracing::info!("device connected, choosing the codec");
     tracing::debug!(

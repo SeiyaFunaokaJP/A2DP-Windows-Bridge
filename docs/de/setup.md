@@ -106,7 +106,7 @@ Findet die Suche die Kopfhörer nicht, geben Sie die Bluetooth-Adresse unter **M
 a2dpwb-core.exe --cli --scan
 ```
 
-Die Kopfhörer beginnen mit **Automatisch** als Codec (**Codecs**) und dem Systemaudio als Aufnahmequelle (**Audiogeräte**); die Standardwerte liefern den besten Klang. Alles Weitere finden Sie unter [Verwendung](usage).
+Die Kopfhörer beginnen mit **Automatisch** als Codec (**Codecs**) und dem Systemaudio als Ausgabequelle (**Audiogeräte**); die Standardwerte liefern den besten Klang. Alles Weitere finden Sie unter [Verwendung](usage).
 
 ---
 

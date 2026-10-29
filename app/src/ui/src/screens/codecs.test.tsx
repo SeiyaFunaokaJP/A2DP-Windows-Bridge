@@ -831,9 +831,12 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
   it("shows the capture device's format and warns when a profile differs", async () => {
     start("#/devices");
     const entry = await deviceEntry(/WH-1000XM5/);
-    // Loopback: the default device (the mock's speakers mix 48 kHz, 32-bit)
-    const line = await within(entry).findByText(t("capture.device_format", 48000, 32));
-    expect(line).not.toHaveClass("field-warn");
+    // Loopback: the default device (the mock's speakers mix 48 kHz, 32-bit),
+    // in a box beside the capture source (issue #86)
+    const box = await within(entry).findByRole("note", { name: t("capture.device_format", 48000, 32) });
+    expect(box.closest(".capture-source")).not.toBeNull();
+    expect([...box.querySelectorAll(".num")].map((e) => e.textContent)).toEqual(["48000 Hz", "32-bit"]);
+    expect(box).not.toHaveClass("st-warn");
 
     const snap = (await mock!.call("state.snapshot")) as { profiles: { name: string }[] };
     const p = snap.profiles.find((x) => x.name === "WH-1000XM5 (LDAC)")!;
@@ -842,7 +845,7 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     await waitFor(() => expect(entry.querySelector(".field-warn")).not.toBeNull());
     expect(entry.querySelector(".field-error")).toBeNull();
     const warning = entry.querySelector(".field-warn")!;
-    expect(warning).toHaveTextContent(t("capture.device_format", 48000, 32));
+    expect(box).toHaveClass("st-warn");
     expect(warning).toHaveTextContent(t("ui.profile.format_differs", t("connection.sample_rate")));
     // The device, not its profile by name (issue #86)
     expect(warning).not.toHaveTextContent("WH-1000XM5 (LDAC)");
@@ -857,9 +860,8 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     const apps = await within(select).findByRole("group", { name: t("capture.app") });
     expect(within(apps).getByRole("option", { name: "Spotify" })).toBeInTheDocument();
     expect(within(select).getByRole("option", { name: t("capture.loopback") })).toBeInTheDocument();
-    // The long explanation is behind the info button
-    expect(within(entry).queryByText(t("capture.hint_loopback"))).toBeNull();
-    fireEvent.click(within(entry).getByRole("button", { name: t("ui.more_info", t("capture.mode")) }));
+    // What the source does, below it, with no info button (issue #86)
+    expect(within(entry).queryByRole("button", { name: t("ui.more_info", t("capture.mode")) })).toBeNull();
     expect(within(entry).getByText(t("capture.hint_loopback"))).toBeInTheDocument();
   });
 
@@ -950,7 +952,6 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
   it("says what application capture needs when the Windows build is not known", async () => {
     start("#/devices");
     const entry = await deviceEntry(/SRS-XB13/);
-    fireEvent.click(within(entry).getByRole("button", { name: t("ui.more_info", t("capture.mode")) }));
     expect(await within(entry).findByText(t("ui.profile.app_capture_requirement"))).toBeInTheDocument();
     expect(within(entry).queryByText(t("ui.profile.app_capture_unsupported"))).toBeNull();
   });

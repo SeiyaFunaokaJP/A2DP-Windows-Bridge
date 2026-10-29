@@ -890,6 +890,16 @@ impl HostApp {
                     }
                 }
             }
+            HCI_EVENT_CONNECTION_REQUEST => {
+                // BTstack accepts it; the link that comes up is the device's own
+                let Some(addr) = addr_at(p, 2) else { return };
+                tracing::debug!("HCI connection request from {}", addr_str(&addr));
+                self.shared.update(|s| {
+                    if !s.acl_requests.contains(&addr) {
+                        s.acl_requests.push(addr);
+                    }
+                });
+            }
             HCI_EVENT_CONNECTION_COMPLETE => {
                 let (Some(status), Some(handle), Some(addr)) = (u8_at(p, 2), le16(p, 3), addr_at(p, 5)) else {
                     return;
@@ -903,6 +913,7 @@ impl HostApp {
                     self.remote_addr == Some(addr)
                 );
                 if status != 0 {
+                    self.shared.update(|s| s.acl_requests.retain(|&a| a != addr));
                     tracing::warn!(
                         "HCI connection to {} failed: 0x{status:02X} ({})",
                         addr_str(&addr),
@@ -913,6 +924,10 @@ impl HostApp {
                     let target = self.remote_addr == Some(addr);
                     self.shared.update(|s| {
                         s.acl_up_from = Some(addr);
+                        let by_device = s.acl_requests.contains(&addr);
+                        s.acl_requests.retain(|&a| a != addr);
+                        s.acl_links.retain(|&(_, a, _)| a != addr);
+                        s.acl_links.push((handle & 0x0FFF, addr, by_device));
                         if target {
                             s.target_acl_down_reason = 0;
                             s.target_acl_handle = Some(handle & 0x0FFF);
@@ -974,6 +989,7 @@ impl HostApp {
                 );
                 let lost = self.shared.update(|s| {
                     s.acl_down = true;
+                    s.acl_links.retain(|&(h, _, _)| h != handle);
                     if s.target_acl_handle == Some(handle) {
                         s.target_acl_down_reason = reason;
                         s.target_acl_handle = None;

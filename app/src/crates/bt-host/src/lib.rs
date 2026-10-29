@@ -1350,6 +1350,14 @@ impl BtHost {
         self.shared.update(|s| std::mem::take(&mut s.acl_up_from))
     }
 
+    /// The device opened an ACL link to the PC itself (turned on, it
+    /// connected to the PC), it is still up, and no stream ran on it yet.
+    /// Not the link of a stream that just ended. Claims it: true once.
+    pub fn take_link_from_device(&self, addr: [u8; 6]) -> bool {
+        self.shared
+            .update(|s| s.acl_links.iter_mut().find(|(_, a, own)| *a == addr && *own).map(|l| l.2 = false).is_some())
+    }
+
     /// Once per lost connection (resets)
     pub fn check_disconnected(&self) -> bool {
         self.shared.update(|s| std::mem::take(&mut s.disconnect_occurred))

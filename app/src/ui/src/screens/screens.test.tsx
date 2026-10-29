@@ -41,19 +41,42 @@ describe("Home", () => {
     await waitFor(() => expect(wh).toHaveTextContent("990 kbps"));
     // The badge on Home has the bit depth too, on the line below the codec (issue #86)
     expect(wh.querySelector(".codec-badge")).toHaveTextContent("24-bit");
-    expect(wh.querySelector(".codec-info > .codec-name")).toHaveTextContent(/^LDAC$/);
+    // The codec is chosen right on the card, by name only (issue #86)
+    expect(within(wh).getByRole("combobox", { name: "Codec" })).toHaveDisplayValue("LDAC");
     expect(within(wh).getByRole("status")).toHaveTextContent(/^Connected$/);
     // The other device: ready, not connected, its own Connect
     expect(xb).toHaveTextContent("Disconnected");
     expect(xb).toHaveTextContent("—");
     expect(within(xb).getByRole("button", { name: "Connect" })).toBeInTheDocument();
-    // The volume is the device's own: on its card only (issue #86)
+    // The volume is the device's own; the other card keeps its slider,
+    // disabled, so the cards stay alike (issue #86)
     expect(within(wh).getByRole("slider", { name: "Volume" })).not.toBeDisabled();
-    expect(within(xb).queryByRole("slider")).toBeNull();
-    expect(screen.getAllByRole("slider", { name: "Volume" })).toHaveLength(1);
+    expect(within(xb).getByRole("slider", { name: "Volume" })).toBeDisabled();
+    expect(within(xb).queryByRole("combobox", { name: "Codec" })).toBeNull();
     fireEvent.click(disconnect);
     await within(wh).findByRole("button", { name: "Connect" });
     expect(calls.some((c) => c.method === "stream.stop")).toBe(true);
+  });
+
+  it("mutes and unmutes with the speaker, as Windows does (issue #86)", async () => {
+    const { calls } = start("#/home");
+    const wh = await homeCard("WH-1000XM5");
+    fireEvent.click(within(wh).getByRole("button", { name: "Connect" }));
+    await within(wh).findByRole("button", { name: "Disconnect" });
+    const slider = within(wh).getByRole("slider", { name: "Volume" }) as HTMLInputElement;
+    await waitFor(() => expect(Number(slider.value)).toBeGreaterThan(0));
+    const before = Number(slider.value);
+    const volumes = () => calls.filter((c) => c.method === "stream.set_volume").map((c) => (c.params as { volume: number }).volume);
+    fireEvent.click(within(wh).getByRole("button", { name: "Mute" }));
+    await waitFor(() => expect(volumes().at(-1)).toBe(0));
+    const unmute = await within(wh).findByRole("button", { name: "Unmute" });
+    expect(unmute).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(unmute);
+    await waitFor(() => expect(volumes().at(-1)).toBeGreaterThan(0));
+    await waitFor(() => expect(Number(slider.value)).toBe(before));
+    // Not on the card of a device not connected
+    const xb = await homeCard("SRS-XB13");
+    expect(within(xb).getByRole("button", { name: "Mute" })).toBeDisabled();
   });
 
   it("shows the battery as unknown, with the reason on hover, when the headphones refuse to report it", async () => {
@@ -71,12 +94,13 @@ describe("Home", () => {
     expect(battery).not.toHaveTextContent("%");
   });
 
-  it("shows the codec and the link quality, not the link latency nor the capture source (issue #86)", async () => {
+  it("shows the link quality, not a codec card, the link latency nor the capture source (issue #86)", async () => {
     start("#/home");
     await homeCard("WH-1000XM5");
     const main = within(screen.getByRole("main"));
     expect(await main.findByRole("region", { name: t("quality.title") })).toBeInTheDocument();
-    expect(main.getByRole("region", { name: t("quality.codec") })).toBeInTheDocument();
+    // The codec is on the device's card
+    expect(main.queryByRole("region", { name: t("quality.codec") })).toBeNull();
     expect(main.queryByText("Link latency")).toBeNull();
     expect(main.queryByLabelText(t("capture.mode"))).toBeNull();
   });
@@ -148,8 +172,10 @@ describe("Home", () => {
     });
     const card = document.querySelector(".home-device.live") as HTMLElement;
     const note = t("ui.codec.fallback_in_use", "LDAC");
+    await waitFor(() => expect(pill.querySelector(".codec-name")).toHaveTextContent(`aptX HD${note}`));
+    // On Home the codec is chosen on the card: the note beside the choice
+    expect(await within(card).findByRole("combobox")).toHaveDisplayValue("aptX HD");
     for (const where of [card, pill]) {
-      await waitFor(() => expect(where.querySelector(".codec-name")).toHaveTextContent(`aptX HD${note}`));
       const name = where.querySelector(".codec-name")!;
       expect(name.querySelector(".icon")).not.toBeNull();
       expect(name.querySelector(".codec-note")).toHaveTextContent(note);
@@ -164,15 +190,16 @@ describe("Home", () => {
     }
   }, 15000);
 
-  it("chooses the codec of the device in use right there, the capture source being on Audio Devices (issue #86)", async () => {
-    const { calls } = start("#/home");
-    await homeCard("WH-1000XM5");
-    const card = (await screen.findByRole("heading", { level: 2, name: "Codec" })).closest("section")!;
-    expect(screen.queryByRole("heading", { name: "Capture Source" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "More capture settings" })).toBeNull();
-    const select = within(card).getByRole("combobox", { name: "Codec" }) as HTMLSelectElement;
-    // Auto-select, then the codecs the device supports in its order
-    expect([...select.options].map((o) => o.value)).toEqual(["auto", "ldac", "aac", "sbc"]);
+  it("chooses the codec on the card of the device in use, by name only (issue #86)", async () => {
+    const { calls, core } = start("#/home");
+    const wh = await homeCard("WH-1000XM5");
+    expect(screen.queryByRole("heading", { name: "Output Source" })).toBeNull();
+    // Not on a device that is not connected
+    expect(screen.queryByRole("combobox", { name: "Codec" })).toBeNull();
+    fireEvent.click(within(wh).getByRole("button", { name: "Connect" }));
+    const select = (await within(wh).findByRole("combobox", { name: "Codec" })) as HTMLSelectElement;
+    // The codecs the device supports in its order, no Auto-select entry
+    expect([...select.options].map((o) => o.value)).toEqual(["ldac", "aac", "sbc"]);
     expect(select.value).toBe("ldac");
     // Saved at once, as a card chosen on Codecs
     fireEvent.change(select, { target: { value: "aac" } });
@@ -183,10 +210,11 @@ describe("Home", () => {
       }),
     );
     await waitFor(() => expect(select.value).toBe("aac"));
-    // Auto-select is the one setting for every device; it shows its pick
-    fireEvent.change(select, { target: { value: "auto" } });
-    await waitFor(() => expect(select.selectedOptions[0]).toHaveTextContent(/^Auto-select \(LDAC\)$/));
-    expect(calls.filter((c) => c.method === "settings.set").at(-1)?.params).toMatchObject({ settings: { auto_codec: true } });
+    // Under Auto-select (turned on on Codecs) it shows the codec streaming,
+    // by name, no "Auto-select" (the mock keeps streaming AAC)
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, auto_codec: true } });
+    await waitFor(() => expect(core.state.snap!.settings.auto_codec).toBe(true));
+    expect(select.selectedOptions[0]).toHaveTextContent(/^AAC$/);
     // A codec chosen under Auto-select turns it off first
     const before = calls.length;
     fireEvent.change(select, { target: { value: "sbc" } });
@@ -196,8 +224,6 @@ describe("Home", () => {
     expect(select.selectedOptions[0]).toHaveTextContent(/^SBC$/);
     expect(after()[0].params).toMatchObject({ settings: { auto_codec: false } });
     expect(after()[1].params).toMatchObject({ profile: { codec: "sbc" } });
-    fireEvent.click(within(card).getByRole("button", { name: "More codec settings" }));
-    expect(await screen.findByRole("heading", { level: 1, name: "Codecs" })).toBeInTheDocument();
   });
 
   it("asks to exit the other A2DPWB (v1, or another v2) while it runs", async () => {
@@ -312,7 +338,10 @@ describe("every screen renders", () => {
     expect(screen.getByText("—")).toBeInTheDocument();
     fireEvent.click(connect);
     await screen.findByRole("button", { name: "Disconnect" });
-    await waitFor(() => expect(document.querySelector(".fly-title .codec-name")).toHaveTextContent(/^LDAC$/));
+    // The codec is chosen right there, as on Home (issue #86)
+    const codec = await screen.findByRole("combobox", { name: "Codec" });
+    expect(codec.closest(".fly-title .codec-name")).not.toBeNull();
+    expect(codec).toHaveDisplayValue("LDAC");
     expect(screen.getByRole("status")).toHaveTextContent(/^Connected$/);
     // The link quality beside the codec's details
     const line = document.querySelector(".fly-title .codec-line")!;

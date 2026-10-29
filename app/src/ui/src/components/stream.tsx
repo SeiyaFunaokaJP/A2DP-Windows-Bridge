@@ -102,9 +102,18 @@ export function ConnectButton(props: { onError?: (e: unknown) => void; compact?:
   );
 }
 
-export function VolumeControl() {
+// The volume a mute replaced (percent), for the click that unmutes it
+let unmutedPercent: number | null = null;
+/** Unmuting with no volume from before the mute (muted by the headphones) */
+const UNMUTE_DEFAULT = 30;
+
+/** The volume of the device in use; `off`: a device not connected, whose
+ *  card keeps the slider disabled so the cards stay alike (issue #86).
+ *  The speaker mutes and unmutes, as Windows' does (issue #86): volume 0 on
+ *  the headphones, then the volume from before. */
+export function VolumeControl(props: { off?: boolean }) {
   const { core } = useApp();
-  const vol = () => core.state.snap?.stream.volume ?? null;
+  const vol = () => (props.off ? null : (core.state.snap?.stream.volume ?? null));
   // The value under the pointer while dragging, so the core's echo of an
   // older value does not make the thumb jump back
   const [held, setHeld] = createSignal<number | null>(null);
@@ -128,9 +137,30 @@ export function VolumeControl() {
     else pending = setTimeout(go, wait);
   };
   const disabled = () => vol() === null;
+  // A device not connected is not muted: its speaker is just disabled
+  const muted = () => !disabled() && shown() === 0;
+  const toggleMute = () => {
+    if (muted()) {
+      send(unmutedPercent ?? UNMUTE_DEFAULT);
+      unmutedPercent = null;
+    } else {
+      unmutedPercent = shown();
+      send(0);
+    }
+  };
   return (
     <div class="volume" classList={{ disabled: disabled() }} title={t("tooltip.volume")}>
-      <Icon name={shown() === 0 ? "speaker_mute" : "speaker_2"} />
+      <button
+        type="button"
+        class="volume-mute"
+        disabled={disabled()}
+        aria-label={muted() ? t("ui.volume.unmute") : t("ui.volume.mute")}
+        aria-pressed={muted()}
+        title={muted() ? t("ui.volume.unmute") : t("ui.volume.mute")}
+        onClick={toggleMute}
+      >
+        <Icon name={muted() ? "speaker_mute" : "speaker_2"} />
+      </button>
       <input
         type="range"
         min="0"
@@ -239,8 +269,10 @@ export const FALLBACK_NOTE_MS = 5000;
 let noteShown: { key: string; at: number } | null = null;
 
 /** The codec in two lines (issue #86): its name, then what it runs with in
- *  a badge; `aside` goes beside the badge (the flyout's link quality) */
-export function CodecBadge(props: { compact?: boolean; aside?: JSX.Element }) {
+ *  a badge; `aside` goes beside the badge (the flyout's link quality).
+ *  `picker` takes the name's place: the codec chosen right there (Home,
+ *  the flyout). */
+export function CodecBadge(props: { compact?: boolean; aside?: JSX.Element; picker?: JSX.Element }) {
   const { core } = useApp();
   const info = () => core.state.snap?.stream.info ?? null;
   const name = () => {
@@ -290,7 +322,7 @@ export function CodecBadge(props: { compact?: boolean; aside?: JSX.Element }) {
             <Show when={i().requested_codec}>
               <Icon name="warning" class="st-warn" title={fallbackHelp()} />
             </Show>
-            <strong class="ellipsis">{name()}</strong>
+            {props.picker ?? <strong class="ellipsis">{name()}</strong>}
             <Show when={noteFresh()}>
               <span class="codec-note ellipsis">{fallbackNote()}</span>
             </Show>

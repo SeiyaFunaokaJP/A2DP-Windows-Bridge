@@ -145,7 +145,7 @@ A2DPWB omite por completo la pila Bluetooth de Windows. Se comunica directamente
 - **Reconexión automática**: vuelve a conectar si se pierde la conexión (hasta 10 intentos) y cuando el PC sale de la suspensión
 - **Calidad del enlace y AFH**: muestra lo que se envía, el RSSI y los canales en uso; indica al adaptador qué canales Wi-Fi debe evitar (consulte [Uso](usage#link-quality))
 - **Controles de los auriculares (AVRCP)**: control deslizante de volumen sincronizado con los auriculares y con el volumen de Windows; sus botones de reproducir/pausar, siguiente y anterior controlan la reproducción en el PC (consulte [Uso](usage#headphone-buttons))
-- **Ajustes por dispositivo**: un códec (con sus propios ajustes) y un origen de captura para cada dispositivo de audio, uno junto a otro en Inicio y que se pueden conectar desde la bandeja
+- **Ajustes por dispositivo**: un códec (con sus propios ajustes) y un origen de salida para cada dispositivo de audio, uno junto a otro en Inicio y que se pueden conectar desde la bandeja
 - **Actualizaciones**: la versión instalada se actualiza sola cuando se desconecta el dispositivo de audio (consulte [Uso](usage#updates))
 - **Localización**: inglés, japonés, chino simplificado / tradicional, coreano, alemán, francés y español
 - **Firmware de Realtek**: descarga guiada del firmware para adaptadores Realtek

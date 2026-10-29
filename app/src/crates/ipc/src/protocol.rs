@@ -549,6 +549,10 @@ fn yes() -> bool {
     true
 }
 
+fn battery_low() -> u8 {
+    20
+}
+
 /// Developer mode's overrides (codec::dev::DevOverrides)
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default)]
@@ -606,6 +610,9 @@ pub struct Settings {
     /// runs with, the battery (on by default)
     #[serde(default = "yes")]
     pub notify_connected: bool,
+    /// The low-battery notification: below this level (percent), 0: never
+    #[serde(default = "battery_low")]
+    pub battery_low_percent: u8,
     pub check_updates_on_startup: bool,
     pub include_prereleases: bool,
     /// The headphones' buttons act as Windows media keys (every device)

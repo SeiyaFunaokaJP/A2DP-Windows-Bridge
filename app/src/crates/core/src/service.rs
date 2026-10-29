@@ -575,19 +575,34 @@ impl Inner {
     /// stuttered until the app was restarted (issue #84), and a new stack
     /// (HCI Reset; a running Realtek firmware is kept) is what a restart
     /// gave. While idle the old stack stays up, for headphones that connect
-    /// by themselves.
-    pub fn host_for_stream(self: &Arc<Self>) -> Result<Arc<BtHost>, Msg> {
-        if self.streamed.swap(false, Ordering::AcqRel) && self.host.lock().unwrap_or_else(|e| e.into_inner()).is_some()
-        {
-            tracing::info!("restarting BTstack: a stream ran on it before");
-            self.shutdown_host();
+    /// by themselves. Kept when the device to stream connected to the PC by
+    /// itself on it: the HCI Reset would drop that link, and headphones that
+    /// just connected then refused the PC's page for 30 s to 2 min (issue
+    /// #86). A link left from the stream that just ended (a codec switch)
+    /// does not count.
+    pub fn host_for_stream(self: &Arc<Self>, device: [u8; 6]) -> Result<Arc<BtHost>, Msg> {
+        let old = self.host.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let streamed = self.streamed.swap(false, Ordering::AcqRel);
+        if let Some(h) = old {
+            // Claimed by this stream either way: the next one replaces the stack
+            let own_link = h.take_link_from_device(device);
+            if streamed && own_link {
+                tracing::info!("keeping BTstack: {} connected to the PC by itself on it", bt_host::addr_str(&device));
+            } else if streamed {
+                tracing::info!("restarting BTstack: a stream ran on it before");
+                self.shutdown_host();
+            }
         }
         self.ensure_host()
     }
 
-    /// The running stack carried an A2DP stream: the next one starts on a
-    /// new stack
-    pub fn mark_streamed(&self) {
+    /// The running stack carried an A2DP stream to `device`: the next one
+    /// starts on a new stack, also when the device opened its link again
+    /// during the stream (turned off and on)
+    pub fn mark_streamed(&self, device: [u8; 6]) {
+        if let Some(h) = self.host.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            h.take_link_from_device(device);
+        }
         self.streamed.store(true, Ordering::Release);
     }
 

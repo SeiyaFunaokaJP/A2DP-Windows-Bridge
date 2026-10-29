@@ -23,6 +23,34 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("AFH", () => {
+  it("has its mode and channels in the heading: Auto and Off read only, Manual typed (issue #86)", async () => {
+    const { calls, mock } = start();
+    const section = (await screen.findByRole("heading", { level: 2, name: "AFH" })).closest("section")!;
+    const head = section.querySelector(".section-head") as HTMLElement;
+    const box = within(head).getByRole("textbox", { name: "Wi-Fi ch" }) as HTMLInputElement;
+    // One set of controls only
+    expect(within(section).getAllByRole("radiogroup")).toHaveLength(1);
+    expect(within(section).getAllByRole("textbox")).toHaveLength(1);
+    // Auto: what it avoids now (the mock's stream avoids Wi-Fi channel 6)
+    expect(box.readOnly).toBe(true);
+    await mock.call("stream.start", { profile: "WH-1000XM5 (LDAC)" });
+    await waitFor(() => expect(box.value).toBe("6"), { timeout: 3000 });
+    // Off: nothing, read only
+    fireEvent.click(within(head).getByRole("radio", { name: "Off" }));
+    await waitFor(() => expect(box.value).toBe(""));
+    expect(box.readOnly).toBe(true);
+    // Manual: typed and saved
+    fireEvent.click(within(head).getByRole("radio", { name: "Manual" }));
+    await waitFor(() => expect(box.readOnly).toBe(false));
+    fireEvent.input(box, { target: { value: "11, 6" } });
+    fireEvent.blur(box);
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === "settings.set").at(-1)?.params).toMatchObject({ settings: { afh: "6,11" } }),
+    );
+  });
+});
+
 describe("Adapter firmware", () => {
   it("shows the chip's firmware and saves another chip", async () => {
     const { calls } = start();

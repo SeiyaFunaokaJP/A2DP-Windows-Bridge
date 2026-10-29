@@ -33,7 +33,7 @@ Both keep settings, profiles, link keys and firmware in `%APPDATA%\A2DPWB`, so y
 
 ### Upgrading from v1 {#from-v1}
 
-Run the v2 installer over v1. It asks you to close v1 if it is running, then uninstalls v1 and keeps the settings folder: profiles, the pairing with your headphones and the firmware files carry over, and the headphones do not need to be paired again. An adapter that already has WinUSB (from Zadig) keeps it. If **Start with Windows** was on, it now starts v2.
+Run the v2 installer over v1. Its **Ready** page says which earlier versions it uninstalls first (v1, or 2.0.0 to 2.0.2-beta.5). It asks you to close v1 if it is running, then uninstalls v1 and keeps the settings folder: profiles, the pairing with your headphones and the firmware files carry over, and the headphones do not need to be paired again. An adapter that already has WinUSB (from Zadig) keeps it. If **Start with Windows** was on, it now starts v2.
 
 At its first start v2 copies the v1 settings to `%APPDATA%\A2DPWB\backup-v1\` before it reads them.
 
@@ -105,7 +105,7 @@ If the scan does not find them, enter the Bluetooth address under **Manual:** an
 a2dpwb-core.exe --cli --scan
 ```
 
-The headphones start with **Auto** as the codec (**Codecs**) and the system audio as the capture source (**Audio Devices**); the defaults give the best sound. See [Usage](usage) for everything else.
+The headphones start with **Auto** as the codec (**Codecs**) and the system audio as the output source (**Audio Devices**); the defaults give the best sound. See [Usage](usage) for everything else.
 
 ---
 

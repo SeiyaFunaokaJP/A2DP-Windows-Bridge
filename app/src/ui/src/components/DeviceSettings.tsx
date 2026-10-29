@@ -4,11 +4,11 @@
 // reads them from the profile it streams; a device without one gets it with
 // the first change). Windows Volume Sync, the buttons and the remembered
 // volume are one setting each for every device, above the list
-// (Devices.tsx); the max media packet size is on the Developer page. Only
-// what matters is spelled out: the long explanations are behind the info
-// buttons.
+// (Devices.tsx); the max media packet size is on the Developer page. The
+// capture source's format is a box beside it, and what the source does is
+// said below it (issue #86).
 
-import { createEffect, createMemo, createResource, createSignal, on, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, createUniqueId, on, onCleanup, onMount, Show } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
 import { useApp } from "../app/context";
 import { t } from "../i18n";
@@ -42,6 +42,8 @@ export function DeviceSettings(props: { device: Device }) {
   const [f, setF] = createStore<DeviceFields>(deviceFields(newestBase(profiles())));
   createEffect(on(profiles, (list) => list[0] && setF(deviceFields(list[0])), { defer: true }));
   const [saving, setSaving] = createSignal(false);
+  // What the capture source does, below it
+  const aboutId = createUniqueId();
 
   // ---- Audio devices and apps (asked from the core when needed) ----------
   const [devices, setDevices] = createSignal<AudioDevice[] | null>(null);
@@ -139,40 +141,37 @@ export function DeviceSettings(props: { device: Device }) {
 
   return (
     <div class="device-settings" aria-busy={saving() ? "true" : undefined}>
-      <Field
-        label={t("capture.mode")}
-        more={() => (
-          <>
-            <p class="hint">
-              {f.capture_mode === "virtual"
-                ? t("capture.hint_virtual")
-                : f.capture_mode === "app"
-                  ? `${t("capture.hint_app")}\n${t("capture.app_hint")}`
-                  : t("capture.hint_loopback")}
-            </p>
-            <Show when={f.capture_mode === "app" && appSupport() !== "yes" && appSupport() !== "no"}>
-              <p class="hint">{t("ui.profile.app_capture_requirement")}</p>
-            </Show>
-            <Show when={noVirtual()}>
-              <div class="inline">
-                <span class="hint">{t("capture.no_virtual_device")}</span>
-                <Button icon="open" onClick={() => core.transport.openUrl(LINKS.vbCable)}>
-                  {t("vbcable.download")}
-                </Button>
-              </div>
-            </Show>
-          </>
-        )}
-      >
-        {(id, described) => (
+      <Field label={t("capture.mode")}>
+        {(id) => (
           <div class="inline capture-source">
             <Icon name={captureText(shown()).icon} />
-            <Select id={id} describedBy={described} value={captureValue(shown())} options={sources()} onChange={chooseSource} />
+            <Select id={id} describedBy={aboutId} value={captureValue(shown())} options={sources()} onChange={chooseSource} />
+            <CaptureFormat fields={f} profiles={profiles()} devices={devices()} />
             <IconButton icon="arrow_sync" label={t("capture.app_refresh")} onClick={load} />
           </div>
         )}
       </Field>
-      <CaptureFormat fields={f} profiles={profiles()} devices={devices()} />
+      <div class="capture-about" id={aboutId}>
+        <p class="hint">
+          {f.capture_mode === "virtual"
+            ? t("capture.hint_virtual")
+            : f.capture_mode === "app"
+              ? `${t("capture.hint_app")}\n${t("capture.app_hint")}`
+              : t("capture.hint_loopback")}
+        </p>
+        <Show when={f.capture_mode === "app" && appSupport() !== "yes" && appSupport() !== "no"}>
+          <p class="hint">{t("ui.profile.app_capture_requirement")}</p>
+        </Show>
+        <Show when={noVirtual()}>
+          <div class="inline">
+            <span class="hint">{t("capture.no_virtual_device")}</span>
+            <Button icon="open" onClick={() => core.transport.openUrl(LINKS.vbCable)}>
+              {t("vbcable.download")}
+            </Button>
+          </div>
+        </Show>
+      </div>
+      <FormatWarning fields={f} profiles={profiles()} devices={devices()} />
       {/* Whether this Windows can capture one app: only the core knows the
           build for sure (it refuses the stream on an older Windows); the UI
           asks the WebView's client hints */}
@@ -206,43 +205,58 @@ function newestBase(list: Profile[]): Profile {
   );
 }
 
+type CaptureFormatProps = { fields: DeviceFields; profiles: Profile[]; devices: AudioDevice[] | null };
+
+/** The format Windows mixes the captured device in (rate, bits; null while
+ *  unknown), and what a profile of the device asks for otherwise */
+function captureFormat(props: CaptureFormatProps) {
+  const d = captureDevice(props.fields, props.devices ?? []);
+  if (!d || d.mix_rate === null || d.mix_bits === null) return null;
+  // The first profile that asks for another format
+  const off = props.profiles.map((p) => formatMismatch(p, d)).find((m) => m.rate || m.bits) ?? null;
+  return { rate: d.mix_rate, bits: d.mix_bits, off };
+}
+
 /**
- * The format Windows mixes the captured device in, red when a profile of the
- * device asks for another rate or bit depth (v1 capture.device_format). It
- * speaks of the audio device, never of the profile by its name (issue #86).
+ * The format Windows mixes the captured device in, a read-only box beside
+ * the capture source (issue #86), amber when a profile of the device asks
+ * for another rate or bit depth (v1 capture.device_format).
  */
-function CaptureFormat(props: { fields: DeviceFields; profiles: Profile[]; devices: AudioDevice[] | null }) {
-  const device = () => captureDevice(props.fields, props.devices ?? []);
+function CaptureFormat(props: CaptureFormatProps) {
   return (
-    <Show when={device()}>
-      {(d) => {
-        // The first profile that asks for another format
-        const off = () => {
-          for (const p of props.profiles) {
-            const m = formatMismatch(p, d());
-            if (m.rate || m.bits) return m;
-          }
-          return null;
-        };
-        const text = () => t("capture.device_format", d().mix_rate ?? 0, d().mix_bits ?? 0);
-        const which = (o: { rate: boolean; bits: boolean }) =>
-          [o.rate ? t("connection.sample_rate") : "", o.bits ? t("connection.bit_depth") : ""].filter((x) => x).join(", ");
-        return (
-          <Show when={d().mix_rate !== null && d().mix_bits !== null}>
-            <Show when={off()} fallback={<p class="hint">{text()}</p>}>
-              {(o) => (
-                // Amber: it still streams, resampled (issue #86)
-                <p class="field-warn">
-                  <Icon name="warning" />
-                  <span>
-                    {text()}. {t("ui.profile.format_differs", which(o()))}
-                  </span>
-                </p>
-              )}
-            </Show>
+    <Show when={captureFormat(props)}>
+      {(c) => (
+        <span
+          class="format-box"
+          classList={{ "st-warn": !!c().off }}
+          role="note"
+          aria-label={t("capture.device_format", c().rate, c().bits)}
+          title={t("capture.device_format", c().rate, c().bits)}
+        >
+          <Show when={c().off}>
+            <Icon name="warning" />
           </Show>
-        );
-      }}
+          <span class="num">{c().rate} Hz</span>
+          <span class="num">{c().bits === 16 || c().bits === 24 ? t(`bitdepth.${c().bits}`) : `${c().bits}-bit`}</span>
+        </span>
+      )}
+    </Show>
+  );
+}
+
+/** Why the format box is amber: it still streams, converted (issue #86).
+ *  It speaks of the audio device, never of the profile by its name. */
+function FormatWarning(props: CaptureFormatProps) {
+  const which = (o: { rate: boolean; bits: boolean }) =>
+    [o.rate ? t("connection.sample_rate") : "", o.bits ? t("connection.bit_depth") : ""].filter((x) => x).join(", ");
+  return (
+    <Show when={captureFormat(props)?.off}>
+      {(o) => (
+        <p class="field-warn">
+          <Icon name="warning" />
+          <span>{t("ui.profile.format_differs", which(o()))}</span>
+        </p>
+      )}
     </Show>
   );
 }

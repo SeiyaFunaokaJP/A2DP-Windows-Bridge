@@ -60,6 +60,9 @@ fn pick_language(tags: &[String]) -> &'static str {
 fn default_theme() -> String {
     "dark".into()
 }
+fn default_battery_low() -> u8 {
+    20
+}
 fn default_true() -> bool {
     true
 }
@@ -97,6 +100,10 @@ pub struct Settings {
     /// what the codec runs with and the battery. On by default.
     #[serde(default = "default_true")]
     pub notify_connected: bool,
+    /// The low-battery notification: below this level (percent; 20, 10
+    /// or 5), 0: never (issue #86)
+    #[serde(default = "default_battery_low")]
+    pub battery_low_percent: u8,
 
     #[serde(default = "default_true")]
     pub check_updates_on_startup: bool,
@@ -258,6 +265,7 @@ impl Default for Settings {
             minimize_to_tray: true,
             tray_click_opens_window: false,
             notify_connected: true,
+            battery_low_percent: default_battery_low(),
             check_updates_on_startup: true,
             last_update_check: String::new(),
             include_prereleases: default_prereleases(),
@@ -407,6 +415,7 @@ mod tests {
         assert!(!s.media_keys);
         assert!(s.minimize_to_tray);
         assert!(s.notify_connected);
+        assert_eq!(s.battery_low_percent, 20);
         assert_eq!(s.legacy_max_media_payload(), 1500);
         assert!(s.le_audio_experimental);
         assert!(!s.le_audio_low_latency);
