@@ -214,10 +214,26 @@ describe("the Codecs screen", () => {
     const sets = calls.filter((c) => c.method === "settings.set");
     expect(sets).toHaveLength(before + 1);
     expect(sets.at(-1)?.params).toMatchObject({ settings: { auto_codec: false } });
-    // The codec is left to the user: no profile changed, LDAC still chosen
+    // Its settings open; no profile changed yet, LDAC still chosen
+    expect(await screen.findByRole("dialog", { name: t("ui.profile.codec_settings", t("codec.aac")) })).toBeTruthy();
     expect(saves(calls)).toHaveLength(0);
     expect(within(wh).getByRole("radio", { name: /LDAC/ })).toBeChecked();
     expect(within(wh).getByRole("radio", { name: /AAC/ })).not.toBeDisabled();
+  });
+
+  it("chooses the card clicked once Auto-select is turned off (issue #86)", async () => {
+    const { calls } = start("#/codecs");
+    const wh = await section("WH-1000XM5");
+    fireEvent.click(autoSwitch());
+    await waitFor(() => expect(autoSwitch()).toBeChecked());
+    const aac = within(wh).getByRole("radio", { name: /AAC/ });
+    await waitFor(() => expect(aac).toBeDisabled());
+    fireEvent.click(aac.closest("label")!);
+    fireEvent.click(within(await autoDialog()).getByRole("button", { name: t("ui.codecs.auto_dialog_disable") }));
+    await waitFor(() => expect(autoSwitch()).not.toBeChecked());
+    await waitFor(() => expect(saves(calls)).toHaveLength(1));
+    expect(saves(calls)[0]?.profile).toMatchObject({ codec: "aac" });
+    await waitFor(() => expect(within(wh).getByRole("radio", { name: /AAC/ })).toBeChecked());
   });
 
   it("chooses the best supported codec for an unsupported card, not the next one below it (issue #86)", async () => {
