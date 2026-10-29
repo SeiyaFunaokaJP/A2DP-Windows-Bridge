@@ -63,12 +63,12 @@ describe("not in place", () => {
   it("is not on Home, which has the codec instead (issue #86)", async () => {
     start("#/home");
     await screen.findAllByRole("button", { name: "Connect" });
-    expect(screen.queryByRole("combobox", { name: "Capture Source" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Output Source" })).toBeNull();
   });
 
   it("is not in the flyout, kept simple (issue #86)", async () => {
     start("", { window: "flyout" });
     await screen.findByRole("button", { name: /Open app/ });
-    expect(screen.queryByRole("combobox", { name: "Capture Source" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Output Source" })).toBeNull();
   });
 });

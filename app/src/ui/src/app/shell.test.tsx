@@ -254,7 +254,7 @@ describe("flyout", () => {
     expect(screen.queryByRole("button", { name: "HCI capture running" })).toBeNull();
     await mock.call("diag.capture_start");
     expect(await screen.findByRole("button", { name: "HCI capture running" })).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Capture Source" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Output Source" })).toBeNull();
   });
 });
 

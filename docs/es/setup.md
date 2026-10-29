@@ -106,7 +106,7 @@ Si la búsqueda no los encuentra, escriba la dirección Bluetooth en **Manual:**
 a2dpwb-core.exe --cli --scan
 ```
 
-Los auriculares empiezan con **Automático** como códec (**Códecs**) y el audio del sistema como origen de captura (**Dispositivos de audio**); los valores predeterminados dan el mejor sonido. Consulte [Uso](usage) para todo lo demás.
+Los auriculares empiezan con **Automático** como códec (**Códecs**) y el audio del sistema como origen de salida (**Dispositivos de audio**); los valores predeterminados dan el mejor sonido. Consulte [Uso](usage) para todo lo demás.
 
 ---
 

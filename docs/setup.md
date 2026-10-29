@@ -105,7 +105,7 @@ If the scan does not find them, enter the Bluetooth address under **Manual:** an
 a2dpwb-core.exe --cli --scan
 ```
 
-The headphones start with **Auto** as the codec (**Codecs**) and the system audio as the capture source (**Audio Devices**); the defaults give the best sound. See [Usage](usage) for everything else.
+The headphones start with **Auto** as the codec (**Codecs**) and the system audio as the output source (**Audio Devices**); the defaults give the best sound. See [Usage](usage) for everything else.
 
 ---
 

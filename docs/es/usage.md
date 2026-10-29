@@ -26,7 +26,7 @@ Inicie **A2DP Windows Bridge** desde el menú Inicio (o `a2dpwb.exe`). El menú 
 - **Conectar** / **Desconectar** bajo cada tarjeta. Solo hay un dispositivo conectado a la vez: **Conectar** en otro dispositivo desconecta el que está en uso y conecta ese
 - **Volumen**: el volumen de los auriculares (consulte [Volumen](#volume)); las tarjetas de los demás dispositivos conservan el control deslizante, desactivado
 - El códec del dispositivo en uso, elegido en la lista de su tarjeta para cambiarlo rápido (por ejemplo, uno para juegos y otro para música): los códecs que el dispositivo admite, como en [Códecs](#codecs), solo por su nombre. Muestra el códec en uso, también con **Selección automática**; elegir un códec desactiva la selección automática (vuelva a activarla en Códecs). La elección se aplica al instante (el dispositivo se vuelve a conectar con él; la siguiente elección espera hasta que esté conectado, como en Códecs)
-- Para el dispositivo en uso, la calidad del enlace con un pequeño gráfico, debajo de las tarjetas. El origen de captura se elige en **Dispositivos de audio**; mientras una aplicación establecida como origen de captura aún no se está ejecutando, la tarjeta del dispositivo lo indica
+- Para el dispositivo en uso, la calidad del enlace con un pequeño gráfico, debajo de las tarjetas. El origen de salida se elige en **Dispositivos de audio**; mientras una aplicación establecida como origen de salida aún no se está ejecutando, la tarjeta del dispositivo lo indica
 - Un error aparece con su causa y, si lo hay, el botón que lo soluciona (**Reemplazar por el controlador WinUSB**, **Abrir página de descarga**, **Reiniciar Bluetooth**, **Reintentar**, **Códecs**, **Dispositivos de audio**, ...)
 
 La barra lateral muestra lo mismo para cada dispositivo en todas las pantallas.
@@ -55,7 +55,7 @@ Por debajo, A2DPWB guarda un perfil por dispositivo en `profiles.json`, llamado 
 
 Los auriculares y altavoces a los que A2DPWB puede transmitir, cada uno con sus propios ajustes: **Buscar dispositivos** busca dispositivos cercanos con el adaptador USB (unos 10 segundos; ponga los auriculares en modo de emparejamiento). Los dispositivos con los que A2DPWB ya se ha emparejado llevan la etiqueta **Emparejado**. Si la búsqueda no los encuentra, escriba la dirección en **Manual:** y haga clic en **Usar**; las direcciones escritas o pegadas se formatean mientras escribe (`aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` y `AA BB CC DD EE FF` se convierten todas en `AA:BB:CC:DD:EE:FF`). Un dispositivo guardado se puede renombrar o eliminar, y tiene:
 
-- **Origen de captura**: Loopback del sistema (el predeterminado de un dispositivo nuevo), Dispositivo virtual o Aplicación (consulte [Modos de captura](#capture-modes)). A su lado, el formato en que Windows mezcla el dispositivo capturado (frecuencia de muestreo y profundidad de bits, de solo lectura), en ámbar cuando los ajustes de códec del dispositivo piden otro, con una línea debajo que indica cuál (sigue transmitiendo, convertido); debajo, lo que hace el origen
+- **Origen de salida**: Loopback del sistema (el predeterminado de un dispositivo nuevo), Dispositivo virtual o Aplicación (consulte [Modos de captura](#capture-modes)). A su lado, el formato en que Windows mezcla el dispositivo capturado (frecuencia de muestreo y profundidad de bits, de solo lectura), en ámbar cuando los ajustes de códec del dispositivo piden otro, con una línea debajo que indica cuál (sigue transmitiendo, convertido); debajo, lo que hace el origen
 - **Cambiar automáticamente la salida predeterminada de Windows**, con un dispositivo virtual
 
 **Todos los dispositivos de audio**, encima de la lista, tiene los interruptores que se aplican a todos los dispositivos: **Sincronizar volumen de Windows** (consulte [Volumen](#volume)), **Control de reproducción con los botones del dispositivo de audio** y **Recordar el último volumen del dispositivo de audio Bluetooth**. El **Tamaño máx. de paquete multimedia** de cada dispositivo está en la pantalla **Desarrollador** (consulte [Tamaño máximo del paquete multimedia](#max-packet)).
@@ -207,7 +207,7 @@ A2DPWB admite tres modos de captura de audio. Cada uno graba un punto distinto d
 | Dispositivo virtual | Lo que las aplicaciones reproducen en el dispositivo seleccionado (p. ej., VB-CABLE) |
 | Aplicación | Solo lo que reproduce una aplicación (y sus procesos secundarios), después del procesamiento propio de la aplicación. Requiere Windows 11 o Windows 10 versión 2004 (compilación 19041) o posterior |
 
-**Dispositivos de audio** muestra la misma explicación en **Origen de captura**. Un dispositivo nuevo captura con Loopback del sistema, que funciona sin instalar nada más; elija allí Dispositivo virtual o Aplicación para él.
+**Dispositivos de audio** muestra la misma explicación en **Origen de salida**. Un dispositivo nuevo captura con Loopback del sistema, que funciona sin instalar nada más; elija allí Dispositivo virtual o Aplicación para él.
 
 El Loopback del sistema copia el audio; no se lo quita al dispositivo de salida predeterminado. El audio sigue sonando en ese dispositivo (altavoces, un televisor HDMI, ...) además de en los auriculares Bluetooth. Para oírlo solo en los auriculares, use el modo Dispositivo virtual con un dispositivo que no reproduzca en ningún sitio, como VB-CABLE.
 
@@ -226,7 +226,7 @@ El modo Aplicación envía el audio de una aplicación, por ejemplo un reproduct
 - La aplicación sigue sonando también en su propio dispositivo de salida. Para oírla solo en los auriculares, silencie ese dispositivo de salida (su volumen maestro): esto no afecta a lo que captura A2DPWB. Pero no silencie la aplicación en el Mezclador de volumen de Windows, porque los auriculares también recibirían silencio.
 - El control deslizante de la aplicación en el Mezclador de volumen de Windows cambia el nivel enviado a los auriculares (y el de su dispositivo de salida). El volumen maestro y las teclas de volumen no cambian el audio enviado; con **Sincronizar volumen de Windows** activado, cambian en su lugar el volumen de los auriculares (consulte [Volumen](#volume)).
 - Windows convierte el audio a la frecuencia de muestreo que pide A2DPWB, así que el formato del dispositivo en la configuración de Sonido no lo limita.
-- En Windows 10 anterior a la versión 2004 (compilación 19041), Windows no permite capturar por aplicación. Al conectar un dispositivo configurado con captura de Aplicación se muestra entonces un error que pide otro origen de captura.
+- En Windows 10 anterior a la versión 2004 (compilación 19041), Windows no permite capturar por aplicación. Al conectar un dispositivo configurado con captura de Aplicación se muestra entonces un error que pide otro origen de salida.
 
 ### Volumen {#volume}
 

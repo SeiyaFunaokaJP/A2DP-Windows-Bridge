@@ -58,6 +58,27 @@ describe("Home", () => {
     expect(calls.some((c) => c.method === "stream.stop")).toBe(true);
   });
 
+  it("mutes and unmutes with the speaker, as Windows does (issue #86)", async () => {
+    const { calls } = start("#/home");
+    const wh = await homeCard("WH-1000XM5");
+    fireEvent.click(within(wh).getByRole("button", { name: "Connect" }));
+    await within(wh).findByRole("button", { name: "Disconnect" });
+    const slider = within(wh).getByRole("slider", { name: "Volume" }) as HTMLInputElement;
+    await waitFor(() => expect(Number(slider.value)).toBeGreaterThan(0));
+    const before = Number(slider.value);
+    const volumes = () => calls.filter((c) => c.method === "stream.set_volume").map((c) => (c.params as { volume: number }).volume);
+    fireEvent.click(within(wh).getByRole("button", { name: "Mute" }));
+    await waitFor(() => expect(volumes().at(-1)).toBe(0));
+    const unmute = await within(wh).findByRole("button", { name: "Unmute" });
+    expect(unmute).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(unmute);
+    await waitFor(() => expect(volumes().at(-1)).toBeGreaterThan(0));
+    await waitFor(() => expect(Number(slider.value)).toBe(before));
+    // Not on the card of a device not connected
+    const xb = await homeCard("SRS-XB13");
+    expect(within(xb).getByRole("button", { name: "Mute" })).toBeDisabled();
+  });
+
   it("shows the battery as unknown, with the reason on hover, when the headphones refuse to report it", async () => {
     start("#/home", { scenario: "battery_refused" });
     const wh = await homeCard("WH-1000XM5");
@@ -172,7 +193,7 @@ describe("Home", () => {
   it("chooses the codec on the card of the device in use, by name only (issue #86)", async () => {
     const { calls, core } = start("#/home");
     const wh = await homeCard("WH-1000XM5");
-    expect(screen.queryByRole("heading", { name: "Capture Source" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Output Source" })).toBeNull();
     // Not on a device that is not connected
     expect(screen.queryByRole("combobox", { name: "Codec" })).toBeNull();
     fireEvent.click(within(wh).getByRole("button", { name: "Connect" }));

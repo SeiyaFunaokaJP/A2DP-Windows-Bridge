@@ -26,7 +26,7 @@ Lancez **A2DP Windows Bridge** depuis le menu Démarrer (ou `a2dpwb.exe`). Le me
 - **Connecter** / **Déconnecter** sous chaque carte. Un seul appareil est connecté à la fois : **Connecter** sur un autre appareil déconnecte celui utilisé et connecte celui-là
 - **Volume** : le volume du casque (voir [Volume](#volume)) ; les cartes des autres appareils gardent le curseur, désactivé
 - Le codec de l'appareil utilisé, choisi dans la liste de sa carte pour en changer vite (par exemple un pour les jeux, un pour la musique) : les codecs que l'appareil prend en charge, comme dans [Codecs](#codecs), par leur nom seulement. Elle affiche le codec utilisé, aussi avec **Sélection automatique** ; choisir un codec désactive la sélection automatique (à réactiver dans Codecs). Un choix s'applique aussitôt (l'appareil se reconnecte avec lui ; le choix suivant attend qu'il soit connecté, comme dans Codecs)
-- Pour l'appareil utilisé, la qualité de liaison avec un petit graphique, sous les cartes. La source de capture se choisit dans **Périphériques audio** ; tant qu'une application définie comme source de capture n'est pas encore lancée, la carte de l'appareil l'indique
+- Pour l'appareil utilisé, la qualité de liaison avec un petit graphique, sous les cartes. La source de sortie se choisit dans **Périphériques audio** ; tant qu'une application définie comme source de sortie n'est pas encore lancée, la carte de l'appareil l'indique
 - Une erreur s'affiche avec sa cause et, s'il y en a un, le bouton qui la corrige (**Remplacer par le pilote WinUSB**, **Ouvrir la page de téléchargement**, **Redémarrer le Bluetooth**, **Réessayer**, **Codecs**, **Périphériques audio**, ...)
 
 La barre latérale affiche la même chose pour chaque appareil, sur chaque écran.
@@ -55,7 +55,7 @@ En coulisses, A2DPWB garde un profil par appareil dans `profiles.json`, nommé �
 
 Les casques et enceintes vers lesquels A2DPWB peut diffuser, chacun avec ses propres réglages : **Rechercher** trouve les appareils à proximité avec l'adaptateur USB (environ 10 secondes ; mettez le casque en mode d'association). Les appareils déjà associés à A2DPWB portent l'étiquette **Associé**. Si la recherche ne le trouve pas, saisissez l'adresse sous **Manuel :** et cliquez sur **Utiliser** ; les adresses tapées ou collées sont mises en forme au fur et à mesure (`aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` et `AA BB CC DD EE FF` deviennent toutes `AA:BB:CC:DD:EE:FF`). Un appareil enregistré peut être renommé ou supprimé, et dispose de :
 
-- **Source de capture** : Bouclage système (par défaut pour un nouvel appareil), Périphérique virtuel ou Application (voir [Modes de capture](#capture-modes)). À côté, le format dans lequel Windows mixe le périphérique capturé (fréquence d'échantillonnage et profondeur de bits, en lecture seule), en ambre lorsque les réglages de codec de l'appareil en demandent un autre, avec une ligne en dessous indiquant lequel (la diffusion continue, convertie) ; en dessous, ce que fait la source
+- **Source de sortie** : Bouclage système (par défaut pour un nouvel appareil), Périphérique virtuel ou Application (voir [Modes de capture](#capture-modes)). À côté, le format dans lequel Windows mixe le périphérique capturé (fréquence d'échantillonnage et profondeur de bits, en lecture seule), en ambre lorsque les réglages de codec de l'appareil en demandent un autre, avec une ligne en dessous indiquant lequel (la diffusion continue, convertie) ; en dessous, ce que fait la source
 - **Changer auto. la sortie par défaut de Windows**, avec un périphérique virtuel
 
 **Tous les appareils audio**, au-dessus de la liste, regroupe les interrupteurs qui s'appliquent à tous les appareils : **Synchro du volume Windows** (voir [Volume](#volume)), **Contrôle de la lecture par les boutons de l'appareil audio** et **Mémoriser le dernier volume de l'appareil audio Bluetooth**. La **Taille max. des paquets média** de chaque appareil se trouve sur l'écran **Développeur** (voir [Taille max. des paquets média](#max-packet)).
@@ -207,7 +207,7 @@ A2DPWB propose trois modes de capture audio. Chacun enregistre à un endroit dif
 | Périphérique virtuel | Ce que les applications envoient vers le périphérique choisi (p. ex. VB-CABLE) |
 | Application | Uniquement ce que joue une application (et ses processus enfants), après son propre traitement. Nécessite Windows 11 ou Windows 10 version 2004 (build 19041) ou ultérieure |
 
-**Périphériques audio** affiche la même explication sous **Source de capture**. Un nouvel appareil capture en Bouclage système, qui fonctionne sans rien installer d'autre ; choisissez-y Périphérique virtuel ou Application pour lui.
+**Périphériques audio** affiche la même explication sous **Source de sortie**. Un nouvel appareil capture en Bouclage système, qui fonctionne sans rien installer d'autre ; choisissez-y Périphérique virtuel ou Application pour lui.
 
 Le bouclage système copie l'audio ; il ne le retire pas du périphérique de sortie par défaut. Le son continue d'être joué sur ce périphérique (haut-parleurs, téléviseur HDMI, ...) en plus du casque Bluetooth. Pour ne l'entendre que dans le casque, utilisez le mode Périphérique virtuel avec un périphérique qui ne joue le son nulle part, comme VB-CABLE.
 
@@ -226,7 +226,7 @@ Le mode Application envoie l'audio d'une seule application, par exemple un lecte
 - L'application continue aussi de jouer sur son propre périphérique de sortie. Pour ne l'entendre que dans le casque, coupez le son de ce périphérique de sortie (son volume principal) : cela n'affecte pas ce que capture A2DPWB. En revanche, ne coupez pas le son de l'application dans le mélangeur de volume de Windows, sinon le casque ne reçoit que du silence.
 - Le curseur de l'application dans le mélangeur de volume de Windows modifie le niveau envoyé au casque (et sur son périphérique de sortie). Le volume principal et les touches de volume ne modifient pas l'audio envoyé ; avec **Synchro du volume Windows** activée, ils modifient plutôt le volume du casque (voir [Volume](#volume)).
 - Windows convertit l'audio à la fréquence d'échantillonnage demandée par A2DPWB : le format du périphérique dans les paramètres Son ne le limite donc pas.
-- Sous Windows 10 avant la version 2004 (build 19041), Windows ne permet pas la capture par application. La connexion d'un appareil réglé sur la capture Application affiche alors une erreur qui demande de choisir une autre source de capture.
+- Sous Windows 10 avant la version 2004 (build 19041), Windows ne permet pas la capture par application. La connexion d'un appareil réglé sur la capture Application affiche alors une erreur qui demande de choisir une autre source de sortie.
 
 ### Volume {#volume}
 

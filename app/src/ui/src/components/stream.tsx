@@ -102,8 +102,15 @@ export function ConnectButton(props: { onError?: (e: unknown) => void; compact?:
   );
 }
 
+// The volume a mute replaced (percent), for the click that unmutes it
+let unmutedPercent: number | null = null;
+/** Unmuting with no volume from before the mute (muted by the headphones) */
+const UNMUTE_DEFAULT = 30;
+
 /** The volume of the device in use; `off`: a device not connected, whose
- *  card keeps the slider disabled so the cards stay alike (issue #86) */
+ *  card keeps the slider disabled so the cards stay alike (issue #86).
+ *  The speaker mutes and unmutes, as Windows' does (issue #86): volume 0 on
+ *  the headphones, then the volume from before. */
 export function VolumeControl(props: { off?: boolean }) {
   const { core } = useApp();
   const vol = () => (props.off ? null : (core.state.snap?.stream.volume ?? null));
@@ -130,9 +137,30 @@ export function VolumeControl(props: { off?: boolean }) {
     else pending = setTimeout(go, wait);
   };
   const disabled = () => vol() === null;
+  // A device not connected is not muted: its speaker is just disabled
+  const muted = () => !disabled() && shown() === 0;
+  const toggleMute = () => {
+    if (muted()) {
+      send(unmutedPercent ?? UNMUTE_DEFAULT);
+      unmutedPercent = null;
+    } else {
+      unmutedPercent = shown();
+      send(0);
+    }
+  };
   return (
     <div class="volume" classList={{ disabled: disabled() }} title={t("tooltip.volume")}>
-      <Icon name={shown() === 0 ? "speaker_mute" : "speaker_2"} />
+      <button
+        type="button"
+        class="volume-mute"
+        disabled={disabled()}
+        aria-label={muted() ? t("ui.volume.unmute") : t("ui.volume.mute")}
+        aria-pressed={muted()}
+        title={muted() ? t("ui.volume.unmute") : t("ui.volume.mute")}
+        onClick={toggleMute}
+      >
+        <Icon name={muted() ? "speaker_mute" : "speaker_2"} />
+      </button>
       <input
         type="range"
         min="0"
