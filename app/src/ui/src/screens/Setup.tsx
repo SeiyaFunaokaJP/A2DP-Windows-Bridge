@@ -5,7 +5,9 @@
 // "<name> | Auto" profile and connects with it, so one click is enough.
 // The last step also asks whether A2DPWB starts with Windows (on, in the
 // tray, by default). The scan goes on until a device is added, Stop is
-// pressed or the setup is left; the added device leaves the list.
+// pressed or the setup is left; the added device leaves the list. A wrong
+// device is disconnected right there: it goes back to the list and the scan
+// resumes, so that another one can be connected.
 
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import { errorText, useApp, type AppContext } from "../app/context";
@@ -408,7 +410,7 @@ function StepDevice(props: {
   profileName: string | null;
   onCreated: (name: string) => void;
   added: string | null;
-  onAdded: (address: string) => void;
+  onAdded: (address: string | null) => void;
 }) {
   const app = useApp();
   const snap = () => app.core.state.snap!;
@@ -443,6 +445,19 @@ function StepDevice(props: {
       setConnecting(null);
     }
   };
+  const running = () => ["connecting", "reconnecting", "streaming"].includes(stream().state);
+  // Disconnect (or Cancel while it connects): the device goes back to the
+  // list and the scan resumes, for another one
+  const [stopping, setStopping] = createSignal(false);
+  const disconnect = async () => {
+    setStopping(true);
+    try {
+      if (running()) await app.run(() => app.core.request("stream.stop"));
+      props.onAdded(null);
+    } finally {
+      setStopping(false);
+    }
+  };
 
   return (
     <div class="stack">
@@ -461,6 +476,12 @@ function StepDevice(props: {
               </span>
               <CodecBadge />
             </div>
+            <Show when={running() || added()}>
+              <span class="spacer" />
+              <Button icon="plug_disconnected" busy={stopping()} onClick={disconnect}>
+                {stream().state === "streaming" || !running() ? t("connection.disconnect") : t("modal.cancel")}
+              </Button>
+            </Show>
           </div>
         )}
       </Show>

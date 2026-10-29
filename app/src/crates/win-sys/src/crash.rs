@@ -111,7 +111,13 @@ fn write_report(reason: &str, details: &str, exception: *const EXCEPTION_POINTER
     Some(dump)
 }
 
+/// A few tries: MiniDumpWriteDump of the calling process can fail while its
+/// other threads start or end (as on a loaded CI runner)
 fn write_dump(path: &Path, exception: *const EXCEPTION_POINTERS) -> bool {
+    (0..3).any(|_| write_dump_once(path, exception))
+}
+
+fn write_dump_once(path: &Path, exception: *const EXCEPTION_POINTERS) -> bool {
     let wide: Vec<u16> = OsStr::new(path).encode_wide().chain(Some(0)).collect();
     // SAFETY: a NUL-terminated path; the handle is closed below
     let file = unsafe {

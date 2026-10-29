@@ -7,7 +7,7 @@
 // name an entry). Once one is picked, the others are folded away until asked
 // for or a new scan. Used by the profile editor and the first-run setup.
 
-import { createMemo, createSignal, createUniqueId, For, onCleanup, onMount, Show, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, createUniqueId, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { useApp, type AppContext } from "../app/context";
 import { t } from "../i18n";
 import type { Device } from "../ipc/types";
@@ -150,6 +150,16 @@ export function DevicePicker(props: {
   onMount(() => {
     if (props.continuous && !scanning()) void scan();
   });
+  // Continuous again (the setup's device disconnected to choose another): the scan resumes
+  createEffect(
+    on(
+      () => props.continuous,
+      (now, before) => {
+        if (now && before === false && !scanning()) void scan();
+      },
+      { defer: true },
+    ),
+  );
   onCleanup(() => {
     gone = true;
     if (props.continuous && scanning()) void app.core.request("device.scan_stop").catch(() => {});
