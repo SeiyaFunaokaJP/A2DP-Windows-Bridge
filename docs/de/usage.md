@@ -24,7 +24,7 @@ Starten Sie **A2DP Windows Bridge** über das Startmenü (oder `a2dpwb.exe`). Da
 
 - Eine Karte für jedes gespeicherte Audiogerät, nebeneinander: sein Zustand, der Akkustand und, beim verbundenen Gerät, der verwendete Codec (eine Liste anstelle seines Namens, siehe unten) mit seiner Bitrate. Wird ein anderer Codec als der gewählte verwendet, zeigt das Codec-Abzeichen einige Sekunden lang, welcher und warum; danach bleibt nur sein Warnzeichen (beim Darüberfahren steht der Grund)
 - **Verbinden** / **Trennen** unter jeder Karte. Es ist jeweils ein Gerät verbunden: **Verbinden** bei einem anderen Gerät trennt das verwendete und verbindet dieses
-- **Lautstärke**: die Lautstärke der Kopfhörer (siehe [Lautstärke](#volume)); die Karten der anderen Geräte behalten den Regler, deaktiviert
+- **Lautstärke**: die Lautstärke der Kopfhörer (siehe [Lautstärke](#volume)); ein Klick auf den Lautsprecher schaltet stumm, ein weiterer hebt die Stummschaltung auf. Die Karten der anderen Geräte behalten den Regler, deaktiviert
 - Der Codec des verwendeten Geräts, aus der Liste auf seiner Karte gewählt, zum schnellen Wechseln (etwa einer für Spiele, einer für Musik): die Codecs, die das Gerät unterstützt, wie unter [Codecs](#codecs), nur mit Namen. Sie zeigt den verwendeten Codec, auch unter **Automatisch wählen**; die Wahl eines Codecs schaltet die automatische Auswahl aus (wieder einschalten unter Codecs). Eine Wahl gilt sofort (das Gerät verbindet sich damit neu; die nächste Wahl wartet wie unter Codecs, bis es verbunden ist)
 - Für das verwendete Gerät die Verbindungsqualität mit einem kleinen Diagramm, unter den Karten. Die Ausgabequelle wird unter **Audiogeräte** gewählt; solange eine als Ausgabequelle festgelegte Anwendung noch nicht läuft, zeigt die Karte des Geräts das an
 - Ein Fehler wird mit seiner Ursache angezeigt und, sofern vorhanden, mit der Schaltfläche, die ihn behebt (**Durch WinUSB-Treiber ersetzen**, **Downloadseite öffnen**, **Bluetooth neu starten**, **Erneut versuchen**, **Codecs**, **Audiogeräte**, ...)
@@ -230,7 +230,7 @@ Der Modus Anwendung sendet das Audio einer einzelnen App, zum Beispiel eines Mus
 
 ### Lautstärke {#volume}
 
-Während des Streamings zeigen die Seite Start und das Flyout im Infobereich einen Regler **Lautstärke** an, wenn die Kopfhörer AVRCP Absolute Volume unterstützen. Er stellt die Lautstärke direkt an den Kopfhörern ein, sodass das gesendete Audio seine volle Auflösung behält. Der Regler folgt auch den Lautstärketasten und der Touch-Bedienung der Kopfhörer.
+Während des Streamings zeigen die Seite Start und das Flyout im Infobereich einen Regler **Lautstärke** an, wenn die Kopfhörer AVRCP Absolute Volume unterstützen. Er stellt die Lautstärke direkt an den Kopfhörern ein, sodass das gesendete Audio seine volle Auflösung behält. Der Lautsprecher daneben schaltet stumm (Lautstärke 0 an den Kopfhörern) und hebt die Stummschaltung wieder auf (zurück zur vorherigen Lautstärke). Der Regler folgt auch den Lautstärketasten und der Touch-Bedienung der Kopfhörer.
 
 **Windows-Lautstärke-Sync** (unter **Audiogeräte**, für jedes Gerät; standardmäßig an) macht während des Streamings eine Windows-Lautstärke und die Kopfhörerlautstärke zu einer einzigen Lautstärke. Synchronisiert wird die Windows-Lautstärke des Geräts, von dem A2DPWB aufnimmt: in den Modi System-Loopback und Anwendung das Standardausgabegerät, im Modus Virtuelles Gerät das ausgewählte Gerät. Ist es aus, sind Windows-Lautstärke und Kopfhörerlautstärke getrennt.
 

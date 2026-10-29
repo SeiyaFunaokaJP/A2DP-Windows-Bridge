@@ -24,7 +24,7 @@ Lancez **A2DP Windows Bridge** depuis le menu Démarrer (ou `a2dpwb.exe`). Le me
 
 - Une carte pour chaque appareil audio enregistré, côte à côte : son état, sa batterie et, pour celui qui est connecté, le codec utilisé (une liste à la place de son nom, voir plus bas) et son débit. Lorsqu'un autre codec que celui qui est choisi est utilisé, le badge du codec indique lequel et pourquoi pendant quelques secondes ; ensuite seul son signe d'avertissement reste (le survoler en donne la raison)
 - **Connecter** / **Déconnecter** sous chaque carte. Un seul appareil est connecté à la fois : **Connecter** sur un autre appareil déconnecte celui utilisé et connecte celui-là
-- **Volume** : le volume du casque (voir [Volume](#volume)) ; les cartes des autres appareils gardent le curseur, désactivé
+- **Volume** : le volume du casque (voir [Volume](#volume)) ; cliquez sur le haut-parleur pour couper le son et de nouveau pour le rétablir. Les cartes des autres appareils gardent le curseur, désactivé
 - Le codec de l'appareil utilisé, choisi dans la liste de sa carte pour en changer vite (par exemple un pour les jeux, un pour la musique) : les codecs que l'appareil prend en charge, comme dans [Codecs](#codecs), par leur nom seulement. Elle affiche le codec utilisé, aussi avec **Sélection automatique** ; choisir un codec désactive la sélection automatique (à réactiver dans Codecs). Un choix s'applique aussitôt (l'appareil se reconnecte avec lui ; le choix suivant attend qu'il soit connecté, comme dans Codecs)
 - Pour l'appareil utilisé, la qualité de liaison avec un petit graphique, sous les cartes. La source de sortie se choisit dans **Périphériques audio** ; tant qu'une application définie comme source de sortie n'est pas encore lancée, la carte de l'appareil l'indique
 - Une erreur s'affiche avec sa cause et, s'il y en a un, le bouton qui la corrige (**Remplacer par le pilote WinUSB**, **Ouvrir la page de téléchargement**, **Redémarrer le Bluetooth**, **Réessayer**, **Codecs**, **Périphériques audio**, ...)
@@ -230,7 +230,7 @@ Le mode Application envoie l'audio d'une seule application, par exemple un lecte
 
 ### Volume {#volume}
 
-Pendant la diffusion, Accueil et le volet de la zone de notification affichent un curseur **Volume** lorsque le casque prend en charge le volume absolu AVRCP. Il règle le volume du casque lui-même, si bien que l'audio envoyé garde toute sa résolution. Le curseur suit aussi les boutons de volume et les commandes tactiles du casque.
+Pendant la diffusion, Accueil et le volet de la zone de notification affichent un curseur **Volume** lorsque le casque prend en charge le volume absolu AVRCP. Il règle le volume du casque lui-même, si bien que l'audio envoyé garde toute sa résolution. Le haut-parleur à côté coupe le son (volume 0 sur le casque) et le rétablit (au volume d'avant). Le curseur suit aussi les boutons de volume et les commandes tactiles du casque.
 
 **Synchro du volume Windows** (dans **Périphériques audio**, pour tous les appareils ; activée par défaut) fait d'un volume Windows et du volume du casque un seul et même volume pendant la diffusion. Le volume Windows synchronisé est celui du périphérique capturé par A2DPWB : le périphérique de sortie par défaut en mode Bouclage système et Application, le périphérique choisi en mode Périphérique virtuel. Désactivée, le volume Windows et le volume du casque sont indépendants.
 
