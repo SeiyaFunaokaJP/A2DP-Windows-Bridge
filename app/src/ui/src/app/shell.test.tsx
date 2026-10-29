@@ -316,6 +316,20 @@ describe("setup device step", () => {
     expect(screen.queryByText("Galaxy Buds2 Pro", { selector: ".device-row *" })).toBeNull();
   });
 
+  it("a wrong device is disconnected right there: back in the list, the scan resumes", async () => {
+    const { calls } = await toDeviceStep({ scenario: "normal" });
+    const row = (await screen.findByText("Galaxy Buds2 Pro")).closest(".device-row") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "stream.start")).toBe(true));
+    await waitFor(() => expect(screen.queryByText("Galaxy Buds2 Pro", { selector: ".device-row *" })).toBeNull());
+    const scans = calls.filter((c) => c.method === "device.scan").length;
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "stream.stop")).toBe(true));
+    expect(await screen.findByText("Galaxy Buds2 Pro", { selector: ".device-row *" })).toBeInTheDocument();
+    await waitFor(() => expect(calls.filter((c) => c.method === "device.scan").length).toBeGreaterThan(scans));
+    expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
+  });
+
   it("a device with a profile connects with that one", async () => {
     const { calls, core } = await toDeviceStep();
     const before = core.state.snap!.profiles.length;
