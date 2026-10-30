@@ -18,6 +18,8 @@ codec = { workspace = true, features = ["default"] }
 pipeline.workspace = true
 audio-capture.workspace = true
 win-sys.workspace = true
+# compat.rs: the 2.0.x pipe and mutex names (defined next to the new ones)
+ipc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

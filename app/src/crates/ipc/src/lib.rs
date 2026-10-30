@@ -4,6 +4,11 @@
 //! transport: length-prefixed JSON frames over the user's Named Pipe
 //! `\\.\pipe\bluecaster-<user SID>` (the server side, with a DACL for that user
 //! only, is in win-sys).
+//!
+//! The core serves the same protocol under two pipe names: [`pipe_name`]
+//! and, for clients written for 2.0.x (A2DPWB), [`old_pipe_name`]. Clients
+//! try the new name first and fall back to the old one (a 2.0.x core that
+//! still runs serves only the old name).
 
 #![forbid(unsafe_code)]
 
@@ -35,14 +40,40 @@ pub fn instance_suffix() -> String {
     }
 }
 
-/// The user's pipe, from the user's SID string (S-1-5-21-...)
+/// The pipe name's prefix before 3.0.0 (A2DPWB 2.0.x): `\\.\pipe\a2dpwb-<SID>`.
+/// The core still serves it: the old pipe name was promised for at least 6
+/// months after 3.0.0 for third-party IPC clients (e.g. a Stream Deck
+/// plugin). Remove it (and [`old_pipe_name`]) no earlier than that.
+pub const OLD_PIPE_PREFIX: &str = "a2dpwb";
+
+/// The core's single-instance mutex before 3.0.0 (A2DPWB 2.0.x). A new core
+/// asks the old core holding it to exit, then holds it too, so that an old
+/// core started later (an old Run value or shortcut) quits at once. Can be
+/// removed 6–12 months after 3.0.0.
+pub const OLD_CORE_MUTEX: &str = r"Local\A2DPWB_v2_Core";
+
+/// The user's pipe, from the user's SID string (S-1-5-21-...). The core
+/// serves it and [`old_pipe_name`]; clients try this one first.
 pub fn pipe_name(user_sid: &str) -> String {
     format!(r"\\.\pipe\bluecaster-{user_sid}{}", instance_suffix())
 }
 
+/// The user's pipe under its 2.0.x name: still served by the core for
+/// third-party clients, and the only one a 2.0.x core that still runs
+/// serves (clients fall back to it when [`pipe_name`] does not exist)
+pub fn old_pipe_name(user_sid: &str) -> String {
+    format!(r"\\.\pipe\{OLD_PIPE_PREFIX}-{user_sid}{}", instance_suffix())
+}
+
 /// The mutex the resident core holds while it runs (per logon session)
 pub fn core_mutex_name() -> String {
-    format!(r"Local\A2DPWB_v2_Core{}", instance_suffix())
+    format!(r"Local\BlueCaster_Core{}", instance_suffix())
+}
+
+/// The mutex a 2.0.x core holds while it runs; a 3.x core holds it too once
+/// no old core runs (see [`OLD_CORE_MUTEX`])
+pub fn old_core_mutex_name() -> String {
+    format!("{OLD_CORE_MUTEX}{}", instance_suffix())
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -101,6 +132,16 @@ mod tests {
         let ((), got) = tokio::join!(writer, reader);
         assert_eq!(got, Some(msg));
         assert!(read_frame::<_, ClientMessage>(&mut b).await.unwrap().is_none());
+    }
+
+    #[test]
+    fn new_and_old_names() {
+        // BLUECASTER_INSTANCE may be set for the test run
+        let sfx = instance_suffix();
+        assert_eq!(pipe_name("S-1-5-21-1"), format!(r"\\.\pipe\bluecaster-S-1-5-21-1{sfx}"));
+        assert_eq!(old_pipe_name("S-1-5-21-1"), format!(r"\\.\pipe\a2dpwb-S-1-5-21-1{sfx}"));
+        assert_eq!(core_mutex_name(), format!(r"Local\BlueCaster_Core{sfx}"));
+        assert_eq!(old_core_mutex_name(), format!(r"Local\A2DPWB_v2_Core{sfx}"));
     }
 
     /// Writes the TypeScript bindings to app/src/ui/src/ipc/bindings

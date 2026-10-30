@@ -215,6 +215,44 @@ fn replace_v1() -> Option<win_sys::single_instance::SingleInstance> {
     }
 }
 
+/// How long the start waits for a 2.0.x core to exit when asked (it stops
+/// its stream and releases the adapter first)
+const OLD_CORE_EXIT_WAIT: Duration = Duration::from_secs(8);
+
+/// How often the core tries to take the 2.0.x core's mutex while it could
+/// not (the old core did not exit when asked)
+const OLD_CORE_CHECK: Duration = Duration::from_secs(5);
+
+/// A 2.0.x core (A2DPWB) that runs is asked to exit, like `--quit` does,
+/// and waited for; then its mutex is held too, so that a 2.0.x core started
+/// later (an old shortcut) quits at once and its UI talks to this core over
+/// the old pipe name. None if it still runs: [`hold_old_core_mutex`] takes
+/// the mutex once it has exited.
+fn replace_old_core() -> Option<win_sys::single_instance::SingleInstance> {
+    crate::quit::stop_old_core(OLD_CORE_EXIT_WAIT);
+    match win_sys::single_instance::SingleInstance::acquire(&ipc::old_core_mutex_name()) {
+        Ok(g) => g,
+        Err(e) => {
+            tracing::warn!("2.0.x core mutex: {e}");
+            None
+        }
+    }
+}
+
+/// Takes the 2.0.x core's mutex once it is free and holds it from then on
+async fn hold_old_core_mutex() {
+    let name = ipc::old_core_mutex_name();
+    let mut tick = tokio::time::interval(OLD_CORE_CHECK);
+    loop {
+        tick.tick().await;
+        if let Ok(Some(guard)) = win_sys::single_instance::SingleInstance::acquire(&name) {
+            tracing::info!("the 2.0.x core has exited: {name} is held now");
+            std::future::pending::<()>().await;
+            drop(guard);
+        }
+    }
+}
+
 /// While v1 still runs (it did not exit when asked): the UI asks the user to
 /// exit it. Once it has exited, v1's mutex is taken and held from then on.
 async fn watch_v1(state: Arc<CoreState>) {
@@ -258,6 +296,10 @@ pub fn run(args: &[String]) -> i32 {
             return 1;
         }
     };
+    // Before the service starts, so that a 2.0.x core has released the
+    // adapter
+    let old_core_guard = replace_old_core();
+    let holds_old_core_mutex = old_core_guard.is_some();
     // Before the service starts, so that v1 has released the adapter. A
     // development instance (BLUECASTER_INSTANCE) leaves v1 alone.
     let replaces_v1 = ipc::instance_suffix().is_empty();
@@ -324,14 +366,17 @@ pub fn run(args: &[String]) -> i32 {
                     if watches_v1 {
                         tokio::spawn(watch_v1(state.clone()));
                     }
-                    let name = match win_sys::pipe::current_user_sid() {
-                        Ok(sid) => ipc::pipe_name(&sid),
+                    if !holds_old_core_mutex {
+                        tokio::spawn(hold_old_core_mutex());
+                    }
+                    let (name, old_name) = match win_sys::pipe::current_user_sid() {
+                        Ok(sid) => (ipc::pipe_name(&sid), ipc::old_pipe_name(&sid)),
                         Err(e) => {
                             tracing::error!("cannot read the user SID: {e}");
                             return;
                         }
                     };
-                    if let Err(e) = crate::server::serve(state, name).await {
+                    if let Err(e) = crate::server::serve(state, name, old_name).await {
                         tracing::error!("IPC server: {e}");
                         let _ = quit.send_event(UserEvent::Quit);
                     }

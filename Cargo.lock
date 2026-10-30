@@ -335,6 +335,7 @@ dependencies = [
  "codec",
  "hci-transport",
  "if-addrs",
+ "ipc",
  "le-audio",
  "pipeline",
  "semver",
