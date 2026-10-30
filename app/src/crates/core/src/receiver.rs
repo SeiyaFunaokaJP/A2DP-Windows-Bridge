@@ -725,7 +725,7 @@ mod tests {
         assert_eq!((i.mtu, i.port, i.buffer_ms), (1005, 51201, 200));
         let hello = ANNOUNCE.replace("\"announce\"", "\"hello\"");
         assert!(parse_info(&hello).is_some());
-        assert!(parse_info(&ANNOUNCE.replace("bluecaster_sink", "other")).is_none());
+        assert!(parse_info(&ANNOUNCE.replace("a2dpwb_sink", "other")).is_none());
         assert!(parse_info(STATS).is_none());
         assert!(parse_info("not json").is_none());
         assert!(parse_info(r#"{"type":"announce"}"#).is_none());
