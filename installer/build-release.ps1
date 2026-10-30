@@ -101,7 +101,12 @@ if ($Arch -eq 'arm64' -and -not (Get-Command clang -ErrorAction SilentlyContinue
 $stage = Join-Path $OutDir "stage-$Arch"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 $docDir = Join-Path $stage 'doc'
-New-Item -ItemType Directory -Force (Join-Path $docDir 'licenses') | Out-Null
+# The package's licenses\ folder (the About page opens it): README.txt,
+# bluecaster\ (BlueCaster's own licence) and third-party\ (everything else)
+$licDir = Join-Path $docDir 'licenses'
+foreach ($sub in 'bluecaster', 'third-party') {
+    New-Item -ItemType Directory -Force (Join-Path $licDir $sub) | Out-Null
+}
 
 # --- Inno Setup's compiler ---
 $iscc = @(
@@ -121,48 +126,50 @@ Invoke-Checked 'cargo build' {
 }
 $release = Join-Path $repo "target/$triple/release"
 
-# --- Licence documents (installed next to the programs, and in the zip) ---
+# --- Licence documents (licenses\ next to the programs, also in the zip) ---
 $ext = Join-Path $repo 'extern'
 $aptxLicense = Get-Content -Raw (Join-Path $ext 'libopenaptx/COPYING')
 if ($aptxLicense -notmatch 'GNU LESSER GENERAL PUBLIC LICENSE\s+Version 2\.1') {
     throw 'extern/libopenaptx/COPYING is not LGPL-2.1: libopenaptx must be pinned to 0.2.0 (THIRD_PARTY_LICENSES.md)'
 }
+# Paths in licenses\
 $docs = [ordered]@{
-    'LICENSE'                              = Join-Path $repo 'LICENSE'
-    'LICENSE-APACHE'                       = Join-Path $repo 'LICENSE-APACHE'
-    'LICENSE-MIT'                          = Join-Path $repo 'LICENSE-MIT'
-    'THIRD_PARTY_LICENSES.md'              = Join-Path $repo 'THIRD_PARTY_LICENSES.md'
-    'licenses/BTstack-LICENSE.txt'         = Join-Path $ext 'btstack/LICENSE'
-    'licenses/libldac-LICENSE.txt'         = Join-Path $ext 'libldac/LICENSE'
-    'licenses/libldac-NOTICE.txt'          = Join-Path $ext 'libldac/NOTICE'
+    'bluecaster/LICENSE'                      = Join-Path $repo 'LICENSE'
+    'bluecaster/LICENSE-APACHE'               = Join-Path $repo 'LICENSE-APACHE'
+    'bluecaster/LICENSE-MIT'                  = Join-Path $repo 'LICENSE-MIT'
+    'third-party/THIRD_PARTY_LICENSES.md'     = Join-Path $repo 'THIRD_PARTY_LICENSES.md'
+    'third-party/BTstack-LICENSE.txt'         = Join-Path $ext 'btstack/LICENSE'
+    'third-party/libldac-LICENSE.txt'         = Join-Path $ext 'libldac/LICENSE'
+    'third-party/libldac-NOTICE.txt'          = Join-Path $ext 'libldac/NOTICE'
     # The Bluedroid SBC encoder in BTstack (ported to Rust) is Apache-2.0
     # without a licence file of its own; libldac's LICENSE is the full text
-    'licenses/Apache-2.0.txt'              = Join-Path $ext 'libldac/LICENSE'
-    'licenses/fdk-aac-NOTICE.txt'          = Join-Path $ext 'fdk-aac/NOTICE'
-    'licenses/libopenaptx-LGPL-2.1.txt'    = Join-Path $ext 'libopenaptx/COPYING'
-    'licenses/lhdcv5-enc-LICENSE.txt'      = Join-Path $ext 'lhdcv5-enc/LICENSE'
-    'licenses/opus-COPYING.txt'            = Join-Path $ext 'opus/COPYING'
-    'licenses/aptx-adaptive-LICENSE.txt'   = Join-Path $repo 'app/src/crates/aptx-adaptive/LICENSE'
+    'third-party/Apache-2.0.txt'              = Join-Path $ext 'libldac/LICENSE'
+    'third-party/fdk-aac-NOTICE.txt'          = Join-Path $ext 'fdk-aac/NOTICE'
+    'third-party/libopenaptx-LGPL-2.1.txt'    = Join-Path $ext 'libopenaptx/COPYING'
+    'third-party/lhdcv5-enc-LICENSE.txt'      = Join-Path $ext 'lhdcv5-enc/LICENSE'
+    'third-party/opus-COPYING.txt'            = Join-Path $ext 'opus/COPYING'
+    'third-party/aptx-adaptive-LICENSE.txt'   = Join-Path $repo 'app/src/crates/aptx-adaptive/LICENSE'
     # LE Audio (experimental): LC3 encoder and LE Secure Connections' P-256
-    'licenses/liblc3-LICENSE.txt'          = Join-Path $ext 'btstack/3rd-party/lc3-google/LICENSE'
-    'licenses/micro-ecc-LICENSE.txt'       = Join-Path $ext 'btstack/3rd-party/micro-ecc/LICENSE.txt'
-    'licenses/fluentui-system-icons.txt'   = Join-Path $ui 'LICENSES/fluentui-system-icons.txt'
-    'licenses/solid-js-LICENSE.txt'        = Join-Path $ui 'node_modules/solid-js/LICENSE'
-    'licenses/tauri-apps-api-LICENSE-MIT.txt' = Join-Path $ui 'node_modules/@tauri-apps/api/LICENSE-MIT'
+    'third-party/liblc3-LICENSE.txt'          = Join-Path $ext 'btstack/3rd-party/lc3-google/LICENSE'
+    'third-party/micro-ecc-LICENSE.txt'       = Join-Path $ext 'btstack/3rd-party/micro-ecc/LICENSE.txt'
+    'third-party/fluentui-system-icons.txt'   = Join-Path $ui 'LICENSES/fluentui-system-icons.txt'
+    'third-party/solid-js-LICENSE.txt'        = Join-Path $ui 'node_modules/solid-js/LICENSE'
+    'third-party/tauri-apps-api-LICENSE-MIT.txt' = Join-Path $ui 'node_modules/@tauri-apps/api/LICENSE-MIT'
 }
 foreach ($entry in $docs.GetEnumerator()) {
     if (-not (Test-Path -LiteralPath $entry.Value -PathType Leaf)) {
         throw "required file not found: $($entry.Value) (git submodule update --init --recursive; pnpm install in app/src/ui)"
     }
-    Copy-Item -LiteralPath $entry.Value (Join-Path $docDir $entry.Key)
+    Copy-Item -LiteralPath $entry.Value (Join-Path $licDir $entry.Key)
 }
 Invoke-Checked 'cargo about' {
     cargo about generate --workspace --locked --fail --manifest-path (Join-Path $repo 'Cargo.toml') `
         -c (Join-Path $repo 'about.toml') --target $triple `
-        -o (Join-Path $docDir 'licenses/rust-crates.txt') (Join-Path $PSScriptRoot 'about.hbs')
+        -o (Join-Path $licDir 'third-party/rust-crates.txt') (Join-Path $PSScriptRoot 'about.hbs')
 }
 
-# SOURCE.txt: where the corresponding source is (LGPL-2.1 libopenaptx)
+# licenses\README.txt: what is where, and where the corresponding source is
+# (LGPL-2.1 libopenaptx)
 $commit = (git -C $repo rev-parse HEAD).Trim()
 $dirty = git -C $repo status --porcelain --untracked-files=no -- app Cargo.toml Cargo.lock extern THIRD_PARTY_LICENSES.md
 $submodules = (git -C $repo submodule status) -join "`n"
@@ -171,6 +178,17 @@ $dirtyNote = if ($dirty) {
 } else { '' }
 @"
 BlueCaster $version ($Arch)
+
+Licences
+--------
+BlueCaster is licensed under the Apache License 2.0 or the MIT License, at
+your option. This folder holds:
+
+    bluecaster\     BlueCaster's own licence: LICENSE, LICENSE-APACHE,
+                    LICENSE-MIT
+    third-party\    the components BlueCaster contains: their overview,
+                    THIRD_PARTY_LICENSES.md, the licence text of each one,
+                    and rust-crates.txt, the licences of the Rust crates
 
 Source code
 -----------
@@ -192,9 +210,9 @@ a modified version of libopenaptx):
     git submodule update --init --recursive
     pwsh installer/build-release.ps1
 
-See LICENSE, THIRD_PARTY_LICENSES.md and the licenses/ folder for the terms
-of each component; licenses/rust-crates.txt lists the Rust crates.
-"@ | Set-Content -Encoding utf8NoBOM (Join-Path $docDir 'SOURCE.txt')
+See bluecaster\LICENSE and third-party\THIRD_PARTY_LICENSES.md for the
+terms of each component; third-party\rust-crates.txt lists the Rust crates.
+"@ | Set-Content -Encoding utf8NoBOM (Join-Path $licDir 'README.txt')
 
 # --- bluecaster.exe: Tauri's configuration plus the updater key ---
 $overlayPath = Join-Path $stage 'tauri.release.conf.json'
