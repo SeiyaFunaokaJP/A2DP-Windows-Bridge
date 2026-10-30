@@ -83,7 +83,7 @@ EXPECT = {
         rf'CCP: incoming call 1 from {re.escape(CALLER)}',
         rf'CCP: read Bearer List Current Calls = \[1 Incoming flags 0x00 {re.escape(CALLER)}\]',
         rf"CCP: read Incoming Call Target Bearer URI = call 1 '{re.escape(TARGET)}'",
-        rf"CCP: read Call Friendly Name = call 1 '{re.escape(CALLER_NAME)}' \(64 bytes\)",
+        rf"CCP: read Call Friendly Name = call 1 '{re.escape(CALLER_NAME)}' \(68 bytes\)",
         # After a control point write: the new Call State, then the result
         r'CCP: notify Call State \[1 Active flags 0x00\]',
         r'CCP: notify Call Control Point Accept call 1 -> Success',
@@ -100,7 +100,7 @@ EXPECT = {
         r'CCP: notify Call Control Point Accept call 1 -> Success',
         r'CCP: incoming call 2 from',
         rf'CCP: read Bearer List Current Calls = \[1 Active flags 0x00 {re.escape(CALLER)}, '
-        rf'2 Incoming flags 0x00 {re.escape(SECOND)}\] \(76 bytes\)',
+        rf'2 Incoming flags 0x00 {re.escape(SECOND)}\] \(80 bytes\)',
         r'CCP: read-race: Read Blob -> ATT error 0x80',
         r'CCP: notify Termination Reason call 2 reason 0x06',
         r'CCP: notify Call Control Point Terminate call 2 -> Success',
@@ -131,7 +131,7 @@ EXPECT = {
 # Lines sink.log must contain anywhere (notifications that race with the steps' own lines)
 EXPECT_ANYWHERE = {
     'ccp-incoming-accept': [rf'CCP: GTBS .* ATT MTU {MTU}$'],
-    # The list of two calls (76 bytes) cut to ATT_MTU - 3 = 61 bytes
+    # The list of two calls (80 bytes) cut to ATT_MTU - 3 = 61 bytes
     'ccp-terminate': [rf'CCP: GTBS .* ATT MTU {MTU}$',
                       rf'CCP: notify Bearer List Current Calls \[1 Active flags 0x00 {re.escape(CALLER)}, '
                       r'truncated item\] \(61 bytes\)'],
