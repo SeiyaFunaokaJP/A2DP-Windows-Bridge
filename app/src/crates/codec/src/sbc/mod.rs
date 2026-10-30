@@ -197,7 +197,7 @@ pub fn bitrate_kbps(frame_len: usize, sample_rate: u32, pcm_frames: usize) -> u3
 // configuration's minimum, 12) .. the configured maximum; media-sink.c
 // lowers it when a write finds the socket full, at most every 0.5 s, and
 // raises it when a packet goes out with nothing unsent and nothing was
-// lowered or raised for 1 s). A2DPWB has no socket: the encode thread
+// lowered or raised for 1 s). BlueCaster has no socket: the encode thread
 // passes the send queue depth every 100 ms (ldac::ABR_INTERVAL_MS), so a
 // queue past LDAC's "dangerous" threshold stands for the full socket and a
 // nearly empty one for nothing unsent.

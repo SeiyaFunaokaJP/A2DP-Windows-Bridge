@@ -46,7 +46,7 @@ v1_running: boolean,
  */
 verbose?: VerboseState | null, 
 /**
- * Crash reports of A2DPWB's own processes the user has not dismissed
+ * Crash reports of BlueCaster's own processes the user has not dismissed
  * yet (diag.crashes_seen), newest first
  */
 crashes: Array<CrashReport>, };

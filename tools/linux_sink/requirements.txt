@@ -1,5 +1,5 @@
 # tools/linux_sink Python environment (installed by setup.sh into .venv).
-# Test / measurement tooling only: nothing here is linked into or shipped with A2DPWB
+# Test / measurement tooling only: nothing here is linked into or shipped with BlueCaster
 # (licenses: THIRD_PARTY_LICENSES.md section 13). Same pins as tools/emu/requirements.txt,
 # listed here too so this folder works when copied on its own: update both together.
 

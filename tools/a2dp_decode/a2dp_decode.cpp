@@ -1,7 +1,7 @@
 /*
- * a2dpwb_decode - offline checker for the A2DP media stream A2DPWB sends.
+ * bluecaster_decode - offline checker for the A2DP media stream BlueCaster sends.
  *
- * Reads the PacketLogger HCI capture (.pklg) that A2DPWB writes in debug mode
+ * Reads the PacketLogger HCI capture (.pklg) that BlueCaster writes in debug mode
  * (Debug > Start HCI Capture), follows L2CAP / AVDTP signaling to find the negotiated
  * codec, extracts the outgoing media packets and decodes them:
  *
@@ -27,8 +27,8 @@
  * self-contained, so this tool only carries the codec libraries' licenses
  * (see THIRD_PARTY_LICENSES.md).
  *
- * Usage: a2dpwb_decode <capture.pklg> [-o <output prefix>] [--no-wav] [--received]
- *        a2dpwb_decode --le-audio <capture.pklg>... [-o <prefix>] [--no-wav] [--received]
+ * Usage: bluecaster_decode <capture.pklg> [-o <output prefix>] [--no-wav] [--received]
+ *        bluecaster_decode --le-audio <capture.pklg>... [-o <prefix>] [--no-wav] [--received]
  *        (LE Audio: LC3 over CIS, le_audio_decode.cpp)
  * Exit:  0 = no problems found, 1 = problems found, 2 = usage / file error
  */
@@ -127,7 +127,7 @@ struct CodecConfig {
      * (HQ) or 4 (LL) instead of R1's 1 */
     bool aptxad_r2 = false;
 
-    /* A2DPWB sends classic aptX, aptX LL and FastStream without an RTP header */
+    /* BlueCaster sends classic aptX, aptX LL and FastStream without an RTP header */
     bool has_rtp() const { return codec != Codec::Aptx && codec != Codec::AptxLL && codec != Codec::FastStream; }
 };
 
@@ -294,7 +294,7 @@ static CodecConfig parse_media_codec(const uint8_t *p, size_t n) {
             uint32_t location = (uint32_t)v[2] | (uint32_t)v[3] << 8 | (uint32_t)v[4] << 16 | (uint32_t)v[5] << 24;
             int dur = single_bit_index(v[6] & 0x1F, 5);
             unsigned bitrate = le16(v + 7);
-            c.sample_rate = 48000; /* not in the configuration: A2DPWB sends 48 kHz */
+            c.sample_rate = 48000; /* not in the configuration: BlueCaster sends 48 kHz */
             c.channels = ch;
             c.opus_frame_samples = dur >= 0 ? frame_samples[dur] : 0;
             c.desc = strf("Opus 05 %u Hz, %s, %s frames, location 0x%08X, max %u x 1024 bps, %s",
@@ -672,7 +672,7 @@ private:
 
     /* FastStream (PipeWire a2dp-codec-faststream.c): no media payload
      * header; SBC frames each padded with a zero byte to an even length;
-     * A2DPWB sends three per packet as PipeWire. */
+     * BlueCaster sends three per packet as PipeWire. */
     void decode_faststream(const uint8_t *p, size_t n) {
         size_t off = 0;
         uint64_t got = 0;
@@ -807,7 +807,7 @@ private:
         wav_.write(pcm.data(), (size_t)got * cfg_.channels * sizeof(opus_int16), 48000, (uint16_t)cfg_.channels, 16);
     }
 
-    /* LHDC V5 (A2DPWB / Android a2dp_vendor_lhdcv5_encoder.cc): 2-byte media
+    /* LHDC V5 (BlueCaster / Android a2dp_vendor_lhdcv5_encoder.cc): 2-byte media
      * payload header [frames << 2 | latency] [sequence], then frames each
      * starting with a 2-byte LE header whose low 10 bits are the encoded
      * bytes per channel (frame = 2 + 2 * that, stereo). */
@@ -842,7 +842,7 @@ private:
             issue("LHDC V5: media payload header frame count differs from frames in packet");
     }
 
-    /* aptX Adaptive as A2DPWB (and a Snapdragon phone) sends it: one codec
+    /* aptX Adaptive as BlueCaster (and a Snapdragon phone) sends it: one codec
      * packet per media packet behind a 12-byte RTP header, payload type 96,
      * the timestamp = samples per channel in the packet (high 16 bits, a
      * latency adjustment, 0), the SSRC = the latency mode (0xA3 HQ, 0xA1 LL),
@@ -926,7 +926,7 @@ private:
 /* HCI / L2CAP / AVDTP tracking                                             */
 /* ------------------------------------------------------------------------ */
 
-enum Dir { OUT = 0, IN = 1 }; /* OUT = host (A2DPWB) -> controller */
+enum Dir { OUT = 0, IN = 1 }; /* OUT = host (BlueCaster) -> controller */
 
 static const uint16_t PSM_AVDTP = 0x0019;
 
@@ -957,8 +957,8 @@ public:
         case 0x01: on_event(p, n); break;
         case 0x02: on_acl(OUT, p, n); break;
         case 0x03: on_acl(IN, p, n); break;
-        case 0xFC: /* text note; A2DPWB marks where its HCI capture starts / stops */
-            if (n >= 7 && memcmp(p, "A2DPWB:", 7) == 0)
+        case 0xFC: /* text note; BlueCaster marks where its HCI capture starts / stops */
+            if (n >= 7 && memcmp(p, "BlueCaster:", 7) == 0)
                 printf("[%9.3f] %.*s\n", rel(), (int)n, (const char *)p);
             break;
         default: break;
@@ -974,7 +974,7 @@ public:
         }
         if (sessions_.empty()) {
             printf("\nNo accepted AVDTP SET_CONFIGURATION / RECONFIGURE found in the dump.\n"
-                   "Start the capture before connecting, or while connected with an A2DPWB\n"
+                   "Start the capture before connecting, or while connected with an BlueCaster\n"
                    "version that records the connection setup (Debug > Start HCI Capture).\n");
             problems = true;
         }
@@ -1178,7 +1178,7 @@ private:
 
     std::string prefix_;
     bool write_wav_;
-    Dir media_dir_;   /* OUT: media sent by the capturing host (A2DPWB); IN: received (sink) */
+    Dir media_dir_;   /* OUT: media sent by the capturing host (BlueCaster); IN: received (sink) */
     bool have_t0_ = false;
     double t0_ = 0, now_ = 0;
     std::map<uint16_t, HandleState> handles_;
@@ -1197,15 +1197,15 @@ int le_audio_decode_main(const std::vector<std::string> &inputs, const std::stri
 
 static void usage() {
     fprintf(stderr,
-        "Usage: a2dpwb_decode <capture.pklg> [-o <output prefix>] [--no-wav] [--received]\n"
+        "Usage: bluecaster_decode <capture.pklg> [-o <output prefix>] [--no-wav] [--received]\n"
         "\n"
-        "Checks and decodes the A2DP media stream recorded in an A2DPWB debug-mode\n"
+        "Checks and decodes the A2DP media stream recorded in an BlueCaster debug-mode\n"
         "HCI capture. Decoded audio is written to <prefix>.<n>.<codec>.wav\n"
         "(default prefix: the capture path without its extension).\n"
         "--received analyses the media the capturing host received instead of sent\n"
         "(e.g. the capture of the tools/emu test sink).\n"
         "\n"
-        "a2dpwb_decode --le-audio <capture.pklg>... [-o <prefix>] [--no-wav] [--received]\n"
+        "bluecaster_decode --le-audio <capture.pklg>... [-o <prefix>] [--no-wav] [--received]\n"
         "checks and decodes the LE Audio stream (LC3 over CIS) instead; several captures\n"
         "(one per sink of a group) are read together. Audio: <prefix>.<n>.lc3.wav\n");
 }
@@ -1238,7 +1238,7 @@ int main(int argc, char **argv) {
     FILE *f = fopen(input.c_str(), "rb");
     if (!f) { fprintf(stderr, "Cannot open %s\n", input.c_str()); return 2; }
 
-    printf("a2dpwb_decode: %s\n\n", input.c_str());
+    printf("bluecaster_decode: %s\n\n", input.c_str());
     Analyzer an(prefix, write_wav, received);
     std::vector<uint8_t> rec;
     uint64_t records = 0;

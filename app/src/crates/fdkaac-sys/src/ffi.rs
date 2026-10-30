@@ -1,4 +1,4 @@
-//! Hand-written declarations of the fdk-aac API A2DPWB uses: aacenc_lib.h
+//! Hand-written declarations of the fdk-aac API BlueCaster uses: aacenc_lib.h
 //! (encoder), the types of FDK_audio.h / machine_type.h it needs, and, with
 //! the `decoder` feature, part of aacdecoder_lib.h.
 //!

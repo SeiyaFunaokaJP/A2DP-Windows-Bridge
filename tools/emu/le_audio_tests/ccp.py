@@ -1,10 +1,10 @@
-"""CCP cases of run_test.py --le-audio: A2DPWB's GTBS (call control server)
+"""CCP cases of run_test.py --le-audio: BlueCaster's GTBS (call control server)
 against the CCP client of the emulated sink (le_audio/ccp.py, --ccp).
 
-A2DPWB has no call source, so the incoming calls come from its simulation
+BlueCaster has no call source, so the incoming calls come from its simulation
 (--ccp-sim, le_audio_ccp.h); the sink answers / ends / holds them through
 the Call Control Point. Audio stays media only. The checks read the "CCP:"
-lines of sink.log (what the client saw) and A2DPWB's log. Standard library
+lines of sink.log (what the client saw) and BlueCaster's log. Standard library
 only.
 """
 
@@ -15,28 +15,28 @@ from .case import Case
 STEREO = r'LC3 48000 Hz 10 ms 155 octets, 2 channel\(s\) over 1 CIS'
 
 CALLER = 'tel:+15551234567'
-CALLER_NAME = 'A2DPWB test caller with a friendly name longer than one ATT PDU'
-TARGET = 'sip:a2dpwb@pc.example'
-SECOND = 'sip:second.caller.with.a.long.address@a2dpwb.example'
+CALLER_NAME = 'BlueCaster test caller with a friendly name longer than one ATT PDU'
+TARGET = 'sip:bluecaster@pc.example'
+SECOND = 'sip:second.caller.with.a.long.address@bluecaster.example'
 MTU = 64   # --ccp-mtu: values beyond 61 bytes need long reads, notifications are cut
 
 CASES = [
     # Read everything with no call; write the signal strength interval
     Case('ccp-read', 'stereo', STEREO, tags=('ccp',),
          sink_args=['--ccp', '--ccp-ops', 'interval:5'], duration=6),
-    # A2DPWB simulates an incoming call; the sink reads it (the friendly name
+    # BlueCaster simulates an incoming call; the sink reads it (the friendly name
     # with a long read), accepts it, holds and retrieves it; then the far end
     # hangs up (Termination Reason 0x02)
     Case('ccp-incoming-accept', 'stereo', STEREO, tags=('ccp',),
          sink_args=['--ccp', '--ccp-mtu', str(MTU), '--ccp-ops', 'wait-incoming,read-calls,accept,hold,retrieve,wait-end'],
-         a2dpwb_args=['--ccp-sim', f'1:incoming {CALLER}|{CALLER_NAME}|{TARGET};4:hangup'], duration=8),
+         bluecaster_args=['--ccp-sim', f'1:incoming {CALLER}|{CALLER_NAME}|{TARGET};4:hangup'], duration=8),
     # Two incoming calls: accept the first, the long call list changes during a
     # long read (0x80), the sink rejects the second and ends the first
     # (Termination Reason 0x06 each), the list is empty afterwards
     Case('ccp-terminate', 'stereo', STEREO, tags=('ccp',),
          sink_args=['--ccp', '--ccp-mtu', str(MTU), '--ccp-ops', 'wait-incoming,accept,wait-incoming,read-calls,read-race,'
                                            'terminate,wait-end,terminate:1,wait-end'],
-         a2dpwb_args=['--ccp-sim', f'1:incoming {CALLER};2:incoming {SECOND}'], duration=8),
+         bluecaster_args=['--ccp-sim', f'1:incoming {CALLER};2:incoming {SECOND}'], duration=8),
     # Bad requests: unknown call index, unsupported opcodes, a short write,
     # bad outgoing URIs, operations in the wrong state; an outgoing call that
     # the far end answers (simulation) and the sink ends
@@ -44,13 +44,13 @@ CASES = [
          sink_args=['--ccp', '--ccp-ops', 'accept:9,terminate:0,raw:07,raw:0501,raw:00,originate:nocolon,'
                                            'originate:mailto:x@y,originate:tel:+15550000,accept,retrieve,'
                                            'sleep:3.5,hold,retrieve,terminate,wait-end'],
-         a2dpwb_args=['--ccp-sim', '2:alerting;3:answered'], duration=8),
+         bluecaster_args=['--ccp-sim', '2:alerting;3:answered'], duration=8),
 ]
 
 # Lines sink.log must contain, per case (regular expressions, in order)
 COMMON = [
     r'CCP: GTBS 0x[0-9a-f]{4}-0x[0-9a-f]{4}, 16 characteristics',
-    r"CCP: read Bearer Provider Name = 'A2DPWB'",
+    r"CCP: read Bearer Provider Name = 'BlueCaster'",
     r"CCP: read Bearer UCI = 'un000'",
     r'CCP: read Bearer Technology = 0x04',
     r"CCP: read Bearer URI Schemes Supported List = 'tel,sip'",
@@ -136,8 +136,8 @@ EXPECT_ANYWHERE = {
                       rf'CCP: notify Bearer List Current Calls \[1 Active flags 0x00 {re.escape(CALLER)}, '
                       r'truncated item\] \(61 bytes\)'],
 }
-# A2DPWB's side (a2dpwb.log)
-EXPECT_A2DPWB = {
+# BlueCaster's side (bluecaster.log)
+EXPECT_BlueCaster = {
     'ccp-incoming-accept': [r'LE Audio: CCP: client 0x[0-9a-f]{4} subscribed to Call State, simulation starts',
                             r'LE Audio: CCP: incoming call 1 from',
                             r'LE Audio: CCP: call 1 ended \(reason 0x02\)'],
@@ -159,9 +159,9 @@ def expect_in_order(log, patterns, where):
 
 def check(case, ctx):
     if 'ccp' not in case.tags:
-        # Without the client nothing reads GTBS, but A2DPWB must offer it
-        if 'LE Audio: CCP: GTBS handles' not in ctx['a2dpwb_log']:
-            return ['A2DPWB did not register GTBS']
+        # Without the client nothing reads GTBS, but BlueCaster must offer it
+        if 'LE Audio: CCP: GTBS handles' not in ctx['bluecaster_log']:
+            return ['BlueCaster did not register GTBS']
         return []
     sink_log = ctx['sink_log']
     failures = expect_in_order(sink_log, COMMON + EXPECT.get(case.name, []) + FINAL, 'sink.log')
@@ -172,9 +172,9 @@ def check(case, ctx):
         for line in sink_log.splitlines():
             if bad in line:
                 failures.append(f'sink.log: {line.strip()}')
-    failures += expect_in_order(ctx['a2dpwb_log'], EXPECT_A2DPWB.get(case.name, []), 'a2dpwb.log')
-    if 'LE Audio: CCP: simulation' in ctx['a2dpwb_log'] and 'failed' in ctx['a2dpwb_log']:
-        for line in ctx['a2dpwb_log'].splitlines():
+    failures += expect_in_order(ctx['bluecaster_log'], EXPECT_BlueCaster.get(case.name, []), 'bluecaster.log')
+    if 'LE Audio: CCP: simulation' in ctx['bluecaster_log'] and 'failed' in ctx['bluecaster_log']:
+        for line in ctx['bluecaster_log'].splitlines():
             if 'LE Audio: CCP: simulation' in line and 'failed' in line:
-                failures.append(f'a2dpwb.log: {line.strip()}')
+                failures.append(f'bluecaster.log: {line.strip()}')
     return failures

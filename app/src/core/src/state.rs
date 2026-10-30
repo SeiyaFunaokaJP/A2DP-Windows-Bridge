@@ -7,12 +7,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use a2dpwb_core::diag::AudioRates;
-use a2dpwb_core::paths;
-use a2dpwb_core::profiles::{self, Profile as CoreProfile};
-use a2dpwb_core::receiver::{self, ReceiverClient};
-use a2dpwb_core::settings::Settings as CoreSettings;
-use a2dpwb_core::{
+use bluecaster_core::diag::AudioRates;
+use bluecaster_core::paths;
+use bluecaster_core::profiles::{self, Profile as CoreProfile};
+use bluecaster_core::receiver::{self, ReceiverClient};
+use bluecaster_core::settings::Settings as CoreSettings;
+use bluecaster_core::{
     LeStreamDetails, ScannedDevice, Service, ServiceEvent, SourceRequest, StreamRequest,
     StreamState as CoreStreamState, VolumeSync, devices,
 };
@@ -130,7 +130,7 @@ pub struct CoreState {
     balloon: Box<dyn Fn(BalloonRequest) + Send + Sync>,
 }
 
-pub fn msg(m: &a2dpwb_core::Msg) -> Msg {
+pub fn msg(m: &bluecaster_core::Msg) -> Msg {
     Msg { key: m.key.to_string(), args: m.args.clone() }
 }
 
@@ -347,7 +347,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
         aac_no_afterburner: s.dev_overrides.aac_no_afterburner,
         aac_latm_v0: s.dev_overrides.aac_latm_v0,
     };
-    c.dev_log = a2dpwb_core::settings::DevLog {
+    c.dev_log = bluecaster_core::settings::DevLog {
         keep_days: s.dev_log.keep_days,
         day_cap_mb: s.dev_log.day_cap_mb,
         always_verbose: match s.dev_log.always_verbose {
@@ -384,7 +384,7 @@ fn vendor_note(vendor: ChipVendor) -> Option<Msg> {
 /// Device Manager's "Windows cannot start this device until it restarts"
 const CM_PROB_NEED_RESTART: u32 = 14;
 
-/// LE Audio of the adapter A2DPWB uses (AdapterState::le_audio): the
+/// LE Audio of the adapter BlueCaster uses (AdapterState::le_audio): the
 /// running stack's, else what a stack found out on the first WinUSB adapter
 fn le_audio_now(running: Option<bool>, adapters: &[AdapterInfo]) -> Option<bool> {
     running.or_else(|| adapters.iter().find(|a| a.driver == DriverKind::Winusb).and_then(|a| a.le_audio))
@@ -403,14 +403,14 @@ fn adapter_chip(vendor: ChipVendor, realtek_pid: Option<u16>, settings: &CoreSet
 
 fn adapter_infos(config_dir: &Path, settings: &CoreSettings) -> Vec<AdapterInfo> {
     let radios = win_sys::bt_radios::radios();
-    a2dpwb_core::adapter::adapters(false)
+    bluecaster_core::adapter::adapters(false)
         .into_iter()
         .map(|a| {
             // Windows' Bluetooth runs it: what Device Manager shows, kept
             // for when it is on WinUSB (issue #86). A radio it cannot be asked
             // on or that is not running (a vendor's driver, a MediaTek
             // composite device) may still have what Windows' stack stored on
-            // its device node: also for an adapter A2DPWB does not support
+            // its device node: also for an adapter BlueCaster does not support
             let radio = radios
                 .iter()
                 .find(|r| r.on_device(&a.device.instance_id))
@@ -427,7 +427,7 @@ fn adapter_infos(config_dir: &Path, settings: &CoreSettings) -> Vec<AdapterInfo>
                 })
                 .or_else(|| win_sys::bt_radios::device_radio(&a.device.instance_id));
             if let Some(r) = &radio {
-                a2dpwb_core::adapter::save_windows_radio(
+                bluecaster_core::adapter::save_windows_radio(
                     config_dir,
                     a.device.vid,
                     a.device.pid,
@@ -456,33 +456,33 @@ fn adapter_infos(config_dir: &Path, settings: &CoreSettings) -> Vec<AdapterInfo>
                 driver_service: a.device.driver.service.clone(),
                 realtek_chip: a.realtek_pid.and_then(chips::realtek_chip_name).map(str::to_owned),
                 firmware_present: check.as_ref().map(|c| c.present),
-                firmware_download: files.as_ref().is_some_and(|(f, _)| a2dpwb_core::firmware::available(f)),
+                firmware_download: files.as_ref().is_some_and(|(f, _)| bluecaster_core::firmware::available(f)),
                 firmware_files: files.map(|(f, c)| vec![f, c]).unwrap_or_default(),
                 firmware_invalid: check.and_then(|c| c.invalid_file),
                 vendor_note: vendor_note(a.vendor),
                 restart_needed: a.device.problem_code == Some(CM_PROB_NEED_RESTART),
-                le_audio: a2dpwb_core::adapter::le_audio(config_dir, a.device.vid, a.device.pid),
+                le_audio: bluecaster_core::adapter::le_audio(config_dir, a.device.vid, a.device.pid),
                 // What Windows' radio of this very device reads now, else
-                // what it or a stack of A2DPWB read when one ran it (kept per
+                // what it or a stack of BlueCaster read when one ran it (kept per
                 // VID:PID), else a Realtek adapter's USB serial: an adapter
                 // neither ran yet (Windows uses one radio only, the second
                 // one tells nothing) still shows it (issue #86)
                 address: radio
                     .as_ref()
                     .and_then(|r| r.address.clone())
-                    .or_else(|| a2dpwb_core::adapter::address(config_dir, a.device.vid, a.device.pid))
-                    .or_else(|| a2dpwb_core::adapter::serial_address(a.vendor, &a.device.instance_id)),
+                    .or_else(|| bluecaster_core::adapter::address(config_dir, a.device.vid, a.device.pid))
+                    .or_else(|| bluecaster_core::adapter::serial_address(a.vendor, &a.device.instance_id)),
                 bt_version: radio
                     .as_ref()
                     .and_then(|r| r.hci_version)
-                    .or_else(|| a2dpwb_core::adapter::hci_version(config_dir, a.device.vid, a.device.pid))
-                    .and_then(a2dpwb_core::adapter::bt_core_version)
+                    .or_else(|| bluecaster_core::adapter::hci_version(config_dir, a.device.vid, a.device.pid))
+                    .and_then(bluecaster_core::adapter::bt_core_version)
                     .map(str::to_owned),
-                // An adapter already on WinUSB when A2DPWB came to know
+                // An adapter already on WinUSB when BlueCaster came to know
                 // radios: the device's own product string, as Device
                 // Manager shows it (the WinUSB INF only names it "WinUSB
                 // Device", in Windows' language)
-                windows_name: a2dpwb_core::adapter::windows_name(config_dir, a.device.vid, a.device.pid).or_else(
+                windows_name: bluecaster_core::adapter::windows_name(config_dir, a.device.vid, a.device.pid).or_else(
                     || {
                         a.device
                             .bus_reported_name
@@ -538,7 +538,7 @@ fn warn_invalid_firmware(config_dir: &Path, invalid: &[(String, String)]) {
 fn saved_devices(
     config_dir: &Path,
     scanned: &[Device],
-    codecs: &BTreeMap<String, a2dpwb_core::KnownCodecs>,
+    codecs: &BTreeMap<String, bluecaster_core::KnownCodecs>,
 ) -> Vec<Device> {
     let saved = devices::load(config_dir).into_iter().chain(devices::load_le(config_dir));
     let mut list: Vec<Device> = saved
@@ -609,7 +609,7 @@ const LE_CODEC: &str = "LC3";
 const LE_SCANNING_KEY: &str = "status.le_scanning";
 
 /// StreamInfo.le of an LE Audio (experimental) stream
-fn to_ipc_sbc_caps(c: a2dpwb_core::SbcDeviceCaps) -> ipc::SbcDeviceCaps {
+fn to_ipc_sbc_caps(c: bluecaster_core::SbcDeviceCaps) -> ipc::SbcDeviceCaps {
     ipc::SbcDeviceCaps {
         sample_rates: c.sample_rates,
         channel_modes: c.channel_modes,
@@ -622,7 +622,7 @@ fn to_ipc_sbc_caps(c: a2dpwb_core::SbcDeviceCaps) -> ipc::SbcDeviceCaps {
 }
 
 /// The codec details as the IPC sends them (the same fields)
-fn to_ipc_codec_details(d: a2dpwb_core::CodecDetails) -> ipc::CodecDetails {
+fn to_ipc_codec_details(d: bluecaster_core::CodecDetails) -> ipc::CodecDetails {
     ipc::CodecDetails {
         mtu: d.mtu,
         rtp: d.rtp,
@@ -727,7 +727,7 @@ fn convert<T: serde::Serialize, U: serde::de::DeserializeOwned>(v: &T) -> Option
     serde_json::to_value(v).ok().and_then(|j| serde_json::from_value(j).ok())
 }
 
-fn to_ipc_source(s: &a2dpwb_core::SourceInfo) -> SourceInfo {
+fn to_ipc_source(s: &bluecaster_core::SourceInfo) -> SourceInfo {
     SourceInfo { kind: s.kind.to_string(), name: s.name.clone(), waiting: s.waiting }
 }
 
@@ -835,7 +835,7 @@ enum AutostartFix {
 /// (`enabled`). v1's (its A2DPWB.exe; v2 registers only the core) is taken
 /// over as by an update when `replaces_v1`: pointed at v2, or removed when
 /// v2's setting is off, so that v1 does not start at logon. Otherwise it is
-/// written only when on and missing, empty, or naming an a2dpwb-core.exe
+/// written only when on and missing, empty, or naming an bluecaster-core.exe
 /// that does not `exist` any more. Any other program is not ours to replace.
 fn autostart_fix(
     current: Option<&str>,
@@ -853,7 +853,7 @@ fn autostart_fix(
     }
     match &program {
         None => AutostartFix::Write,
-        Some(p) if named("a2dpwb-core.exe") && !exists(p) => AutostartFix::Write,
+        Some(p) if named("bluecaster-core.exe") && !exists(p) => AutostartFix::Write,
         Some(_) => AutostartFix::Keep,
     }
 }
@@ -899,8 +899,8 @@ fn codec_params(codec: &str, kbps: u32, sample_rate: u32, bits: u32, abr: bool) 
 /// codec's values are the negotiated ones, known once it is set up.
 fn connected_balloon(lang: &str, device: Option<&str>, stream: &StreamStatus) -> Option<BalloonRequest> {
     let i = stream.info.as_ref()?;
-    let tr = |key: &str, default: &str| a2dpwb_core::messages::translate(lang, key, default);
-    let printf = a2dpwb_core::messages::format_printf;
+    let tr = |key: &str, default: &str| bluecaster_core::messages::translate(lang, key, default);
+    let printf = bluecaster_core::messages::format_printf;
     let title = match device.filter(|d| !d.is_empty()) {
         Some(d) => printf(&tr("notify.connected", "%s connected"), &[d.to_string()]),
         None => tr("status.connected", "Connected"),
@@ -924,7 +924,7 @@ fn connected_balloon(lang: &str, device: Option<&str>, stream: &StreamStatus) ->
     Some(BalloonRequest { title, text: lines.join("\n"), url: None })
 }
 
-/// The tray icon's tooltip while streaming: "A2DPWB - Streaming (WH-1000XM4)"
+/// The tray icon's tooltip while streaming: "BlueCaster - Streaming (WH-1000XM4)"
 /// and one line each for the codec and the battery
 fn tray_tooltip(base: &str, device: Option<&str>, lines: &[String]) -> String {
     let mut t = match device.filter(|d| !d.is_empty()) {
@@ -1141,9 +1141,9 @@ impl CoreState {
         let lang = s.settings.language.clone();
         let streaming = s.stream.state == StreamState::Streaming;
         let base = if streaming {
-            a2dpwb_core::messages::translate(&lang, "tray.tooltip_streaming", "A2DP Windows Bridge - Connected")
+            bluecaster_core::messages::translate(&lang, "tray.tooltip_streaming", "BlueCaster - Connected")
         } else {
-            a2dpwb_core::messages::translate(&lang, "tray.tooltip_idle", "A2DP Windows Bridge - Idle")
+            bluecaster_core::messages::translate(&lang, "tray.tooltip_idle", "BlueCaster - Idle")
         };
         // The streamed profile's device (v1)
         let device = streamed_device(&s);
@@ -1153,14 +1153,14 @@ impl CoreState {
                 lines.push(tray_codec_line(&i.codec, i.bitrate_kbps, i.sample_rate, i.bits, i.abr));
             }
             if let Some(b) = s.stream.battery {
-                let template = a2dpwb_core::messages::translate(&lang, "ui.home.battery", "Battery %d%%");
-                lines.push(a2dpwb_core::messages::format_printf(&template, &[b.to_string()]));
+                let template = bluecaster_core::messages::translate(&lang, "ui.home.battery", "Battery %d%%");
+                lines.push(bluecaster_core::messages::format_printf(&template, &[b.to_string()]));
             }
             tray_tooltip(&base, device, &lines)
         } else {
             base
         };
-        let le = a2dpwb_core::messages::translate(&lang, "device.tag_le_audio", "LE Audio");
+        let le = bluecaster_core::messages::translate(&lang, "device.tag_le_audio", "LE Audio");
         let labels = s.profiles.iter().map(|p| tray_label(device_name(&s.devices, p), p.le_audio, &le)).collect();
         (self.tray)(TrayView {
             streaming,
@@ -1441,7 +1441,7 @@ impl CoreState {
         if auto.is_some() && p.codec != "auto" {
             tracing::debug!(
                 "profile {}: codec {} chosen, Auto-select streams Auto",
-                a2dpwb_core::diag::quoted(&p.name),
+                bluecaster_core::diag::quoted(&p.name),
                 p.codec
             );
         }
@@ -1551,7 +1551,7 @@ impl CoreState {
     // ---- Tray balloons ------------------------------------------------------
 
     fn tr(&self, key: &str, default: &str) -> String {
-        a2dpwb_core::messages::translate(&self.service.settings().language, key, default)
+        bluecaster_core::messages::translate(&self.service.settings().language, key, default)
     }
 
     // ---- Crash reports -------------------------------------------------------
@@ -1587,7 +1587,7 @@ impl CoreState {
         // already (issue #86: the name three times)
         (self.balloon)(BalloonRequest {
             title: String::new(),
-            text: self.tr("tray.minimized_hint", "A2DP Windows Bridge is still running in the system tray."),
+            text: self.tr("tray.minimized_hint", "BlueCaster is still running in the system tray."),
             url: None,
         });
         s.other.insert(TRAY_HINT_SHOWN.into(), Value::Bool(true));
@@ -1600,14 +1600,14 @@ impl CoreState {
     /// The streamed headphones' battery went low: a balloon, once per
     /// connection ([`battery_low_alert`])
     fn battery_low(&self, s: &Snapshot, level: u8, low: u8) {
-        let device = streamed_device(s).unwrap_or("A2DP Windows Bridge");
+        let device = streamed_device(s).unwrap_or("BlueCaster");
         tracing::info!("battery: {device} at {level}%, below {low}%: balloon");
         let template = self.tr("notify.battery_low", "%s: battery low (%d%%)");
         // No title: Windows heads the notification with the app's name
         // already (issue #86: the name three times)
         (self.balloon)(BalloonRequest {
             title: String::new(),
-            text: a2dpwb_core::messages::format_printf(&template, &[device.to_string(), level.to_string()]),
+            text: bluecaster_core::messages::format_printf(&template, &[device.to_string(), level.to_string()]),
             url: None,
         });
     }
@@ -1634,7 +1634,7 @@ impl CoreState {
     fn announce_update(&self, u: &UpdateState) {
         let Some(a) = &u.available else { return };
         let text = self
-            .tr("update.balloon", "A2DP Windows Bridge %s is available. Click here to open the download page.")
+            .tr("update.balloon", "BlueCaster %s is available. Click here to open the download page.")
             .replacen("%s", &a.version, 1);
         (self.balloon)(BalloonRequest {
             title: self.tr("update.available_title", "Update Available"),
@@ -1922,8 +1922,8 @@ impl CoreState {
                 if restart_after_save(&s.stream, &key) && !order_keeps_codec {
                     tracing::info!(
                         "profile {} saved while in use: it starts again as {}",
-                        a2dpwb_core::diag::quoted(&key),
-                        a2dpwb_core::diag::quoted(&profile.name)
+                        bluecaster_core::diag::quoted(&key),
+                        bluecaster_core::diag::quoted(&profile.name)
                     );
                     self.restart_profile(&profile.name)?;
                 }
@@ -1976,7 +1976,7 @@ impl CoreState {
                                 "Auto-select {}, volume sync {}: profile {} starts again",
                                 if settings.auto_codec { "on" } else { "off" },
                                 if settings.volume_sync { "on" } else { "off" },
-                                a2dpwb_core::diag::quoted(&p.name)
+                                bluecaster_core::diag::quoted(&p.name)
                             );
                             me.restart_profile(&p.name.clone())?;
                         }
@@ -2033,14 +2033,14 @@ impl CoreState {
             }
             Method::AdapterDownloadFirmware { file } => {
                 blocking(Box::new(move |me| {
-                    if !a2dpwb_core::firmware::available(&file) {
+                    if !bluecaster_core::firmware::available(&file) {
                         return Err(bad_request(
                             "firmware.no_download",
                             "adapter.download_firmware",
                             format!("no download for {file}"),
                         ));
                     }
-                    if let Err(e) = a2dpwb_core::firmware::download(&paths::firmware_dir(&me.config_dir()), &file) {
+                    if let Err(e) = bluecaster_core::firmware::download(&paths::firmware_dir(&me.config_dir()), &file) {
                         tracing::warn!("firmware download failed: {e}");
                         return Err(err("firmware.download_failed", "firmware.download_failed"));
                     }
@@ -2202,7 +2202,7 @@ impl CoreState {
     /// Asks GitHub for a newer release (blocking) and publishes the result;
     /// Err (update.failed) when it could not ask, and the state says so too
     pub fn check_update(&self) -> Result<UpdateState, ErrorInfo> {
-        use a2dpwb_core::update;
+        use bluecaster_core::update;
         let (_, s) = self.snapshot();
         self.publish(Event::Update(UpdateState { checking: true, ..s.update.clone() }));
         let prereleases = self.service.settings().include_prereleases;
@@ -2236,7 +2236,7 @@ impl CoreState {
 
     /// The automatic check: at most once a day (recorded before asking, as v1)
     pub fn check_update_if_due(self: &Arc<Self>) {
-        use a2dpwb_core::update;
+        use bluecaster_core::update;
         let mut s = self.service.settings();
         let today = update::today();
         if !update::automatic_check_due(&s, &today) {
@@ -2318,11 +2318,11 @@ mod tests {
 
     /// This PC's adapters as the Adapters screen lists them, with nothing
     /// remembered yet (a fresh config folder; read-only otherwise): cargo
-    /// test -p a2dpwb-core-exe list_adapter_infos -- --ignored --nocapture
+    /// test -p bluecaster-core-exe list_adapter_infos -- --ignored --nocapture
     #[test]
     #[ignore = "reads this PC's USB devices and Bluetooth radios"]
     fn list_adapter_infos() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-adapter-infos-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-adapter-infos-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for a in adapter_infos(&dir, &CoreSettings::default()) {
             println!(
@@ -2360,17 +2360,17 @@ mod tests {
         assert_eq!(tray_codec_line("SBC", 328, 44100, 16, false), "SBC 328 kbps | 44.1 kHz | 16-bit");
         assert_eq!(tray_codec_line("LC3", 320, 48000, 0, false), "LC3 320 kbps | 48 kHz");
         assert_eq!(
-            tray_tooltip("A2DP Windows Bridge - Connected", Some("WH-1000XM4"), &[ldac.clone(), "Battery 80%".into()]),
-            "A2DP Windows Bridge - Connected (WH-1000XM4)\nLDAC 990 kbps | 96 kHz | 24-bit | ABR\nBattery 80%"
+            tray_tooltip("BlueCaster - Connected", Some("WH-1000XM4"), &[ldac.clone(), "Battery 80%".into()]),
+            "BlueCaster - Connected (WH-1000XM4)\nLDAC 990 kbps | 96 kHz | 24-bit | ABR\nBattery 80%"
         );
         assert_eq!(
-            tray_tooltip("A2DP Windows Bridge - Connected", None, &[ldac]),
-            "A2DP Windows Bridge - Connected\nLDAC 990 kbps | 96 kHz | 24-bit | ABR"
+            tray_tooltip("BlueCaster - Connected", None, &[ldac]),
+            "BlueCaster - Connected\nLDAC 990 kbps | 96 kHz | 24-bit | ABR"
         );
-        assert_eq!(tray_tooltip("A2DP Windows Bridge - Connected", Some(""), &[]), "A2DP Windows Bridge - Connected");
+        assert_eq!(tray_tooltip("BlueCaster - Connected", Some(""), &[]), "BlueCaster - Connected");
         assert_eq!(
-            tray_tooltip("A2DP Windows Bridge - Connected", Some("AA:BB:CC:DD:EE:FF"), &[]),
-            "A2DP Windows Bridge - Connected (AA:BB:CC:DD:EE:FF)"
+            tray_tooltip("BlueCaster - Connected", Some("AA:BB:CC:DD:EE:FF"), &[]),
+            "BlueCaster - Connected (AA:BB:CC:DD:EE:FF)"
         );
         // AAC's variable bit rate, as the UI calls it
         assert_eq!(tray_codec_line("AAC", 320, 48000, 16, true), "AAC 320 kbps | 48 kHz | 16-bit | VBR");
@@ -2434,9 +2434,9 @@ mod tests {
 
     #[test]
     fn a_connection_is_announced_once_with_its_negotiated_codec() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-state-announce-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-state-announce-{}", std::process::id()));
         let (tx, _rx) = std::sync::mpsc::channel();
-        let options = a2dpwb_core::ServiceOptions {
+        let options = bluecaster_core::ServiceOptions {
             config_dir: dir.clone(),
             hci_tcp: None,
             capture: bt_host::HciCapture::new(),
@@ -2451,9 +2451,9 @@ mod tests {
             Box::new(|| {}),
             Box::new(move |b| sink.lock().unwrap().push(b)),
         );
-        let event = |st| state.on_service_event(ServiceEvent::State(st, a2dpwb_core::Msg::new("status.ready")));
+        let event = |st| state.on_service_event(ServiceEvent::State(st, bluecaster_core::Msg::new("status.ready")));
         let info = |kbps| {
-            state.on_service_event(ServiceEvent::StreamInfo(a2dpwb_core::StreamInfo {
+            state.on_service_event(ServiceEvent::StreamInfo(bluecaster_core::StreamInfo {
                 codec: "LDAC".into(),
                 bitrate_kbps: kbps,
                 sample_rate: 96000,
@@ -2466,7 +2466,7 @@ mod tests {
                 requested_in_use: false,
                 abr: false,
                 bitrate_capped: false,
-                source: a2dpwb_core::SourceInfo { kind: "tone", name: String::new(), waiting: false },
+                source: bluecaster_core::SourceInfo { kind: "tone", name: String::new(), waiting: false },
                 details: None,
             }))
         };
@@ -2615,9 +2615,9 @@ mod tests {
 
     #[test]
     fn switching_profiles_keeps_the_new_profile() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-state-switch-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-state-switch-{}", std::process::id()));
         let (tx, _rx) = std::sync::mpsc::channel();
-        let options = a2dpwb_core::ServiceOptions {
+        let options = bluecaster_core::ServiceOptions {
             config_dir: dir.clone(),
             hci_tcp: None,
             capture: bt_host::HciCapture::new(),
@@ -2626,7 +2626,7 @@ mod tests {
         };
         let state =
             CoreState::new(Arc::new(Service::new(options, tx)), Box::new(|_| {}), Box::new(|| {}), Box::new(|_| {}));
-        let event = |st| state.on_service_event(ServiceEvent::State(st, a2dpwb_core::Msg::new("status.ready")));
+        let event = |st| state.on_service_event(ServiceEvent::State(st, bluecaster_core::Msg::new("status.ready")));
         // stream.start of B while A streams: the core says Connecting (B),
         // then A's session ends (Idle) and B's starts
         *state.starting_profile.lock().unwrap() = Some("B".into());
@@ -2683,9 +2683,9 @@ mod tests {
 
     #[test]
     fn live_codec_updates_only_a_streaming_snapshot() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-state-live-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-state-live-{}", std::process::id()));
         let (tx, _rx) = std::sync::mpsc::channel();
-        let options = a2dpwb_core::ServiceOptions {
+        let options = bluecaster_core::ServiceOptions {
             config_dir: dir.clone(),
             hci_tcp: None,
             capture: bt_host::HciCapture::new(),
@@ -2727,7 +2727,7 @@ mod tests {
         assert_eq!(r.codec, Some(codec::CodecKind::Ldac));
         assert_eq!(r.quality, codec::Quality::Standard);
         assert_eq!(r.source, SourceRequest::TestTone);
-        assert_eq!(r.volume_sync, a2dpwb_core::VolumeSync::Off);
+        assert_eq!(r.volume_sync, bluecaster_core::VolumeSync::Off);
         assert!(!r.codec_fallback);
         assert_eq!(r.max_media_payload, 679);
         assert_eq!((r.sample_rate, r.bit_depth), (None, None));
@@ -2830,7 +2830,7 @@ mod tests {
     fn autostart_fix_takes_over_v1_and_leaves_other_programs_alone() {
         use AutostartFix::{Keep, Remove, Write};
         let present = |p: &std::path::Path| {
-            [r"C:\A2DP-Windows-Bridge\build\dist\A2DPWB.exe", r"C:\Program Files\A2DPWB\a2dpwb-core.exe"]
+            [r"C:\A2DP-Windows-Bridge\build\dist\A2DPWB.exe", r"C:\Program Files\BlueCaster\bluecaster-core.exe"]
                 .contains(&p.to_str().unwrap())
         };
         let fix = |current, enabled| autostart_fix(current, enabled, true, present);
@@ -2839,17 +2839,17 @@ mod tests {
         assert_eq!(fix(Some(""), true), Write);
         assert_eq!(fix(None, false), Keep);
         // A copy of the core that is gone (moved or uninstalled): written
-        assert_eq!(fix(Some(r#""D:\old\a2dpwb-core.exe" --background"#), true), Write);
-        assert_eq!(fix(Some(r#""D:\old\A2DPWB-Core.EXE""#), true), Write);
+        assert_eq!(fix(Some(r#""D:\old\bluecaster-core.exe" --background"#), true), Write);
+        assert_eq!(fix(Some(r#""D:\old\BlueCaster-Core.EXE""#), true), Write);
         // Another existing copy of v2: kept (a test build must not take it)
-        assert_eq!(fix(Some(r#""C:\Program Files\A2DPWB\a2dpwb-core.exe""#), true), Keep);
-        assert_eq!(fix(Some(r#""C:\Program Files\A2DPWB\a2dpwb-core.exe""#), false), Keep);
+        assert_eq!(fix(Some(r#""C:\Program Files\BlueCaster\bluecaster-core.exe""#), true), Keep);
+        assert_eq!(fix(Some(r#""C:\Program Files\BlueCaster\bluecaster-core.exe""#), false), Keep);
         // v1, existing or not: taken over as by an update
         let v1 = r#""C:\A2DP-Windows-Bridge\build\dist\A2DPWB.exe" --minimized"#;
         assert_eq!(fix(Some(v1), true), Write);
         assert_eq!(fix(Some(v1), false), Remove);
         assert_eq!(fix(Some(r#""E:\gone\A2DPWB.exe""#), true), Write);
-        assert_eq!(fix(Some(r"E:\v1\a2dpwb.EXE --minimized"), false), Remove);
+        assert_eq!(fix(Some(r"E:\v1\bluecaster.EXE --minimized"), false), Remove);
         // ... but not by a development instance
         assert_eq!(autostart_fix(Some(v1), true, false, present), Keep);
         assert_eq!(autostart_fix(Some(v1), false, false, present), Keep);
@@ -2875,7 +2875,7 @@ mod tests {
 
     #[test]
     fn devices_carry_their_codecs() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-state-dev-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-state-dev-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         devices::save(&dir, "AA:BB:CC:DD:EE:FF", "Phones").unwrap();
         let scanned = vec![Device {
@@ -2891,7 +2891,7 @@ mod tests {
             le_audio_set: false,
         }];
         let mut codecs = BTreeMap::new();
-        let sbc = a2dpwb_core::SbcDeviceCaps {
+        let sbc = bluecaster_core::SbcDeviceCaps {
             sample_rates: vec![44100, 48000],
             channel_modes: vec!["joint_stereo".into()],
             blocks: vec![8, 16],
@@ -2902,10 +2902,10 @@ mod tests {
         };
         codecs.insert(
             "AA:BB:CC:DD:EE:FF".to_string(),
-            a2dpwb_core::KnownCodecs {
+            bluecaster_core::KnownCodecs {
                 keys: vec!["sbc".to_string(), "ldac".to_string()],
                 sbc: Some(sbc),
-                caps: vec![a2dpwb_core::CodecDeviceCaps {
+                caps: vec![bluecaster_core::CodecDeviceCaps {
                     codec: "ldac".into(),
                     sample_rates: vec![44100, 48000],
                     ..Default::default()
@@ -3007,7 +3007,7 @@ mod tests {
 
     #[test]
     fn le_audio_devices_are_their_own_entries() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-state-le-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-state-le-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         // A dual-mode headset saved as both kinds
@@ -3048,7 +3048,7 @@ mod tests {
         let mut codecs = BTreeMap::new();
         codecs.insert(
             "AA:BB:CC:DD:EE:FF".to_string(),
-            a2dpwb_core::KnownCodecs { keys: vec!["sbc".to_string()], ..Default::default() },
+            bluecaster_core::KnownCodecs { keys: vec!["sbc".to_string()], ..Default::default() },
         );
         let list = saved_devices(&dir, &scanned, &codecs);
         let kinds: Vec<(&str, bool, bool)> = list.iter().map(|d| (d.name.as_str(), d.le_audio, d.saved)).collect();
@@ -3083,7 +3083,7 @@ mod tests {
         assert!(le.low_latency);
         assert_eq!(le.summary, d.summary);
         assert_eq!(LE_CODEC, "LC3");
-        assert_eq!(a2dpwb_core::Msg::new(LE_SCANNING_KEY).key, "status.le_scanning");
+        assert_eq!(bluecaster_core::Msg::new(LE_SCANNING_KEY).key, "status.le_scanning");
     }
 
     #[test]

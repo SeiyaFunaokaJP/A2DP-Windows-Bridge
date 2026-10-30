@@ -183,7 +183,7 @@ export function adapterFirmwareTag(
   if (a.firmware_present === false) {
     return { key: a.firmware_invalid ? "firmware.invalid_short" : "firmware.missing_short", status: "bad" };
   }
-  // A2DPWB cannot use it: red, as a missing file (issue #86)
+  // BlueCaster cannot use it: red, as a missing file (issue #86)
   if (a.vendor_note?.key === "firmware.vendor_unsupported") return { key: "ui.adapter.firmware_unsupported", status: "bad" };
   if (a.vendor_note || setting.bt_chip_pid === CHIP_NOT_REALTEK) return { key: "ui.adapter.firmware_not_realtek", status: "good" };
   return { key: "ui.adapter.firmware_choose_chip", status: "warn" };

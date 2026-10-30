@@ -5,7 +5,7 @@
 //! implements it: WRL-based DLLs do not count their factories as objects
 //! in use, and COM frees idle libraries as apartments come and go. The
 //! next call through the cache then reads the vtable of an unloaded DLL
-//! (a2dpwb-core crashed twice on 2026-10-22 in
+//! (bluecaster-core crashed twice on 2026-10-22 in
 //! GlobalSystemMediaTransportControlsSessionManager::RequestAsync, with
 //! Windows.Media.MediaControl.dll in the unloaded-module list).
 

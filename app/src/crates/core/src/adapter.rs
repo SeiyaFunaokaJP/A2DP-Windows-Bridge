@@ -147,7 +147,7 @@ pub fn configure(config: &mut HostConfig, settings: &Settings, _config_dir: &Pat
         );
         if chip_name.is_none() && settings.bt_chip_fw_stem.is_empty() {
             tracing::warn!(
-                "chip 0x{pid:04X} is not in A2DPWB's chip table: choose its firmware on the Adapter screen (Firmware), else no firmware file is checked or prepared for it"
+                "chip 0x{pid:04X} is not in BlueCaster's chip table: choose its firmware on the Adapter screen (Firmware), else no firmware file is checked or prepared for it"
             );
         }
         config.realtek_pid = pid;
@@ -242,7 +242,7 @@ impl AfhSource for WifiAfh {
 
 const CAPS_FILE: &str = "adapter_caps.json";
 
-/// What A2DPWB learnt about an adapter when a stack ran on it
+/// What BlueCaster learnt about an adapter when a stack ran on it
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct AdapterCaps {
     /// LE Audio's isochronous channels (issue #86)
@@ -336,7 +336,7 @@ pub fn windows_name(dir: &Path, vid: u16, pid: u16) -> Option<String> {
 }
 
 /// What Windows' Bluetooth tells about the adapter while it runs it: its
-/// name, and the address and version a stack of A2DPWB would read
+/// name, and the address and version a stack of BlueCaster would read
 pub fn save_windows_radio(dir: &Path, vid: u16, pid: u16, name: &str, address: Option<&str>, hci_version: Option<u8>) {
     let mut caps = load_caps(dir);
     let entry = caps.entry(caps_key(vid, pid)).or_default();
@@ -421,7 +421,7 @@ mod tests {
 
     #[test]
     fn le_audio_remembered_per_adapter() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-caps-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-caps-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(le_audio(&dir, 0x0BDA, 0xA729), None);
         save_le_audio(&dir, 0x0BDA, 0xA729, false);

@@ -109,7 +109,7 @@ const SCAN_POLL: Duration = Duration::from_millis(50);
 
 const FILE_NAME: &str = "le_audio_csip.txt";
 const FILE_HEADER: &str =
-    "# A2DPWB LE Audio: SIRK of bonded coordinated set members (identity address, type, SIRK, size, rank)\n";
+    "# BlueCaster LE Audio: SIRK of bonded coordinated set members (identity address, type, SIRK, size, rank)\n";
 
 // ============================================================================
 // Pure helpers
@@ -216,7 +216,7 @@ fn sort_by_rank(members: &mut [Snap]) {
 
 /// The RSI cache keeps the last RSI_CACHE_MAX advertised RSIs: every device
 /// around advertises its own and they rotate (RPA-like, about every 15
-/// min), so an unbounded cache would grow for as long as A2DPWB scans
+/// min), so an unbounded cache would grow for as long as BlueCaster scans
 #[derive(Default)]
 struct RsiCache {
     /// RSI -> set index, None: no known set
@@ -290,7 +290,7 @@ struct Member {
     lock: u8,
     /// Set Member Lock value handle, 0: none
     lock_handle: u16,
-    /// A2DPWB holds this member's lock
+    /// BlueCaster holds this member's lock
     we_locked: bool,
     /// Index into State::sets
     set: Option<usize>,
@@ -522,7 +522,7 @@ fn read_done(ctx: &mut LeCtx<'_>, st: &mut State, id: LeDeviceId) {
 
 // ---- Lock (CSIP 4.6 / 4.7), BTstack thread ----
 
-/// Release every lock A2DPWB holds, highest rank first
+/// Release every lock BlueCaster holds, highest rank first
 fn release_locks(ctx: &mut LeCtx<'_>, rc: &Rc<RefCell<State>>, done: Option<LeDone>) {
     let order: Vec<(LeDeviceId, u16)> = {
         let mut st = rc.borrow_mut();
@@ -742,7 +742,7 @@ impl LeModule for CsipModule {
 
         if let Some(lock) = lock.filter(|l| l.properties & PROPERTY_NOTIFY != 0) {
             // The member tells when its lock changes: e.g. released by its
-            // lock timeout while A2DPWB thought it held it
+            // lock timeout while BlueCaster thought it held it
             let rc = self.st.clone();
             ctx.gatt().listen(
                 con,
@@ -761,7 +761,7 @@ impl LeModule for CsipModule {
                         released
                     };
                     if released {
-                        tracing::info!("CSIP: {} released the lock A2DPWB held (lock timeout)", addr_of(ctx, dev));
+                        tracing::info!("CSIP: {} released the lock BlueCaster held (lock timeout)", addr_of(ctx, dev));
                     }
                 }),
             );
@@ -1214,7 +1214,7 @@ mod tests {
         let text = format_stored(std::slice::from_ref(&s));
         assert_eq!(
             text,
-            "# A2DPWB LE Audio: SIRK of bonded coordinated set members (identity address, type, SIRK, size, rank)\n\
+            "# BlueCaster LE Audio: SIRK of bonded coordinated set members (identity address, type, SIRK, size, rank)\n\
              C0:01:02:03:04:05 1 457d7d0921a1fd22cecd8c86dd72cccd 2 1\n"
         );
         let back: Vec<Stored> = text.lines().filter_map(parse_stored_line).collect();

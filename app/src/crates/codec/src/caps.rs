@@ -106,7 +106,7 @@ const OPUS_CONFIG_DEFAULT: u8 = OPUS_FREQ_48000 | OPUS_FRAME_20MS | OPUS_CH_STER
 //   +2..+5 audio location (LE; Bluetooth audio location bits), +6 frame
 //   durations (0x01 2.5 ms, 0x02 5, 0x04 10, 0x08 20, 0x10 40), +7..+8
 //   bit rate (LE, units of 1024 bps; 0 = no limit)
-// A2DPWB offers and configures the main direction only: stereo (2
+// BlueCaster offers and configures the main direction only: stereo (2
 // channels, 1 coupled stream, front left + right) or mono, 10 or 20 ms.
 const OPUS05_INFO_LEN: usize = 24;
 const OPUS05_MAIN: usize = 6;
@@ -378,7 +378,7 @@ pub fn endpoint_kind(kind: CodecKind) -> CodecKind {
 // FastStream (PipeWire a2dp-codec-caps.h, a2dp_faststream_t): 8 bytes, byte
 // 6 direction (0x01 sink = music to the headset, 0x02 source = voice back),
 // byte 7 low nibble the sink rates (0x02 44.1k, 0x01 48k), high nibble the
-// source rate (0x2 16k). A2DPWB offers and configures the sink direction
+// source rate (0x2 16k). BlueCaster offers and configures the sink direction
 // only.
 const FASTSTREAM_INFO_LEN: usize = 8;
 const FASTSTREAM_DIRECTION_SINK: u8 = 0x01;
@@ -1398,7 +1398,7 @@ impl RemoteCaps {
             }
             CodecKind::Opus05 => {
                 // The rate is not in the configuration: 48 kHz is the one
-                // PipeWire lists first and the only one A2DPWB encodes
+                // PipeWire lists first and the only one BlueCaster encodes
                 if sample_rate != 48000 {
                     return Err(ConfigError::SampleRate(kind, sample_rate));
                 }

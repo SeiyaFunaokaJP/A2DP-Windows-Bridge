@@ -69,7 +69,7 @@ import {
 import { knownSbcCaps } from "../lib/sbc";
 import { entryState } from "./Home";
 
-const HIDE_KEY = "a2dpwb.codecs.hide_unsupported";
+const HIDE_KEY = "bluecaster.codecs.hide_unsupported";
 
 /** After a codec chosen during a stream, the codec cards wait at least
  *  this long, and until the stream is no longer starting again... */

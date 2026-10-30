@@ -1,28 +1,28 @@
-﻿; A2DPWB installer (Inno Setup 6.5 or later)
+﻿; BlueCaster installer (Inno Setup 6.5 or later)
 ; SPDX-License-Identifier: Apache-2.0 OR MIT
 ;
 ; Built by installer/build-release.ps1 from the unpacked portable package, so
 ; both contain the same files:
 ;   ISCC /DAppVersion=<ver> /DAppVersionNumeric=<x.y.z> /DArch=<x64|arm64>
 ;        /DPkgDir=<dir> /DWebView2Setup=<MicrosoftEdgeWebview2Setup.exe>
-;        /DOutputDir=<dir> /DOutputBaseFilename=<name> A2DPWB.iss
+;        /DOutputDir=<dir> /DOutputBaseFilename=<name> BlueCaster.iss
 ;
 ; Install:
-;   - a running v2 core is closed cleanly (`a2dpwb-core.exe --quit`: the
+;   - a running v2 core is closed cleanly (`bluecaster-core.exe --quit`: the
 ;     stream stops and the adapter is released) and started again after;
 ;     with no installed copy to ask (a new installation beside a portable or
 ;     development build), Setup's own copy from {tmp} asks it;
 ;   - a running v1 (its mutex A2DPWB_SingleInstance) is asked to exit, and v1
 ;     (Inno Setup, AppId below) is uninstalled. Its uninstaller removes the
-;     program files only: the settings folder %APPDATA%\A2DPWB (profiles,
+;     program files only: the settings folder %APPDATA%\BlueCaster (profiles,
 ;     pairings, firmware) stays, and v2 reads it as it is;
 ;   - 2.0.0 to 2.0.2-beta.5 (Tauri's NSIS installer) is uninstalled before the
 ;     files are installed, with its uninstaller in update mode: the adapters
 ;     stay on WinUSB, the settings, the shortcuts and the Run value stay. An
 ;     installation that fails or is cancelled after this leaves nothing
 ;     installed; running the setup again installs it;
-;   - "start with Windows" (HKCU Run, value A2DPWB, shared with v1) is
-;     pointed at `a2dpwb-core.exe --background` when it was on;
+;   - "start with Windows" (HKCU Run, value BlueCaster, shared with v1) is
+;     pointed at `bluecaster-core.exe --background` when it was on;
 ;   - the WebView2 Runtime is installed where it is missing;
 ;   - a new installation asks for the language (AskLanguage, preselected from
 ;     the Windows display language); an update of this installation uses the
@@ -32,16 +32,16 @@
 ;     settings have none (settings.rs, default_language);
 ;   - an update (of this installation, of the NSIS one or of v1) says so on
 ;     the wizard's title and pages (UpdateWording).
-; Uninstall: a page of the uninstall wizard asks whether the adapters A2DPWB
+; Uninstall: a page of the uninstall wizard asks whether the adapters BlueCaster
 ; put on WinUSB go back to Windows (one UAC prompt) and whether
-; %APPDATA%\A2DPWB (settings, codecs, pairings, firmware) and the window's
-; own data (%LOCALAPPDATA%\io.github.seiyafunaokajp.a2dpwb) are deleted,
+; %APPDATA%\BlueCaster (settings, codecs, pairings, firmware) and the window's
+; own data (%LOCALAPPDATA%\io.github.seiyafunaokajp.bluecaster) are deleted,
 ; both on by default (InitializeUninstallProgressForm); the core is closed;
 ; the Run value is removed when it points at this installation.
 ;
 ; Command line, besides Inno Setup's own (/SILENT, /VERYSILENT, /DIR=, ...):
 ;   /UPDATE  the in-app update (app/src/ui/src-tauri/src/update.rs): starts
-;            a2dpwb.exe again when done;
+;            bluecaster.exe again when done;
 ;   /P       NSIS's passive mode, which the updater of 2.0.2-beta.5 and
 ;            earlier passes: no pages, only the progress (like /SILENT);
 ;   /KEEPV1  leaves an installed v1, a running v1 and the Run value alone
@@ -71,18 +71,18 @@
   #define OutputDir "."
 #endif
 #ifndef OutputBaseFilename
-  #define OutputBaseFilename "A2DPWB-" + AppVersion + "-setup"
+  #define OutputBaseFilename "BlueCaster-" + AppVersion + "-setup"
 #endif
 
-#define AppName "A2DP Windows Bridge"
-#define AppExe "a2dpwb.exe"
-#define CoreExe "a2dpwb-core.exe"
-#define DriverExe "a2dpwb-driver.exe"
+#define AppName "BlueCaster"
+#define AppExe "bluecaster.exe"
+#define CoreExe "bluecaster-core.exe"
+#define DriverExe "bluecaster-driver.exe"
 ; tauri.conf.json's identifier: the windows' notifications and taskbar
 ; button belong to the shortcut with this AppUserModelID
-#define AppUserModelId "io.github.seiyafunaokajp.a2dpwb"
+#define AppUserModelId "io.github.seiyafunaokajp.bluecaster"
 ; Tauri's identifier: the window's WebView2 data is in %LOCALAPPDATA%\<this>
-#define AppIdentifier "io.github.seiyafunaokajp.a2dpwb"
+#define AppIdentifier "io.github.seiyafunaokajp.bluecaster"
 ; AppId without its braces
 #define AppGuid "DE4C0AE2-6745-4C09-9478-7FA6C48527F4"
 #define RepoUrl "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge"
@@ -152,14 +152,14 @@ Name: "zhcn"; MessagesFile: "languages\ChineseSimplified.isl"
 Name: "zhtw"; MessagesFile: "languages\ChineseTraditional.isl"
 
 [CustomMessages]
-en.OtherRunning=Another A2DP Windows Bridge is running (v1, or a v2 that Setup could not close). Exit it (right-click its tray icon > Exit), then click Retry.%n%nCancel stops the installation.
-ja.OtherRunning=別の A2DP Windows Bridge（v1、またはセットアップが終了できなかった v2）が起動しています。タスクトレイのアイコンを右クリックして「終了」を選んでから、「再試行」を押してください。%n%n「キャンセル」でインストールを中止します。
-de.OtherRunning=Ein anderes A2DP Windows Bridge läuft noch (v1 oder ein v2, das Setup nicht beenden konnte). Beenden Sie es (Rechtsklick auf das Taskleistensymbol > Beenden) und klicken Sie dann auf Wiederholen.%n%nAbbrechen beendet die Installation.
-fr.OtherRunning=Un autre A2DP Windows Bridge est en cours d'exécution (v1, ou une v2 que l'installation n'a pas pu fermer). Quittez-le (clic droit sur son icône dans la zone de notification > Quitter), puis cliquez sur Réessayer.%n%nAnnuler arrête l'installation.
-es.OtherRunning=Hay otro A2DP Windows Bridge en ejecución (v1, o una v2 que el instalador no pudo cerrar). Ciérrelo (clic derecho en su icono de la bandeja > Salir) y pulse Reintentar.%n%nCancelar detiene la instalación.
-ko.OtherRunning=다른 A2DP Windows Bridge(v1 또는 설치 프로그램이 종료하지 못한 v2)가 실행 중입니다. 트레이 아이콘을 마우스 오른쪽 버튼으로 클릭하고 [종료]를 선택한 다음 [다시 시도]를 누르세요.%n%n[취소]를 누르면 설치를 중단합니다.
-zhcn.OtherRunning=另一个 A2DP Windows Bridge 正在运行（v1，或安装程序无法关闭的 v2）。请右键单击其托盘图标并选择“退出”，然后单击“重试”。%n%n单击“取消”将停止安装。
-zhtw.OtherRunning=另一個 A2DP Windows Bridge 正在執行（v1，或安裝程式無法關閉的 v2）。請以滑鼠右鍵按一下其系統匣圖示並選擇「結束」，然後按一下「重試」。%n%n按一下「取消」將停止安裝。
+en.OtherRunning=Another BlueCaster is running (v1, or a v2 that Setup could not close). Exit it (right-click its tray icon > Exit), then click Retry.%n%nCancel stops the installation.
+ja.OtherRunning=別の BlueCaster（v1、またはセットアップが終了できなかった v2）が起動しています。タスクトレイのアイコンを右クリックして「終了」を選んでから、「再試行」を押してください。%n%n「キャンセル」でインストールを中止します。
+de.OtherRunning=Ein anderes BlueCaster läuft noch (v1 oder ein v2, das Setup nicht beenden konnte). Beenden Sie es (Rechtsklick auf das Taskleistensymbol > Beenden) und klicken Sie dann auf Wiederholen.%n%nAbbrechen beendet die Installation.
+fr.OtherRunning=Un autre BlueCaster est en cours d'exécution (v1, ou une v2 que l'installation n'a pas pu fermer). Quittez-le (clic droit sur son icône dans la zone de notification > Quitter), puis cliquez sur Réessayer.%n%nAnnuler arrête l'installation.
+es.OtherRunning=Hay otro BlueCaster en ejecución (v1, o una v2 que el instalador no pudo cerrar). Ciérrelo (clic derecho en su icono de la bandeja > Salir) y pulse Reintentar.%n%nCancelar detiene la instalación.
+ko.OtherRunning=다른 BlueCaster(v1 또는 설치 프로그램이 종료하지 못한 v2)가 실행 중입니다. 트레이 아이콘을 마우스 오른쪽 버튼으로 클릭하고 [종료]를 선택한 다음 [다시 시도]를 누르세요.%n%n[취소]를 누르면 설치를 중단합니다.
+zhcn.OtherRunning=另一个 BlueCaster 正在运行（v1，或安装程序无法关闭的 v2）。请右键单击其托盘图标并选择“退出”，然后单击“重试”。%n%n单击“取消”将停止安装。
+zhtw.OtherRunning=另一個 BlueCaster 正在執行（v1，或安裝程式無法關閉的 v2）。請以滑鼠右鍵按一下其系統匣圖示並選擇「結束」，然後按一下「重試」。%n%n按一下「取消」將停止安裝。
 
 en.V1Left=A2DP Windows Bridge v1 could not be uninstalled. You can remove it later in Settings > Apps; your settings, pairings and firmware stay in either case.
 ja.V1Left=A2DP Windows Bridge v1 をアンインストールできませんでした。あとで「設定」>「アプリ」から削除できます。設定、ペアリング、ファームウェアはどちらの場合も残ります。
@@ -273,14 +273,14 @@ zhcn.AppLanguage=zh-CN
 zhtw.AppLanguage=zh-TW
 
 ; The Ready page, when an earlier version is uninstalled first (ReadyNote)
-en.OldVersionsText=Setup first uninstalls the earlier versions of A2DP Windows Bridge found on this PC (%1). Your settings, device pairings and firmware are kept.
-ja.OldVersionsText=セットアップは最初に、この PC にある以前のバージョンの A2DP Windows Bridge（%1）をアンインストールします。設定、デバイスのペアリング、ファームウェアはそのまま残ります。
-de.OldVersionsText=Setup deinstalliert zuerst die früheren Versionen von A2DP Windows Bridge auf diesem PC (%1). Ihre Einstellungen, Gerätekopplungen und Firmware bleiben erhalten.
-fr.OldVersionsText=L'installation désinstalle d'abord les versions précédentes d'A2DP Windows Bridge trouvées sur ce PC (%1). Vos réglages, appairages et firmware sont conservés.
-es.OldVersionsText=El instalador desinstala primero las versiones anteriores de A2DP Windows Bridge que hay en este equipo (%1). Su configuración, emparejamientos y firmware se conservan.
-ko.OldVersionsText=설치 프로그램은 먼저 이 PC에 있는 이전 버전의 A2DP Windows Bridge(%1)를 제거합니다. 설정, 기기 페어링, 펌웨어는 그대로 유지됩니다.
-zhcn.OldVersionsText=安装程序会先卸载此电脑上早期版本的 A2DP Windows Bridge（%1）。您的设置、设备配对和固件都会保留。
-zhtw.OldVersionsText=安裝程式會先解除安裝此電腦上舊版本的 A2DP Windows Bridge（%1）。您的設定、裝置配對和韌體都會保留。
+en.OldVersionsText=Setup first uninstalls the earlier versions of BlueCaster found on this PC (%1). Your settings, device pairings and firmware are kept.
+ja.OldVersionsText=セットアップは最初に、この PC にある以前のバージョンの BlueCaster（%1）をアンインストールします。設定、デバイスのペアリング、ファームウェアはそのまま残ります。
+de.OldVersionsText=Setup deinstalliert zuerst die früheren Versionen von BlueCaster auf diesem PC (%1). Ihre Einstellungen, Gerätekopplungen und Firmware bleiben erhalten.
+fr.OldVersionsText=L'installation désinstalle d'abord les versions précédentes d'BlueCaster trouvées sur ce PC (%1). Vos réglages, appairages et firmware sont conservés.
+es.OldVersionsText=El instalador desinstala primero las versiones anteriores de BlueCaster que hay en este equipo (%1). Su configuración, emparejamientos y firmware se conservan.
+ko.OldVersionsText=설치 프로그램은 먼저 이 PC에 있는 이전 버전의 BlueCaster(%1)를 제거합니다. 설정, 기기 페어링, 펌웨어는 그대로 유지됩니다.
+zhcn.OldVersionsText=安装程序会先卸载此电脑上早期版本的 BlueCaster（%1）。您的设置、设备配对和固件都会保留。
+zhtw.OldVersionsText=安裝程式會先解除安裝此電腦上舊版本的 BlueCaster（%1）。您的設定、裝置配對和韌體都會保留。
 
 en.OldV1=v1
 ja.OldV1=v1
@@ -456,7 +456,7 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags
 [Code]
 const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
-  RunValue = 'A2DPWB';
+  RunValue = 'BlueCaster';
   { This installation's registration (Setup's key for AppId) }
   UninstKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppGuid}}_is1';
   V1UninstKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{4D8EA889-0FE6-4753-A25F-2C1A3E4BF658}_is1';
@@ -508,7 +508,7 @@ end;
 { Where AskLanguage puts the copy of Setup it starts }
 function RelaunchDir: String;
 begin
-  Result := AddBackslash(GetTempDir) + 'A2DPWB-setup';
+  Result := AddBackslash(GetTempDir) + 'BlueCaster-setup';
 end;
 
 { The Select Language dialog of a new installation, preselected with the
@@ -631,9 +631,9 @@ end;
 { The settings folder, as the core finds it }
 function ConfigDir: String;
 begin
-  Result := GetEnv('A2DPWB_CONFIG_DIR');
+  Result := GetEnv('BLUECASTER_CONFIG_DIR');
   if Result = '' then
-    Result := ExpandConstant('{userappdata}\A2DPWB');
+    Result := ExpandConstant('{userappdata}\BlueCaster');
 end;
 
 { '"C:\...\unins000.exe" /x' -> 'C:\...\unins000.exe' }
@@ -692,13 +692,13 @@ begin
       Exit;
     Sleep(200);
   end;
-  Log('A2DPWB still runs');
+  Log('BlueCaster still runs');
 end;
 
 { '' when v1's mutex is free (any more). Otherwise the message the
   installation stops with; in silent mode (nobody to ask) V1Running is set
   instead. A v2 core holds that mutex too (so that v1 cannot start beside
-  it): one Setup could not close (an A2DPWB_INSTANCE test copy, elevated)
+  it): one Setup could not close (an BLUECASTER_INSTANCE test copy, elevated)
   keeps it held, hence the message names both. }
 function WaitForV1Exit(var V1Running: Boolean): String;
 begin
@@ -986,8 +986,8 @@ begin
     Exec(ExpandConstant('{app}\{#CoreExe}'), '--background', ExpandConstant('{app}'), SW_SHOWNORMAL, ewNoWait, Code);
 end;
 
-{ The adapters A2DPWB put on WinUSB, as the core records them: one record per
-  adapter in <settings>\driver\ (the result of `a2dpwb-driver assign`,
+{ The adapters BlueCaster put on WinUSB, as the core records them: one record per
+  adapter in <settings>\driver\ (the result of `bluecaster-driver assign`,
   app/src/core/src/driver.rs), deleted on "Restore driver". Restoring needs
   the driver tool next to the uninstaller. }
 function DriverRecords: String;
@@ -1035,7 +1035,7 @@ end;
 
 { The uninstall's choices on a page of the uninstall wizard itself (issue
   86: a dialog box of its own looked out of place), before anything is
-  removed: give the adapters back to Windows (only when A2DPWB put one on
+  removed: give the adapters back to Windows (only when BlueCaster put one on
   WinUSB) and delete the user data, both on by default. No word of v1: Setup
   uninstalled it, and the running v2 core holds v1's mutex too (issue #86:
   "v1 is still on this PC" with no v1). The choices line up with the page
@@ -1072,9 +1072,9 @@ begin
   RestoreBox := nil;
   if CanRestoreDrivers then
     RestoreBox := AddChoice(Page, CustomMessage('RestoreChoice'), CustomMessage('RestoreChoiceText'), True, Left, Width, Top);
-  { Only the settings folder itself, not one A2DPWB_CONFIG_DIR names }
+  { Only the settings folder itself, not one BLUECASTER_CONFIG_DIR names }
   DeleteBox := AddChoice(Page, CustomMessage('DeleteChoice'),
-    FmtMessage(CustomMessage('DeleteChoiceText'), [ExpandConstant('{userappdata}\A2DPWB')]), True, Left, Width, Top);
+    FmtMessage(CustomMessage('DeleteChoiceText'), [ExpandConstant('{userappdata}\BlueCaster')]), True, Left, Width, Top);
 
   UninstallProgressForm.InnerNotebook.ActivePage := Page;
   PageName := UninstallProgressForm.PageNameLabel.Caption;
@@ -1113,8 +1113,8 @@ begin
   UninstallProgressForm.PageDescriptionLabel.Caption := PageDescription;
 end;
 
-{ Gives the adapters A2DPWB put on WinUSB back to Windows:
-  `a2dpwb-driver restore --records` restores every recorded adapter with one
+{ Gives the adapters BlueCaster put on WinUSB back to Windows:
+  `bluecaster-driver restore --records` restores every recorded adapter with one
   UAC prompt and deletes the records of those given back. The core must be
   closed already. }
 procedure RestoreDrivers;
@@ -1155,7 +1155,7 @@ begin
         { With the window's own data (WebView2: what the pages remember,
           such as "Show only supported codecs", issue #86) }
         if DeleteData then begin
-          DelTree(ExpandConstant('{userappdata}\A2DPWB'), True, True, True);
+          DelTree(ExpandConstant('{userappdata}\BlueCaster'), True, True, True);
           DelTree(ExpandConstant('{localappdata}\{#AppIdentifier}'), True, True, True);
         end;
         if RegQueryStringValue(HKCU, RunKey, RunValue, Cmd) and

@@ -1,4 +1,4 @@
-// The transport inside a2dpwb.exe: commands and events of the Rust backend
+// The transport inside bluecaster.exe: commands and events of the Rust backend
 // (src-tauri/src/commands.rs, connection.rs).
 
 import { invoke } from "@tauri-apps/api/core";

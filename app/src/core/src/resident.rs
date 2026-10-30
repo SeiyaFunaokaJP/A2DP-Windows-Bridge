@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use a2dpwb_core::{Service, ServiceOptions};
+use bluecaster_core::{Service, ServiceOptions};
 use bt_host::HciCapture;
 use ipc::{AclPacket, Event, IsoCounters, LinkCounters, LinkSample, LinkTotals};
 use tao::event::{Event as TaoEvent, StartCause};
@@ -30,10 +30,10 @@ enum UserEvent {
     Quit,
 }
 
-/// Starts the UI (a2dpwb.exe next to us), optionally its flyout
+/// Starts the UI (bluecaster.exe next to us), optionally its flyout
 fn launch_ui(flyout: bool) {
     let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) else { return };
-    let ui = dir.join("a2dpwb.exe");
+    let ui = dir.join("bluecaster.exe");
     if !ui.exists() {
         tracing::warn!("UI not found: {}", ui.display());
         return;
@@ -48,13 +48,13 @@ fn launch_ui(flyout: bool) {
 }
 
 fn tr(lang: &str, key: &str, default: &str) -> String {
-    a2dpwb_core::messages::translate(lang, key, default)
+    bluecaster_core::messages::translate(lang, key, default)
 }
 
 fn build_menu(view: &TrayView) -> Menu {
     let lang = view.language.as_str();
     let menu = Menu::new();
-    let _ = menu.append(&MenuItem::with_id("open", tr(lang, "tray.open", "Open A2DP Windows Bridge"), true, None));
+    let _ = menu.append(&MenuItem::with_id("open", tr(lang, "tray.open", "Open BlueCaster"), true, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
     // Each by its device (issue #86: profile names are not shown)
     for (i, (name, label)) in view.profiles.iter().zip(&view.labels).take(TRAY_PROFILES).enumerate() {
@@ -110,7 +110,7 @@ fn link_sample(
         None => (0.0, 0.0),
     };
     let (bps, pps) = if iso.is_some() { (0.0, 0.0) } else { (bps, pps) };
-    let air = a2dpwb_core::link::airtime(pps, bps);
+    let air = bluecaster_core::link::airtime(pps, bps);
     let since = total.since(&start);
     let radio = stats.radio();
     let sample = LinkSample {
@@ -154,7 +154,7 @@ async fn sampler(state: Arc<CoreState>) {
             if let Some((t, prev)) = last_rates {
                 let d = total.since(&prev);
                 let secs = now.duration_since(t).as_secs_f64();
-                state.set_rates(Some(a2dpwb_core::link::audio_rates(d.packets, d.bytes, d.capture_frames, secs)));
+                state.set_rates(Some(bluecaster_core::link::audio_rates(d.packets, d.bytes, d.capture_frames, secs)));
             }
             last_rates = Some((now, total));
             state.publish_receiver();
@@ -259,7 +259,7 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     // Before the service starts, so that v1 has released the adapter. A
-    // development instance (A2DPWB_INSTANCE) leaves v1 alone.
+    // development instance (BLUECASTER_INSTANCE) leaves v1 alone.
     let replaces_v1 = ipc::instance_suffix().is_empty();
     let v1_guard = if replaces_v1 { replace_v1() } else { None };
     let watches_v1 = replaces_v1 && v1_guard.is_none();
@@ -270,7 +270,7 @@ pub fn run(args: &[String]) -> i32 {
     let capture = HciCapture::new();
     let service = Arc::new(Service::new(
         ServiceOptions {
-            config_dir: a2dpwb_core::paths::config_dir(),
+            config_dir: bluecaster_core::paths::config_dir(),
             hci_tcp: None,
             capture,
             afh: None,
@@ -366,7 +366,7 @@ pub fn run(args: &[String]) -> i32 {
             TaoEvent::NewEvents(StartCause::Init) => {
                 let v = view.clone().unwrap_or(TrayView {
                     streaming: false,
-                    tooltip: "A2DP Windows Bridge".into(),
+                    tooltip: "BlueCaster".into(),
                     profiles: Vec::new(),
                     labels: Vec::new(),
                     active_profile: None,

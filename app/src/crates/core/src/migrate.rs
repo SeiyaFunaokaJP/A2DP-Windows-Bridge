@@ -67,10 +67,10 @@ const V1_FILES: [&str; 3] = ["profiles.json", "devices.txt", "link_keys.txt"];
 pub const PROFILES_BACKUP: &str = "profiles-before-codecs.json";
 
 const BACKUP_README: &str = "\
-This folder is a copy of the A2DPWB settings folder as A2DP Windows Bridge v1
+This folder is a copy of the BlueCaster settings folder as A2DP Windows Bridge v1
 left it. Version 2 made it once, before it first used the folder.
 
-To go back to v1 with these settings: exit A2DPWB v2 (tray icon > Exit), copy
+To go back to v1 with these settings: exit BlueCaster v2 (tray icon > Exit), copy
 the files of this folder into the folder above it, replacing the files there,
 then start v1. Pairings (link_keys.txt) made with v2 are kept only if you
 leave link_keys.txt out of the copy.
@@ -351,7 +351,7 @@ mod tests {
     struct TempDir(std::path::PathBuf);
     impl TempDir {
         fn new(name: &str) -> TempDir {
-            let d = std::env::temp_dir().join(format!("a2dpwb-migrate-{name}-{}", std::process::id()));
+            let d = std::env::temp_dir().join(format!("bluecaster-migrate-{name}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&d);
             std::fs::create_dir_all(&d).unwrap();
             TempDir(d)
@@ -381,7 +381,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("firmware")).unwrap();
         std::fs::write(dir.join("firmware").join("rtl8761bu_fw.bin"), [1u8, 2, 3]).unwrap();
         std::fs::create_dir_all(dir.join("logs")).unwrap();
-        std::fs::write(dir.join("logs").join("a2dpwb.log"), "v2's log").unwrap();
+        std::fs::write(dir.join("logs").join("bluecaster.log"), "v2's log").unwrap();
 
         let r = prepare(dir);
         assert_eq!(

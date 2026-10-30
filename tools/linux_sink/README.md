@@ -1,14 +1,14 @@
-# a2dpwb_sink - measuring receiver on Linux
+# bluecaster_sink - measuring receiver on Linux
 
-`a2dpwb_sink.py` turns a Linux PC with an ordinary Bluetooth adapter (the
-built-in one is fine, no special driver) into an A2DP sink that A2DPWB can
+`bluecaster_sink.py` turns a Linux PC with an ordinary Bluetooth adapter (the
+built-in one is fine, no special driver) into an A2DP sink that BlueCaster can
 stream to like to headphones. Nothing is played: every media packet that
-arrives over the air is measured, and the statistics go back to A2DPWB over
-the network, so the sending and the receiving side can be compared. A2DPWB
+arrives over the air is measured, and the statistics go back to BlueCaster over
+the network, so the sending and the receiving side can be compared. BlueCaster
 finds the receiver on the local network by itself.
 
 ```
-[PC 1: A2DPWB + USB adapter (BTstack)] --A2DP--> [PC 2: Linux, a2dpwb_sink.py (Bumble)]
+[PC 1: BlueCaster + USB adapter (BTstack)] --A2DP--> [PC 2: Linux, bluecaster_sink.py (Bumble)]
               ^                                               |
               +---- LAN: UDP 51201 discovery, TCP 51201 statistics
 ```
@@ -30,7 +30,7 @@ BlueZ takes the adapter back.
 | Jitter | RFC 3550 interarrival jitter against the audio carried |
 | Gaps | longest time between two packets |
 | Playout buffer model | a sink playing with `--buffer` ms (default 200) of audio: **dropouts** = the buffer would have run dry (audible interruption), **skips** = a burst after a stall would have overfilled it to more than twice its size (audio thrown away). The playout clock follows the sender within +-500 ppm, so clock drift is not counted; lost packets are not concealed and shorten the audio |
-| Pauses | the source sent nothing for more than 3 s (A2DPWB capturing a silent PC): counted separately, not as dropouts; the playout model starts over when media comes back |
+| Pauses | the source sent nothing for more than 3 s (BlueCaster capturing a silent PC): counted separately, not as dropouts; the playout model starts over when media comes back |
 | Stream errors | RTP timestamp steps, SBC / FastStream / LDAC frame headers, Opus packet headers, aptX sync, decode errors |
 | RSSI | of the connection, read from the controller every second. For BR/EDR this is relative to the controller's golden receive range (about -60 to -40 dBm): 0 = inside it, e.g. -30 = 30 dB too weak. It is not an absolute level |
 
@@ -62,28 +62,28 @@ libraries yourself; the script does the rest.
 sudo sh run.sh [options]
 ```
 
-(`run.sh` starts `.venv/bin/python a2dpwb_sink.py` with the options given.)
+(`run.sh` starts `.venv/bin/python bluecaster_sink.py` with the options given.)
 
 Root is needed for the HCI user channel. The tool is discoverable as
-"A2DPWB Sink (&lt;host name&gt;)" and accepts pairing (Just Works); keys are kept
-in `a2dpwb_sink_keys.json` next to the script.
+"BlueCaster Sink (&lt;host name&gt;)" and accepts pairing (Just Works); keys are kept
+in `bluecaster_sink_keys.json` next to the script.
 
-On the A2DPWB PC (same network segment - the discovery is a broadcast):
+On the BlueCaster PC (same network segment - the discovery is a broadcast):
 
-- **CLI**: quit A2DPWB (tray > **Exit**), then
-  `a2dpwb-core.exe --cli --remote-sink auto --test-tone` finds the receiver,
+- **CLI**: quit BlueCaster (tray > **Exit**), then
+  `bluecaster-core.exe --cli --remote-sink auto --test-tone` finds the receiver,
   streams to it (unless `-d` names another device) with the codec, quality,
   rate and bit depth given by `-c`, `-q`, `--rate` and `--bits` and a steady
   test tone (without `--test-tone`: the system audio), and prints its
   statistics every 5 seconds and at the end.
 - **Window**: with **Settings > Developer mode**, open **Developer > Peer
-  Receiver Test** (A2DPWB keeps running). It finds the receiver (or takes
+  Receiver Test** (BlueCaster keeps running). It finds the receiver (or takes
   its address), streams to it with the codec, quality and source chosen
   there (test tone or system audio), checks each step and shows what was
   sent beside what the receiver counted.
 
 Open UDP and TCP port 51201 on the Linux PC if it has a firewall
-(`sudo ufw allow 51201`). A2DPWB can also be given the address directly
+(`sudo ufw allow 51201`). BlueCaster can also be given the address directly
 (`--remote-sink 192.168.1.20`) when broadcasts do not
 get through, e.g. across routers.
 
@@ -94,14 +94,14 @@ stream ends. Stop it with Ctrl+C.
 |:-------|:------------|
 | `--adapter hci1` | Adapter to use (default: the first one) |
 | `--mtu <bytes>` | L2CAP MTU offered for AVDTP (default 1005; 672 = like BlueZ, 679 = smallest LDAC accepts) |
-| `--codecs ldac aptxhd aptxll aptx opus aac sbcxq sbc faststream` | Codecs to offer (default: all). `sbcxq` lets the SBC endpoint take dual channel, which A2DPWB uses for SBC XQ; without it the endpoint has no dual channel |
+| `--codecs ldac aptxhd aptxll aptx opus aac sbcxq sbc faststream` | Codecs to offer (default: all). `sbcxq` lets the SBC endpoint take dual channel, which BlueCaster uses for SBC XQ; without it the endpoint has no dual channel |
 | `--packet-types all\|br` | ACL packet types allowed on the link: all (default) or basic rate only, no EDR |
 | `--sbc-max-bitpool <n>` | Highest SBC bitpool offered (default 53, as most headphones; below 43 SBC XQ is not offered) |
 | `--buffer <ms>` | Playout buffer of the modelled sink (default 200) |
 | `--port <n>`, `--bind <addr>` | Statistics / discovery port and address (default `0.0.0.0:51201`) |
 | `--csv <file>` | Append one row of statistics per second |
 | `--wav <prefix>` | Write the decoded audio to `<prefix>_<stream>_<codec>.wav` |
-| `--capture <file.pklg>` | HCI capture of the whole run, for `a2dpwb_decode --received` |
+| `--capture <file.pklg>` | HCI capture of the whole run, for `bluecaster_decode --received` |
 | `--name <name>`, `--no-discoverable`, `--keys <file>` | Bluetooth name, visibility, pairing key file |
 | `--transport <spec>` | A Bumble transport instead of an adapter (testing) |
 | `--verbose` | Show Bumble's warnings and debug log |
@@ -115,7 +115,7 @@ stream ends. Stop it with Ctrl+C.
   lost packets only show as missing audio (dropouts).
 - SBC XQ is SBC in dual channel mode on the SBC endpoint: a stream the source
   configures as dual channel SBC is reported as SBC XQ.
-- FastStream: only the music direction is offered (A2DPWB sends no voice
+- FastStream: only the music direction is offered (BlueCaster sends no voice
   backchannel).
 - The tool is a measuring device, not a speaker: nothing is played.
 
@@ -126,7 +126,7 @@ stream ends. Stop it with Ctrl+C.
 
 ```json
 {"type":"announce","version":1,"tool":"a2dpwb_sink","host":"lab-pc","port":51201,
- "bt_address":"00:1A:7D:DA:71:13","bt_name":"A2DPWB Sink (lab-pc)",
+ "bt_address":"00:1A:7D:DA:71:13","bt_name":"BlueCaster Sink (lab-pc)",
  "codecs":["LDAC","aptX HD","aptX LL","aptX","Opus","AAC","SBC XQ","SBC","FastStream"],
  "mtu":1005,"buffer_ms":200}
 ```
@@ -156,16 +156,16 @@ apply from the next Bluetooth connection / stream and show up in the next
 
 `tools/emu/emu_vhci.py` (Linux, root, same virtual environment) creates a
 virtual adapter through `/dev/vhci`, linked to a virtual controller that
-A2DPWB reaches over TCP; a2dpwb_sink then takes that adapter like a real one:
+BlueCaster reaches over TCP; bluecaster_sink then takes that adapter like a real one:
 
 ```bash
 sudo .venv/bin/python ../emu/emu_vhci.py [--drop 2] [--stall 400/6]   # Linux, terminal 1
 sudo sh run.sh                                                      # Linux, terminal 2
-a2dpwb-core.exe --cli --hci-tcp <linux>:9001 -c ldac --test-tone --duration 20 --remote-sink auto   # Windows
+bluecaster-core.exe --cli --hci-tcp <linux>:9001 -c ldac --test-tone --duration 20 --remote-sink auto   # Windows
 ```
 
 `--drop` loses a share of the media packets, `--stall MS/S` holds them back
 for MS milliseconds every S seconds and then delivers them at once, to check
 that losses, gaps, dropouts and skips are reported. `--silent-links N` makes
 the first N connections go silent right after they come up, to check that
-A2DPWB drops such a link and connects again (up to 3 attempts).
+BlueCaster drops such a link and connects again (up to 3 attempts).

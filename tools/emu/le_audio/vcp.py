@@ -4,9 +4,9 @@ With --vcp every sink gets Bumble's VolumeControlService
 (bumble.profiles.vcs) and logs, for run_test.py's checks (sink.log):
 
   VCS <sink>: Volume State read: volume V, mute M, counter C
-              (A2DPWB's reads, and Bumble's for each notification)
-  VCS <sink>: A2DPWB wrote <OPCODE> [V] (counter C): volume V, mute M, counter C
-  VCS <sink>: A2DPWB wrote <OPCODE> [V] (counter C): rejected, error 0x80
+              (BlueCaster's reads, and Bumble's for each notification)
+  VCS <sink>: BlueCaster wrote <OPCODE> [V] (counter C): volume V, mute M, counter C
+  VCS <sink>: BlueCaster wrote <OPCODE> [V] (counter C): rejected, error 0x80
   VCS <sink>: button: volume V, counter C (notified)
   VCS <sink>: change counter bumped to C without a notification
 
@@ -15,19 +15,19 @@ Options:
   --vcp-volume V[,V2]        initial Volume_Setting (0-255) per sink (the last
                              one for the remaining sinks; default 100)
   --vcp-muted                the sinks start muted
-  --vcp-press S:V[@N]        "button press": S seconds after A2DPWB connected,
+  --vcp-press S:V[@N]        "button press": S seconds after BlueCaster connected,
                              sink N (default 0) sets volume V and notifies it
                              (repeatable)
-  --vcp-press-on-write V[@N]   the first time A2DPWB writes Set Absolute
+  --vcp-press-on-write V[@N]   the first time BlueCaster writes Set Absolute
                              Volume to sink N (default 0), a button sets volume
-                             V right after the write (notified while A2DPWB
+                             V right after the write (notified while BlueCaster
                              reads the state back)
   --vcp-press-before-write V[@N]  the same, but the button is pressed just
                              before the write arrives: the write has a stale
                              change counter and is rejected with 0x80
-  --vcp-bump-counter S       S seconds after A2DPWB first read Volume State,
+  --vcp-bump-counter S       S seconds after BlueCaster first read Volume State,
                              every sink increments its change counter without
-                             telling A2DPWB (a missed notification): A2DPWB's
+                             telling BlueCaster (a missed notification): BlueCaster's
                              next Control Point write gets "Invalid Change
                              Counter" (0x80) and has to read the state again
 """
@@ -42,7 +42,7 @@ log = logging.getLogger('emu_le_audio')
 
 
 class LoggingVolumeControlService(VolumeControlService):
-    """Bumble's VCS server, logging what A2DPWB reads and writes."""
+    """Bumble's VCS server, logging what BlueCaster reads and writes."""
 
     def __init__(self, sink, **kwargs):
         super().__init__(**kwargs)
@@ -65,7 +65,7 @@ class LoggingVolumeControlService(VolumeControlService):
             name = f'opcode 0x{value[0]:02x}' if value else 'empty'
         operand = f' {value[2]}' if len(value) > 2 else ''
         counter = value[1] if len(value) > 1 else -1
-        what = f'VCS {self.sink.name}: A2DPWB wrote {name}{operand} (counter {counter})'
+        what = f'VCS {self.sink.name}: BlueCaster wrote {name}{operand} (counter {counter})'
         press = None
         if self.press_on_write and value and value[0] == VolumeControlPointOpcode.SET_ABSOLUTE_VOLUME:
             press, self.press_on_write = self.press_on_write, None
@@ -82,7 +82,7 @@ class LoggingVolumeControlService(VolumeControlService):
         log.info('%s: %s', what, self.describe())
 
     def press_now(self, volume, when):
-        """A button pressed around A2DPWB's write: set and notify (in a task)."""
+        """A button pressed around BlueCaster's write: set and notify (in a task)."""
         self.volume_setting = volume
         self.change_counter = (self.change_counter + 1) % 256
         log.info('VCS %s: button %s: volume %d, counter %d (notified)', self.sink.name, when, volume,
@@ -109,11 +109,11 @@ def add_arguments(parser):
                         help='initial volume 0-255 per sink (default 100)')
     parser.add_argument('--vcp-muted', action='store_true', help='the sinks start muted')
     parser.add_argument('--vcp-press', action='append', default=[], metavar='S:V[@N]',
-                        help='S seconds after A2DPWB connected, sink N sets volume V (button)')
+                        help='S seconds after BlueCaster connected, sink N sets volume V (button)')
     parser.add_argument('--vcp-press-on-write', metavar='V[@N]',
-                        help="right after A2DPWB's first Set Absolute Volume to sink N, a button sets volume V")
+                        help="right after BlueCaster's first Set Absolute Volume to sink N, a button sets volume V")
     parser.add_argument('--vcp-press-before-write', metavar='V[@N]',
-                        help="just before A2DPWB's first Set Absolute Volume to sink N, a button sets volume V")
+                        help="just before BlueCaster's first Set Absolute Volume to sink N, a button sets volume V")
     parser.add_argument('--vcp-bump-counter', type=float, metavar='S',
                         help='S seconds after the first Volume State read, bump the change counter silently')
 

@@ -18,7 +18,7 @@ english_only: true
 
 ## Overview
 
-A2DP Windows Bridge (A2DPWB) enables LHDC V5, LDAC, aptX Adaptive, aptX HD,
+BlueCaster enables LHDC V5, LDAC, aptX Adaptive, aptX HD,
 aptX Low Latency, aptX, Opus, AAC, SBC XQ and SBC Bluetooth audio on Windows
 (and LC3 over LE Audio, experimental). Windows' own Bluetooth stack supports
 only SBC, classic aptX and (Windows 11 only) AAC for A2DP — this tool adds the
@@ -26,19 +26,19 @@ others without requiring a kernel driver.
 
 Uses **BTstack + WinUSB** — entirely user-mode, no driver signing needed.
 
-A2DPWB 2.0 is written in Rust. The C libraries that cannot be replaced
+BlueCaster 2.0 is written in Rust. The C libraries that cannot be replaced
 (BTstack and the codec encoders) are compiled from source and called through
 small FFI crates; everything else, the SBC encoder included, is Rust.
 
 ## Processes
 
-A2DPWB runs as up to three programs:
+BlueCaster runs as up to three programs:
 
 | Program | Runs | Does |
 |:--------|:-----|:-----|
-| `a2dpwb-core.exe` | While A2DPWB is running (started by the window, the Start menu or **Start with Windows**) | Bluetooth, audio capture and encoding, profiles and settings, the tray icon and its menu, the IPC server. `--cli` runs the same core from a console instead |
-| `a2dpwb.exe` | Only while a window is open (exits 3 minutes after the last one was closed) | The main window and the tray flyout (Tauri 2, SolidJS + TypeScript). Holds no state of its own |
-| `a2dpwb-driver.exe` | For one driver change, with administrator rights (UAC) | Assigns WinUSB to an adapter or restores its previous driver, then exits |
+| `bluecaster-core.exe` | While BlueCaster is running (started by the window, the Start menu or **Start with Windows**) | Bluetooth, audio capture and encoding, profiles and settings, the tray icon and its menu, the IPC server. `--cli` runs the same core from a console instead |
+| `bluecaster.exe` | Only while a window is open (exits 3 minutes after the last one was closed) | The main window and the tray flyout (Tauri 2, SolidJS + TypeScript). Holds no state of its own |
+| `bluecaster-driver.exe` | For one driver change, with administrator rights (UAC) | Assigns WinUSB to an adapter or restores its previous driver, then exits |
 
 ```mermaid
 ---
@@ -49,15 +49,15 @@ config:
 ---
 flowchart TB
     src["Windows audio: system loopback / virtual device / one app"]
-    ui["a2dpwb.exe: window and tray flyout (Tauri + SolidJS)"]
-    subgraph core["a2dpwb-core.exe (resident, user mode)"]
+    ui["bluecaster.exe: window and tray flyout (Tauri + SolidJS)"]
+    subgraph core["bluecaster-core.exe (resident, user mode)"]
         ctl["Tray menu / IPC server / CLI (--cli)"] --> svc["Core service: connection state machine, codec selection, profiles, reconnect"]
         svc --> cap["WASAPI capture"]
         cap -- PCM --> enc["Encoder pipeline: LDAC / aptX family / LHDC V5 / Opus / AAC / SBC"]
         enc --> bt["BTstack: HCI / L2CAP / AVDTP / A2DP / AVRCP"]
     end
     ui <-->|"per-user named pipe"| ctl
-    svc -.->|"UAC, only to change the driver"| drv["a2dpwb-driver.exe (elevated): assign / restore WinUSB"]
+    svc -.->|"UAC, only to change the driver"| drv["bluecaster-driver.exe (elevated): assign / restore WinUSB"]
     src --> cap
     bt -->|"WinUSB (nusb)"| usb["USB Bluetooth adapter (WinUSB driver)"]
     drv -.->|SetupAPI| usb
@@ -76,7 +76,7 @@ flowchart TB
   and then the changes; closing it, or the window crashing, does not stop
   the audio. Closing a window only hides it, so reopening it from the tray
   is instant.
-- **The command line uses the same core.** `a2dpwb-core.exe --cli` runs the
+- **The command line uses the same core.** `bluecaster-core.exe --cli` runs the
   core service without tray and IPC; the emulator test runs this way.
 
 ## Transport: BTstack + WinUSB
@@ -113,7 +113,7 @@ user-mode.
 
 ```mermaid
 sequenceDiagram
-    participant App as A2DPWB (BTstack)
+    participant App as BlueCaster (BTstack)
     participant Ad as USB adapter
     participant Sink as Headphones
     App->>Ad: Open via WinUSB, HCI reset / init
@@ -156,11 +156,11 @@ code; all other crates have `#![forbid(unsafe_code)]`.
 | 3. Engine | `bt-host` | Runs BTstack on its own thread, driven by commands and typed events: GAP, A2DP Source, AVRCP, SDP, RFCOMM channels for the passthrough (`rfcomm.*`), link keys, AFH, firmware loading, HCI capture (`.pklg`), LE Audio (`le/`) |
 | 2. Parts | `le-audio` | LE Audio (experimental): the logic without BTstack or Windows (assigned numbers, LTV, PACS / ASCS PDUs, presets, the CSIP / VCP / MCP / CCP models) |
 | 3. Engine | `pipeline` | PCM rings, format conversion, downmix, encoding, media payloads, pacing, ABR |
-| 4. Core | `a2dpwb-core` (directory `core`) | The state machine, reconnects, sleep / resume, profiles, settings and the v1 migration, volume sync, update check, the receiver test client, statistics |
+| 4. Core | `bluecaster-core` (directory `core`) | The state machine, reconnects, sleep / resume, profiles, settings and the v1 migration, volume sync, update check, the receiver test client, statistics |
 | 4. Core | `ipc` | The protocol types shared by core and window (serde; TypeScript types generated with `ts-rs`) and the pipe framing |
-| 5. Programs | `a2dpwb-core-exe` (`app/src/core`) | `a2dpwb-core.exe`: core, tray (`tray-icon` on a `tao` event loop), IPC server, `--cli` |
-| 5. Programs | `a2dpwb-ui` (`app/src/ui`) | `a2dpwb.exe`: Tauri 2; the Rust side is an IPC client, the page is SolidJS + TypeScript + Vite |
-| 5. Programs | `a2dpwb-driver` (`app/src/driver`) | `a2dpwb-driver.exe`: the elevated helper |
+| 5. Programs | `bluecaster-core-exe` (`app/src/core`) | `bluecaster-core.exe`: core, tray (`tray-icon` on a `tao` event loop), IPC server, `--cli` |
+| 5. Programs | `bluecaster-ui` (`app/src/ui`) | `bluecaster.exe`: Tauri 2; the Rust side is an IPC client, the page is SolidJS + TypeScript + Vite |
+| 5. Programs | `bluecaster-driver` (`app/src/driver`) | `bluecaster-driver.exe`: the elevated helper |
 
 ## Audio Path and Threads
 
@@ -196,7 +196,7 @@ the bt-runloop thread.
 ## Core and IPC
 
 The window talks to the core over the user's named pipe
-`\\.\pipe\a2dpwb-<user SID>`, whose DACL admits only that user. Messages are
+`\\.\pipe\bluecaster-<user SID>`, whose DACL admits only that user. Messages are
 length-prefixed JSON frames:
 
 1. The window sends `hello { protocol, client }`. A core with another
@@ -244,7 +244,7 @@ the lost link as a failure and reconnects after the PC resumes.
 ## Driver Assignment {#driver-assignment}
 
 Windows 8 and later include the Microsoft-signed WinUSB driver
-(`winusb.inf`). `a2dpwb-driver.exe` does what Device Manager's "Update
+(`winusb.inf`). `bluecaster-driver.exe` does what Device Manager's "Update
 driver > Let me pick > WinUsb Device" does, through SetupAPI:
 
 1. Open the adapter by its device instance ID.
@@ -333,7 +333,7 @@ result. Listing adapters and their driver needs no elevation.
 - `a2dp_source_stream_send_media_payload_rtp()` — Send encoded audio with an
   RTP header (LDAC, aptX HD, AAC, SBC, SBC XQ, LHDC V5, Opus)
 - `a2dp_source_stream_send_media_packet()` — Send raw media packets without
-  an RTP header (aptX, aptX LL, FastStream), or with A2DPWB's own RTP header
+  an RTP header (aptX, aptX LL, FastStream), or with BlueCaster's own RTP header
   (aptX Adaptive)
 
 ### Audio capture (`audio-capture`)
@@ -353,7 +353,7 @@ Captures audio in real time using the Windows Audio Session API.
 |---------|---------|---------|----------|
 | LHDC V5 | lhdcv5-enc (C port of the AOSP encoder) | 400/500/900/1000 kbps (Low/Medium/Medium-High/High), at most the sink's listed maximum, ABR 160–400 kbps | 16/24-bit, 5 ms frames, 2-byte media payload header, RTP header |
 | LDAC | libldac (AOSP) | 330/660/990 kbps | High/Medium/Low (HQ/SQ/MQ) modes, ABR |
-| aptX Adaptive | aptx-adaptive (pure-Rust encoder of AKS-Logic/aptx-adaptive-linux, MIT) | 427 kbps High, 265 kbps Low Latency (R2 sinks: 270); ABR steps down to 364/318 (R2: 270/204) | 48 kHz stereo (96 kHz in High when chosen, to an R2 sink that lists it: 646/340/255 kbps), 24-bit; one codec packet per media packet behind A2DPWB's own RTP header; ABR in High; Auto takes it after LHDC V5 and LDAC |
+| aptX Adaptive | aptx-adaptive (pure-Rust encoder of AKS-Logic/aptx-adaptive-linux, MIT) | 427 kbps High, 265 kbps Low Latency (R2 sinks: 270); ABR steps down to 364/318 (R2: 270/204) | 48 kHz stereo (96 kHz in High when chosen, to an R2 sink that lists it: 646/340/255 kbps), 24-bit; one codec packet per media packet behind BlueCaster's own RTP header; ABR in High; Auto takes it after LHDC V5 and LDAC |
 | Opus | libopus 1.5.2 | 256 kbps (stereo; mono half) | Experimental; Android's A2DP Opus: 48 kHz, 20 ms frames (10 ms if the sink has only that), constrained VBR capped to the media payload, one frame per packet, 1-byte media payload header, RTP header |
 | aptX HD | libopenaptx | 576 kbps | 24-bit input, fixed rate, RTP header |
 | aptX | libopenaptx | 352/384 kbps (44.1/48 kHz) | 16-bit stereo, no RTP header |
@@ -394,29 +394,29 @@ Codec information element sizes (including the 6-byte vendor/codec ID):
 - **aptX HD**: 11 bytes (byte 6 as aptX, plus 4 reserved bytes); stereo is
   required
 - **aptX LL**: 8 bytes, or 17 bytes when the sink sets the extended
-  ("new caps") flag. A2DPWB registers one aptX LL endpoint and configures the
+  ("new caps") flag. BlueCaster registers one aptX LL endpoint and configures the
   stream with the vendor ID the sink used
 - **LHDC V5**: 11 bytes (Android `a2dp_vendor_lhdcv5_constants.h`): byte 6
   sample rates (0x20 44.1k, 0x10 48k, 0x04 96k, 0x01 192k), byte 7 bit depth
   (0x04 16-bit, 0x02 24-bit) and the sink's min/max bit rate limits, byte 8
   codec sub-version (0x01 = V5 ver.1) and 0x10 = 5 ms frames, bytes 9-10
   optional features (low latency, lossless, JAS, AR, META), none of which
-  A2DPWB offers. Stereo only. The sink's bit rate limits are echoed back in the
+  BlueCaster offers. Stereo only. The sink's bit rate limits are echoed back in the
   configuration and applied to the encoder, as Android does. Media packets
   carry a 2-byte payload header: frame count << 2 (latency bits 0) and a
   sequence number
 - **FastStream**: 8 bytes (PipeWire `a2dp_faststream_t`): byte 6 direction
   (0x01 sink = music, 0x02 source = voice), byte 7 low nibble the sink rates
-  (0x2 44.1k, 0x1 48k), high nibble the source rate (0x2 16k). A2DPWB offers
+  (0x2 44.1k, 0x1 48k), high nibble the source rate (0x2 16k). BlueCaster offers
   and configures the music direction only
 - **Opus**: 7 bytes (Android `a2dp_vendor_opus_constants.h`): byte 6 bits
   2..0 channel mode (0x01 mono, 0x02 stereo, 0x04 dual mono), bits 4..3
-  frame duration (0x08 10 ms, 0x10 20 ms), bit 7 48 kHz. A2DPWB offers mono
+  frame duration (0x08 10 ms, 0x10 20 ms), bit 7 48 kHz. BlueCaster offers mono
   and stereo, 10 and 20 ms, and configures 20 ms stereo (mono only for mono
   input to a sink that has it). Media packets carry one Opus packet behind
   a 1-byte payload header (frame count 1 in the low 4 bits)
 - **aptX Adaptive**: 40 bytes. BTstack's capability event cuts the sink's
-  codec information to 30 bytes, which still hold everything A2DPWB uses.
+  codec information to 30 bytes, which still hold everything BlueCaster uses.
   SET_CONFIGURATION: 48 kHz with source type 2 (host encoder: the sink times
   playback itself), stereo; an R1 sink gets its own target-latency bytes
   back with LL0 raised to at least 80 ms and a zero HQ latency replaced by
@@ -427,7 +427,7 @@ Codec information element sizes (including the 6-byte vendor/codec ID):
 PipeWire do), so the whole L2CAP MTU is available for aptX frames.
 
 **aptX Adaptive** sends one codec packet per media packet
-behind A2DPWB's own 12-byte RTP header (BTstack adds none): payload type 96,
+behind BlueCaster's own 12-byte RTP header (BTstack adds none): payload type 96,
 sequence number +1 per packet, timestamp = the samples per channel in the
 packet (not a clock), SSRC = the sink's latency mode (0x000000A3 HQ,
 0x000000A1 LL). The payload is byte-swapped in 16-bit words. HQ packets are
@@ -436,8 +436,8 @@ classic aptX, Opus and AAC (issue #86's order), below LHDC V5 and LDAC.
 
 ## Settings and Files
 
-Everything is kept in the settings folder, `%APPDATA%\A2DPWB` (or the
-folder named by the `A2DPWB_CONFIG_DIR` environment variable), in the same
+Everything is kept in the settings folder, `%APPDATA%\BlueCaster` (or the
+folder named by the `BLUECASTER_CONFIG_DIR` environment variable), in the same
 formats as v1:
 
 | File | Contents |
@@ -449,7 +449,7 @@ formats as v1:
 | `*.bin`, `*.hcd`, `ibt-*` | Firmware files |
 | `profiles-before-codecs.json` | `profiles.json` as it was before the Codecs screen folded several profiles of a device into one (written once) |
 | `hci_<date>_<time>.pklg` | HCI captures |
-| `logs\a2dpwb-core.<date>.log`, `logs\a2dpwb-ui.<date>.log`, `logs\a2dpwb-driver.log` | The logs of the core and the window, one file per day (UTC), the last 7 kept, and of the driver helper; not masked |
+| `logs\bluecaster-core.<date>.log`, `logs\bluecaster-ui.<date>.log`, `logs\bluecaster-driver.log` | The logs of the core and the window, one file per day (UTC), the last 7 kept, and of the driver helper; not masked |
 | `logs\hci\` | The HCI flight recorder's captures, written when a stream fails or a connection is lost (the newest 10) |
 | `logs\crash\` | Crash reports: a minidump and a text file per crash (the newest 5 per program) |
 | `logs\bundles\` | Diagnostic bundles (the newest 3) |
@@ -462,12 +462,12 @@ formats as v1:
   compiles its C library from the git submodule in `extern/` with MSVC in
   `build.rs`. Only the developer tool `tools/a2dp_decode` is built with CMake
 - The window's page is built with **Vite** (`pnpm build` in `app/src/ui`) and
-  embedded into `a2dpwb.exe` by Tauri
+  embedded into `bluecaster.exe` by Tauri
 - The TypeScript types of the IPC protocol are generated from the Rust types
   (`cargo test -p ipc export_bindings`)
 - Language files (`app/lang/*.json`) are used by the window and by the core's
   tray menu
-- `installer/build-release.ps1` makes the installer (Inno Setup, `installer/A2DPWB.iss`),
+- `installer/build-release.ps1` makes the installer (Inno Setup, `installer/BlueCaster.iss`),
   the portable zip and the updater manifest. See [Building](building)
 
 ## Important Considerations
@@ -478,7 +478,7 @@ formats as v1:
 - **Pairing**: Uses SSP Just Works with General Bonding. Link keys are persisted
   to a local file
 - **Second adapter recommended**: Keep built-in Bluetooth for Windows, use
-  dedicated USB adapter for A2DPWB
+  dedicated USB adapter for BlueCaster
 - Some Bluetooth adapters' firmware limits achievable bitrate
 - USB Bluetooth 5.0+ adapters generally work well for LDAC
 - Auto codec selection priority (by sound quality, issue #86): LHDC V5 > LDAC > aptX Adaptive > Opus > aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC (FastStream and Opus 05 only when chosen); a chosen codec the device does not offer falls back to the first one in the device's order it offers

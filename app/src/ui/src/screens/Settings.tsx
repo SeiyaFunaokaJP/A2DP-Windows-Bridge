@@ -77,7 +77,7 @@ export function Settings() {
 
       <Section title={t("ui.settings.startup")}>
         <Toggle label={t("settings.start_with_windows")} checked={s().start_with_windows} onChange={(v) => set({ start_with_windows: v })} />
-        {/* At logon: on starts A2DPWB with --background (only the tray
+        {/* At logon: on starts BlueCaster with --background (only the tray
             icon), off opens the window; it applies only with Windows */}
         <Toggle
           label={t("ui.settings.start_minimized")}

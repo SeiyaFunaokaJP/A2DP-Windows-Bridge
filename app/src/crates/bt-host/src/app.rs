@@ -2101,7 +2101,7 @@ mod tests {
 
     #[test]
     fn firmware_alias_is_removed() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb_alias_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster_alias_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let (alias, bin) = (dir.join("rtl8761bu_fw"), dir.join("rtl8761bu_fw.bin"));

@@ -3,7 +3,7 @@
 //!
 //! Reads Windows' own list through BluetoothFindFirstDevice /
 //! BluetoothFindNextDevice without an inquiry: nothing is sent over the
-//! air and the USB adapter A2DPWB uses (WinUSB) is not touched. The list is
+//! air and the USB adapter BlueCaster uses (WinUSB) is not touched. The list is
 //! what Windows' Bluetooth stack remembers, so it also works when that
 //! stack has no radio any more (the adapter was switched to WinUSB): the
 //! names and addresses stay in the registry.

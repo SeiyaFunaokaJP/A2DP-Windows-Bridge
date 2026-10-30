@@ -1,6 +1,6 @@
 /*
- * a2dpwb_decode --le-audio: checker / decoder for the LE Audio (LC3 over
- * CIS) stream in PacketLogger captures of A2DPWB or the tools/emu LE sink.
+ * bluecaster_decode --le-audio: checker / decoder for the LE Audio (LC3 over
+ * CIS) stream in PacketLogger captures of BlueCaster or the tools/emu LE sink.
  *
  * From the capture it follows:
  *   - the ASE Control Point writes (ATT Write Request / Command with a
@@ -347,7 +347,7 @@ private:
         if (4u + len > n) { problem("truncated ISO packet"); return; }
         CisStream *s = stream_for(file, handle);
         if (!s) { problem("ISO data on a CIS without a known ASE configuration"); return; }
-        if (pb != 0x02) {   /* only complete SDUs are expected (A2DPWB sends them whole) */
+        if (pb != 0x02) {   /* only complete SDUs are expected (BlueCaster sends them whole) */
             s->fragments++;
             return;
         }
@@ -551,7 +551,7 @@ int le_audio_decode_main(const std::vector<std::string> &inputs, const std::stri
     for (size_t file = 0; file < inputs.size(); file++) {
         FILE *f = fopen(inputs[file].c_str(), "rb");
         if (!f) { fprintf(stderr, "Cannot open %s\n", inputs[file].c_str()); return 2; }
-        printf("a2dpwb_decode --le-audio: %s\n", inputs[file].c_str());
+        printf("bluecaster_decode --le-audio: %s\n", inputs[file].c_str());
         std::vector<uint8_t> rec;
         for (;;) {
             uint8_t hdr[13];

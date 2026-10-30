@@ -1,5 +1,5 @@
 //! WebView2 reporting its own processes failing (ProcessFailed), for
-//! a2dpwb.exe to recover a black window (its recovery.rs)
+//! bluecaster.exe to recover a black window (its recovery.rs)
 
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     COREWEBVIEW2_PROCESS_FAILED_KIND, COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,

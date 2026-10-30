@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "A2DP Windows Bridge",
-  "mainBinaryName": "a2dpwb",
-  "identifier": "io.github.seiyafunaokajp.a2dpwb",
+  "productName": "BlueCaster",
+  "mainBinaryName": "bluecaster",
+  "identifier": "io.github.seiyafunaokajp.bluecaster",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -25,7 +25,7 @@
     "license": "Apache-2.0 OR MIT",
     "licenseFile": "../../../../LICENSE",
     "category": "Utility",
-    "shortDescription": "Bluetooth A2DP audio from Windows through a USB Bluetooth adapter"
+    "shortDescription": "Advanced Bluetooth Audio Transmitter for Windows"
   },
   "plugins": {
     "updater": {

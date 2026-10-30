@@ -1,12 +1,12 @@
 # Third-Party Licenses
 
-This document lists all third-party components in A2DP Windows Bridge (A2DPWB) 2.x,
+This document lists all third-party components in BlueCaster 2.x,
 along with their license information and compliance obligations.
 
 > **Important — non-commercial use only for the binaries**
 >
-> The A2DPWB source code is dual-licensed under Apache-2.0 or MIT. The distributed
-> `a2dpwb-core.exe` includes BTstack, and A2DPWB is distributed only as the set of its
+> The BlueCaster source code is dual-licensed under Apache-2.0 or MIT. The distributed
+> `bluecaster-core.exe` includes BTstack, and BlueCaster is distributed only as the set of its
 > programs, so the release may only be used and redistributed for personal,
 > non-commercial purposes. See [§4 BTstack](#4-btstack-bluetooth-stack).
 
@@ -20,45 +20,45 @@ repository. The Rust crates are pinned in `Cargo.lock`, the JavaScript packages 
 
 | Component | Pinned version | License (SPDX) | Copyright | Usage | In |
 |-----------|----------------|----------------|-----------|-------|----|
-| libldac (AOSP) | `android-15.0.0_r36-4-geeee1a3` (commit `eeee1a3`) | Apache-2.0 | Sony Corporation | LDAC audio encoding | `a2dpwb-core.exe` |
-| libopenaptx | 0.2.0 (tag `0.2.0`, commit `2459ed4`) | LGPL-2.1-or-later | Aurelien Jacobs, Pali Rohár | aptX / aptX HD / aptX LL audio encoding (decoding in `a2dpwb_decode`, §14) | `a2dpwb-core.exe` |
-| fdk-aac | `v2.0.3-158-gd8e6b1a` (commit `d8e6b1a`) | FDK-AAC | Fraunhofer-Gesellschaft | AAC-LC audio encoding (decoding in `a2dpwb_decode`, §14) | `a2dpwb-core.exe` |
-| BTstack | `v1.8.1-6-g5bc5cbdbe` (commit `5bc5cbdbe`) | LicenseRef-BTstack (BSD-3-Clause-style **with a non-commercial clause**) | BlueKitchen GmbH; Matthias Ringwald | User-mode Bluetooth stack | `a2dpwb-core.exe` |
-| Bluedroid SBC encoder, ported to Rust | ported from BTstack `5bc5cbdbe` (`3rd-party/bluedroid/encoder/`) | Apache-2.0 | Broadcom Corporation | SBC audio encoding (`app/src/crates/codec/src/sbc/`) | `a2dpwb-core.exe` |
-| rijndael (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/rijndael/`) | Public domain | Philip J. Erdelsky | AES (used by BTstack) | `a2dpwb-core.exe` |
-| tinydir (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/tinydir/`) | BSD-2-Clause | tinydir authors | Directory listing in BTstack's Broadcom chipset driver | `a2dpwb-core.exe` |
-| liblc3 (lc3-google, bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/lc3-google/`) | Apache-2.0 | Google LLC | LC3 encoding for the experimental LE Audio support (decoding in `a2dpwb_decode`, §14), §17 | `a2dpwb-core.exe` |
-| micro-ecc (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/micro-ecc/`) | BSD-2-Clause | Kenneth MacKay | P-256 for LE Secure Connections (experimental LE Audio), §18 | `a2dpwb-core.exe` |
-| LHDC-V5-Encoder (C port of the AOSP LHDC V5 encoder) | commit `3f9d198` | Apache-2.0; `src/lhdcv5_fft.c` BSD-3-Clause | The Android Open Source Project; Mark Borgerding (KISS FFT) | LHDC V5 audio encoding, §8 | `a2dpwb-core.exe` |
-| libopus | 1.5.2 (tag `v1.5.2`, commit `ddbe483`) | BSD-3-Clause | Xiph.Org, Skype Limited, Octasic, Jean-Marc Valin, Timothy B. Terriberry, CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Mozilla, Amazon | Opus audio encoding (decoding in `a2dpwb_decode`, §14), §16 | `a2dpwb-core.exe` |
-| aptx-adaptive (AKS-Logic/aptx-adaptive-linux, vendored) | upstream commit `25099004b2d3` (2026-10-22), crate 0.1.0 | MIT | Prateek Mittal (AKS-Logic) | aptX Adaptive encoding (experimental), §19 | `a2dpwb-core.exe` |
-| Rust crates (Tauri 2.12, tokio, serde, windows, nusb, wasapi, tray-icon, ...) | `Cargo.lock` | Apache-2.0, MIT and other permissive licenses; MPL-2.0 for a few (§9) | their authors | Everything written in Rust that is not A2DPWB's own | all three programs |
-| SolidJS (`solid-js`) | 1.9.17 | MIT | Ryan Carniato | UI library of the window | `a2dpwb.exe` |
-| `@tauri-apps/api` | 2.12.4 | Apache-2.0 OR MIT | Tauri Apps Contributors | JavaScript side of Tauri | `a2dpwb.exe` |
-| Fluent UI System Icons | as copied into `app/src/ui/src/components/icons.ts` | MIT | Microsoft Corporation | Icons of the window | `a2dpwb.exe` |
-| Microsoft Edge WebView2 Runtime | the one installed on the PC | Microsoft Software License Terms | Microsoft Corporation | Renders the window (not part of A2DPWB, §11) | — |
+| libldac (AOSP) | `android-15.0.0_r36-4-geeee1a3` (commit `eeee1a3`) | Apache-2.0 | Sony Corporation | LDAC audio encoding | `bluecaster-core.exe` |
+| libopenaptx | 0.2.0 (tag `0.2.0`, commit `2459ed4`) | LGPL-2.1-or-later | Aurelien Jacobs, Pali Rohár | aptX / aptX HD / aptX LL audio encoding (decoding in `bluecaster_decode`, §14) | `bluecaster-core.exe` |
+| fdk-aac | `v2.0.3-158-gd8e6b1a` (commit `d8e6b1a`) | FDK-AAC | Fraunhofer-Gesellschaft | AAC-LC audio encoding (decoding in `bluecaster_decode`, §14) | `bluecaster-core.exe` |
+| BTstack | `v1.8.1-6-g5bc5cbdbe` (commit `5bc5cbdbe`) | LicenseRef-BTstack (BSD-3-Clause-style **with a non-commercial clause**) | BlueKitchen GmbH; Matthias Ringwald | User-mode Bluetooth stack | `bluecaster-core.exe` |
+| Bluedroid SBC encoder, ported to Rust | ported from BTstack `5bc5cbdbe` (`3rd-party/bluedroid/encoder/`) | Apache-2.0 | Broadcom Corporation | SBC audio encoding (`app/src/crates/codec/src/sbc/`) | `bluecaster-core.exe` |
+| rijndael (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/rijndael/`) | Public domain | Philip J. Erdelsky | AES (used by BTstack) | `bluecaster-core.exe` |
+| tinydir (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/tinydir/`) | BSD-2-Clause | tinydir authors | Directory listing in BTstack's Broadcom chipset driver | `bluecaster-core.exe` |
+| liblc3 (lc3-google, bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/lc3-google/`) | Apache-2.0 | Google LLC | LC3 encoding for the experimental LE Audio support (decoding in `bluecaster_decode`, §14), §17 | `bluecaster-core.exe` |
+| micro-ecc (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/micro-ecc/`) | BSD-2-Clause | Kenneth MacKay | P-256 for LE Secure Connections (experimental LE Audio), §18 | `bluecaster-core.exe` |
+| LHDC-V5-Encoder (C port of the AOSP LHDC V5 encoder) | commit `3f9d198` | Apache-2.0; `src/lhdcv5_fft.c` BSD-3-Clause | The Android Open Source Project; Mark Borgerding (KISS FFT) | LHDC V5 audio encoding, §8 | `bluecaster-core.exe` |
+| libopus | 1.5.2 (tag `v1.5.2`, commit `ddbe483`) | BSD-3-Clause | Xiph.Org, Skype Limited, Octasic, Jean-Marc Valin, Timothy B. Terriberry, CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Mozilla, Amazon | Opus audio encoding (decoding in `bluecaster_decode`, §14), §16 | `bluecaster-core.exe` |
+| aptx-adaptive (AKS-Logic/aptx-adaptive-linux, vendored) | upstream commit `25099004b2d3` (2026-10-22), crate 0.1.0 | MIT | Prateek Mittal (AKS-Logic) | aptX Adaptive encoding (experimental), §19 | `bluecaster-core.exe` |
+| Rust crates (Tauri 2.12, tokio, serde, windows, nusb, wasapi, tray-icon, ...) | `Cargo.lock` | Apache-2.0, MIT and other permissive licenses; MPL-2.0 for a few (§9) | their authors | Everything written in Rust that is not BlueCaster's own | all three programs |
+| SolidJS (`solid-js`) | 1.9.17 | MIT | Ryan Carniato | UI library of the window | `bluecaster.exe` |
+| `@tauri-apps/api` | 2.12.4 | Apache-2.0 OR MIT | Tauri Apps Contributors | JavaScript side of Tauri | `bluecaster.exe` |
+| Fluent UI System Icons | as copied into `app/src/ui/src/components/icons.ts` | MIT | Microsoft Corporation | Icons of the window | `bluecaster.exe` |
+| Microsoft Edge WebView2 Runtime | the one installed on the PC | Microsoft Software License Terms | Microsoft Corporation | Renders the window (not part of BlueCaster, §11) | — |
 | Windows SDK / Windows APIs | (build machine) | Microsoft EULA | Microsoft Corporation | System APIs (WASAPI, WinUSB, SetupAPI, ...) | all three programs |
 
-`a2dpwb-driver.exe` contains only Rust code (A2DPWB's own and the crates of §9).
+`bluecaster-driver.exe` contains only Rust code (BlueCaster's own and the crates of §9).
 
 ---
 
 ## What ships in the release
 
-The installer (`A2DPWB-<version>-win64-setup.exe`) installs, and the portable zip
-(`A2DPWB-<version>-win64-portable.zip`) contains, the same files
+The installer (`BlueCaster-<version>-win64-setup.exe`) installs, and the portable zip
+(`BlueCaster-<version>-win64-portable.zip`) contains, the same files
 (`installer/build-release.ps1` collects them):
 
 | File | Contents |
 |------|----------|
-| `a2dpwb.exe` | The window (Tauri; SolidJS, `@tauri-apps/api` and the icons in its embedded page) |
-| `a2dpwb-core.exe` | The resident core (BTstack and all codec libraries statically linked) |
-| `a2dpwb-driver.exe` | The elevated WinUSB assignment helper |
-| `LICENSE` | License notice for the A2DPWB source code (`Apache-2.0 OR MIT`) |
-| `LICENSE-APACHE` | Apache License 2.0 text (A2DPWB source code option 1) |
-| `LICENSE-MIT` | MIT License text (A2DPWB source code option 2) |
+| `bluecaster.exe` | The window (Tauri; SolidJS, `@tauri-apps/api` and the icons in its embedded page) |
+| `bluecaster-core.exe` | The resident core (BTstack and all codec libraries statically linked) |
+| `bluecaster-driver.exe` | The elevated WinUSB assignment helper |
+| `LICENSE` | License notice for the BlueCaster source code (`Apache-2.0 OR MIT`) |
+| `LICENSE-APACHE` | Apache License 2.0 text (BlueCaster source code option 1) |
+| `LICENSE-MIT` | MIT License text (BlueCaster source code option 2) |
 | `THIRD_PARTY_LICENSES.md` | This document |
-| `SOURCE.txt` | Where to get the complete corresponding source: the A2DPWB commit and the exact commits of every submodule |
+| `SOURCE.txt` | Where to get the complete corresponding source: the BlueCaster commit and the exact commits of every submodule |
 | `licenses/BTstack-LICENSE.txt` | BTstack license (`extern/btstack/LICENSE`) |
 | `licenses/libldac-LICENSE.txt` | libldac license (Apache-2.0 text, `extern/libldac/LICENSE`) |
 | `licenses/libldac-NOTICE.txt` | libldac NOTICE (`extern/libldac/NOTICE`) |
@@ -87,19 +87,19 @@ Not distributed:
 - **Realtek Bluetooth firmware** — proprietary Realtek binaries from the
   linux-firmware project ("Redistributable", LICENCE.rtlwifi_firmware.txt).
   Neither the programs, the installer nor this repository contain them. The
-  user downloads the files: through the download page A2DPWB links to, or
+  user downloads the files: through the download page BlueCaster links to, or
   with **Download Firmware**, where the user's PC fetches them from
   kernel.org at a pinned linux-firmware commit after the user confirms
   (`app/src/crates/core/src/firmware.rs`). See
   [linux-firmware WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE).
 - **Zadig** — not bundled; the documentation only links to <https://zadig.akeo.ie/>.
-  A2DPWB assigns WinUSB with Windows' own SetupAPI and inbox `winusb.inf`, not
+  BlueCaster assigns WinUSB with Windows' own SetupAPI and inbox `winusb.inf`, not
   with libwdi.
 - **Microsoft Visual C++ runtime** — the programs link the MSVC runtime
   statically (§11), so no runtime DLL is shipped and the Visual C++
   Redistributable is not needed.
 - **WebView2 Runtime** — installed by Windows or by the bootstrapper, not copied
-  into A2DPWB's folder.
+  into BlueCaster's folder.
 
 ---
 
@@ -143,7 +143,7 @@ Verbatim contents of `extern/libldac/NOTICE` (shipped as `licenses/libldac-NOTIC
 The NOTICE says "Taking the certification process is required to use LDAC in
 your products." It does not distinguish commercial and non-commercial use.
 **It has not been verified whether (or how) Sony's certification process
-applies to a free, non-commercial application such as A2DPWB.** A2DPWB has not
+applies to a free, non-commercial application such as BlueCaster.** BlueCaster has not
 gone through Sony's LDAC certification.
 
 ---
@@ -161,7 +161,7 @@ gone through Sony's LDAC certification.
 > **Do not update this submodule to 0.2.1 or later.** Starting with 0.2.1,
 > libopenaptx is licensed under GPL-3.0-or-later with additional usage
 > restrictions in its README. That is not compatible with the other libraries
-> linked into A2DPWB (e.g. fdk-aac, BTstack). Version 0.2.0 is the last
+> linked into BlueCaster (e.g. fdk-aac, BTstack). Version 0.2.0 is the last
 > LGPL-2.1+ release; its encoder code is identical to 0.2.1 apart from the
 > license headers. Releases up to and including v1.0.4 were mistakenly built
 > with 0.2.1.
@@ -206,26 +206,26 @@ Redistribution and use in source and binary forms are permitted without payment
 of copyright license fees, provided that:
 
 - The complete text of the license is retained in the documentation and/or other
-  materials provided with binary redistributions (A2DPWB ships it as
+  materials provided with binary redistributions (BlueCaster ships it as
   `licenses/fdk-aac-NOTICE.txt`)
 - "You must make available free of charge copies of the complete source code of
   the FDK AAC Codec and your modifications thereto to recipients of copies in
   binary form." (The exact fdk-aac commit is listed in `SOURCE.txt` and is
-  available from the A2DPWB repository's submodule at the release tag.)
+  available from the BlueCaster repository's submodule at the release tag.)
 - The name of Fraunhofer may not be used to endorse or promote products derived
   from the library without prior written permission
 - No copyright license fees may be charged for anyone to use, copy or distribute
   the FDK AAC Codec or modifications thereto
 - Modified versions must carry prominent notices stating the change and its date,
   and must be called "Third-Party Modified Version of the Fraunhofer FDK AAC
-  Codec Library for Android" (A2DPWB does not modify fdk-aac)
+  Codec Library for Android" (BlueCaster does not modify fdk-aac)
 
 ### Patent Notice (section 3, "NO PATENT LICENSE")
 
 The fdk-aac license grants **no** express or implied license to any patent
 claims, including Fraunhofer's, and states: "You may use this FDK AAC Codec
 software or modifications thereto only for purposes that are authorized by
-appropriate patent licenses." A2DPWB does not hold an AAC patent license;
+appropriate patent licenses." BlueCaster does not hold an AAC patent license;
 obtaining any required AAC patent license (e.g. via Via Licensing, as named in
 the NOTICE, or from the patent owners) is the user's responsibility.
 
@@ -243,8 +243,8 @@ the NOTICE, or from the patent owners) is the user's responsibility.
   loop and TLV store (`platform/windows/btstack_tlv_windows.c`), the Realtek,
   Broadcom and Intel chipset drivers, and `3rd-party/rijndael` (§6),
   `3rd-party/tinydir` (§7) and `3rd-party/micro-ecc` (§18).
-  `btstack_config.h` and the C glue `csrc/shim.c` in that crate are A2DPWB's own.
-  BTstack's HCI transport is A2DPWB's own Rust crate `hci-transport` (USB through
+  `btstack_config.h` and the C glue `csrc/shim.c` in that crate are BlueCaster's own.
+  BTstack's HCI transport is BlueCaster's own Rust crate `hci-transport` (USB through
   `nusb`); BTstack's `hci_transport_h2_winusb.c` is not used
 - **License**: BTstack License (BSD-3-Clause-style with a non-commercial clause);
   commercial licenses are available separately from BlueKitchen GmbH
@@ -263,11 +263,11 @@ adds clause 4 (quoted verbatim from `extern/btstack/LICENSE`):
 The license file ends with: "Please inquire about commercial licensing options
 at contact@bluekitchen-gmbh.com".
 
-### Consequence for A2DPWB
+### Consequence for BlueCaster
 
-**The A2DPWB source code is dual-licensed under Apache-2.0 or MIT. The distributed
-`a2dpwb-core.exe` includes BTstack, and the window and the driver helper are only
-distributed together with it, so the A2DPWB release may only be used and
+**The BlueCaster source code is dual-licensed under Apache-2.0 or MIT. The distributed
+`bluecaster-core.exe` includes BTstack, and the window and the driver helper are only
+distributed together with it, so the BlueCaster release may only be used and
 redistributed for personal, non-commercial purposes.** Any commercial use requires
 a commercial BTstack license from BlueKitchen GmbH.
 
@@ -293,7 +293,7 @@ a commercial BTstack license from BlueKitchen GmbH.
 - **License**: Apache License 2.0 (per the C file headers)
 - **Copyright**: Copyright (C) 1999-2012 Broadcom Corporation
 - **SPDX**: `Apache-2.0`
-- **Usage**: SBC encoding in `a2dpwb-core.exe`
+- **Usage**: SBC encoding in `bluecaster-core.exe`
 
 The Rust port is a derivative work of the Apache-2.0 encoder, not of BTstack;
 the BTstack license does not apply to it. The original C encoder is compiled
@@ -301,7 +301,7 @@ only by the test that compares the two bit for bit (`btstack-sys` feature
 `sbc-reference`, a dev-dependency); it is not in the release programs. The
 Bluedroid SBC **decoder** (Apache-2.0; Copyright (C) 2014 The Android Open Source
 Project and Copyright 2002-2007 Open Interface North America, Inc.) is used only
-by `a2dpwb_decode` (§14). No NOTICE file is present in `3rd-party/bluedroid/`.
+by `bluecaster_decode` (§14). No NOTICE file is present in `3rd-party/bluedroid/`.
 
 ### Obligations
 
@@ -396,7 +396,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   `SPDX-License-Identifier: BSD-3-Clause`.
 - **SPDX**: `Apache-2.0 AND BSD-3-Clause`
 - **Usage**: LHDC V5 audio encoding. Not linked into
-  `a2dpwb_decode`.
+  `bluecaster_decode`.
 
 ### License Texts
 
@@ -442,7 +442,7 @@ POSSIBILITY OF SUCH DAMAGE.
   repository has no NOTICE file
 - Reproduce the KISS FFT copyright notice and BSD-3-Clause conditions with
   binary distributions (above)
-- Mark modified files with prominent notices if changes are made (A2DPWB
+- Mark modified files with prominent notices if changes are made (BlueCaster
   compiles the sources unmodified)
 
 ### Trademark, Patents and Certification
@@ -452,7 +452,7 @@ LHDC is a codec of Savitech Corp., promoted by the Hi-Res Wireless Audio
 contributions of the code's licensors (here Google) and grants no trademark
 rights; the port's README notes that codec licensing / certification
 requirements should be checked before shipping a commercial product that
-advertises LHDC support. A2DPWB is a free, non-commercial application and has
+advertises LHDC support. BlueCaster is a free, non-commercial application and has
 not been certified by Savitech or HWA. Its LHDC V5 support is an
 interoperability feature.
 
@@ -461,7 +461,7 @@ interoperability feature.
 ## 9. Rust Crates
 
 - **Where**: all three programs. The crates and their exact versions are in
-  `Cargo.lock`; A2DPWB's own crates (`app/src/crates/*`, `app/src/core`,
+  `Cargo.lock`; BlueCaster's own crates (`app/src/crates/*`, `app/src/core`,
   `app/src/ui/src-tauri`, `app/src/driver`) are `Apache-2.0 OR MIT` (§13)
 - **License texts**: `licenses/rust-crates.txt`, generated for each release by
   [cargo-about](https://github.com/EmbarkStudios/cargo-about)
@@ -499,32 +499,32 @@ authoritative list for that release.
   binaries: `licenses/rust-crates.txt`
 - **MPL-2.0** (§3.2): the source code of the MPL-covered files must be
   available to recipients of the binaries, and they must be told how to get it.
-  A2DPWB uses these crates unmodified, at the versions in `Cargo.lock`; their
+  BlueCaster uses these crates unmodified, at the versions in `Cargo.lock`; their
   source is on crates.io and in the repositories listed in `rust-crates.txt`,
-  and `SOURCE.txt` points to the A2DPWB commit whose `Cargo.lock` pins them. The
-  MPL does not extend to A2DPWB's own code
+  and `SOURCE.txt` points to the BlueCaster commit whose `Cargo.lock` pins them. The
+  MPL does not extend to BlueCaster's own code
 
 ---
 
 ## 10. The Window's Page: SolidJS, @tauri-apps/api, Fluent UI System Icons
 
 The window's page (`app/src/ui/src`, TypeScript, built by Vite into
-`a2dpwb.exe`) bundles two npm packages and one icon set. The other packages in
+`bluecaster.exe`) bundles two npm packages and one icon set. The other packages in
 `app/src/ui/package.json` (TypeScript, Vite, Vitest, the Tauri CLI, testing
 libraries) are build and test tools and are not part of the programs.
 
 | Component | Version | License | Copyright | Shipped as |
 |-----------|---------|---------|-----------|------------|
 | [SolidJS](https://github.com/solidjs/solid) (`solid-js`) | 1.9.17 | MIT | Copyright (c) 2016-2025 Ryan Carniato | `licenses/solid-js-LICENSE.txt` |
-| [`@tauri-apps/api`](https://github.com/tauri-apps/tauri) | 2.12.4 | Apache-2.0 OR MIT (A2DPWB uses it under MIT) | Copyright (c) 2017 - Present Tauri Apps Contributors | `licenses/tauri-apps-api-LICENSE-MIT.txt` |
-| [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) | the icons copied into `src/components/icons.ts` | MIT | Copyright (c) 2020 Microsoft Corporation | `licenses/fluentui-system-icons.txt`; also named in **Settings > About A2DPWB** |
+| [`@tauri-apps/api`](https://github.com/tauri-apps/tauri) | 2.12.4 | Apache-2.0 OR MIT (BlueCaster uses it under MIT) | Copyright (c) 2017 - Present Tauri Apps Contributors | `licenses/tauri-apps-api-LICENSE-MIT.txt` |
+| [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) | the icons copied into `src/components/icons.ts` | MIT | Copyright (c) 2020 Microsoft Corporation | `licenses/fluentui-system-icons.txt`; also named in **Settings > About BlueCaster** |
 
 ### Obligations
 
 - Include the MIT license and copyright notice with the binaries (shipped as
   listed above)
 
-The application icon is A2DPWB's own (the v1 icon).
+The application icon is BlueCaster's own (the v1 icon).
 
 ---
 
@@ -553,15 +553,15 @@ the MSVC toolchain's import libraries:
 | WebView2 | Rendering the window (Tauri) |
 
 The **Microsoft Edge WebView2 Runtime** renders the window. It is part of
-Windows 11 and of most Windows 10 installations; A2DPWB does not ship it. The
+Windows 11 and of most Windows 10 installations; BlueCaster does not ship it. The
 installer embeds Microsoft's WebView2 bootstrapper
 (`MicrosoftEdgeWebview2Setup.exe`, redistributable under Microsoft's WebView2
 distribution terms) and runs it only when the runtime is missing.
 
 All three programs link the Visual C++ runtime statically (`+crt-static` in
 `.cargo/config.toml`; the C libraries are compiled with `/MT`), so they do not
-need `VCRUNTIME140.dll` or the Visual C++ Redistributable. `a2dpwb-core.exe` and
-`a2dpwb-driver.exe` also contain the Universal CRT; `a2dpwb.exe` uses Tauri's
+need `VCRUNTIME140.dll` or the Visual C++ Redistributable. `bluecaster-core.exe` and
+`bluecaster-driver.exe` also contain the Universal CRT; `bluecaster.exe` uses Tauri's
 static VC runtime with the Universal CRT that is part of Windows 10 and later.
 
 ### Obligations
@@ -593,7 +593,7 @@ for details.
 
 ## 13. Project License
 
-The A2DP Windows Bridge (A2DPWB) project code itself (excluding third-party libraries) is licensed
+The BlueCaster project code itself (excluding third-party libraries) is licensed
 under **either the Apache License 2.0 or the MIT License, at your option**
 (SPDX `Apache-2.0 OR MIT`). See [`LICENSE`](LICENSE),
 [`LICENSE-APACHE`](LICENSE-APACHE) and [`LICENSE-MIT`](LICENSE-MIT) in the
@@ -604,15 +604,15 @@ Versions up to and including v1.0.18-beta.2 were released under the MIT
 License only; those releases remain available under MIT.
 
 The distributed programs are combined works that also contain the components
-listed above. Because `a2dpwb-core.exe` includes BTstack, the A2DPWB release may
+listed above. Because `bluecaster-core.exe` includes BTstack, the BlueCaster release may
 only be used and redistributed for personal, non-commercial purposes.
 
 ---
 
-## 14. Developer tool: a2dpwb_decode
+## 14. Developer tool: bluecaster_decode
 
-`tools/a2dp_decode/` builds `a2dpwb_decode.exe`, which checks and decodes the
-media stream recorded in an A2DPWB HCI capture. It is a developer tool:
+`tools/a2dp_decode/` builds `bluecaster_decode.exe`, which checks and decodes the
+media stream recorded in an BlueCaster HCI capture. It is a developer tool:
 **it is not part of the release** and is only built from source
 (its own CMake project, `tools/a2dp_decode/CMakeLists.txt`).
 
@@ -636,30 +636,30 @@ It does not link libldac either. LDAC frame headers are parsed by the tool's
 own code, based on the frame header layout (sync word, sampling rate, channel
 config, frame length, frame status). No libldac code is copied.
 
-If you redistribute an `a2dpwb_decode.exe` binary, the obligations of §3
+If you redistribute an `bluecaster_decode.exe` binary, the obligations of §3
 (fdk-aac: license text, source code offer, no patent license; AAC decoding
 may also need a patent license), §2 (libopenaptx: LGPL-2.1 text, prominent
 notice, relinking via the source at the same commit) and §5 (Apache-2.0
 text, notices), §17 (liblc3: Apache-2.0 text, Copyright 2022 Google LLC) and
-§16 (libopus: the BSD-3-Clause notice) apply, in the same way as for `a2dpwb-core.exe`.
+§16 (libopus: the BSD-3-Clause notice) apply, in the same way as for `bluecaster-core.exe`.
 
 ---
 
 ## 15. Test environment: tools/emu and tools/linux_sink (Python)
 
-`tools/emu/` runs `a2dpwb-core.exe --cli` against a virtual Bluetooth sink, and
+`tools/emu/` runs `bluecaster-core.exe --cli` against a virtual Bluetooth sink, and
 `tools/linux_sink/` is a measuring A2DP receiver run on a second PC (see
 [docs/building.md](docs/building.md) and [docs/usage.md](docs/usage.md)).
 Both are test tooling only:
 
-- **Nothing from them is linked into or shipped with the A2DPWB programs** or
-  the release. A2DPWB only talks to them over the network: to the virtual
+- **Nothing from them is linked into or shipped with the BlueCaster programs** or
+  the release. BlueCaster only talks to them over the network: to the virtual
   controller over TCP (development CLI option `--hci-tcp`) and to the
   receiver's statistics over TCP / UDP (JSON).
 - `tools/linux_sink/requirements.txt` (installed by `setup.sh`) holds the same pinned set for
   `tools/linux_sink/.venv` (git-ignored; verified: `pip freeze` of it equals
   the pinned set, Bumble 0.0.234 on Python 3.14 / Linux). On Linux,
-  `a2dpwb_sink.py` also loads the distribution's libsbc, libfreeaptx and
+  `bluecaster_sink.py` also loads the distribution's libsbc, libfreeaptx and
   libfdk-aac at run time if installed (ctypes, see below); they are not part
   of this repository.
 - The packages are **not included in this repository**. `setup_env.py`
@@ -668,7 +668,7 @@ Both are test tooling only:
   that local environment.
 - The repository's own tools/emu and tools/linux_sink scripts are
   `Apache-2.0 OR MIT` (§13). `emu_sink.py` and `emu_vhci.py` subclass Bumble's `Controller`, and
-  `a2dpwb_sink.py` uses Bumble's API, without copying Bumble code.
+  `bluecaster_sink.py` uses Bumble's API, without copying Bumble code.
 
 This is the complete set that `setup_env.py` installs (`pip freeze` of
 `tools/emu/.venv` equals `requirements.txt`). It follows Bumble 0.0.234's own
@@ -709,10 +709,10 @@ versions.
 
 #### Libraries tools/linux_sink loads at run time
 
-`a2dpwb_sink.py` decodes the received audio with the Linux distribution's
+`bluecaster_sink.py` decodes the received audio with the Linux distribution's
 shared libraries when they are installed (ctypes); without them it only
 checks frame headers. They are neither in this repository nor shipped with
-A2DPWB; the script works with whichever version the distribution provides.
+BlueCaster; the script works with whichever version the distribution provides.
 Licenses were verified for these versions (Ubuntu 26.04):
 
 | Library | Version checked | License (SPDX) | Determined from | Used for |
@@ -735,7 +735,7 @@ When changing `requirements.txt`, re-check and update this table.
 - **Usage**: Opus audio encoding for Android's A2DP Opus vendor codec. The
   crate `opus-sys` compiles its floating-point C sources (the lists in its
   `*.mk` files; no DNN features) unmodified and links them statically into
-  `a2dpwb-core.exe`. `a2dpwb_decode` links its decoder (§14).
+  `bluecaster-core.exe`. `bluecaster_decode` links its decoder (§14).
 
 ### License Text
 
@@ -779,7 +779,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - Reproduce the copyright notice, the conditions and the disclaimer with
   binary distributions (shipped as `licenses/opus-COPYING.txt`, and above)
 - Do not use the names of the Internet Society, IETF, IETF Trust or the
-  contributors to endorse or promote A2DPWB
+  contributors to endorse or promote BlueCaster
 
 ### Patents
 
@@ -787,7 +787,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 the Xiph.Org Foundation, Microsoft Corporation and Broadcom Corporation
 (IETF IPR declarations 1524, 1914 and 1526; `LICENSE_PLEASE_READ.txt` lists
 further declarations). These licenses come with the conditions stated in the
-declarations themselves (e.g. a defensive termination clause); A2DPWB adds
+declarations themselves (e.g. a defensive termination clause); BlueCaster adds
 no terms of its own.
 
 ---
@@ -802,10 +802,10 @@ no terms of its own.
 - **SPDX**: `Apache-2.0`
 - **Usage**: LC3 encoding for the experimental LE Audio support (off by
   default). The crate `lc3-sys` compiles all of `src/*.c` unmodified and links
-  them statically into `a2dpwb-core.exe`; `src/lc3.c` is compiled through a
+  them statically into `bluecaster-core.exe`; `src/lc3.c` is compiled through a
   generated wrapper that only drops its `dllexport` (so that the executable
   exports no `lc3_*` functions). BTstack's `btstack_lc3_google.c` glue is not
-  used. LC3 decoding in `a2dpwb_decode` (§14)
+  used. LC3 decoding in `bluecaster_decode` (§14)
 
 No NOTICE file is present.
 
@@ -830,7 +830,7 @@ Bluetooth product is covered by Bluetooth qualification (§12).
 - **SPDX**: `BSD-2-Clause`
 - **Usage**: P-256 key generation and Diffie-Hellman for LE Secure
   Connections pairing (BTstack `ENABLE_MICRO_ECC_P256`), compiled unmodified by
-  `app/src/crates/btstack-sys/build.rs` into `a2dpwb-core.exe`; used only by
+  `app/src/crates/btstack-sys/build.rs` into `bluecaster-core.exe`; used only by
   the experimental LE Audio support
 
 ### Obligations
@@ -850,7 +850,7 @@ Bluetooth product is covered by Bluetooth qualification (§12).
 - **Copyright**: Copyright (c) 2026 Prateek Mittal (AKS-Logic)
 - **SPDX**: `MIT`
 - **Usage**: aptX Adaptive encoding (experimental; R1 and R2 sinks, 48 kHz
-  stereo), compiled as a Rust crate into `a2dpwb-core.exe`
+  stereo), compiled as a Rust crate into `bluecaster-core.exe`
 
 ### License Text
 
@@ -898,7 +898,7 @@ says, users are responsible for whether its use is lawful where they are.
 
 | Component | License | Compatible with Apache-2.0 / MIT? | Notes |
 |-----------|---------|---------------------|-------|
-| A2DPWB (project) | Apache-2.0 OR MIT | — | Project license (dual; user chooses) |
+| BlueCaster (project) | Apache-2.0 OR MIT | — | Project license (dual; user chooses) |
 | libldac | Apache-2.0 | Yes | Permissive; NOTICE must accompany binaries |
 | LHDC-V5-Encoder | Apache-2.0 AND BSD-3-Clause | Yes | Permissive; KISS FFT notice reproduced in §8 |
 | libopus | BSD-3-Clause | Yes | Permissive; notice shipped as `licenses/opus-COPYING.txt` (§16) |
@@ -906,7 +906,7 @@ says, users are responsible for whether its use is lawful where they are.
 | Bluedroid SBC encoder (Rust port) | Apache-2.0 | Yes | Permissive |
 | libopenaptx | LGPL-2.1+ | Yes (with care) | Must allow library replacement / relinking. Apache-2.0 is compatible with (L)GPL v3, which "or later" permits |
 | fdk-aac | FDK AAC License | Yes | Source of fdk-aac must be offered free of charge; no patent license |
-| BTstack | LicenseRef-BTstack | Source: yes / Binary: **restricts it** | Non-commercial clause 4 applies to the distributed `a2dpwb-core.exe` and with it the release; commercial license from BlueKitchen |
+| BTstack | LicenseRef-BTstack | Source: yes / Binary: **restricts it** | Non-commercial clause 4 applies to the distributed `bluecaster-core.exe` and with it the release; commercial license from BlueKitchen |
 | rijndael | Public domain | Yes | — |
 | tinydir | BSD-2-Clause | Yes | Permissive; notice reproduced in §7 |
 | liblc3 | Apache-2.0 | Yes | Permissive (§17) |
@@ -918,19 +918,19 @@ says, users are responsible for whether its use is lawful where they are.
 ### LGPL Compliance Notes
 
 **libopenaptx** (LGPL-2.1+) is the only LGPL component, and it is **statically
-linked** into `a2dpwb-core.exe` (crate `openaptx-sys`). A2DPWB addresses
+linked** into `bluecaster-core.exe` (crate `openaptx-sys`). BlueCaster addresses
 LGPL-2.1 §6 as follows:
 
 1. **License text** — the installer and the portable zip ship the LGPL-2.1 text
    as `licenses/libopenaptx-LGPL-2.1.txt`, next to the programs.
 2. **Prominent notice** — this document, shipped with every copy, states that
    libopenaptx (© 2017 Aurelien Jacobs, © 2018-2020 Pali Rohár) is used and
-   that it is covered by the LGPL. **Settings > About A2DPWB** links to the
+   that it is covered by the LGPL. **Settings > About BlueCaster** links to the
    third-party licenses.
-3. **Relinking** — the complete corresponding source of A2DPWB (Apache-2.0 OR MIT) and of
-   every library, including libopenaptx, is available from the A2DPWB GitHub
+3. **Relinking** — the complete corresponding source of BlueCaster (Apache-2.0 OR MIT) and of
+   every library, including libopenaptx, is available from the BlueCaster GitHub
    repository at the release's commit together with its submodules and
    `Cargo.lock`. `SOURCE.txt` lists the exact commits. With it, a user can
-   rebuild `a2dpwb-core.exe` against a modified libopenaptx (the `openaptx-sys`
+   rebuild `bluecaster-core.exe` against a modified libopenaptx (the `openaptx-sys`
    crate compiles `extern/libopenaptx/openaptx.c`). The source is offered from
    the same place (GitHub) as the binary, in the sense of LGPL-2.1 §6(d).

@@ -19,7 +19,7 @@ import {
 } from "../lib/chips";
 import { LINKS, vendorFirmwareUrl } from "../lib/links";
 
-/** The adapters A2DPWB can use first (WinUSB), the ones without a driver
+/** The adapters BlueCaster can use first (WinUSB), the ones without a driver
  *  and then the ones it cannot use at all last */
 export function usableFirst(list: readonly AdapterInfo[]): AdapterInfo[] {
   const rank = (a: AdapterInfo) =>
@@ -56,7 +56,7 @@ export function adapterIds(a: Pick<AdapterInfo, "address" | "vid" | "pid" | "bt_
 }
 
 /** Why adapterIds lacks the address or the Bluetooth version: neither
- *  Windows' Bluetooth (it runs one radio only) nor A2DP Windows Bridge has
+ *  Windows' Bluetooth (it runs one radio only) nor BlueCaster has
  *  used the adapter yet (issue #86); undefined when both are known */
 export function adapterIdsHint(a: Pick<AdapterInfo, "address" | "bt_version">): string | undefined {
   return a.address && a.bt_version ? undefined : t("ui.adapter.ids_unknown");
@@ -68,7 +68,7 @@ export function adapterExperimental(a: Pick<AdapterInfo, "display_name">): boole
   return /\[experimental\]/i.test(a.display_name);
 }
 
-/** A2DPWB can stream through it: not a chip whose firmware loader it lacks
+/** BlueCaster can stream through it: not a chip whose firmware loader it lacks
  *  (MediaTek, Qualcomm). Those need their firmware loaded at every start
  *  before they answer as a Bluetooth controller, so they cannot work at all:
  *  neither WinUSB nor a firmware download is offered for them (issue #86) */
@@ -104,7 +104,7 @@ export function Adapter() {
   const adapter = () => snap().adapter;
   // The order shown; the chip section goes with its adapter in it
   const sorted = () => usableFirst(adapter().adapters);
-  // The card the chip choice goes in; none for an adapter A2DPWB cannot
+  // The card the chip choice goes in; none for an adapter BlueCaster cannot
   // use, the choice then stands on its own below the cards
   const chipCard = () => {
     const i = chipTargetIndex(sorted());
@@ -220,7 +220,7 @@ export function Adapter() {
                       when={a.driver === "winusb"}
                       fallback={
                         <>
-                          {/* One A2DPWB cannot use keeps its driver (issue #86) */}
+                          {/* One BlueCaster cannot use keeps its driver (issue #86) */}
                           <Button
                             kind="strong"
                             icon="shield"

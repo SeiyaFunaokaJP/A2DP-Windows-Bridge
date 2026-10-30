@@ -35,7 +35,7 @@ const SIGABRT: i32 = 22;
 struct Target {
     dir: PathBuf,
     prefix: String,
-    /// "a2dpwb-core 2.0.2", the first line of the text file
+    /// "bluecaster-core 2.0.2", the first line of the text file
     about: String,
 }
 
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn keeps_the_newest_reports() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-crash-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-crash-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for i in 0..KEEP + 2 {
             let stem = format!("x-20261021-1200{i:02}-000");
@@ -213,7 +213,7 @@ mod tests {
 
     #[test]
     fn writes_a_dump_of_this_process() {
-        let path = std::env::temp_dir().join(format!("a2dpwb-dump-{}.dmp", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bluecaster-dump-{}.dmp", std::process::id()));
         assert!(write_dump(&path, std::ptr::null()));
         let data = std::fs::read(&path).unwrap();
         let _ = std::fs::remove_file(&path);

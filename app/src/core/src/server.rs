@@ -58,7 +58,7 @@ async fn session(state: Arc<CoreState>, pipe: NamedPipeServer) -> Result<(), ipc
         &mut wr,
         &ServerMessage::Welcome {
             protocol: PROTOCOL_VERSION,
-            server: format!("a2dpwb-core/{}", env!("CARGO_PKG_VERSION")),
+            server: format!("bluecaster-core/{}", env!("CARGO_PKG_VERSION")),
             features: ipc::FEATURES.iter().map(|f| f.to_string()).collect(),
         },
     )

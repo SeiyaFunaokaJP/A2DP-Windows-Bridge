@@ -8,7 +8,7 @@ english_only: true
 # Integration (IPC)
 {: .no_toc }
 
-How a third-party tool talks to the A2DPWB core: show the stream state, start and stop profiles, set the volume, or reach the headphones' own services over A2DPWB's Bluetooth link. Tools that do this are listed on [Works With](works-with).
+How a third-party tool talks to the BlueCaster core: show the stream state, start and stop profiles, set the volume, or reach the headphones' own services over BlueCaster's Bluetooth link. Tools that do this are listed on [Works With](works-with).
 
 {: .warning }
 > The protocol may still change during the 2.0.2 betas. The source of truth is [`app/src/crates/ipc/src/protocol.rs`](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/app/src/crates/ipc/src/protocol.rs) and the TypeScript types generated from it in [`app/src/ui/src/ipc/bindings`](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/tree/main/app/src/ui/src/ipc/bindings). This page explains how to use them; it does not list every field.
@@ -21,16 +21,16 @@ How a third-party tool talks to the A2DPWB core: show the stream state, start an
 
 ## Connecting
 
-The core (`a2dpwb-core.exe`) runs while A2DPWB runs, with or without its window. It listens on a named pipe of the user it runs as:
+The core (`bluecaster-core.exe`) runs while BlueCaster runs, with or without its window. It listens on a named pipe of the user it runs as:
 
 ```
-\\.\pipe\a2dpwb-<user SID>
+\\.\pipe\bluecaster-<user SID>
 ```
 
 - `<user SID>` is the logged-on user's SID string (`S-1-5-21-...`), for example from `whoami /user`. Each user has their own core and pipe; the pipe's DACL admits only that user, and remote clients are refused.
-- The pipe is in byte mode. Several clients can be connected at once (the A2DPWB window is one of them); each gets the same state and events.
+- The pipe is in byte mode. Several clients can be connected at once (the BlueCaster window is one of them); each gets the same state and events.
 - If the pipe does not exist, the core is not running. Use the pipe, not the core's mutex, to check for it.
-- Development builds started with `A2DPWB_INSTANCE=<name>` listen on `\\.\pipe\a2dpwb-<SID>-<name>` instead, so that they run beside the installed one.
+- Development builds started with `BLUECASTER_INSTANCE=<name>` listen on `\\.\pipe\bluecaster-<SID>-<name>` instead, so that they run beside the installed one.
 
 ### Frames
 
@@ -45,7 +45,7 @@ Every message in both directions is one frame: the length of the JSON as a **u32
    `client` is a free name and version; it appears in the core's log.
 2. The core answers with `welcome`, or with `reject` and closes the pipe (wrong protocol version, or no hello):
    ```json
-   {"type": "welcome", "protocol": 1, "server": "a2dpwb-core/2.0.2-beta.12", "features": ["rfcomm"]}
+   {"type": "welcome", "protocol": 1, "server": "bluecaster-core/2.0.2-beta.12", "features": ["rfcomm"]}
    {"type": "reject", "reason": "protocol 2 not supported (core speaks 1)"}
    ```
 3. The core sends a `snapshot` with its whole state, then `event`s.
@@ -96,7 +96,7 @@ When the core shuts down it sends the event `bye` and closes the pipe.
 {"type": "response", "id": 8, "result": null, "error": {"code": "rfcomm.not_connected", "message": {"key": "ipc.error.rfcomm_not_connected", "args": []}}}
 ```
 
-`code` is for the program (`adapter.driver_missing`, `app.streaming`, ...). `message` is a translation key of A2DPWB's language files ([`app/lang`](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/tree/main/app/lang)) with printf-style arguments, as are the status texts in the state; a tool can look the key up there or show its own text for the code.
+`code` is for the program (`adapter.driver_missing`, `app.streaming`, ...). `message` is a translation key of BlueCaster's language files ([`app/lang`](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/tree/main/app/lang)) with printf-style arguments, as are the status texts in the state; a tool can look the key up there or show its own text for the code.
 
 ### Methods
 
@@ -116,11 +116,11 @@ Methods for tools:
 | `diag.info` | `{"mask": bool}` (optional) | `DiagInfo` (the "copy diagnostic info" text) |
 | `rfcomm.open`, `rfcomm.send`, `rfcomm.close` | see [RFCOMM passthrough](#rfcomm-passthrough) | |
 
-Methods the A2DPWB window uses that a tool should use only with care: `profile.save` / `profile.delete`, `settings.set` (replaces **all** settings: send the latest `settings` with your change, never a partial object), `device.forget` / `device.rename`, `adapter.*` (`adapter.assign_winusb` and `adapter.restore_driver` show a UAC prompt), `app.quit`. The others (`stream.start_custom`, `audio.apps`, `diag.*` beyond the two above, `receiver.*`, `app.*`) serve the window's own screens and may change without notice. The full list with parameters and results is the `Method` enum in `protocol.rs`.
+Methods the BlueCaster window uses that a tool should use only with care: `profile.save` / `profile.delete`, `settings.set` (replaces **all** settings: send the latest `settings` with your change, never a partial object), `device.forget` / `device.rename`, `adapter.*` (`adapter.assign_winusb` and `adapter.restore_driver` show a UAC prompt), `app.quit`. The others (`stream.start_custom`, `audio.apps`, `diag.*` beyond the two above, `receiver.*`, `app.*`) serve the window's own screens and may change without notice. The full list with parameters and results is the `Method` enum in `protocol.rs`.
 
 ## RFCOMM passthrough
 
-Available when `welcome.features` contains `"rfcomm"` (2.0.2-beta.10 and later). It lets a tool reach the headphones' own RFCOMM services (vendor control apps: battery, noise control, EQ) over the link A2DPWB already has, since Windows does not see headphones connected through A2DPWB.
+Available when `welcome.features` contains `"rfcomm"` (2.0.2-beta.10 and later). It lets a tool reach the headphones' own RFCOMM services (vendor control apps: battery, noise control, EQ) over the link BlueCaster already has, since Windows does not see headphones connected through BlueCaster.
 
 - `rfcomm.open {address, uuid}` → `{channel_id, mtu}`. `address` must be the device being streamed to; the core never connects or pairs for this (`rfcomm.not_connected`). `uuid` is a full 128-bit UUID or a 16-bit `"xxxx"` on the Bluetooth base UUID. The answer comes within 20 s, also when queued behind other opens: wait at least 25 s. Errors: `rfcomm.not_connected`, `rfcomm.service_not_found`, `rfcomm.open_failed`, `rfcomm.busy`.
 - `rfcomm.send {channel_id, data}` → `null`. `data` is base64 (standard, padded), at most 64 KiB per request, sent in frames of at most `mtu` in request order. Errors: `rfcomm.no_channel`, `rfcomm.busy` (queue full, not sent), `rfcomm.timeout` (unknown whether sent: do not repeat, reopen the channel).
@@ -133,7 +133,7 @@ Available when `welcome.features` contains `"rfcomm"` (2.0.2-beta.10 and later).
 - **Features.** Check `welcome.features` before using an addition. Cores before 2.0.2-beta.10 leave the field out.
 - **Unknown requests.** A request the core cannot read (an unknown method, bad parameters) is answered with the error `ipc.bad_request`; the connection stays open. Cores before 2.0.2-beta.10 close the connection instead. Any other unreadable frame closes it.
 - **New fields.** The core adds fields to the state and to events over time. Ignore fields you do not know; do not reject a message for them.
-- **Rename in 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)): the pipe becomes `\\.\pipe\bcfw-<SID>`. The core keeps listening on `\\.\pipe\a2dpwb-<SID>` as well, with the same protocol, for at least 6 months after 3.0.0; its removal is announced in the release notes first. Try `bcfw-<SID>` first and fall back to `a2dpwb-<SID>`. The core's mutex changes its name without such a transition.
+- **Rename in 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)): the pipe becomes `\\.\pipe\bcfw-<SID>`. The core keeps listening on `\\.\pipe\bluecaster-<SID>` as well, with the same protocol, for at least 6 months after 3.0.0; its removal is announced in the release notes first. Try `bcfw-<SID>` first and fall back to `bluecaster-<SID>`. The core's mutex changes its name without such a transition.
 
 ## Example
 
@@ -144,7 +144,7 @@ import json, struct, subprocess
 
 sid = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"],
                      capture_output=True, text=True).stdout.strip().split(",")[1].strip('"')
-pipe = open(rf"\\.\pipe\a2dpwb-{sid}", "r+b", buffering=0)
+pipe = open(rf"\\.\pipe\bluecaster-{sid}", "r+b", buffering=0)
 
 def send(msg):
     b = json.dumps(msg).encode()
@@ -177,4 +177,4 @@ while True:
         break
 ```
 
-To try a tool without touching the installed A2DPWB, run a development build with `A2DPWB_INSTANCE` and `A2DPWB_CONFIG_DIR` set (see [Building](building)) and connect to its pipe.
+To try a tool without touching the installed BlueCaster, run a development build with `BLUECASTER_INSTANCE` and `BLUECASTER_CONFIG_DIR` set (see [Building](building)) and connect to its pipe.

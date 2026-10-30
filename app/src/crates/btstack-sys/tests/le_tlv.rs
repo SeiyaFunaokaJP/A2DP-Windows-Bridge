@@ -63,7 +63,7 @@ fn one_run(tlv: &std::path::Path, store: Option<&'static [u8]>) -> Option<Vec<u8
 
 #[test]
 fn bonds_survive_a_restart() {
-    let tlv = std::env::temp_dir().join(format!("a2dpwb_le_tlv_test_{}.tlv", std::process::id()));
+    let tlv = std::env::temp_dir().join(format!("bluecaster_le_tlv_test_{}.tlv", std::process::id()));
     let _ = std::fs::remove_file(&tlv);
     assert_eq!(one_run(&tlv, Some(b"bond")), None);
     // The second run opens the same file (in the same process) and reads it

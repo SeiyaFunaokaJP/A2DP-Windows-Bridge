@@ -18,7 +18,7 @@ nav_order: 2
 
 ## La ventana
 
-Inicie **A2DP Windows Bridge** desde el menú Inicio (o `a2dpwb.exe`). El menú de la izquierda tiene las pantallas siguientes (Inicio, Códecs, Dispositivos de audio, Adaptador, Diagnóstico, Configuración, Acerca de); se reduce a iconos cuando la ventana es estrecha. La ventana solo muestra lo que hace el programa residente `a2dpwb-core.exe`: cerrarla no detiene la transmisión (consulte [Bandeja y panel desplegable](#tray)).
+Inicie **BlueCaster** desde el menú Inicio (o `bluecaster.exe`). El menú de la izquierda tiene las pantallas siguientes (Inicio, Códecs, Dispositivos de audio, Adaptador, Diagnóstico, Configuración, Acerca de); se reduce a iconos cuando la ventana es estrecha. La ventana solo muestra lo que hace el programa residente `bluecaster-core.exe`: cerrarla no detiene la transmisión (consulte [Bandeja y panel desplegable](#tray)).
 
 ### Inicio
 
@@ -49,11 +49,11 @@ El códec de cada dispositivo de audio guardado, una sección por dispositivo (n
 
 Los valores predeterminados dan el mejor sonido; la mayoría de los dispositivos no necesitan más que **Automático**. Un dispositivo LE Audio (experimental) tiene una tarjeta, LC3, y **Baja latencia para auriculares gaming (GMAP, experimental)** (consulte [LE Audio](#le-audio)).
 
-Por debajo, A2DPWB guarda un perfil por dispositivo en `profiles.json`, llamado allí «*dispositivo* | *códec*»; la ventana y el menú de la bandeja muestran el nombre del dispositivo. Las versiones anteriores permitían crear varios perfiles para un mismo dispositivo: en el primer inicio de una versión con la pantalla Códecs se conserva el último usado (si no, el primero) y los demás se integran en él, manteniendo sus ajustes de códec (calidad, frecuencia de muestreo, profundidad de bits, ABR, configuración SBC) para sus códecs. No se conservan sus nombres, orígenes de captura ni tamaños de paquete; el `profiles.json` tal como estaba se guarda una vez como `profiles-before-codecs.json` en la carpeta de configuración.
+Por debajo, BlueCaster guarda un perfil por dispositivo en `profiles.json`, llamado allí «*dispositivo* | *códec*»; la ventana y el menú de la bandeja muestran el nombre del dispositivo. Las versiones anteriores permitían crear varios perfiles para un mismo dispositivo: en el primer inicio de una versión con la pantalla Códecs se conserva el último usado (si no, el primero) y los demás se integran en él, manteniendo sus ajustes de códec (calidad, frecuencia de muestreo, profundidad de bits, ABR, configuración SBC) para sus códecs. No se conservan sus nombres, orígenes de captura ni tamaños de paquete; el `profiles.json` tal como estaba se guarda una vez como `profiles-before-codecs.json` en la carpeta de configuración.
 
 ### Dispositivos de audio
 
-Los auriculares y altavoces a los que A2DPWB puede transmitir, cada uno con sus propios ajustes: **Buscar dispositivos** busca dispositivos cercanos con el adaptador USB (unos 10 segundos; ponga los auriculares en modo de emparejamiento). Los dispositivos con los que A2DPWB ya se ha emparejado llevan la etiqueta **Emparejado**. Si la búsqueda no los encuentra, escriba la dirección en **Manual:** y haga clic en **Usar**; las direcciones escritas o pegadas se formatean mientras escribe (`aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` y `AA BB CC DD EE FF` se convierten todas en `AA:BB:CC:DD:EE:FF`). Un dispositivo guardado se puede renombrar o eliminar, y tiene:
+Los auriculares y altavoces a los que BlueCaster puede transmitir, cada uno con sus propios ajustes: **Buscar dispositivos** busca dispositivos cercanos con el adaptador USB (unos 10 segundos; ponga los auriculares en modo de emparejamiento). Los dispositivos con los que BlueCaster ya se ha emparejado llevan la etiqueta **Emparejado**. Si la búsqueda no los encuentra, escriba la dirección en **Manual:** y haga clic en **Usar**; las direcciones escritas o pegadas se formatean mientras escribe (`aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` y `AA BB CC DD EE FF` se convierten todas en `AA:BB:CC:DD:EE:FF`). Un dispositivo guardado se puede renombrar o eliminar, y tiene:
 
 - **Origen de salida**: Loopback del sistema (el predeterminado de un dispositivo nuevo), Dispositivo virtual o Aplicación (consulte [Modos de captura](#capture-modes)). A su lado, el formato en que Windows mezcla el dispositivo capturado (frecuencia de muestreo y profundidad de bits, de solo lectura), en ámbar cuando los ajustes de códec del dispositivo piden otro, con una línea debajo que indica cuál (sigue transmitiendo, convertido); debajo, lo que hace el origen
 - **Cambiar automáticamente la salida predeterminada de Windows**, con un dispositivo virtual
@@ -73,7 +73,7 @@ Con **Configuración > Modo de desarrollador**, la pantalla **Desarrollador** ti
 
 ### Adaptador
 
-- Los adaptadores Bluetooth USB detectados con su chip, **Controlador** y **Firmware**; la lista se actualiza sola al conectar o desconectar un adaptador. Un adaptador que A2DPWB no puede usar (MediaTek, Qualcomm) conserva su controlador: sus botones de WinUSB y de firmware están desactivados
+- Los adaptadores Bluetooth USB detectados con su chip, **Controlador** y **Firmware**; la lista se actualiza sola al conectar o desconectar un adaptador. Un adaptador que BlueCaster no puede usar (MediaTek, Qualcomm) conserva su controlador: sus botones de WinUSB y de firmware están desactivados
 - **Reemplazar por el controlador WinUSB** / **Restaurar el controlador original** (consulte [Instalación](setup#winusb)); Windows solicita permiso de administrador cada vez
 - **Chip Bluetooth** para el firmware, con **Descargar firmware**, **Abrir página de descarga** y **Abrir carpeta de configuración** (consulte [Firmware](setup#firmware))
 - **AFH**: Automático, Desactivado o Manual, con los canales Wi-Fi al lado: los que Automático evita ahora y ninguno con Desactivado (ambos de solo lectura), los que escriba con Manual (consulte [Calidad del enlace y AFH](#link-quality))
@@ -88,35 +88,35 @@ Con **Configuración > Modo de desarrollador**, la pantalla **Desarrollador** ti
 | Notificaciones | **Notificar cuando se conecta un dispositivo** (el dispositivo, su batería, el códec y con qué funciona; activado de forma predeterminada), **Avisar cuando la batería esté baja**: **Por debajo del 20%** (el predeterminado), **Por debajo del 10%**, **Por debajo del 5%** o **Nunca**, una vez por conexión (de nuevo solo después de que la batería haya vuelto a estar 5 puntos por encima) |
 | Actualizaciones | **Buscar actualizaciones**, **Buscar actualizaciones al iniciar**, **Incluir versiones preliminares al buscar actualizaciones** (también ofrece versiones beta), **Actualizar ahora** (consulte [Actualizaciones](#updates)) |
 | Avanzado | **Modo de desarrollador** (añade la pantalla **Desarrollador** con el **Tamaño máx. de paquete multimedia** de cada dispositivo y la prueba con receptor par, y más detalles al registro; no requiere reiniciar), **Carpeta de configuración** con **Abrir carpeta de configuración**, **Ejecutar la configuración inicial** |
-| Acerca de A2DPWB | Versión, licencia, licencias de terceros, **Salir de A2DPWB** |
+| Acerca de BlueCaster | Versión, licencia, licencias de terceros, **Salir de BlueCaster** |
 
 ### Configuración inicial
 
-El primer inicio (aún sin perfil, o sin ningún adaptador con WinUSB) abre **Configurar A2DPWB**: elegir el adaptador, controlador y firmware, encontrar los dispositivos de audio («Conectar» crea el perfil y se conecta; este paso también tiene **Iniciar con Windows** e **Iniciar en la bandeja**). Consulte [Instalación](setup#first-run). **Configuración > Ejecutar la configuración inicial** la vuelve a abrir.
+El primer inicio (aún sin perfil, o sin ningún adaptador con WinUSB) abre **Configurar BlueCaster**: elegir el adaptador, controlador y firmware, encontrar los dispositivos de audio («Conectar» crea el perfil y se conecta; este paso también tiene **Iniciar con Windows** e **Iniciar en la bandeja**). Consulte [Instalación](setup#first-run). **Configuración > Ejecutar la configuración inicial** la vuelve a abrir.
 
 ## Bandeja y panel desplegable {#tray}
 
-A2DPWB sigue ejecutándose en la bandeja del sistema, con o sin la ventana:
+BlueCaster sigue ejecutándose en la bandeja del sistema, con o sin la ventana:
 
 - **Clic izquierdo** en el icono de la bandeja abre el panel desplegable: el dispositivo y su estado, **Conectar** / **Desconectar**, el volumen, el selector de dispositivos, el códec (una lista para elegirlo, como en Inicio), la calidad del enlace y **Abrir la aplicación**. Su altura se ajusta exactamente a lo que muestra. Esc o un clic en otro sitio lo ocultan. Si un error requiere una pantalla de la ventana principal (Códecs, Dispositivos de audio, el adaptador), su botón abre la ventana en esa pantalla. Con **Configuración > Al hacer clic en el icono de la bandeja se abre la ventana principal** activado (desactivado de forma predeterminada), un clic izquierdo abre en su lugar la ventana principal
-- **Clic derecho** abre el menú: **Abrir A2DPWB**, los 10 primeros dispositivos por su nombre (una entrada LE Audio marcada con «(LE Audio)»; el que transmite, marcado; haga clic en uno para conectarlo), **Desconectar** y **Salir**. El menú se abre al instante, sin iniciar la ventana
-- La información sobre herramientas indica si A2DPWB está inactivo o conectado
+- **Clic derecho** abre el menú: **Abrir BlueCaster**, los 10 primeros dispositivos por su nombre (una entrada LE Audio marcada con «(LE Audio)»; el que transmite, marcado; haga clic en uno para conectarlo), **Desconectar** y **Salir**. El menú se abre al instante, sin iniciar la ventana
+- La información sobre herramientas indica si BlueCaster está inactivo o conectado
 
-Con **Configuración > Minimizar en la bandeja del sistema** activado (el valor predeterminado), minimizar o cerrar la ventana solo la oculta en la bandeja, y la transmisión continúa. Si está desactivado, la ventana se minimiza en la barra de tareas y cerrarla sale de A2DPWB. **Salir** en el menú de la bandeja o **Configuración > Salir de A2DPWB** detiene la transmisión, libera el adaptador y cierra A2DPWB por completo.
+Con **Configuración > Minimizar en la bandeja del sistema** activado (el valor predeterminado), minimizar o cerrar la ventana solo la oculta en la bandeja, y la transmisión continúa. Si está desactivado, la ventana se minimiza en la barra de tareas y cerrarla sale de BlueCaster. **Salir** en el menú de la bandeja o **Configuración > Salir de BlueCaster** detiene la transmisión, libera el adaptador y cierra BlueCaster por completo.
 
 ## Iniciar con Windows {#autostart}
 
-**Configuración > Iniciar con Windows** inicia A2DPWB al iniciar sesión. Con **Iniciar en la bandeja** activado, se inicia en segundo plano: solo aparece el icono de la bandeja, y la ventana se abre desde él. Si está desactivado (el valor predeterminado), se abre la ventana principal. Es el valor `A2DPWB` en `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`, con los datos `"<folder>\a2dpwb-core.exe"`, seguidos de `--background` cuando **Iniciar en la bandeja** está activado. Para desactivarlo a mano, elimine ese valor. Al instalar la v2 sobre la v1, **Iniciar en la bandeja** queda activado, ya que la v1 siempre se iniciaba en la bandeja.
+**Configuración > Iniciar con Windows** inicia BlueCaster al iniciar sesión. Con **Iniciar en la bandeja** activado, se inicia en segundo plano: solo aparece el icono de la bandeja, y la ventana se abre desde él. Si está desactivado (el valor predeterminado), se abre la ventana principal. Es el valor `BlueCaster` en `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`, con los datos `"<folder>\bluecaster-core.exe"`, seguidos de `--background` cuando **Iniciar en la bandeja** está activado. Para desactivarlo a mano, elimine ese valor. Al instalar la v2 sobre la v1, **Iniciar en la bandeja** queda activado, ya que la v1 siempre se iniciaba en la bandeja.
 
 ## Modo CLI
 
-`a2dpwb-core.exe --cli` transmite desde una consola, con el mismo núcleo que la ventana. Cierre antes A2DPWB (bandeja > **Salir**): solo un programa a la vez puede usar el adaptador. La CLI no lee los perfiles; todo se indica como opciones.
+`bluecaster-core.exe --cli` transmite desde una consola, con el mismo núcleo que la ventana. Cierre antes BlueCaster (bandeja > **Salir**): solo un programa a la vez puede usar el adaptador. La CLI no lee los perfiles; todo se indica como opciones.
 
 ### Básico
 
 ```bash
 # Seleccionar automáticamente el mejor códec
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF
 ```
 
 Ctrl+C detiene la transmisión. La CLI muestra el estado, el códec y la tasa de bits y, al final, el número de paquetes enviados y descartados.
@@ -124,16 +124,16 @@ Ctrl+C detiene la transmisión. La CLI muestra el estado, el códec y la tasa de
 ### Selección de códec
 
 ```bash
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac      # LDAC
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxhd    # aptX HD
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxll    # aptX Low Latency
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptx      # aptX
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aac       # AAC
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c sbc       # SBC
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5    # LHDC V5
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c opus      # Opus (experimental; 48 kHz, 256 kbps)
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c opus05    # Opus 05 de PipeWire (experimental; hacia receptores PipeWire)
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad    # aptX Adaptive (48 kHz, --rate 96000 para 96 kHz)
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac      # LDAC
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxhd    # aptX HD
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxll    # aptX Low Latency
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptx      # aptX
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aac       # AAC
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c sbc       # SBC
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5    # LHDC V5
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c opus      # Opus (experimental; 48 kHz, 256 kbps)
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c opus05    # Opus 05 de PipeWire (experimental; hacia receptores PipeWire)
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad    # aptX Adaptive (48 kHz, --rate 96000 para 96 kHz)
 ```
 
 Prioridad de la selección automática: LHDC V5 > LDAC > aptX Adaptive > Opus (experimental) > aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC (FastStream y Opus 05, ambos experimentales, solo si se eligen)
@@ -143,23 +143,23 @@ Si los auriculares no ofrecen el códec solicitado, la CLI se detiene con un err
 ### Calidad
 
 ```bash
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q hq   # 990 kbps (predeterminado)
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q sq   # 660 kbps
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q mq   # 330 kbps
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q hq   # 990 kbps (predeterminado)
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q sq   # 660 kbps
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q mq   # 330 kbps
 
 # LHDC V5: hq 1000 / sq 500 / mq 400 kbps
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -q sq   # 500 kbps
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -q sq   # 500 kbps
 
 # aptX Adaptive: hq 427 / sq 364 / mq 318 / ll 265 kbps (receptores R1)
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad -q ll   # Baja latencia
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad -q ll   # Baja latencia
 ```
 
 ### ABR (tasa de bits adaptativa) {#abr}
 
 ```bash
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -a
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -a
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad -a
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -a
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -a
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad -a
 ```
 
 ABR reduce automáticamente la tasa de bits cuando la conexión Bluetooth es inestable y la vuelve a subir cuando las condiciones mejoran. LDAC cambia entre sus modos de calidad; LHDC V5 sigue la política de Android y se mantiene entre 160 y 400 kbps; aptX Adaptive pasa de un nivel a otro en Alta (consulte [aptX Adaptive](#aptx-adaptive)). En la ventana, ABR está en los ajustes de un códec (**...** en su tarjeta en **Códecs**).
@@ -168,7 +168,7 @@ ABR reduce automáticamente la tasa de bits cuando la conexión Bluetooth es ine
 
 ```bash
 # Dispositivos cercanos, encontrados con el adaptador USB (10 segundos; --scan 20 para más tiempo)
-a2dpwb-core.exe --cli --scan
+bluecaster-core.exe --cli --scan
 ```
 
 Ponga antes los auriculares en modo de emparejamiento.
@@ -195,11 +195,11 @@ Ponga antes los auriculares en modo de emparejamiento.
 
 Para desarrollo y pruebas también existen `--hci-tcp <host:port>` (un controlador virtual por TCP en lugar del adaptador WinUSB), `--test-tone` (1 kHz a la izquierda / 1.5 kHz a la derecha en lugar del audio capturado), `--duration <s>` (detenerse tras ese número de segundos) y `--hci-capture <file.pklg>` (captura HCI de toda la ejecución); consulte [Compilación](../building#emu).
 
-Sin `--cli`, `a2dpwb-core.exe` es el programa residente: también inicia la ventana, salvo con `--background` (solo el icono de la bandeja; lo usa **Iniciar con Windows** cuando **Iniciar en la bandeja** está activado). `a2dpwb-core.exe --quit` pide a un A2DPWB en ejecución que detenga la transmisión y se cierre (lo usa el instalador).
+Sin `--cli`, `bluecaster-core.exe` es el programa residente: también inicia la ventana, salvo con `--background` (solo el icono de la bandeja; lo usa **Iniciar con Windows** cuando **Iniciar en la bandeja** está activado). `bluecaster-core.exe --quit` pide a un BlueCaster en ejecución que detenga la transmisión y se cierre (lo usa el instalador).
 
 ## Modos de captura {#capture-modes}
 
-A2DPWB admite tres modos de captura de audio. Cada uno graba un punto distinto del recorrido del audio:
+BlueCaster admite tres modos de captura de audio. Cada uno graba un punto distinto del recorrido del audio:
 
 | Modo | Qué graba |
 |:-----|:----------------|
@@ -211,28 +211,28 @@ A2DPWB admite tres modos de captura de audio. Cada uno graba un punto distinto d
 
 El Loopback del sistema copia el audio; no se lo quita al dispositivo de salida predeterminado. El audio sigue sonando en ese dispositivo (altavoces, un televisor HDMI, ...) además de en los auriculares Bluetooth. Para oírlo solo en los auriculares, use el modo Dispositivo virtual con un dispositivo que no reproduzca en ningún sitio, como VB-CABLE.
 
-En el modo Dispositivo virtual, **Cambiar dispositivo predeterminado** convierte el dispositivo seleccionado en la salida predeterminada de Windows durante la transmisión, de modo que las aplicaciones reproducen en él sin cambiar la configuración de Windows. Al detener la transmisión, A2DPWB vuelve al dispositivo predeterminado anterior.
+En el modo Dispositivo virtual, **Cambiar dispositivo predeterminado** convierte el dispositivo seleccionado en la salida predeterminada de Windows durante la transmisión, de modo que las aplicaciones reproducen en él sin cambiar la configuración de Windows. Al detener la transmisión, BlueCaster vuelve al dispositivo predeterminado anterior.
 
-- La lista **Dispositivo de audio** muestra solo los dispositivos que A2DPWB detecta como dispositivos de audio virtuales. Si no hay ninguno, la pantalla **Dispositivos de audio** ofrece **Descargar VB-Cable**.
+- La lista **Dispositivo de audio** muestra solo los dispositivos que BlueCaster detecta como dispositivos de audio virtuales. Si no hay ninguno, la pantalla **Dispositivos de audio** ofrece **Descargar VB-Cable**.
 - El dispositivo de comunicación predeterminado (el que usan las aplicaciones de llamadas) no se cambia.
 - Algunas aplicaciones siguen reproduciendo en el dispositivo anterior hasta que se reinician.
-- Si A2DPWB se cierra inesperadamente, el dispositivo predeterminado no se restaura. Cámbielo en la configuración de Sonido de Windows.
+- Si BlueCaster se cierra inesperadamente, el dispositivo predeterminado no se restaura. Cámbielo en la configuración de Sonido de Windows.
 
 ### Modo Aplicación {#application-mode}
 
 El modo Aplicación envía el audio de una aplicación, por ejemplo un reproductor de música, un navegador o una aplicación de efectos. Elija la aplicación en la lista **Aplicación**. La lista muestra las aplicaciones que están reproduciendo audio en ese momento; si la suya no aparece, inicie la reproducción en ella y haga clic en **Actualizar**. Se incluyen los procesos secundarios de la aplicación, así que también funciona un navegador que reproduce el audio desde un proceso aparte.
 
-- No es necesario que la aplicación esté en ejecución. A2DPWB se conecta igualmente a los auriculares y empieza a enviar en cuanto la aplicación se inicia. Si la aplicación se cierra durante la transmisión, A2DPWB sigue conectado y la vuelve a captar cuando se reinicia.
-- La aplicación sigue sonando también en su propio dispositivo de salida. Para oírla solo en los auriculares, silencie ese dispositivo de salida (su volumen maestro): esto no afecta a lo que captura A2DPWB. Pero no silencie la aplicación en el Mezclador de volumen de Windows, porque los auriculares también recibirían silencio.
+- No es necesario que la aplicación esté en ejecución. BlueCaster se conecta igualmente a los auriculares y empieza a enviar en cuanto la aplicación se inicia. Si la aplicación se cierra durante la transmisión, BlueCaster sigue conectado y la vuelve a captar cuando se reinicia.
+- La aplicación sigue sonando también en su propio dispositivo de salida. Para oírla solo en los auriculares, silencie ese dispositivo de salida (su volumen maestro): esto no afecta a lo que captura BlueCaster. Pero no silencie la aplicación en el Mezclador de volumen de Windows, porque los auriculares también recibirían silencio.
 - El control deslizante de la aplicación en el Mezclador de volumen de Windows cambia el nivel enviado a los auriculares (y el de su dispositivo de salida). El volumen maestro y las teclas de volumen no cambian el audio enviado; con **Sincronizar volumen de Windows** activado, cambian en su lugar el volumen de los auriculares (consulte [Volumen](#volume)).
-- Windows convierte el audio a la frecuencia de muestreo que pide A2DPWB, así que el formato del dispositivo en la configuración de Sonido no lo limita.
+- Windows convierte el audio a la frecuencia de muestreo que pide BlueCaster, así que el formato del dispositivo en la configuración de Sonido no lo limita.
 - En Windows 10 anterior a la versión 2004 (compilación 19041), Windows no permite capturar por aplicación. Al conectar un dispositivo configurado con captura de Aplicación se muestra entonces un error que pide otro origen de salida.
 
 ### Volumen {#volume}
 
 Durante la transmisión, Inicio y el panel desplegable de la bandeja muestran un control deslizante **Volumen** cuando los auriculares admiten el volumen absoluto de AVRCP. Ajusta el volumen en los propios auriculares, de modo que el audio enviado conserva toda su resolución. El altavoz de al lado silencia (volumen 0 en los auriculares) y vuelve a activar el sonido (al volumen de antes). El control deslizante también sigue los botones de volumen y los controles táctiles de los auriculares.
 
-**Sincronizar volumen de Windows** (en **Dispositivos de audio**, para todos los dispositivos; activado de forma predeterminada) hace que un volumen de Windows y el volumen de los auriculares sean uno solo durante la transmisión. El volumen de Windows sincronizado es el del dispositivo que captura A2DPWB: el dispositivo de salida predeterminado en los modos Loopback del sistema y Aplicación, el dispositivo seleccionado en el modo Dispositivo virtual. Desactivado, el volumen de Windows y el de los auriculares son independientes.
+**Sincronizar volumen de Windows** (en **Dispositivos de audio**, para todos los dispositivos; activado de forma predeterminada) hace que un volumen de Windows y el volumen de los auriculares sean uno solo durante la transmisión. El volumen de Windows sincronizado es el del dispositivo que captura BlueCaster: el dispositivo de salida predeterminado en los modos Loopback del sistema y Aplicación, el dispositivo seleccionado en el modo Dispositivo virtual. Desactivado, el volumen de Windows y el de los auriculares son independientes.
 
 - Los botones y gestos de volumen de los auriculares, y el control deslizante **Volumen**, mueven el volumen de Windows sincronizado, y su control deslizante en la configuración de Sonido mueve el volumen de los auriculares.
 - Las teclas de volumen y el control flotante de volumen de Windows siempre actúan sobre el dispositivo de salida predeterminado, así que solo cambian el volumen de los auriculares cuando el dispositivo de salida predeterminado es el sincronizado (siempre, salvo en el modo Dispositivo virtual sin **Cambiar dispositivo predeterminado**).
@@ -242,14 +242,14 @@ Durante la transmisión, Inicio y el panel desplegable de la bandeja muestran un
 
 Las versiones anteriores permitían que un dispositivo siguiera el volumen de otro dispositivo de salida (en modo de desarrollador); esa opción ya no se usa.
 
-**Recordar el último volumen del dispositivo de audio Bluetooth** (en **Dispositivos de audio**, para todos los dispositivos; activado de forma predeterminada) guarda el volumen propio de cada dispositivo de audio y lo vuelve a aplicar en cuanto se conecta, antes de enviar audio, así que el volumen de un dispositivo no pasa a otro. Desactívelo si quiere que cada dispositivo empiece con su propio último volumen, que puede ser mucho más alto que el usado la última vez con A2DPWB (p. ej., después de usarlo con un teléfono).
+**Recordar el último volumen del dispositivo de audio Bluetooth** (en **Dispositivos de audio**, para todos los dispositivos; activado de forma predeterminada) guarda el volumen propio de cada dispositivo de audio y lo vuelve a aplicar en cuanto se conecta, antes de enviar audio, así que el volumen de un dispositivo no pasa a otro. Desactívelo si quiere que cada dispositivo empiece con su propio último volumen, que puede ser mucho más alto que el usado la última vez con BlueCaster (p. ej., después de usarlo con un teléfono).
 
 ### Botones de los auriculares {#headphone-buttons}
 
-Los controles de reproducir/pausar, pista siguiente y pista anterior de los auriculares (botones o gestos táctiles, p. ej. un doble toque en los WH-1000XM4) controlan la reproducción en el PC durante la transmisión: A2DPWB los pasa a Windows como teclas multimedia, que llegan a la aplicación que aparece en los controles multimedia de Windows (Spotify, un navegador, un reproductor...). Detener también se transmite.
+Los controles de reproducir/pausar, pista siguiente y pista anterior de los auriculares (botones o gestos táctiles, p. ej. un doble toque en los WH-1000XM4) controlan la reproducción en el PC durante la transmisión: BlueCaster los pasa a Windows como teclas multimedia, que llegan a la aplicación que aparece en los controles multimedia de Windows (Spotify, un navegador, un reproductor...). Detener también se transmite.
 
 - Reproducir y pausar actúan ambos como la tecla Reproducir/Pausar de Windows, de modo que un toque siempre alterna entre reproducción y pausa, aunque la idea que tienen los auriculares del estado no esté actualizada.
-- A2DPWB indica a los auriculares si se está reproduciendo audio (según haya o no audio que capturar), para que los auriculares que se pausan al quitárselos envíen el comando correcto.
+- BlueCaster indica a los auriculares si se está reproduciendo audio (según haya o no audio que capturar), para que los auriculares que se pausan al quitárselos envíen el comando correcto.
 - Avance rápido / retroceso (mantener pulsado un botón) no tienen tecla multimedia en Windows y se ignoran.
 - Los gestos de volumen cambian el volumen propio de los auriculares; con **Sincronizar volumen de Windows**, el volumen de Windows sincronizado los sigue (consulte [Volumen](#volume)).
 - Desactívelo para un dispositivo con **Dispositivos de audio > Los botones del dispositivo de audio controlan la reproducción**, p. ej. si otro programa ya reacciona a las teclas multimedia y estas actúan dos veces.
@@ -258,7 +258,7 @@ Esto requiere AVRCP en los auriculares, que casi todos tienen. Sin él, la trans
 
 ### Aplicaciones de efectos para todo el sistema {#effects-apps}
 
-Una aplicación de efectos para todo el sistema (un ecualizador, un potenciador de sonido, una aplicación de sonido envolvente virtual, ...) suele instalar su propio dispositivo de salida virtual. Las demás aplicaciones reproducen en ese dispositivo; la aplicación de efectos procesa el audio y reproduce el resultado en el dispositivo de salida que usted elige en ella. El modo de A2DPWB que elija decide si los auriculares reciben los efectos:
+Una aplicación de efectos para todo el sistema (un ecualizador, un potenciador de sonido, una aplicación de sonido envolvente virtual, ...) suele instalar su propio dispositivo de salida virtual. Las demás aplicaciones reproducen en ese dispositivo; la aplicación de efectos procesa el audio y reproduce el resultado en el dispositivo de salida que usted elige en ella. El modo de BlueCaster que elija decide si los auriculares reciben los efectos:
 
 | Configuración | Qué llega a los auriculares |
 |:--------|:----------------------------|
@@ -266,24 +266,24 @@ Una aplicación de efectos para todo el sistema (un ecualizador, un potenciador 
 | Aplicación: la aplicación de efectos | El audio **después** de los efectos: lo que reproduce la aplicación de efectos (recomendado) |
 | Dispositivo virtual: el dispositivo de salida de la aplicación de efectos (p. ej., VB-CABLE configurado como su salida) | El audio después de los efectos (para versiones de Windows sin modo Aplicación) |
 
-En el modo Aplicación, el dispositivo de salida de la aplicación de efectos puede ser cualquiera: A2DPWB toma lo que reproduce la aplicación, no lo que reproduce el dispositivo, así que el dispositivo solo es un destino para el audio. Para que el PC no reproduzca el audio al mismo tiempo, elija una salida que nadie escuche (p. ej., el audio HDMI de un monitor) o silencie el volumen maestro de ese dispositivo. Un dispositivo virtual como VB-CABLE también sirve como destino silencioso, pero no es necesario. El dispositivo debe estar habilitado y conectado.
+En el modo Aplicación, el dispositivo de salida de la aplicación de efectos puede ser cualquiera: BlueCaster toma lo que reproduce la aplicación, no lo que reproduce el dispositivo, así que el dispositivo solo es un destino para el audio. Para que el PC no reproduzca el audio al mismo tiempo, elija una salida que nadie escuche (p. ej., el audio HDMI de un monitor) o silencie el volumen maestro de ese dispositivo. Un dispositivo virtual como VB-CABLE también sirve como destino silencioso, pero no es necesario. El dispositivo debe estar habilitado y conectado.
 
 Si el dispositivo virtual propio de la aplicación de efectos es el dispositivo de salida predeterminado de Windows, su volumen también reduce lo que recibe la aplicación de efectos. Con **Sincronizar volumen de Windows** activado, un cambio de volumen se aplica entonces dos veces (en la entrada de la aplicación de efectos y en los auriculares). Desactívelo y use el volumen de los auriculares o el control deslizante **Volumen**.
 
-#### Por qué A2DPWB no tiene su propio dispositivo de salida virtual {#no-virtual-device}
+#### Por qué BlueCaster no tiene su propio dispositivo de salida virtual {#no-virtual-device}
 
-Una entrada de auriculares Bluetooth en la lista de dispositivos de salida de Windows, que una aplicación de efectos pudiera seleccionar directamente, requeriría un controlador de audio en modo kernel. A2DPWB no incluye ninguno:
+Una entrada de auriculares Bluetooth en la lista de dispositivos de salida de Windows, que una aplicación de efectos pudiera seleccionar directamente, requeriría un controlador de audio en modo kernel. BlueCaster no incluye ninguno:
 
 - Escribir y mantener un controlador de audio de kernel es un trabajo enorme, y un error en él puede bloquear Windows (pantalla azul).
 - Windows 10 y 11 solo cargan controladores firmados por Microsoft. Obtener esa firma requiere un certificado de firma de código EV (varios cientos de dólares estadounidenses al año) y una cuenta de Microsoft Partner Center, normalmente registrada como empresa.
-- La única forma de evitar la firma es el modo de firma de prueba de Windows, que reduce la seguridad del sistema y hace fallar algunos programas (p. ej., juegos con antitrampas). A2DPWB no va a depender de él.
+- La única forma de evitar la firma es el modo de firma de prueba de Windows, que reduce la seguridad del sistema y hace fallar algunos programas (p. ej., juegos con antitrampas). BlueCaster no va a depender de él.
 
 El modo Aplicación, o un dispositivo virtual gratuito como VB-CABLE, cubre el mismo uso.
 
-- Windows no tiene una API pública para cambiar el dispositivo predeterminado. A2DPWB usa la interfaz no documentada IPolicyConfig, como otras herramientas de cambio de audio (Windows 10 y 11).
+- Windows no tiene una API pública para cambiar el dispositivo predeterminado. BlueCaster usa la interfaz no documentada IPolicyConfig, como otras herramientas de cambio de audio (Windows 10 y 11).
 
 {: .warning }
-Loopback del sistema y Dispositivo virtual usan el modo compartido de WASAPI: con la frecuencia de muestreo en Automático (también con la selección automática), A2DPWB pide 48 kHz, o la mejor frecuencia que anuncien los auriculares si no tienen 48 kHz, y WASAPI remuestrea a ella el **Formato predeterminado** del dispositivo. Para usar LDAC a 96 kHz, elija 96 kHz en los ajustes del códec; no hace falta cambiar el formato predeterminado en **Configuración de sonido > Propiedades del dispositivo > Opciones avanzadas**.
+Loopback del sistema y Dispositivo virtual usan el modo compartido de WASAPI: con la frecuencia de muestreo en Automático (también con la selección automática), BlueCaster pide 48 kHz, o la mejor frecuencia que anuncien los auriculares si no tienen 48 kHz, y WASAPI remuestrea a ella el **Formato predeterminado** del dispositivo. Para usar LDAC a 96 kHz, elija 96 kHz en los ajustes del códec; no hace falta cambiar el formato predeterminado en **Configuración de sonido > Propiedades del dispositivo > Opciones avanzadas**.
 
 ## Comparación de códecs
 
@@ -301,13 +301,13 @@ La pantalla **Códecs** muestra la misma comparación como tres barras en cada t
 
 ## Familia aptX y aptX Adaptive {#aptx-compatibility}
 
-A2DPWB admite tres códecs aptX codificados con [libopenaptx](https://github.com/pali/libopenaptx) y aptX Adaptive, codificado con el codificador de [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux).
+BlueCaster admite tres códecs aptX codificados con [libopenaptx](https://github.com/pali/libopenaptx) y aptX Adaptive, codificado con el codificador de [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux).
 
 {: .warning }
 **aptX HD y aptX Low Latency son experimentales.** Siguen las implementaciones de Android / PipeWire y superan las pruebas de ida y vuelta de codificación/decodificación, pero aún no se han verificado con auriculares reales.
 
 {: .note }
-**¿Solo necesita aptX clásico?** Windows 10 ya admite aptX clásico en su pila Bluetooth integrada (no aptX HD, aptX LL ni aptX Adaptive), así que A2DPWB no es necesario para ese códec. A2DPWB es útil sobre todo para LDAC, aptX HD y aptX Low Latency.
+**¿Solo necesita aptX clásico?** Windows 10 ya admite aptX clásico en su pila Bluetooth integrada (no aptX HD, aptX LL ni aptX Adaptive), así que BlueCaster no es necesario para ese códec. BlueCaster es útil sobre todo para LDAC, aptX HD y aptX Low Latency.
 
 | Códec | Vendor ID / Codec ID | Encabezado RTP | Estado |
 |:------|:---------------------|:-----------|:-------|
@@ -340,7 +340,7 @@ El codificador es el codificador aptX Adaptive en Rust puro de [AKS-Logic/aptx-a
 
 ### No hay «recurso» de aptX Adaptive a aptX
 
-Cuando A2DPWB se conecta, los auriculares anuncian una **lista de códecs** (extremos de transmisión AVDTP). A2DPWB elige un códec de esa lista. aptX Adaptive y aptX clásico son entradas distintas de la lista, así que dentro del códec nada «recurre» de uno al otro:
+Cuando BlueCaster se conecta, los auriculares anuncian una **lista de códecs** (extremos de transmisión AVDTP). BlueCaster elige un códec de esa lista. aptX Adaptive y aptX clásico son entradas distintas de la lista, así que dentro del códec nada «recurre» de uno al otro:
 
 - **Los auriculares también ofrecen aptX clásico** -- Muchos auriculares aptX Adaptive lo hacen, porque Qualcomm promociona aptX Adaptive como retrocompatible con aptX / aptX HD. Automático elige aptX Adaptive (por encima de aptX HD y aptX); aptX clásico se usa cuando usted lo elige, como un códec independiente en la lista de los auriculares, no un modo reducido de aptX Adaptive.
 - **Los auriculares solo ofrecen aptX Adaptive** (sin aptX clásico, aptX HD ni aptX LL) -- si elige aptX, se recurre al siguiente códec inferior que ofrezcan, normalmente AAC o SBC; elija aptX Adaptive (o Automático) para usarlo.
@@ -361,7 +361,7 @@ La opción está en la parte superior de la pantalla **Códecs**, para todos los
 
 ### Falta un códec mientras los auriculares están conectados a otro dispositivo {#sep-in-use}
 
-Los auriculares ofrecen cada códec en un extremo de transmisión (SEP). En una conexión doble (multipunto), un extremo que transmite al teléfono o al PC se indica como **en uso**, y su códec no se puede usar hasta que esa transmisión se detenga. Algunos auriculares además solo ofrecen códecs de alta resolución (LDAC, L2HC, ...) mientras hay un único dispositivo conectado. A2DPWB registra entonces:
+Los auriculares ofrecen cada códec en un extremo de transmisión (SEP). En una conexión doble (multipunto), un extremo que transmite al teléfono o al PC se indica como **en uso**, y su códec no se puede usar hasta que esa transmisión se detenga. Algunos auriculares además solo ofrecen códecs de alta resolución (LDAC, L2HC, ...) mientras hay un único dispositivo conectado. BlueCaster registra entonces:
 
 ```
 remote SEP 6: sink audio, IN USE (codec not queried)
@@ -373,14 +373,14 @@ y el error indica que hay extremos en uso por otro dispositivo. Desconecte los a
 
 ### Frecuencia de muestreo
 
-aptX, aptX HD y aptX LL solo admiten 44.1 kHz y 48 kHz (aptX Adaptive 48 kHz, o 96 kHz si se elige y los auriculares lo anuncian). A2DPWB elige una de las frecuencias que anuncian los auriculares (en Automático 48 kHz, si no 44.1 kHz) y deja que WASAPI remuestree la captura. No es necesario cambiar la configuración de Sonido de Windows para aptX.
+aptX, aptX HD y aptX LL solo admiten 44.1 kHz y 48 kHz (aptX Adaptive 48 kHz, o 96 kHz si se elige y los auriculares lo anuncian). BlueCaster elige una de las frecuencias que anuncian los auriculares (en Automático 48 kHz, si no 44.1 kHz) y deja que WASAPI remuestree la captura. No es necesario cambiar la configuración de Sonido de Windows para aptX.
 
 ### Comprobar qué ofrecen sus auriculares
 
 1. Conéctese a los auriculares.
 2. Abra **Diagnóstico** y escriba `remote` en el filtro del registro.
 
-Las mismas líneas están en los archivos de registro de la carpeta de configuración (`%APPDATA%\A2DPWB\logs\a2dpwb-core.<date>.log`); en modo CLI se muestran en la consola. Las líneas de capacidades muestran exactamente qué códecs ofrecen los auriculares:
+Las mismas líneas están en los archivos de registro de la carpeta de configuración (`%APPDATA%\BlueCaster\logs\bluecaster-core.<date>.log`); en modo CLI se muestran en la consola. Las líneas de capacidades muestran exactamente qué códecs ofrecen los auriculares:
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -391,28 +391,28 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 - `aptX=true` -- aptX clásico está disponible (aunque también aparezca `aptX Adaptive=true`); Automático lo usa.
 - `aptX=false`, `aptX HD=false`, `aptX LL=false` con `aptX Adaptive=true` -- los auriculares solo ofrecen aptX Adaptive; elija aptX Adaptive, o Automático, AAC o SBC.
-- `aptX Adaptive=true [not usable]` -- los auriculares ofrecen aptX Adaptive sin 48 kHz estéreo, que A2DPWB necesita.
-- `remote vendor codec ... - unsupported` -- otro códec de fabricante que A2DPWB no implementa.
+- `aptX Adaptive=true [not usable]` -- los auriculares ofrecen aptX Adaptive sin 48 kHz estéreo, que BlueCaster necesita.
+- `remote vendor codec ... - unsupported` -- otro códec de fabricante que BlueCaster no implementa.
 
 ## Tamaño máximo del paquete multimedia (por dispositivo) {#max-packet}
 
-**Tamaño máx. de paquete multimedia** de cada dispositivo (pantalla **Desarrollador**, un campo por dispositivo guardado; CLI: `--max-packet <bytes>`) fija el límite superior de los datos de audio de cada paquete Bluetooth, de 679 a 1679 bytes, para que los dispositivos de audio que necesitan otro valor puedan tener el suyo. La pantalla Desarrollador se muestra en modo de desarrollador (**Configuración > Modo de desarrollador**); la mayoría de los usuarios nunca lo necesita. El límite propio del dispositivo de audio (MTU) también se aplica siempre; A2DPWB usa el menor de los dos. El cambio se aplica a partir de la siguiente conexión. Antes era un ajuste del perfil (en **Avanzado**): un dispositivo conserva el valor del perfil que se mantuvo (consulte [Códecs](#codecs)); los perfiles guardados por la v1 anterior a la 1.1 toman el valor que entonces se configuraba de forma global.
+**Tamaño máx. de paquete multimedia** de cada dispositivo (pantalla **Desarrollador**, un campo por dispositivo guardado; CLI: `--max-packet <bytes>`) fija el límite superior de los datos de audio de cada paquete Bluetooth, de 679 a 1679 bytes, para que los dispositivos de audio que necesitan otro valor puedan tener el suyo. La pantalla Desarrollador se muestra en modo de desarrollador (**Configuración > Modo de desarrollador**); la mayoría de los usuarios nunca lo necesita. El límite propio del dispositivo de audio (MTU) también se aplica siempre; BlueCaster usa el menor de los dos. El cambio se aplica a partir de la siguiente conexión. Antes era un ajuste del perfil (en **Avanzado**): un dispositivo conserva el valor del perfil que se mantuvo (consulte [Códecs](#codecs)); los perfiles guardados por la v1 anterior a la 1.1 toman el valor que entonces se configuraba de forma global.
 
 **Se recomienda 1023 (predeterminado).** Cabe en un paquete de banda base Bluetooth (3-DH5). Los valores mayores solo ahorran un 1-2 % de sobrecarga, y cada paquete perdido supone entonces perder más audio. 679 cabe en un paquete 2-DH5 y es el mínimo que acepta LDAC.
 
-## Verificar el flujo multimedia (a2dpwb_decode) {#verify-stream}
+## Verificar el flujo multimedia (bluecaster_decode) {#verify-stream}
 
 La mayoría de los auriculares no pueden mostrar qué códec se está usando. **Diagnóstico > Iniciar captura HCI** / **Detener captura HCI** graba un registro de paquetes HCI (`hci_<date>_<time>.pklg` en la carpeta de configuración) con la negociación del códec y todos los paquetes multimedia enviados. Con LDAC a 990 kbps crece aproximadamente 0.5 GB por hora, así que capture solo el tiempo que necesite. En modo CLI, `--hci-capture <file.pklg>` graba toda la ejecución.
 
-Puede iniciar una captura antes de conectar o durante la transmisión. Si se inicia durante una conexión, A2DPWB escribe primero los paquetes de establecimiento de la conexión que ha recordado (establecimiento del canal L2CAP y señalización AVDTP, incluida la negociación del códec), para que el archivo pueda analizarse igualmente. Diagnóstico muestra la ruta del archivo mientras graba y después de detenerla.
+Puede iniciar una captura antes de conectar o durante la transmisión. Si se inicia durante una conexión, BlueCaster escribe primero los paquetes de establecimiento de la conexión que ha recordado (establecimiento del canal L2CAP y señalización AVDTP, incluida la negociación del códec), para que el archivo pueda analizarse igualmente. Diagnóstico muestra la ruta del archivo mientras graba y después de detenerla.
 
-Abra la captura en Wireshark o compruébela con la herramienta para desarrolladores `a2dpwb_decode` (se compila desde el código fuente; consulte [Compilación](../building)):
+Abra la captura en Wireshark o compruébela con la herramienta para desarrolladores `bluecaster_decode` (se compila desde el código fuente; consulte [Compilación](../building)):
 
 ```
-a2dpwb_decode "%APPDATA%\A2DPWB\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
-La herramienta sigue la señalización AVDTP (SET_CONFIGURATION / RECONFIGURE y si los auriculares la aceptaron), extrae los paquetes multimedia que envió A2DPWB y los comprueba frente a la configuración negociada:
+La herramienta sigue la señalización AVDTP (SET_CONFIGURATION / RECONFIGURE y si los auriculares la aceptaron), extrae los paquetes multimedia que envió BlueCaster y los comprueba frente a la configuración negociada:
 
 | Códec | Qué se comprueba | Salida |
 |:------|:----------------|:-------|
@@ -422,13 +422,13 @@ La herramienta sigue la señalización AVDTP (SET_CONFIGURATION / RECONFIGURE y 
 Para cada flujo también informa de los saltos en la secuencia RTP, la velocidad a la que avanza la marca de tiempo RTP, la tasa de bits y cuántos paquetes ACL indicó el controlador Bluetooth como completados. La última línea es `RESULT: OK` o `RESULT: PROBLEMS FOUND` (código de salida 0 o 1).
 
 {: .note }
-Esto muestra lo que envió A2DPWB y que es válido para el códec negociado. Como un receptor solo puede decodificar el códec negociado, un audio correcto en los auriculares junto con un informe sin errores es una prueba sólida de que el códec se está usando de verdad.
+Esto muestra lo que envió BlueCaster y que es válido para el códec negociado. Como un receptor solo puede decodificar el códec negociado, un audio correcto en los auriculares junto con un informe sin errores es una prueba sólida de que el códec se está usando de verdad.
 
 ## Calidad del enlace y AFH {#link-quality}
 
-**Diagnóstico > Calidad del enlace** muestra lo que envía A2DPWB durante la transmisión: la tasa de bits real, los paquetes enviados, los paquetes descartados antes del envío (cola de envío llena: el enlace de radio no daba abasto), el audio descartado en la captura, la cola de envío, el tiempo de radio usado y la **Señal**: el RSSI de la conexión, relativo al rango óptimo de recepción del controlador (0 = bien, negativo = demasiado débil; no es un nivel absoluto), y en cuántos de los 79 canales Bluetooth salta el enlace (AFH). Inicio y el panel desplegable de la bandeja lo resumen como Buena, Aceptable o Mala.
+**Diagnóstico > Calidad del enlace** muestra lo que envía BlueCaster durante la transmisión: la tasa de bits real, los paquetes enviados, los paquetes descartados antes del envío (cola de envío llena: el enlace de radio no daba abasto), el audio descartado en la captura, la cola de envío, el tiempo de radio usado y la **Señal**: el RSSI de la conexión, relativo al rango óptimo de recepción del controlador (0 = bien, negativo = demasiado débil; no es un nivel absoluto), y en cuántos de los 79 canales Bluetooth salta el enlace (AFH). Inicio y el panel desplegable de la bandeja lo resumen como Buena, Aceptable o Mala.
 
-Bluetooth evita por sí mismo los canales ocupados (AFH), pero solo se entera de la presencia de Wi-Fi a través de los errores. A2DPWB además indica a su controlador qué canales debe evitar (clasificación de canales AFH del host), en cada conexión:
+Bluetooth evita por sí mismo los canales ocupados (AFH), pero solo se entera de la presencia de Wi-Fi a través de los errores. BlueCaster además indica a su controlador qué canales debe evitar (clasificación de canales AFH del host), en cada conexión:
 
 | AFH | |
 |:--|:--|
@@ -442,7 +442,7 @@ Siempre quedan en uso al menos 20 canales Bluetooth. Configúrelo en la pantalla
 
 ## Prueba con receptor par (tools/linux_sink) {#receiver}
 
-La vista de calidad del enlace muestra lo que envía A2DPWB. Para ver lo que llega realmente, ejecute `tools/linux_sink/a2dpwb_sink.py` en un segundo PC con Linux. Controla directamente el adaptador Bluetooth normal de ese PC (sirve el integrado) mediante Bumble sobre el canal de usuario HCI, como receptor A2DP para todos los códecs incluido LDAC, mide cada paquete multimedia que llega y ofrece las estadísticas por la red:
+La vista de calidad del enlace muestra lo que envía BlueCaster. Para ver lo que llega realmente, ejecute `tools/linux_sink/bluecaster_sink.py` en un segundo PC con Linux. Controla directamente el adaptador Bluetooth normal de ese PC (sirve el integrado) mediante Bumble sobre el canal de usuario HCI, como receptor A2DP para todos los códecs incluido LDAC, mide cada paquete multimedia que llega y ofrece las estadísticas por la red:
 
 Copie la carpeta `tools/linux_sink` al PC con Linux (basta con la carpeta) y después:
 
@@ -451,24 +451,24 @@ sh setup.sh      # una vez: bibliotecas de decodificación, entorno de Python (U
 sudo sh run.sh   # iniciar el receptor (root: toma el control del adaptador Bluetooth)
 ```
 
-En el PC con Windows, cierre A2DPWB (bandeja > **Salir**) y ejecute:
+En el PC con Windows, cierre BlueCaster (bandeja > **Salir**) y ejecute:
 
 ```bash
-a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
+bluecaster-core.exe --cli --remote-sink auto -c ldac --test-tone
 ```
 
 `--remote-sink auto` encuentra el receptor en la red local, transmite a su adaptador Bluetooth salvo que `-d` indique otro dispositivo, e imprime las estadísticas del receptor cada 5 segundos y al final: tasa de bits, paquetes perdidos y tardíos (números de secuencia RTP), jitter y huecos, cortes y saltos de un búfer de reproducción modelado, errores de flujo / decodificación y el RSSI en el receptor (relativo a su rango óptimo de recepción: 0 = bien, negativo = demasiado débil). Sin `--test-tone` envía el audio del sistema. `--remote-sink <host[:port]>` indica el receptor en lugar de buscarlo.
 
 {: .note }
-La misma prueba funciona en la ventana: active **Configuración > Modo de desarrollador** y abra **Desarrollador > Prueba con receptor par**. Encuentra el receptor (o usa su dirección), transmite con el códec y la fuente elegidos (tono de prueba o audio del sistema), comprueba cada paso y muestra lo enviado junto a lo que contó el receptor. No hace falta cerrar A2DPWB.
+La misma prueba funciona en la ventana: active **Configuración > Modo de desarrollador** y abra **Desarrollador > Prueba con receptor par**. Encuentra el receptor (o usa su dirección), transmite con el códec y la fuente elegidos (tono de prueba o audio del sistema), comprueba cada paso y muestra lo enviado junto a lo que contó el receptor. No hace falta cerrar BlueCaster.
 
-Ambos lados cuentan los paquetes de un flujo desde su primer paquete, de modo que se pueden comparar los paquetes enviados y recibidos: deberían coincidir. Bluetooth retransmite dentro de los controladores los paquetes de radio perdidos, y A2DPWB no abandona un paquete mientras el enlace está activo, así que un enlace de radio deficiente se manifiesta como huecos, jitter y cortes en el receptor, no como paquetes perdidos; cuando el enlace no da abasto, los paquetes se descartan antes del envío en el lado emisor. Ninguno de los dos lados puede conocer el número de retransmisiones.
+Ambos lados cuentan los paquetes de un flujo desde su primer paquete, de modo que se pueden comparar los paquetes enviados y recibidos: deberían coincidir. Bluetooth retransmite dentro de los controladores los paquetes de radio perdidos, y BlueCaster no abandona un paquete mientras el enlace está activo, así que un enlace de radio deficiente se manifiesta como huecos, jitter y cortes en el receptor, no como paquetes perdidos; cuando el enlace no da abasto, los paquetes se descartan antes del envío en el lado emisor. Ninguno de los dos lados puede conocer el número de retransmisiones.
 
 Mientras la herramienta se ejecuta, la pila Bluetooth del propio receptor no puede usar su adaptador. La búsqueda usa una difusión UDP en el puerto 51201, así que ambos PC deben estar en el mismo segmento de red (si no, escriba la dirección). Consulte `tools/linux_sink/README.md` para ver todas las opciones y el protocolo de estadísticas.
 
 ## LE Audio (experimental) {#le-audio}
 
-A2DPWB también puede transmitir a auriculares LE Audio (LC3 sobre flujos isócronos conectados, BAP unicast), con el volumen del auricular (VCP), los botones multimedia (MCP), los dos auriculares de un par (CSIP) y un modo de baja latencia para auriculares gaming (GMAP). Esta función es **experimental** y se elige por dispositivo: solo se usa para la entrada LE Audio de un dispositivo. Solo se ha probado con un emulador de Bluetooth, **todavía no con auriculares LE Audio reales**, y puede que no funcione con los suyos; para el uso diario, use el A2DP clásico.
+BlueCaster también puede transmitir a auriculares LE Audio (LC3 sobre flujos isócronos conectados, BAP unicast), con el volumen del auricular (VCP), los botones multimedia (MCP), los dos auriculares de un par (CSIP) y un modo de baja latencia para auriculares gaming (GMAP). Esta función es **experimental** y se elige por dispositivo: solo se usa para la entrada LE Audio de un dispositivo. Solo se ha probado con un emulador de Bluetooth, **todavía no con auriculares LE Audio reales**, y puede que no funcione con los suyos; para el uso diario, use el A2DP clásico.
 
 Qué se necesita:
 
@@ -477,26 +477,26 @@ Qué se necesita:
 
 Cómo usarlo:
 
-1. Ponga los auriculares en modo de emparejamiento y busque dispositivos en **Dispositivos de audio**. Los dispositivos LE Audio llevan la etiqueta **LE Audio**, un par de auriculares **Conjunto LE Audio** (elija cualquiera de los dos: A2DPWB encuentra el otro). Unos auriculares que también admiten A2DP aparecen dos veces, una por tipo.
-2. En **Códecs**, elija la tarjeta LC3 de la entrada LE Audio. No se elige códec ni calidad (A2DPWB elige la mejor configuración LC3 que aceptan los auriculares) y solo están disponibles las capturas Loopback del sistema y Dispositivo virtual.
+1. Ponga los auriculares en modo de emparejamiento y busque dispositivos en **Dispositivos de audio**. Los dispositivos LE Audio llevan la etiqueta **LE Audio**, un par de auriculares **Conjunto LE Audio** (elija cualquiera de los dos: BlueCaster encuentra el otro). Unos auriculares que también admiten A2DP aparecen dos veces, una por tipo.
+2. En **Códecs**, elija la tarjeta LC3 de la entrada LE Audio. No se elige códec ni calidad (BlueCaster elige la mejor configuración LC3 que aceptan los auriculares) y solo están disponibles las capturas Loopback del sistema y Dispositivo virtual.
 3. Debajo, **Baja latencia para auriculares gaming (GMAP, experimental)** está activada por defecto: con los auriculares que admiten el rol de juego de GMAP usa tramas LC3 más cortas; los demás auriculares reciben la configuración multimedia en ambos casos.
 
 No hay ningún interruptor de LE Audio en Configuración. Si el lado LE llegara a perturbar un adaptador, `"le_audio_experimental": false` en `settings.json` (**Configuración > Carpeta de configuración**) lo desactiva por completo.
 
-En el modo CLI, `--le-audio -d <dirección>` transmite a un dispositivo LE Audio, `--le-device <dirección>` añade otro dispositivo del grupo (el segundo auricular), `--le-scan` lista los dispositivos LE Audio cercanos, y `--le-low-latency` / `--le-preset <nombre>` eligen la configuración (`a2dpwb-core.exe --cli -h` muestra todas las opciones LE).
+En el modo CLI, `--le-audio -d <dirección>` transmite a un dispositivo LE Audio, `--le-device <dirección>` añade otro dispositivo del grupo (el segundo auricular), `--le-scan` lista los dispositivos LE Audio cercanos, y `--le-low-latency` / `--le-preset <nombre>` eligen la configuración (`bluecaster-core.exe --cli -h` muestra todas las opciones LE).
 
 ## Actualizaciones {#updates}
 
-A2DPWB consulta GitHub Releases como máximo una vez al día (**Configuración > Buscar actualizaciones al iniciar**; **Incluir versiones preliminares al buscar actualizaciones** también ofrece versiones beta). Cuando hay una versión nueva, Configuración lo indica:
+BlueCaster consulta GitHub Releases como máximo una vez al día (**Configuración > Buscar actualizaciones al iniciar**; **Incluir versiones preliminares al buscar actualizaciones** también ofrece versiones beta). Cuando hay una versión nueva, Configuración lo indica:
 
-- **Copia instalada**: **Actualizar ahora** descarga la actualización firmada. Si hay un dispositivo de audio conectado, espera y la instala cuando se desconecta, de modo que una actualización nunca corta el audio. A2DPWB se cierra entonces, instala la nueva versión y se vuelve a iniciar por sí solo.
+- **Copia instalada**: **Actualizar ahora** descarga la actualización firmada. Si hay un dispositivo de audio conectado, espera y la instala cuando se desconecta, de modo que una actualización nunca corta el audio. BlueCaster se cierra entonces, instala la nueva versión y se vuelve a iniciar por sí solo.
 - **Copia portable** (o una compilación sin firma de actualizaciones): **Abrir la página de descarga** abre la página de la versión.
 
 ## Solución de problemas
 
 ### La ventana indica que el núcleo no se está ejecutando
 
-La ventana necesita `a2dpwb-core.exe` a su lado y lo inicia por sí misma. «El núcleo de A2DPWB no se está ejecutando» significa que no se pudo iniciar: reinstale A2DPWB (o vuelva a extraer el zip portable). «El núcleo es de otra versión» significa que los dos programas proceden de versiones distintas: instale la misma versión de ambos (la última versión publicada lo consigue).
+La ventana necesita `bluecaster-core.exe` a su lado y lo inicia por sí misma. «El núcleo de BlueCaster no se está ejecutando» significa que no se pudo iniciar: reinstale BlueCaster (o vuelva a extraer el zip portable). «El núcleo es de otra versión» significa que los dos programas proceden de versiones distintas: instale la misma versión de ambos (la última versión publicada lo consigue).
 
 ### Falla la asignación o la restauración del controlador
 
@@ -506,17 +506,17 @@ La ventana necesita `a2dpwb-core.exe` a su lado y lo inicia por sí misma. «El 
 
 ### El adaptador Bluetooth no responde {#adapter-no-answer}
 
-Si el adaptador no devuelve nada después de abrirlo (no responde a HCI Reset), A2DPWB desiste a los 5 segundos, lo abre una vez más y, si sigue sin responder, muestra «El adaptador Bluetooth no responde». Desconecte el adaptador, vuelva a conectarlo e inténtelo de nuevo (o pulse **Reiniciar Bluetooth**). No hace falta reiniciar A2DPWB: un inicio fallido libera el adaptador y cada nuevo inicio lo vuelve a inicializar.
+Si el adaptador no devuelve nada después de abrirlo (no responde a HCI Reset), BlueCaster desiste a los 5 segundos, lo abre una vez más y, si sigue sin responder, muestra «El adaptador Bluetooth no responde». Desconecte el adaptador, vuelva a conectarlo e inténtelo de nuevo (o pulse **Reiniciar Bluetooth**). No hace falta reiniciar BlueCaster: un inicio fallido libera el adaptador y cada nuevo inicio lo vuelve a inicializar.
 
-Para evitar que un adaptador se quede bloqueado, A2DPWB restablece sus canalizaciones USB al abrirlo y envía HCI Reset al cerrarlo.
+Para evitar que un adaptador se quede bloqueado, BlueCaster restablece sus canalizaciones USB al abrirlo y envía HCI Reset al cerrarlo.
 
 ### Problemas de emparejamiento tras actualizar
 
-A2DPWB empareja mediante SSP (Just Works) con **General Bonding**, y las claves de enlace se guardan para que los auriculares puedan reconectarse sin volver a emparejar (la v2 lee las claves de enlace de la v1). Si emparejó los auriculares con una compilación antigua de A2DPWB y ya no se conectan, elimine el emparejamiento de A2DPWB en los auriculares (consulte el manual de los auriculares para borrar la lista de emparejamientos) y vuelva a emparejarlos.
+BlueCaster empareja mediante SSP (Just Works) con **General Bonding**, y las claves de enlace se guardan para que los auriculares puedan reconectarse sin volver a emparejar (la v2 lee las claves de enlace de la v1). Si emparejó los auriculares con una compilación antigua de BlueCaster y ya no se conectan, elimine el emparejamiento de BlueCaster en los auriculares (consulte el manual de los auriculares para borrar la lista de emparejamientos) y vuelva a emparejarlos.
 
 ### Tiempos de espera de conexión
 
-A2DPWB registra registros SDP (A2DP Source, AVRCP Controller / Target) para que los auriculares lo identifiquen como fuente de audio. Si un intento de conexión agota el tiempo de espera, la conexión semiabierta se cierra, de modo que puede volver a intentarlo sin reiniciar A2DPWB. Asegúrese de que los auriculares estén encendidos, dentro del alcance y no conectados a otro dispositivo.
+BlueCaster registra registros SDP (A2DP Source, AVRCP Controller / Target) para que los auriculares lo identifiquen como fuente de audio. Si un intento de conexión agota el tiempo de espera, la conexión semiabierta se cierra, de modo que puede volver a intentarlo sin reiniciar BlueCaster. Asegúrese de que los auriculares estén encendidos, dentro del alcance y no conectados a otro dispositivo.
 
 Una conexión fallida se reintenta automáticamente (hasta 3 intentos) cuando el enlace se estableció y luego no transmitió nada, y cuando los auriculares no respondieron. Si los auriculares ya no reconocen el emparejamiento (se restablecieron o se emparejaron con otro PC), se descarta la clave guardada y se vuelve a emparejar una vez. El error indica entonces qué ha ocurrido:
 
@@ -529,4 +529,4 @@ Una conexión fallida se reintenta automáticamente (hasta 3 intentos) cuando el
 
 **La primera conexión** con unos auriculares necesita el modo de emparejamiento; las siguientes se reconectan con la clave de enlace guardada. Si falla aunque estén en modo de emparejamiento, puede que sigan conectados a un teléfono u otro PC (también mediante LE Audio): desconéctelos allí, desactive LE Audio en la app de los auriculares si tiene esa opción, póngalos en modo de emparejamiento y vuelva a conectar. El registro muestra entonces `signaling connection failed (0x66)` (rechazado por seguridad: los auriculares conservan la clave de un emparejamiento anterior, por ejemplo con el Bluetooth de Windows de este PC) o `(0x67)` (rechazado por falta de recursos: ocupados con otro dispositivo).
 
-Una conexión perdida se restablece automáticamente (hasta 10 intentos). Si el PC entra en suspensión durante la transmisión, A2DPWB vuelve a conectar al reanudarse; estos intentos no se cuentan.
+Una conexión perdida se restablece automáticamente (hasta 10 intentos). Si el PC entra en suspensión durante la transmisión, BlueCaster vuelve a conectar al reanudarse; estos intentos no se cuentan.

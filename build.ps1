@@ -1,8 +1,8 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-One-step build of A2DPWB: the UI, then a2dpwb-core.exe, a2dpwb-driver.exe
-and a2dpwb.exe; optionally the checks, the decoder tool, the emulator test or
+One-step build of BlueCaster: the UI, then bluecaster-core.exe, bluecaster-driver.exe
+and bluecaster.exe; optionally the checks, the decoder tool, the emulator test or
 the release files.
 
 .DESCRIPTION
@@ -20,8 +20,8 @@ Switches combine (e.g. -Debug -Test -Emu); -Release takes only -Test and -Arch.
 
 Steps:
   - The UI (app/src/ui): `pnpm install --frozen-lockfile` when node_modules
-    is missing, then `pnpm build` (a2dpwb.exe embeds app/src/ui/dist).
-  - `cargo build [--release] -p a2dpwb-core-exe -p a2dpwb-driver -p a2dpwb-ui`.
+    is missing, then `pnpm build` (bluecaster.exe embeds app/src/ui/dist).
+  - `cargo build [--release] -p bluecaster-core-exe -p bluecaster-driver -p bluecaster-ui`.
   - -Test: cargo fmt --check, clippy -D warnings, cargo test --workspace,
     tsc --noEmit and vitest run in app/src/ui, python tools/check_lang.py.
   - -Decoder (also -Emu): configures and builds tools/a2dp_decode (Release)
@@ -145,7 +145,7 @@ if (-not $Release) {
 
     Write-Step "Programs: cargo build ($profileDir)"
     $cargoArgs = @('build', '--manifest-path', (Join-Path $repo 'Cargo.toml'),
-        '-p', 'a2dpwb-core-exe', '-p', 'a2dpwb-driver', '-p', 'a2dpwb-ui')
+        '-p', 'bluecaster-core-exe', '-p', 'bluecaster-driver', '-p', 'bluecaster-ui')
     if (-not $Debug) { $cargoArgs += '--release' }
     Invoke-Checked 'cargo build' { cargo @cargoArgs }
 
@@ -154,7 +154,7 @@ if (-not $Release) {
 }
 
 # --- The decoder tool (a CMake project of its own) ---
-$decoderExe = Join-Path $repo 'build/a2dp_decode/Release/a2dpwb_decode.exe'
+$decoderExe = Join-Path $repo 'build/a2dp_decode/Release/bluecaster_decode.exe'
 if ($Decoder -or $Emu) {
     Write-Step "Decoder: tools/a2dp_decode -> build/a2dp_decode ($cmake)"
     $decoderBuild = Join-Path $repo 'build/a2dp_decode'
@@ -167,7 +167,7 @@ if ($Test) {
     $manifest = Join-Path $repo 'Cargo.toml'
     if ($Release) {
         # The release script builds the UI later; clippy and the tests of
-        # a2dpwb-ui need app/src/ui/dist now
+        # bluecaster-ui need app/src/ui/dist now
         Write-Step 'UI: pnpm build'
         Invoke-InUi 'pnpm build' { pnpm build }
     }
@@ -188,12 +188,12 @@ if ($Test) {
 # --- Emulator end-to-end test ---
 if ($Emu) {
     Write-Step 'Emulator test: tools/emu/run_test.py'
-    $core = Join-Path $targetDir 'a2dpwb-core.exe'
+    $core = Join-Path $targetDir 'bluecaster-core.exe'
     # "sbc,ldac" arrives as one string with pwsh -File: split it here
     $more = @($Codecs -split '[,\s]+' | Where-Object { $_ })
     if ($more) { $more = @('--codecs') + $more }
     Invoke-Checked 'run_test.py' {
-        & $emuPython (Join-Path $repo 'tools/emu/run_test.py') --a2dpwb $core --decoder $decoderExe @more
+        & $emuPython (Join-Path $repo 'tools/emu/run_test.py') --bluecaster $core --decoder $decoderExe @more
     }
 }
 
@@ -206,7 +206,7 @@ if ($Release) {
 
 Write-Host ''
 Write-Host "Programs ($profileDir):" -ForegroundColor Green
-foreach ($name in 'a2dpwb-core.exe', 'a2dpwb.exe', 'a2dpwb-driver.exe') {
+foreach ($name in 'bluecaster-core.exe', 'bluecaster.exe', 'bluecaster-driver.exe') {
     $exe = Get-Item -LiteralPath (Join-Path $targetDir $name)
     Write-Host ("  {0}  ({1:N1} MB)" -f $exe.FullName, ($exe.Length / 1MB))
 }

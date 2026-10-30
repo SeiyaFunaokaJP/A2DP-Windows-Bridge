@@ -1,5 +1,5 @@
 /*
- * btstack_config.h - BTstack compile-time configuration for A2DPWB v2
+ * btstack_config.h - BTstack compile-time configuration for BlueCaster v2
  *
  * Classic Bluetooth A2DP Source + AVRCP with vendor codecs over a host-side
  * HCI transport (WinUSB via nusb, or H4 over TCP to tools/emu), plus LE
@@ -30,7 +30,7 @@
 /* Security: Simple Secure Pairing (SSP) for headphone pairing */
 #define ENABLE_SOFTWARE_AES128
 
-/* Logging (to the HCI dump: A2DPWB routes it to tracing) */
+/* Logging (to the HCI dump: BlueCaster routes it to tracing) */
 #define ENABLE_LOG_ERROR
 #define ENABLE_LOG_INFO
 
@@ -47,7 +47,7 @@
 
 /* LE (experimental LE Audio). Compiled in always, but inert unless LE Audio
  * is enabled: only then is the controller's LE support visible to BTstack
- * and are SM, the ATT server and the GATT client initialized. A2DPWB acts as
+ * and are SM, the ATT server and the GATT client initialized. BlueCaster acts as
  * LE central and never advertises; ENABLE_LE_PERIPHERAL is only defined
  * because BTstack's extended advertising code (needed for extended scanning)
  * depends on it. */

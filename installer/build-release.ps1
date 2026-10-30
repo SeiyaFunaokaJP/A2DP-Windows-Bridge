@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-Builds the release files of A2DPWB for one architecture: the installer
-(Inno Setup, installer/A2DPWB.iss), the portable zip and the updater
+Builds the release files of BlueCaster for one architecture: the installer
+(Inno Setup, installer/BlueCaster.iss), the portable zip and the updater
 manifest.
 
 .DESCRIPTION
@@ -12,16 +12,16 @@ Run on the release machine from any folder (PowerShell 7):
 
 Writes to target/dist (or -OutDir):
 
-    A2DPWB-<version>-win64-setup.exe        (arm64: -arm64-setup.exe)
-    A2DPWB-<version>-win64-setup.exe.sig    updater signature
-    A2DPWB-<version>-win64-portable.zip
-    A2DPWB-<version>-win64-symbols.zip      .pdb files, to read crash dumps
+    BlueCaster-<version>-win64-setup.exe        (arm64: -arm64-setup.exe)
+    BlueCaster-<version>-win64-setup.exe.sig    updater signature
+    BlueCaster-<version>-win64-portable.zip
+    BlueCaster-<version>-win64-symbols.zip      .pdb files, to read crash dumps
     latest.json                             updater manifest of this release
 
 Updater signing (see installer/README.md): TAURI_SIGNING_PRIVATE_KEY (the
 private key file's path or content) and TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-sign the installer; A2DPWB_UPDATER_PUBKEY (the .pub file's path or content)
-is built into a2dpwb.exe so that it accepts only updates signed with that
+sign the installer; BLUECASTER_UPDATER_PUBKEY (the .pub file's path or content)
+is built into bluecaster.exe so that it accepts only updates signed with that
 key. Without them the build still works, but its in-app update stays off
 (the update check only shows the release page, as the portable version).
 Neither key is part of the repository.
@@ -69,16 +69,16 @@ $pkgVersion = (Get-Content -Raw (Join-Path $ui 'package.json') | ConvertFrom-Jso
 if ($pkgVersion -ne $version) {
     throw "app/src/ui/package.json has version $pkgVersion, the workspace ${version}: set both"
 }
-Write-Host "A2DPWB $version for $Arch ($triple)"
+Write-Host "BlueCaster $version for $Arch ($triple)"
 
 # --- Updater keys (from the environment, never from the repository) ---
 $signing = [bool]$env:TAURI_SIGNING_PRIVATE_KEY
-$pubkey = $env:A2DPWB_UPDATER_PUBKEY
+$pubkey = $env:BLUECASTER_UPDATER_PUBKEY
 if ($pubkey -and (Test-Path -LiteralPath $pubkey -PathType Leaf)) {
     $pubkey = (Get-Content -Raw -LiteralPath $pubkey).Trim()
 }
 if ($signing -and -not $pubkey) {
-    throw 'TAURI_SIGNING_PRIVATE_KEY is set but A2DPWB_UPDATER_PUBKEY is not: the app could not check what it installs'
+    throw 'TAURI_SIGNING_PRIVATE_KEY is set but BLUECASTER_UPDATER_PUBKEY is not: the app could not check what it installs'
 }
 if (-not $signing) {
     Write-Warning 'TAURI_SIGNING_PRIVATE_KEY is not set: no updater signature, and the in-app update of this build stays off'
@@ -117,7 +117,7 @@ if (-not $iscc) {
 
 # --- The core and the driver helper (the UI is built by tauri build) ---
 Invoke-Checked 'cargo build' {
-    cargo build --release --locked --manifest-path (Join-Path $repo 'Cargo.toml') --target $triple -p a2dpwb-core-exe -p a2dpwb-driver
+    cargo build --release --locked --manifest-path (Join-Path $repo 'Cargo.toml') --target $triple -p bluecaster-core-exe -p bluecaster-driver
 }
 $release = Join-Path $repo "target/$triple/release"
 
@@ -170,7 +170,7 @@ $dirtyNote = if ($dirty) {
     "`nNOTE: this package was built from a working tree with uncommitted`nlocal modifications on top of the commit above.`n"
 } else { '' }
 @"
-A2DP Windows Bridge (A2DPWB) $version ($Arch)
+BlueCaster $version ($Arch)
 
 Source code
 -----------
@@ -196,7 +196,7 @@ See LICENSE, THIRD_PARTY_LICENSES.md and the licenses/ folder for the terms
 of each component; licenses/rust-crates.txt lists the Rust crates.
 "@ | Set-Content -Encoding utf8NoBOM (Join-Path $docDir 'SOURCE.txt')
 
-# --- a2dpwb.exe: Tauri's configuration plus the updater key ---
+# --- bluecaster.exe: Tauri's configuration plus the updater key ---
 $overlayPath = Join-Path $stage 'tauri.release.conf.json'
 @{ plugins = @{ updater = @{ pubkey = $pubkey } } } | ConvertTo-Json -Depth 4 |
     Set-Content -Encoding utf8NoBOM $overlayPath
@@ -208,10 +208,10 @@ try {
 }
 
 # --- The package: the portable zip's folder, which the installer installs ---
-$pkgName = "A2DPWB-$version"
+$pkgName = "BlueCaster-$version"
 $pkgDir = Join-Path $stage $pkgName
 New-Item -ItemType Directory -Force $pkgDir | Out-Null
-foreach ($name in 'a2dpwb', 'a2dpwb-core', 'a2dpwb-driver') {
+foreach ($name in 'bluecaster', 'bluecaster-core', 'bluecaster-driver') {
     Copy-Item (Join-Path $release "$name.exe") $pkgDir
 }
 Copy-Item -Recurse (Join-Path $docDir '*') $pkgDir
@@ -234,7 +234,7 @@ if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Micr
 }
 
 # --- The installer ---
-$setupName = "A2DPWB-$version-$archName-setup.exe"
+$setupName = "BlueCaster-$version-$archName-setup.exe"
 $setup = Join-Path $OutDir $setupName
 # VERSIONINFO takes numbers only: 2.0.2-beta.5 -> 2.0.2
 $versionNumeric = $version -replace '[-+].*$', ''
@@ -242,7 +242,7 @@ Invoke-Checked 'ISCC' {
     & $iscc /Q "/DAppVersion=$version" "/DAppVersionNumeric=$versionNumeric" "/DArch=$Arch" `
         "/DPkgDir=$pkgDir" "/DWebView2Setup=$webView2Setup" "/DOutputDir=$OutDir" `
         "/DOutputBaseFilename=$([IO.Path]::GetFileNameWithoutExtension($setupName))" `
-        (Join-Path $PSScriptRoot 'A2DPWB.iss')
+        (Join-Path $PSScriptRoot 'BlueCaster.iss')
 }
 
 # --- Updater signature of the installer; the version is part of what is
@@ -263,7 +263,7 @@ if ($signing) {
 }
 
 # --- Symbols: the crash reports' minidumps (logs\crash) open with them ---
-$pdbs = 'a2dpwb', 'a2dpwb_core', 'a2dpwb_driver' | ForEach-Object { Join-Path $release "$_.pdb" } |
+$pdbs = 'bluecaster', 'bluecaster_core', 'bluecaster_driver' | ForEach-Object { Join-Path $release "$_.pdb" } |
     Where-Object { Test-Path $_ }
 $symbols = Join-Path $OutDir "$pkgName-$archName-symbols.zip"
 if (Test-Path $symbols) { Remove-Item -Force $symbols }
@@ -295,5 +295,5 @@ if ($signing) {
 
 Write-Host ''
 Write-Host 'Release files:'
-Get-ChildItem $OutDir -File | Where-Object { $_.Name -like "A2DPWB-$version-*" -or $_.Name -eq 'latest.json' } |
+Get-ChildItem $OutDir -File | Where-Object { $_.Name -like "BlueCaster-$version-*" -or $_.Name -eq 'latest.json' } |
     ForEach-Object { Write-Host ("  {0}  ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB)) }

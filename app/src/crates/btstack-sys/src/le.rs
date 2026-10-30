@@ -122,7 +122,7 @@ impl Stack {
         let path = CString::new(tlv_path.replace('\0', "")).unwrap_or_default();
         // SAFETY: on the BTstack thread after hci_init; the shim copies the
         // path into its own buffer.
-        let ok = unsafe { ffi::a2dpwb_le_init(path.as_ptr()) } != 0;
+        let ok = unsafe { ffi::bluecaster_le_init(path.as_ptr()) } != 0;
         mark(INIT_LE);
         tracing::debug!(target: "le", "le_init: bond store {tlv_path}, usable {ok}");
         if !ok {
@@ -168,7 +168,7 @@ impl Stack {
     /// Ends with GAP_SUBEVENT_LE_CONNECTION_COMPLETE
     pub fn le_connect(&self, addr: &[u8; 6], addr_type: u8) -> u8 {
         // SAFETY: on the BTstack thread; addr is 6 bytes (copied).
-        let status = unsafe { ffi::a2dpwb_gap_connect(addr.as_ptr(), addr_type) };
+        let status = unsafe { ffi::bluecaster_gap_connect(addr.as_ptr(), addr_type) };
         tracing::debug!(target: "le", "LE connect {} (type {addr_type}): 0x{status:02X}", addr_str(addr));
         status
     }
@@ -182,7 +182,7 @@ impl Stack {
 
     pub fn connection_type(&self, con: u16) -> ConnectionType {
         // SAFETY: on the BTstack thread.
-        match unsafe { ffi::a2dpwb_gap_connection_type(con) } {
+        match unsafe { ffi::bluecaster_gap_connection_type(con) } {
             1 => ConnectionType::Acl,
             2 => ConnectionType::Sco,
             3 => ConnectionType::Le,
@@ -197,7 +197,7 @@ impl Stack {
         }
         tracing::debug!(target: "le", "deleting the LE bond of {} (type {addr_type})", addr_str(addr));
         // SAFETY: on the BTstack thread after le_init; addr copied.
-        unsafe { ffi::a2dpwb_gap_delete_bonding(addr_type, addr.as_ptr()) }
+        unsafe { ffi::bluecaster_gap_delete_bonding(addr_type, addr.as_ptr()) }
     }
 
     /// HCI Disconnect for any connection handle, a CIS included (whose
@@ -205,7 +205,7 @@ impl Stack {
     /// [`Stack::can_send_command_now`] first.
     pub fn cmd_disconnect(&self, handle: u16, reason: u8) -> u8 {
         // SAFETY: on the BTstack thread.
-        let status = unsafe { ffi::a2dpwb_cmd_disconnect(handle, reason) };
+        let status = unsafe { ffi::bluecaster_cmd_disconnect(handle, reason) };
         tracing::debug!(target: "le", "HCI disconnect 0x{handle:04X} (reason 0x{reason:02X}): 0x{status:02X}");
         status
     }
@@ -327,18 +327,18 @@ impl Stack {
 
     pub fn tlv_get(&self, tag: u32) -> Option<Vec<u8>> {
         // SAFETY: on the BTstack thread; a NULL buffer asks for the length.
-        let len = unsafe { ffi::a2dpwb_tlv_get(tag, std::ptr::null_mut(), 0) };
+        let len = unsafe { ffi::bluecaster_tlv_get(tag, std::ptr::null_mut(), 0) };
         let len = usize::try_from(len).ok().filter(|n| *n > 0)?;
         let mut buf = vec![0u8; len];
         // SAFETY: buf has len bytes.
-        let n = unsafe { ffi::a2dpwb_tlv_get(tag, buf.as_mut_ptr(), len as u32) };
+        let n = unsafe { ffi::bluecaster_tlv_get(tag, buf.as_mut_ptr(), len as u32) };
         buf.truncate(usize::try_from(n).ok()?);
         Some(buf)
     }
 
     pub fn tlv_store(&self, tag: u32, value: &[u8]) -> bool {
         // SAFETY: on the BTstack thread; value valid for its length (copied).
-        let ok = unsafe { ffi::a2dpwb_tlv_store(tag, value.as_ptr(), value.len() as u32) == 0 };
+        let ok = unsafe { ffi::bluecaster_tlv_store(tag, value.as_ptr(), value.len() as u32) == 0 };
         tracing::debug!(target: "le", "TLV store tag 0x{tag:08X}, {} bytes: {ok}", value.len());
         ok
     }
@@ -346,7 +346,7 @@ impl Stack {
     pub fn tlv_delete(&self, tag: u32) {
         tracing::debug!(target: "le", "TLV delete tag 0x{tag:08X}");
         // SAFETY: on the BTstack thread.
-        unsafe { ffi::a2dpwb_tlv_delete(tag) }
+        unsafe { ffi::bluecaster_tlv_delete(tag) }
     }
 
     // ---- GATT client (after le_init; results to Source::GattClient) ----
@@ -359,7 +359,7 @@ impl Stack {
             return ERROR_CODE_COMMAND_DISALLOWED;
         }
         // SAFETY: on the BTstack thread after le_init (gatt_client_init).
-        let status = unsafe { ffi::a2dpwb_gatt_discover_primary_services(con) };
+        let status = unsafe { ffi::bluecaster_gatt_discover_primary_services(con) };
         tracing::debug!(target: "le", "GATT discover primary services on 0x{con:04X}: 0x{status:02X}");
         status
     }
@@ -370,7 +370,7 @@ impl Stack {
             return ERROR_CODE_COMMAND_DISALLOWED;
         }
         // SAFETY: as above; the service is copied by BTstack.
-        let status = unsafe { ffi::a2dpwb_gatt_find_included_services(con, start_handle, end_handle) };
+        let status = unsafe { ffi::bluecaster_gatt_find_included_services(con, start_handle, end_handle) };
         tracing::debug!(target: "le", "GATT find included services 0x{start_handle:04X}-0x{end_handle:04X} on 0x{con:04X}: 0x{status:02X}");
         status
     }
@@ -381,7 +381,7 @@ impl Stack {
             return ERROR_CODE_COMMAND_DISALLOWED;
         }
         // SAFETY: as above.
-        let status = unsafe { ffi::a2dpwb_gatt_discover_characteristics(con, start_handle, end_handle) };
+        let status = unsafe { ffi::bluecaster_gatt_discover_characteristics(con, start_handle, end_handle) };
         tracing::debug!(target: "le", "GATT discover characteristics 0x{start_handle:04X}-0x{end_handle:04X} on 0x{con:04X}: 0x{status:02X}");
         status
     }
@@ -392,7 +392,7 @@ impl Stack {
             return ERROR_CODE_COMMAND_DISALLOWED;
         }
         // SAFETY: as above.
-        let status = unsafe { ffi::a2dpwb_gatt_read_long_value(con, value_handle) };
+        let status = unsafe { ffi::bluecaster_gatt_read_long_value(con, value_handle) };
         tracing::debug!(target: "le", "GATT read 0x{value_handle:04X} on 0x{con:04X}: 0x{status:02X}");
         status
     }
@@ -413,7 +413,7 @@ impl Stack {
         // SAFETY: on the BTstack thread after le_init; value valid for its
         // length (copied into the connection's slot).
         let status = unsafe {
-            ffi::a2dpwb_gatt_write_value(con, value_handle, value.as_ptr(), value.len() as u16, long as c_int)
+            ffi::bluecaster_gatt_write_value(con, value_handle, value.as_ptr(), value.len() as u16, long as c_int)
         };
         tracing::debug!(target: "le", "GATT write 0x{value_handle:04X} on 0x{con:04X} (mtu {mtu}, long {long}) {value:02X?}: 0x{status:02X}");
         status
@@ -426,7 +426,7 @@ impl Stack {
         }
         let Some(len) = len16(value) else { return ERROR_CODE_INVALID_HCI_COMMAND_PARAMETERS };
         // SAFETY: as above; BTstack copies the value into its buffer at once.
-        let status = unsafe { ffi::a2dpwb_gatt_write_without_response(con, value_handle, value.as_ptr(), len) };
+        let status = unsafe { ffi::bluecaster_gatt_write_without_response(con, value_handle, value.as_ptr(), len) };
         tracing::debug!(target: "le", "GATT write command 0x{value_handle:04X} on 0x{con:04X} {value:02X?}: 0x{status:02X}");
         status
     }
@@ -441,7 +441,7 @@ impl Stack {
         // SAFETY: on the BTstack thread after le_init; the shim copies the
         // characteristic.
         let status = unsafe {
-            ffi::a2dpwb_gatt_write_client_configuration(
+            ffi::bluecaster_gatt_write_client_configuration(
                 con,
                 chr.start_handle,
                 chr.value_handle,
@@ -476,7 +476,7 @@ impl Stack {
     pub fn gatt_listen(&self, con: u16) -> bool {
         // SAFETY: on the BTstack thread after le_init; the listener is static
         // in C.
-        let ok = self.le_initialized() && unsafe { ffi::a2dpwb_gatt_listen(con) } != 0;
+        let ok = self.le_initialized() && unsafe { ffi::bluecaster_gatt_listen(con) } != 0;
         tracing::debug!(target: "le", "GATT listen on 0x{con:04X}: {ok}");
         ok
     }
@@ -484,7 +484,7 @@ impl Stack {
     pub fn gatt_stop_listening(&self, con: u16) {
         if self.le_initialized() {
             // SAFETY: on the BTstack thread.
-            unsafe { ffi::a2dpwb_gatt_stop_listening(con) }
+            unsafe { ffi::bluecaster_gatt_stop_listening(con) }
         }
     }
 
@@ -658,7 +658,7 @@ impl Stack {
         }
         tracing::debug!(target: "le", "ATT server init ({} bytes of database)", self.att_db_size());
         // SAFETY: on the BTstack thread after le_init and att_db_init.
-        unsafe { ffi::a2dpwb_att_server_init() };
+        unsafe { ffi::bluecaster_att_server_init() };
         mark(INIT_ATT);
         true
     }
@@ -709,7 +709,7 @@ impl Stack {
         // SAFETY: on the BTstack thread after le_init; cis has num_cis
         // entries, copied by the shim.
         let status = unsafe {
-            ffi::a2dpwb_cig_create(
+            ffi::bluecaster_cig_create(
                 params.cig_id,
                 params.sdu_interval_c_to_p,
                 params.sdu_interval_p_to_c,
@@ -789,7 +789,7 @@ impl Stack {
         }
         // SAFETY: on the BTstack thread after le_init; the shim checks the
         // packet buffer and copies the SDU.
-        let status = unsafe { ffi::a2dpwb_iso_send(cis_handle, sequence_number, sdu.as_ptr(), sdu.len() as u16) };
+        let status = unsafe { ffi::bluecaster_iso_send(cis_handle, sequence_number, sdu.as_ptr(), sdu.len() as u16) };
         tracing::trace!(target: "le", "ISO send 0x{cis_handle:04X} seq {sequence_number}, {} bytes: 0x{status:02X}", sdu.len());
         status
     }
@@ -807,7 +807,7 @@ impl Stack {
         tracing::debug!(target: "le", "LE deinit (ATT server {att_server_started})");
         // SAFETY: on the BTstack thread after the run loop stopped; le_init
         // ran in this run.
-        unsafe { ffi::a2dpwb_le_deinit(att_server_started as c_int) };
+        unsafe { ffi::bluecaster_le_deinit(att_server_started as c_int) };
         reset();
     }
 }

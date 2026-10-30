@@ -12,8 +12,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: A2DPWB version
-      description: Shown in Settings → About A2DPWB.
+      label: BlueCaster version
+      description: Shown in Settings → About BlueCaster.
       placeholder: e.g. 2.0.0
 
   - type: input
@@ -71,7 +71,7 @@ body:
       label: Interface
       options:
         - Window / tray
-        - CLI (a2dpwb-core.exe --cli)
+        - CLI (bluecaster-core.exe --cli)
 
   - type: textarea
     id: what_happened
@@ -106,7 +106,7 @@ body:
     attributes:
       label: Diagnostic bundle
       description: |
-        A2DPWB depends a lot on the exact adapter, firmware and headphones, so this is the most useful part of a report.
+        BlueCaster depends a lot on the exact adapter, firmware and headphones, so this is the most useful part of a report.
 
         1. Open **Diagnostics → Report a problem** and set **Verbose logging** to **Detailed (debug)** (it turns itself off after 24 hours).
         2. Reproduce the problem.

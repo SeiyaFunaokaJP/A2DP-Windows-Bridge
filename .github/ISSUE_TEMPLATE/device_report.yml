@@ -5,15 +5,15 @@ body:
   - type: markdown
     attributes:
       value: |
-        Tried A2DPWB with your gear? I'd love to hear how it went! 🎧
+        Tried BlueCaster with your gear? I'd love to hear how it went! 🎧
         "It just works" reports are super helpful too, especially for the experimental codecs (aptX HD, aptX Low Latency, Opus).
         Just check what you tried and leave the rest blank. If something is clearly broken, a [bug report](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) is a better fit.
 
   - type: input
     id: version
     attributes:
-      label: A2DPWB version
-      description: Shown in Settings → About A2DPWB.
+      label: BlueCaster version
+      description: Shown in Settings → About BlueCaster.
       placeholder: e.g. 2.0.0
     validations:
       required: true
@@ -73,7 +73,7 @@ body:
     id: verification
     attributes:
       label: How did you confirm the codec?
-      description: Totally optional. e.g. codec shown in a headphone app, Wireshark on an HCI capture (**Diagnostics → Start HCI Capture**), or just the codec A2DPWB shows on Home.
+      description: Totally optional. e.g. codec shown in a headphone app, Wireshark on an HCI capture (**Diagnostics → Start HCI Capture**), or just the codec BlueCaster shows on Home.
 
   - type: textarea
     id: notes

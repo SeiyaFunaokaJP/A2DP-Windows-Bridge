@@ -4,7 +4,7 @@ layout: default
 nav_exclude: true
 ---
 
-# A2DPWB 次期版 設計書（Rust / Tauri）
+# BlueCaster 次期版 設計書（Rust / Tauri）
 
 Oct 17, 2026 · @seiya ／ 改訂: 未決事項の決定を反映（同日）
 
@@ -12,7 +12,7 @@ Oct 17, 2026 · @seiya ／ 改訂: 未決事項の決定を反映（同日）
 
 ## 概要
 
-次期版（v2.0）では、A2DP Windows Bridge を **Rust製のコアサービス** と **Tauri製のUI** の2つに分けて作り直します。自前のC++コード（約2.3万行）はすべてRustに書き換えます。btstackや各コーデックのように置き換えの効かないCライブラリは、FFIでそのまま使い続けます。
+次期版（v2.0）では、BlueCaster を **Rust製のコアサービス** と **Tauri製のUI** の2つに分けて作り直します。自前のC++コード（約2.3万行）はすべてRustに書き換えます。btstackや各コーデックのように置き換えの効かないCライブラリは、FFIでそのまま使い続けます。
 
 **目的**
 
@@ -25,7 +25,7 @@ Oct 17, 2026 · @seiya ／ 改訂: 未決事項の決定を反映（同日）
 - 対応OSは Windows 10 (22H2) / 11 です。**x64 と ARM64 の両方を v2.0 で出します**（[ARM64](#arm64) を参照）。
 - 使い方は今と同じです。WinUSBを割り当てたUSBドングルを btstack で直接制御して、WASAPIで取り込んだシステム音声をA2DPで送ります。
 - コーデックは今と同じものを用意します（SBC / AAC / aptX / aptX HD / aptX LL / LDAC / LHDC V5）。v2 では SBC XQ、FastStream と Android の A2DP Opus（試験的）を加えます（[v2 で加えたコーデック](#v2-で加えたコーデック)、[Opus](#opus)）。aptX Adaptive も試験的に加えました（[aptX Adaptive](#aptx-adaptive)）。
-- アプリ名（A2DP Windows Bridge / A2DPWB）とアイコンは v1 のまま変えません。
+- アプリ名（BlueCaster / BlueCaster）とアイコンは v1 のまま変えません。
 
 **今回やらないこと**
 
@@ -36,7 +36,7 @@ Oct 17, 2026 · @seiya ／ 改訂: 未決事項の決定を反映（同日）
 
 ## 現行機能の棚卸し
 
-v1.1.0の機能は、開発者向けのものも含めてすべて次期版に引き継ぎます。引き継がないのは、使われていない `wx_zadig_dialog` だけです（ドライバ導入はアプリ内の新しい仕組みに置き換えます。[ドライバ](#ドライバwinusb)を参照）。設定フォルダ（`%APPDATA%\A2DPWB`、`A2DPWB_CONFIG_DIR` で変更可）と中のファイルはそのまま読みます。
+v1.1.0の機能は、開発者向けのものも含めてすべて次期版に引き継ぎます。引き継がないのは、使われていない `wx_zadig_dialog` だけです（ドライバ導入はアプリ内の新しい仕組みに置き換えます。[ドライバ](#ドライバwinusb)を参照）。設定フォルダ（`%APPDATA%\BlueCaster`、`BLUECASTER_CONFIG_DIR` で変更可）と中のファイルはそのまま読みます。
 
 | 機能 | 現行の場所 | 次期の場所 |
 | --- | --- | --- |
@@ -54,26 +54,26 @@ v1.1.0の機能は、開発者向けのものも含めてすべて次期版に�
 | HCIキャプチャ（`.pklg`。接続途中からでも接続時のパケットを含める） | hci\_capture | `bt-host` |
 | 受信機テスト（`tools/linux_sink` とTCP / UDP 51201で連携して測定） | 受信機ダイアログ、remote\_sink\_client | `core`（tokio）、開発者モードの診断タブ |
 | テストトーン（左 1 kHz / 右 1.5 kHz） | test\_tone | `audio-capture` |
-| トレイ（プロファイル10件までのクイック接続、切断、通知）、二重起動防止 | wx\_app、wx\_main\_frame | `a2dpwb-core.exe` のトレイ、トレイフライアウト |
+| トレイ（プロファイル10件までのクイック接続、切断、通知）、二重起動防止 | wx\_app、wx\_main\_frame | `bluecaster-core.exe` のトレイ、トレイフライアウト |
 | 自動起動（HKCU Run、`--minimized`）、更新チェック（GitHub Releases、プレリリースも選べる） | system\_integration、update\_checker | `win-sys`、`core` + `tauri-plugin-updater` |
 | 8言語（en / ja / de / fr / es / ko / zh-CN / zh-TW）、テーマ（ダーク / ライト / システム） | localization、theme\_manager | UI（フロントエンド） |
-| CLI（`--cli`、`--hci-tcp`、`--test-tone`、`--duration` など） | main.cpp（A2dpServiceを使わない重複ロジック） | `a2dpwb-core.exe --cli`（同じ `core` を使う） |
+| CLI（`--cli`、`--hci-tcp`、`--test-tone`、`--duration` など） | main.cpp（A2dpServiceを使わない重複ロジック） | `bluecaster-core.exe --cli`（同じ `core` を使う） |
 | 開発ツール（`tools/emu`、`tools/linux_sink`、`tools/a2dp_decode`） | tools/ | そのまま使う。結合テストのCIに組み込む |
-| **（新規）WinUSBドライバの割り当てと解除** | Zadig（外部ツール） | `win-sys` の `driver` + 昇格ヘルパー `a2dpwb-driver.exe`、初回セットアップと「アダプタ」画面 |
+| **（新規）WinUSBドライバの割り当てと解除** | Zadig（外部ツール） | `win-sys` の `driver` + 昇格ヘルパー `bluecaster-driver.exe`、初回セットアップと「アダプタ」画面 |
 
 ## 全体アーキテクチャ
 
-アプリは、音を流す常駐プロセス `a2dpwb-core.exe` と、開いているときだけ動く画面プロセス `a2dpwb.exe` の2つに分かれます。UIを閉じても、UIが落ちても、音は止まりません。（設定「システムトレイに最小化」をオフにしているときだけは、v1 と同じくメインウィンドウを閉じるとトレイの「終了」と同じくコアごと終了します。）ドライバの割り当てと解除だけは管理者権限が要るので、その時だけ起動する小さな昇格ヘルパー `a2dpwb-driver.exe` を別に持ちます。
+アプリは、音を流す常駐プロセス `bluecaster-core.exe` と、開いているときだけ動く画面プロセス `bluecaster.exe` の2つに分かれます。UIを閉じても、UIが落ちても、音は止まりません。（設定「システムトレイに最小化」をオフにしているときだけは、v1 と同じくメインウィンドウを閉じるとトレイの「終了」と同じくコアごと終了します。）ドライバの割り当てと解除だけは管理者権限が要るので、その時だけ起動する小さな昇格ヘルパー `bluecaster-driver.exe` を別に持ちます。
 
 ```
 ┌─────────────────────────────┐        Named Pipe         ┌──────────────────────────────┐
-│ a2dpwb.exe (Tauri 2 / UI)   │ ◀──── \\.\pipe\a2dpwb-<SID> ────▶ │ a2dpwb-core.exe (常駐)         │
+│ bluecaster.exe (Tauri 2 / UI)   │ ◀──── \\.\pipe\bluecaster-<SID> ────▶ │ bluecaster-core.exe (常駐)         │
 │  SolidJS + TypeScript       │   hello / snapshot /      │  tray-icon・IPCサーバー・CLI   │
 │  バックエンド: ipc クライアント │   event / request          │  ┌ core（状態機械・設定）       │
 └─────────────────────────────┘                           │  ├ pipeline（エンコード経路）   │
                                                           │  ├ bt-host（btstackスレッド）  │
        ┌──────────────────────────┐  UAC昇格で一時起動      │  ├ audio-capture（WASAPI）     │
-       │ a2dpwb-driver.exe        │ ◀──────────────────── │  └ win-sys / *-sys（FFI）      │
+       │ bluecaster-driver.exe        │ ◀──────────────────── │  └ win-sys / *-sys（FFI）      │
        │ WinUSBの割り当て・解除      │                        └──────────────────────────────┘
        └──────────────────────────┘
 ```
@@ -83,7 +83,7 @@ v1.1.0の機能は、開発者向けのものも含めてすべて次期版に�
 - **コアはWindowsサービスにしません。** ログオンしたユーザーの普通のプロセスとして動かします。WASAPIループバックで取り込むのはそのユーザーのセッションの音で、サービスのセッション0からは扱いにくいためです。
 - **トレイはコア側に置きます。** 右クリックのメニュー（プロファイルへの接続、切断、終了）は、UIを起動しなくてもすぐに開きます。左クリックでUIのフライアウトを開きます。
 - **UIは表示だけを担当します。** 状態はすべてコアが持ち、UIは起動のたびにsnapshotを受け取って画面を組み立てます。
-- **CLIも同じコアを使います。** `a2dpwb-core.exe --cli` はトレイとIPCを起動せずに `core` を動かします。エミュレータの結合テストもこの経路で回します。
+- **CLIも同じコアを使います。** `bluecaster-core.exe --cli` はトレイとIPCを起動せずに `core` を動かします。エミュレータの結合テストもこの経路で回します。
 
 ## Rustクレート構成
 
@@ -99,13 +99,13 @@ v1.1.0の機能は、開発者向けのものも含めてすべて次期版に�
 | 2. 部品 | `audio-capture` | `wasapi` クレートで取り込む。システムループバック、仮想デバイス、アプリ単位のループバック（build 19041以降）。デバイス一覧、エンドポイント音量、テストトーン | 禁止 |
 | 3. エンジン | `bt-host` | btstackのランループを専用スレッドに閉じ込め、外からはコマンドチャネルと型付きイベントだけで操作する。GAP / A2DP Source / AVRCP（絶対音量、ボタン操作）/ SDP / リンクキー / AFH / ファームウェア読み込み / pklgキャプチャ | 禁止 |
 | 3. エンジン | `pipeline` | リングバッファ、形式変換、リサンプル、ダウンミックス、エンコード、メディアペイロードの組み立て、送信ペースの制御、ABR | 禁止 |
-| 4. コア | `core`（パッケージ名 `a2dpwb-core`） | 状態機械（アダプタ・デバイス・ストリーム）、自動再接続、スリープ復帰、プロファイル、設定、音量同期、更新チェック、受信機テストのクライアント、統計の集計 | 禁止 |
+| 4. コア | `core`（パッケージ名 `bluecaster-core`） | 状態機械（アダプタ・デバイス・ストリーム）、自動再接続、スリープ復帰、プロファイル、設定、音量同期、更新チェック、受信機テストのクライアント、統計の集計 | 禁止 |
 | 4. コア | `ipc` | コアとUIで共有するプロトコル型（serde）とNamed Pipe通信。`ts-rs` でTypeScriptの型を自動生成する（`cargo test -p ipc export_bindings`） | 禁止 |
-| 5. 実行ファイル | `a2dpwb-core.exe`（`app/src/core`） | 常駐プロセス。コア、タスクトレイ（`tray-icon`）、IPCサーバー。`--cli` でも同じ `core` を使うので、現行版のような重複ロジックはなくなる | 禁止 |
-| 5. 実行ファイル | `a2dpwb.exe`（`app/src/ui`） | Tauri 2のUI。バックエンドはIPCクライアントだけを持ち、フロントは **SolidJS** + TypeScript + Vite | 禁止 |
-| 5. 実行ファイル | `a2dpwb-driver.exe`（`app/src/driver`） | 管理者権限で一時起動する昇格ヘルパー。`win-sys::driver` を呼んでWinUSBを割り当て / 解除して終了する | 禁止 |
+| 5. 実行ファイル | `bluecaster-core.exe`（`app/src/core`） | 常駐プロセス。コア、タスクトレイ（`tray-icon`）、IPCサーバー。`--cli` でも同じ `core` を使うので、現行版のような重複ロジックはなくなる | 禁止 |
+| 5. 実行ファイル | `bluecaster.exe`（`app/src/ui`） | Tauri 2のUI。バックエンドはIPCクライアントだけを持ち、フロントは **SolidJS** + TypeScript + Vite | 禁止 |
+| 5. 実行ファイル | `bluecaster-driver.exe`（`app/src/driver`） | 管理者権限で一時起動する昇格ヘルパー。`win-sys::driver` を呼んでWinUSBを割り当て / 解除して終了する | 禁止 |
 
-> `core` は Rust 標準の `core` クレートと名前が衝突するため、パッケージ名は `a2dpwb-core` にします（ディレクトリは `app/src/crates/core`）。
+> `core` は Rust 標準の `core` クレートと名前が衝突するため、パッケージ名は `bluecaster-core` にします（ディレクトリは `app/src/crates/core`）。
 
 **FFIの作り方（`btstack-sys` ほか）**
 
@@ -134,7 +134,7 @@ v1.1.0の機能は、開発者向けのものも含めてすべて次期版に�
 | 更新はリリースページを開くだけ | `tauri-plugin-updater` | 署名付きの更新をアプリ内でダウンロードして入れられる（機能追加） |
 | stderrを `debug.log` に向けてUIがファイルを読む | `tracing` + `tracing-appender` | 構造化ログを別スレッドで書き出す。ローテーション付きで、UIにはIPCで直接届く |
 | wxのトレイと二重起動防止のmutex | `tray-icon` + `tauri-plugin-single-instance` | トレイは常駐するコア側に置き、UIの二重起動は既存のウィンドウを前に出す |
-| Inno Setup 6 | Inno Setup 6（2.0.2-beta.5 までは TauriのNSISバンドラ） | 台本が人に読みやすく、開発が活発で、小さいうちに移しておけば後が楽（改訂履歴 2026-10-22）。ユーザー単位のインストール、8言語のセットアップ画面、アンインストール時のRunキー削除は `installer/A2DPWB.iss` の [Code] で行う |
+| Inno Setup 6 | Inno Setup 6（2.0.2-beta.5 までは TauriのNSISバンドラ） | 台本が人に読みやすく、開発が活発で、小さいうちに移しておけば後が楽（改訂履歴 2026-10-22）。ユーザー単位のインストール、8言語のセットアップ画面、アンインストール時のRunキー削除は `installer/BlueCaster.iss` の [Code] で行う |
 | Zadig（外部ツール、手作業） | `win-sys::driver`（SetupAPI） | アプリの中で割り当てと解除ができる。コピーレフトのライブラリを使わない（[ドライバ](#ドライバwinusb)） |
 
 **Cのまま残すライブラリ**
@@ -195,11 +195,11 @@ v1.1.0の機能は、開発者向けのものも含めてすべて次期版に�
 
 ## コアAPI / IPC 設計
 
-UIはコアの状態を持たず、「スナップショットを受け取り、その後は差分イベントで更新する」だけの表示層にします。通信はユーザーごとのNamed Pipe `\\.\pipe\a2dpwb-<ユーザーSID>` で、長さ付きフレームのJSONをやり取りします。パイプのDACLはそのユーザーだけに絞ります。
+UIはコアの状態を持たず、「スナップショットを受け取り、その後は差分イベントで更新する」だけの表示層にします。通信はユーザーごとのNamed Pipe `\\.\pipe\bluecaster-<ユーザーSID>` で、長さ付きフレームのJSONをやり取りします。パイプのDACLはそのユーザーだけに絞ります。
 
 **接続の流れ**
 
-1. UIが `hello { protocol: 1, client: "a2dpwb-ui/2.0.0" }` を送ります。メジャー版が合わなければ、コアは理由を付けて拒否します。
+1. UIが `hello { protocol: 1, client: "bluecaster-ui/2.0.0" }` を送ります。メジャー版が合わなければ、コアは理由を付けて拒否します。
 2. コアが `snapshot`（状態全体とリビジョン番号）を返します。
 3. 以降、コアは `event { rev, ... }` を送り続けます。リビジョンが飛んだら、UIはスナップショットを取り直します。
 4. UIからの操作は `request { id, method, params }` で送り、`response { id, result | error }` で結果を受け取ります。
@@ -290,7 +290,7 @@ UIはコアの状態を持たず、「スナップショットを受け取り、
 | 一致テスト | Rust版SBCエンコーダ | 同じ入力でBluedroid版とビット単位で一致するか確かめる |
 | プロパティテスト | リングバッファ、残りフレームの扱い、MTU境界 | `proptest` |
 | ファジング | Codec Informationの解析、AVRCPの入力、IPCのフレーム、設定ファイル | `cargo-fuzz` |
-| 結合テスト | 7コーデックそれぞれで、接続から音の確認まで | 今の `tools/emu/run_test.py` をH4 over TCPで動かし、`a2dpwb_decode` で判定する（`--a2dpwb` で v2 の `a2dpwb-core.exe` を指定） |
+| 結合テスト | 7コーデックそれぞれで、接続から音の確認まで | 今の `tools/emu/run_test.py` をH4 over TCPで動かし、`bluecaster_decode` で判定する（`--bluecaster` で v2 の `bluecaster-core.exe` を指定） |
 | 障害テスト | パケットの取りこぼし、停滞、無反応のリンク、ドングルの抜け | `emu_vhci.py` の障害注入 |
 | UIテスト | 主要な画面の操作 | フロントは偽のIPCで Vitest、Tauriを通した操作は WebDriver |
 | 実機テスト | リリース前 | 手元のRealtekドングルとイヤホンでチェックリストを回す。`tools/linux_sink` で測定もする |
@@ -311,7 +311,7 @@ UIはコアの状態を持たず、「スナップショットを受け取り、
 | パケットロスと途切れ | 未計測 | 現行版以下 | `tools/linux_sink` で同じ場所・同じイヤホンで比べる |
 | 起動から接続完了まで | 未計測 | 現行版以下 | 接続の流れ11ステップの経過時間 |
 
-> **計測の注意（2026-10-17）**: 開発機では、待機中の `a2dpwb-core.exe` のプライベートメモリ（コミット）が約60 MBと出ました。そのうち約52 MBは RivaTuner Statistics Server（MSI Afterburner のオーバーレイ）が全GUIプロセスに注入する `RTSSHooks64.dll` の書き込み可能セクションで、コア自身の分は約4 MBでした（tracing-appender の書き出しキューを既定の12.8万行から8192行にして、約4 MB減らした後の値）。プライベートメモリを比べるときは、VMMap などでモジュールごとに見て、注入されたDLLを除きます。v1の約61 MBにも同じ分が含まれている可能性があります。
+> **計測の注意（2026-10-17）**: 開発機では、待機中の `bluecaster-core.exe` のプライベートメモリ（コミット）が約60 MBと出ました。そのうち約52 MBは RivaTuner Statistics Server（MSI Afterburner のオーバーレイ）が全GUIプロセスに注入する `RTSSHooks64.dll` の書き込み可能セクションで、コア自身の分は約4 MBでした（tracing-appender の書き出しキューを既定の12.8万行から8192行にして、約4 MB減らした後の値）。プライベートメモリを比べるときは、VMMap などでモジュールごとに見て、注入されたDLLを除きます。v1の約61 MBにも同じ分が含まれている可能性があります。
 
 メモリは主に次の3点で削ります。
 
@@ -325,17 +325,17 @@ v1から上書きインストールするだけで、プロファイル、ペア
 
 **配布物**
 
-- `A2DPWB-<版>-win64-setup.exe` / `A2DPWB-<版>-arm64-setup.exe`: Inno Setup で作ります（`installer/A2DPWB.iss`、`installer/build-release.ps1`）。中身はポータブル版と同じで、`a2dpwb-core.exe`、`a2dpwb.exe`、`a2dpwb-driver.exe`、ライセンス文書（Rustのクレートは `cargo-about` で `licenses/rust-crates.txt` にまとめる）、`SOURCE.txt` です。インストールはユーザー単位だけにします（管理者権限なし、8言語のセットアップ画面）。全ユーザー向けは外しました。両方を選べるようにすると、管理者のアカウントでは起動時と更新のたびにUACの確認が出るためです。
-- `A2DPWB-<版>-win64-portable.zip` / `A2DPWB-<版>-arm64-portable.zip`: 今と同じく用意します。ポータブル版では、更新機能は通知だけにします。
+- `BlueCaster-<版>-win64-setup.exe` / `BlueCaster-<版>-arm64-setup.exe`: Inno Setup で作ります（`installer/BlueCaster.iss`、`installer/build-release.ps1`）。中身はポータブル版と同じで、`bluecaster-core.exe`、`bluecaster.exe`、`bluecaster-driver.exe`、ライセンス文書（Rustのクレートは `cargo-about` で `licenses/rust-crates.txt` にまとめる）、`SOURCE.txt` です。インストールはユーザー単位だけにします（管理者権限なし、8言語のセットアップ画面）。全ユーザー向けは外しました。両方を選べるようにすると、管理者のアカウントでは起動時と更新のたびにUACの確認が出るためです。
+- `BlueCaster-<版>-win64-portable.zip` / `BlueCaster-<版>-arm64-portable.zip`: 今と同じく用意します。ポータブル版では、更新機能は通知だけにします。
 - WebView2ランタイムは、無ければインストーラが入れます（ブートストラッパーを同梱。Windows 11には標準で入っています）。
 
 **v1からの乗り換え**
 
-1. v2のインストーラは、Inno Setupで入ったv1をレジストリから見つけて、設定フォルダを残したままアンインストールします。v1が動いていれば、同じmutex（`A2DPWB_SingleInstance`）を見て終了を促します。動いているv2のコアは `a2dpwb-core.exe --quit` で終了させ（配信を止めてアダプタを放す）、インストール後に起動し直します（`installer/A2DPWB.iss`）。2.0.0〜2.0.2-beta.5 の NSIS でのインストールは、ファイルを入れる前に NSIS の更新モード（`uninstall.exe /S /UPDATE`）でアンインストールし、残ったレジストリキーを消します。更新モードなので、アダプタの WinUSB、設定、ショートカット、Runキーは残ります。その後でインストールが失敗・中止されると何も入っていない状態になりますが、セットアップをもう一度実行すれば入ります。
-2. 自動起動のRunキー（値の名前は v1 と同じ `A2DPWB`）が有効だったときは、`a2dpwb-core.exe --background` に書き換えます。アンインストールでは、そのインストール先を指しているときだけ消します。
-   - アンインストールでは、A2DPWB が WinUSB を割り当てたアダプターを Windows に戻すかを尋ねます（[ドライバ](#ドライバwinusb)の「アンインストール時の復元」）。v1 は Zadig に任せていたのでこの心配がありませんでしたが、v2 はアプリの中で割り当てるため、何もしないとアプリを消した後もドングルが Windows の Bluetooth から消えたままになり、デバイスマネージャーでしか戻せません。
+1. v2のインストーラは、Inno Setupで入ったv1をレジストリから見つけて、設定フォルダを残したままアンインストールします。v1が動いていれば、同じmutex（`A2DPWB_SingleInstance`）を見て終了を促します。動いているv2のコアは `bluecaster-core.exe --quit` で終了させ（配信を止めてアダプタを放す）、インストール後に起動し直します（`installer/BlueCaster.iss`）。2.0.0〜2.0.2-beta.5 の NSIS でのインストールは、ファイルを入れる前に NSIS の更新モード（`uninstall.exe /S /UPDATE`）でアンインストールし、残ったレジストリキーを消します。更新モードなので、アダプタの WinUSB、設定、ショートカット、Runキーは残ります。その後でインストールが失敗・中止されると何も入っていない状態になりますが、セットアップをもう一度実行すれば入ります。
+2. 自動起動のRunキー（値の名前は v1 と同じ `BlueCaster`）が有効だったときは、`bluecaster-core.exe --background` に書き換えます。アンインストールでは、そのインストール先を指しているときだけ消します。
+   - アンインストールでは、BlueCaster が WinUSB を割り当てたアダプターを Windows に戻すかを尋ねます（[ドライバ](#ドライバwinusb)の「アンインストール時の復元」）。v1 は Zadig に任せていたのでこの心配がありませんでしたが、v2 はアプリの中で割り当てるため、何もしないとアプリを消した後もドングルが Windows の Bluetooth から消えたままになり、デバイスマネージャーでしか戻せません。
 3. 初回起動時、コアは設定フォルダを `backup-v1\` に丸ごと（v2の `logs\` を除いて）コピーしてから読みます。コピーは一度だけで、`settings.json` に `schema_version` が付いた後はしません（`app/src/crates/core/src/migrate.rs`）。
-4. v1 が動いている間（mutex `A2DPWB_SingleInstance`。コアが3秒ごとに見て、スナップショットの `v1_running` とイベント `v1_running` で知らせる）は、ホームと初回セットアップに「A2DPWB v1 が起動しています。先に終了してください」のバナーを出します。両方が同じアダプタを使うことはできないためです。
+4. v1 が動いている間（mutex `A2DPWB_SingleInstance`。コアが3秒ごとに見て、スナップショットの `v1_running` とイベント `v1_running` で知らせる）は、ホームと初回セットアップに「BlueCaster v1 が起動しています。先に終了してください」のバナーを出します。両方が同じアダプタを使うことはできないためです。
 
 **設定ファイルの扱い**
 
@@ -376,19 +376,19 @@ v1から上書きインストールするだけで、プロファイル、ペア
 Windows 8 以降は WinUSB ドライバ（`winusb.inf`）が OS に標準で入っていて、Microsoft の署名付きです。デバイスマネージャーの「ドライバーの更新 → コンピューターを参照 → 一覧から選択 → ユニバーサル シリアル バス デバイス → WinUsb デバイス」と同じことを、プログラムから行います。
 
 1. `SetupDiGetClassDevs` / `SetupDiOpenDeviceInfo` で対象ドングル（VID:PID とインスタンスID）を開く。
-2. デバイスの `Device Parameters` に `DeviceInterfaceGUIDs`（A2DPWB 固有のGUID）を書き込む（Zadigが生成するINFが書いている値と同じ役割。WinUSB はこれを見てデバイスインターフェースを登録する）。
+2. デバイスの `Device Parameters` に `DeviceInterfaceGUIDs`（BlueCaster 固有のGUID）を書き込む（Zadigが生成するINFが書いている値と同じ役割。WinUSB はこれを見てデバイスインターフェースを登録する）。
 3. `SP_DEVINSTALL_PARAMS` に `DI_ENUMSINGLEINF` と `DriverPath = %SystemRoot%\INF\winusb.inf` を指定して `SetupDiBuildDriverInfoList(SPDIT_CLASSDRIVER)` を呼び、"WinUsb Device" のモデルを選ぶ（`SetupDiSetSelectedDriver`）。
 4. `DiInstallDevice` で割り当てる。署名済みの inbox ドライバなので、証明書のインストールは要らない。
 5. **解除（元に戻す）**: `DiUninstallDevice` でデバイスを削除してから `CM_Reenumerate_DevNode` で再列挙すると、Windows は順位の一番高いドライバ（標準の Bluetooth ドライバ `BthUSB` や、メーカーのドライバ）を選び直す。WinUSB は互換IDでの一致ではない手動の割り当てなので、再び選ばれることはない。割り当て前のドライバ（INF名とバージョン）は記録しておき、戻した後に一致しているかを確かめる。
 
-- 管理者権限が要るので、常駐のコアは昇格させず、`a2dpwb-driver.exe` を UAC 昇格（`ShellExecuteEx` の `runas`）で一時起動します。ヘルパーは引数で受け取った1台だけを処理し（アンインストール時の `restore --records` を除く）、結果を終了コードとJSONで返します。
+- 管理者権限が要るので、常駐のコアは昇格させず、`bluecaster-driver.exe` を UAC 昇格（`ShellExecuteEx` の `runas`）で一時起動します。ヘルパーは引数で受け取った1台だけを処理し（アンインストール時の `restore --records` を除く）、結果を終了コードとJSONで返します。
 - 割り当て中は Windows の Bluetooth からそのドングルが消えることを、実行前の確認画面で説明します。
-- **アンインストール時の復元**: コアは割り当てのたびに `assign` の結果（割り当て前のドライバを含む）を設定フォルダの `driver\<インスタンスIDの英数字以外を _ にした名前>.json` に残し、「元のドライバに戻す」が成功すると消します。アンインストーラ（`installer/A2DPWB.iss` の `RestoreDrivers`。更新はアンインストーラを通らない）は、コアを終了させた後にこの記録があれば戻すかを尋ね、「はい」なら `a2dpwb-driver.exe restore --records <フォルダ>` を UAC 昇格で1回だけ起動します。ヘルパーは記録ごとに `restore --previous @<記録>` と同じ処理をし、戻せたアダプタの記録を消します。終了コードは全体で一番重いもの（未昇格 3 > 失敗 1 > 未確認 5 > 抜かれている 4 > 成功 0）で、0 以外ならアンインストーラがデバイスマネージャーでの手順を案内します。決めたこと:
+- **アンインストール時の復元**: コアは割り当てのたびに `assign` の結果（割り当て前のドライバを含む）を設定フォルダの `driver\<インスタンスIDの英数字以外を _ にした名前>.json` に残し、「元のドライバに戻す」が成功すると消します。アンインストーラ（`installer/BlueCaster.iss` の `RestoreDrivers`。更新はアンインストーラを通らない）は、コアを終了させた後にこの記録があれば戻すかを尋ね、「はい」なら `bluecaster-driver.exe restore --records <フォルダ>` を UAC 昇格で1回だけ起動します。ヘルパーは記録ごとに `restore --previous @<記録>` と同じ処理をし、戻せたアダプタの記録を消します。終了コードは全体で一番重いもの（未昇格 3 > 失敗 1 > 未確認 5 > 抜かれている 4 > 成功 0）で、0 以外ならアンインストーラがデバイスマネージャーでの手順を案内します。決めたこと:
   - インストーラで JSON を読まずに済むよう、記録の解釈と複数台の処理はヘルパーに置く。UAC の確認は台数によらず1回。
-  - 割り当てを頼まれた時点ですでに WinUSB だったアダプタ（`already_winusb`。Zadig など）は A2DPWB が変えたものではないので戻さず、記録だけ消す。読めない記録は消さずに残す。
+  - 割り当てを頼まれた時点ですでに WinUSB だったアダプタ（`already_winusb`。Zadig など）は BlueCaster が変えたものではないので戻さず、記録だけ消す。読めない記録は消さずに残す。
   - サイレント（`/S`）では尋ねる相手がおらず、UAC の確認を出すべきでもないので WinUSB のまま残す（既定の答えは「いいえ」）。v1 が動いているかインストールされているときは、v1 も WinUSB を使うので既定のボタンを「いいえ」にして一言添える。
   - 抜かれているアダプタは戻せないので記録を残す（次にアプリを入れ直したときの「元のドライバに戻す」でも使える）。
-  - アプリのボタンや一覧が使えない個体のために、利用者向けのセットアップガイドにデバイスマネージャーで手で割り当てる / 戻す手順を載せる（`docs/setup.md` の「By hand in Device Manager」と各言語版）。WinUSB の割り当て方によらず、コアは WinUSB のアダプタを開ける（A2DPWB のインターフェース GUID は自分の割り当てを見分けるためだけに使う）。
+  - アプリのボタンや一覧が使えない個体のために、利用者向けのセットアップガイドにデバイスマネージャーで手で割り当てる / 戻す手順を載せる（`docs/setup.md` の「By hand in Device Manager」と各言語版）。WinUSB の割り当て方によらず、コアは WinUSB のアダプタを開ける（BlueCaster のインターフェース GUID は自分の割り当てを見分けるためだけに使う）。
 - **検証（フェーズ0）**: 手元の RTL8761BU で、割り当て → `nusb` で開ける → 解除 → Windows の Bluetooth に戻る、を確認します。`DiInstallDevice` が手動選択のドライバを拒む環境があれば、代わりに「`winusb.inf` を Include / Needs する小さなINF + カタログ」を作る方法を検討します（その場合は署名が要るので、libwdi と同じ問題が出ます。最後の手段として libwdi を DLL で同梱し、上の LGPL の条件を守ります）。
 
 ## Opus
@@ -404,7 +404,7 @@ Android 13 で入った A2DP の Opus ベンダーコーデック（AOSP `system
 | エンコーダ設定 | `OPUS_APPLICATION_AUDIO`、制約付き VBR（libopus の既定。Android は変更しない）、複雑度 10（libopus と PipeWire の既定。Android は 5） | `a2dp_vendor_opus_encoder.cc` |
 | パケット | RTP ヘッダー + 1 バイトのメディアペイロードヘッダー（下位 4 ビットがフレーム数 = 1）+ Opus パケット 1 つ（1 フレーム）。`opus_encode` にはペイロードの残りを上限として渡す | `A2DP_BuildMediaPayloadHeaderOpus`。PipeWire のデコーダはフレーム数 1 以外を受け付けない |
 
-Android の `tA2DP_OPUS_ENCODER_PARAMS::bitrate` は `uint16_t` なので、256000 は 59392（約 59 kbps）に切り詰められて `OPUS_SET_BITRATE` に渡っています。A2DPWB はこの不具合を真似せず、Android が意図した値を使います。PipeWire 独自の「Opus 05」は、ステレオの音楽の方向だけを別のコーデック `opus05` として後から加えました（[Opus 05](#opus-05)）。
+Android の `tA2DP_OPUS_ENCODER_PARAMS::bitrate` は `uint16_t` なので、256000 は 59392（約 59 kbps）に切り詰められて `OPUS_SET_BITRATE` に渡っています。BlueCaster はこの不具合を真似せず、Android が意図した値を使います。PipeWire 独自の「Opus 05」は、ステレオの音楽の方向だけを別のコーデック `opus05` として後から加えました（[Opus 05](#opus-05)）。
 
 Auto の優先順位は LHDC V5 の下、AAC の上です。256 kbps の Opus は同じビットレートの AAC と同等以上で、コーデックの遅延も小さい（20 ms のフレームと 6.5 ms の先読みで 26.5 ms。AAC-LC は約 43 ms）一方、シンク側の実装は新しく数も少ないため、実績のある LDAC / aptX 系 / LHDC V5 よりは下に置きます。
 
@@ -415,11 +415,11 @@ PipeWire 独自の A2DP Opus（`spa/plugins/bluez5/a2dp-codec-opus.c` の `opus_
 | 項目 | 値 | 根拠 |
 | --- | --- | --- |
 | Codec Information | 24 バイト。ベンダーヘッダーの後に 9 バイトの方向が 2 つ（main = 音楽、bidi = 戻りの音声。0 チャネルなら無し）。各方向はチャネル数、coupled stream 数、オーディオロケーション（LE 4 バイト、Bluetooth のロケーションのビット）、フレーム長のビット（0x01 2.5 ms、0x02 5 ms、0x04 10 ms、0x08 20 ms、0x10 40 ms）、ビットレート（LE 2 バイト、1024 bps 単位、0 は上限なし） | PipeWire `a2dp-codec-caps.h` の `a2dp_opus_05_t` |
-| 提供する能力 | main: 2 チャネル、ロケーション FL + FR（0x3）、10 / 20 ms、上限なし。bidi: なし | PipeWire `codec_fill_caps`（`opus_05`）。フレーム長は A2DPWB のエンコーダが扱う 10 / 20 ms に絞る |
+| 提供する能力 | main: 2 チャネル、ロケーション FL + FR（0x3）、10 / 20 ms、上限なし。bidi: なし | PipeWire `codec_fill_caps`（`opus_05`）。フレーム長は BlueCaster のエンコーダが扱う 10 / 20 ms に絞る |
 | 設定 | main: ステレオ = 2 チャネル・coupled 1・FL + FR（シンクが 1 チャネルだけならモノラル = 1 チャネル・coupled 0・ロケーション 0）、10 ms（シンクが持たなければ 20 ms）、ビットレートはシンクの上限と 312（320000 / 1024）の小さいほう（シンクが 0 なら 312）。bidi は 0。サンプリング周波数は設定に含まれないので 48 kHz で送る | PipeWire `select_config` / `set_channel_conf` の `opus_05`。10 ms を優先するのも PipeWire と同じ |
 | SEP の選択 | 双方向の SEP（bidi のチャネル数が 0 でない。PipeWire の `opus_05_duplex`）は、ほかに Opus 05 の SEP がないときだけ使う | PipeWire `caps_preference_cmp`（双方向が要らなければ bidi のない SEP を優先） |
 | ビットレート | Opus と同じ高音質 256 / 標準 192 / モバイル 128 kbps を、設定したビットレート（1024 bps 単位）とメディアペイロードで頭打ちにする。ABR はしない | PipeWire は 96〜320 kbps、初期値 192 kbps で、送信キューを見て変える |
-| エンコーダとパケット | Opus と同じ（`codec::opus::OpusEncoder` を `CodecKind` 付きで共用）。ステレオは coupled stream 1 つ、モノラルは stream 1 つの multistream なので、パケットは普通の Opus パケットと同じ。RTP ヘッダー + 1 バイトのヘッダー（PipeWire の `rtp_payload`。フレーム数 1、分割なし）+ Opus パケット 1 つ | PipeWire の `codec_encode` は MTU を超えると分割するが、A2DPWB はペイロードに収まるように符号化するので分割しない。デコーダは分割なしならフレーム数 1 だけを受け付ける |
+| エンコーダとパケット | Opus と同じ（`codec::opus::OpusEncoder` を `CodecKind` 付きで共用）。ステレオは coupled stream 1 つ、モノラルは stream 1 つの multistream なので、パケットは普通の Opus パケットと同じ。RTP ヘッダー + 1 バイトのヘッダー（PipeWire の `rtp_payload`。フレーム数 1、分割なし）+ Opus パケット 1 つ | PipeWire の `codec_encode` は MTU を超えると分割するが、BlueCaster はペイロードに収まるように符号化するので分割しない。デコーダは分割なしならフレーム数 1 だけを受け付ける |
 
 Auto は Opus 05 を選びません（FastStream と同じく、明示的に選んだときだけ）。相手が PipeWire に限られ、実機の PipeWire では確かめておらず、PipeWire 1.2 以降のシンクなら Android の Opus（`opus_g`）も出すからです。PipeWire がシンクのときに受けられるのは、Opus 05 が 0.3.57 以降、Android の Opus が 1.2.0 以降です（Ubuntu 24.04 の PipeWire 1.0.5 は Opus 05 だけ、Ubuntu 25.10 の 1.4.7 と 26.04 の 1.6.2 は両方）。
 
@@ -437,7 +437,7 @@ aptX Adaptive（ベンダー ID 0x000000D7 Qualcomm、コーデック ID 0x00AD�
 | シンク | R1（能力の拡張がない。例: B&W Px7 S2e）と R2（R2 のビットストリーム） |
 | 品質（R1） | 高音質 `hq` 427 kbps（12 ms、656 バイト）、標準 `sq` 364 kbps（14 ms。参照実装の既定値）、モバイル `mq` 318 kbps（16 ms）、低遅延 `ll` 265 kbps（10 ms、348 バイト）。R2 のシンクでは 427 / 270 / 204 / 270 kbps、96 kHz では 646（8 ms）/ 340（15 ms）/ 255（20 ms）kbps（656 バイト）。`ll` は aptX Adaptive だけが使う新しい品質キーで、ほかのコーデックは高音質として扱う |
 | ABR | 高音質のとき、送信キューに 3 パケット以上ある間は 1 段下げ（モバイルより下げない。最短でも約 0.5 秒おき）、約 3 秒間キューが 1 パケット以下なら 1 段上げる（選んだ品質まで）。低遅延は ABR なし |
-| パケット | メディアパケット 1 つにコーデックのパケット 1 つ。A2DPWB 自身の 12 バイトの RTP ヘッダー（BTstack は付けない）: ペイロードタイプ 96、シーケンス番号はパケットごとに +1、タイムスタンプはパケットのチャネルあたりのサンプル数（時刻ではない）、SSRC はシンクの遅延モード（HQ 0x000000A3、LL 0x000000A1）。ペイロードは 16 ビット単位でバイトを入れ替える |
+| パケット | メディアパケット 1 つにコーデックのパケット 1 つ。BlueCaster 自身の 12 バイトの RTP ヘッダー（BTstack は付けない）: ペイロードタイプ 96、シーケンス番号はパケットごとに +1、タイムスタンプはパケットのチャネルあたりのサンプル数（時刻ではない）、SSRC はシンクの遅延モード（HQ 0x000000A3、LL 0x000000A1）。ペイロードは 16 ビット単位でバイトを入れ替える |
 | 設定 | SET_CONFIGURATION は 48 kHz（レートのビット 0x10。または 96 kHz: Android と同じ 0xA0 = 0x80 | 0x20 を送り、シンクがどちらかのビットを出していれば 96 kHz 可とみなす。issue #86）、ソースタイプ 2（ホストのエンコーダ: 再生のタイミングはシンクが決める）、ステレオ。R1 のシンクにはシンク自身の目標遅延のバイトを返し、LL0 は 80 ms 以上に上げ、HQ の遅延が 0 なら 200 ms にする。R2 のシンクにはソース側の R2 ブロックを送る |
 | 能力 | Codec Information は 40 バイト。BTstack の能力のイベントでは 30 バイトに切られるが、使う値はすべてその中にある |
 
@@ -527,13 +527,13 @@ v1 の `feat/le-audio`（b819893）にあった実験的な LE Audio を、動�
 - 2026-10-26（自動選択をデバイス共通に）: 「コーデック」画面の「対応するコーデックのうち最も音質の高いものを自動で選ぶ」を、デバイスごとのスイッチ（プロファイルの codec "auto"）から、画面上部のすべてのデバイス共通の設定（settings.json の `auto_codec`、既定はオン）にした（issue #86）。オンのときは各プロファイルを Auto（Auto の既定の設定）で配信し、デバイスごとに選んだコーデックはプロファイルに残す。オフのときは選んだコーデックを使い、まだ選んでいないデバイスは Auto のまま。schema 5 への移行では、いずれかのプロファイルがコーデックを選んでいればオフで始める（v1 のフォルダも同じ）。使用中のストリームのコーデックが変わるときは接続し直す。
 - 2026-10-25（実験的コーデックの設定）: 「コーデック」画面に「実験的コーデックを有効にする」（settings.json の `experimental_codecs`、既定はオン。CLI では `--no-experimental` でオフ）を加えた（issue #86）。実験的コーデックは aptX HD、aptX LL、Opus、Opus 05、FastStream で、カードに「実験的」のタグを付ける。オフのときはそのカードを隠し、Auto もフォールバックもそれらを選ばず、それらを選んでいたデバイスは Auto の順位で次に低い、デバイスが出しているコーデックを使う（画面にその旨を出す）。使用中のストリームのコーデックが変わるときは接続し直す。あわせて、EarFun Air Pro 4+ での 48 kHz の動作報告を受けて aptX Adaptive を試験的な扱いから外した（96 kHz はエミュレーターでだけ確認）。
 - 2026-10-23（NSIS 版は先にアンインストール）: 2.0.2-beta.5 までの NSIS でのインストールを引き継ぐのをやめ、ファイルを入れる前に NSIS のアンインストーラを更新モード（`/S /UPDATE`）で実行するようにした（issue #86）。古いインストーラの登録やファイルに手を入れないほうが、後で困らない。失敗・中止すると何も残らないが、まだ利用者が少なく、セットアップをもう一度実行すれば済むので受け入れる（リリースノートに書く）。
-- 2026-10-22（インストーラを Inno Setup に）: Tauri の NSIS バンドラから Inno Setup 6（`installer/A2DPWB.iss`）に移した（issue #86）。NSIS で困っていたことはないが、(1) 台本が人に読みやすい（NSIS のフックは Tauri の生成する `installer.nsi` の流れと `$0`〜`$9` のレジスタを追わないと読めず、`System::Call` で構造体を組んでいた）、(2) 開発が活発で将来性がある、(3) 利用者とインストール済みの環境が少ない今のうちに移すほうが楽、の3点で決めた。`tauri build --no-bundle` で `a2dpwb.exe` だけを作り、ポータブル版のフォルダをそのまま Inno Setup に渡す。更新は引き続き `tauri-plugin-updater`（署名は `tauri signer sign --app-version`）で、プラグインが付ける `/UPDATE` に `/SILENT /NORESTART` を足す（`installMode: basicUi`）。beta.5 以前の更新機能が付ける NSIS の `/P` では、ページをすべて飛ばして進行状況だけを出す（セットアップの .exe はローダーが開いたままなので、`/SILENT` で起動し直すことはできなかった）。NSIS でのインストールは、ファイルを入れ終えてからフォルダを引き継ぐ（先にアンインストールすると、失敗や中止で何も残らないため）。インストール済みの判定は `uninstall.exe` から `unins000.exe` に。v1 とは別の AppId。中国語（簡体・繁体）の翻訳は Inno Setup 6 に同梱されないので `installer/languages/` に置く。
+- 2026-10-22（インストーラを Inno Setup に）: Tauri の NSIS バンドラから Inno Setup 6（`installer/BlueCaster.iss`）に移した（issue #86）。NSIS で困っていたことはないが、(1) 台本が人に読みやすい（NSIS のフックは Tauri の生成する `installer.nsi` の流れと `$0`〜`$9` のレジスタを追わないと読めず、`System::Call` で構造体を組んでいた）、(2) 開発が活発で将来性がある、(3) 利用者とインストール済みの環境が少ない今のうちに移すほうが楽、の3点で決めた。`tauri build --no-bundle` で `bluecaster.exe` だけを作り、ポータブル版のフォルダをそのまま Inno Setup に渡す。更新は引き続き `tauri-plugin-updater`（署名は `tauri signer sign --app-version`）で、プラグインが付ける `/UPDATE` に `/SILENT /NORESTART` を足す（`installMode: basicUi`）。beta.5 以前の更新機能が付ける NSIS の `/P` では、ページをすべて飛ばして進行状況だけを出す（セットアップの .exe はローダーが開いたままなので、`/SILENT` で起動し直すことはできなかった）。NSIS でのインストールは、ファイルを入れ終えてからフォルダを引き継ぐ（先にアンインストールすると、失敗や中止で何も残らないため）。インストール済みの判定は `uninstall.exe` から `unins000.exe` に。v1 とは別の AppId。中国語（簡体・繁体）の翻訳は Inno Setup 6 に同梱されないので `installer/languages/` に置く。
 - 2026-10-24（aptX Adaptive の 96 kHz）: プロファイルで 96 kHz を選び、シンクが R2 で 96 kHz を出しているとき、高音質 / 標準 / モバイルを 96 kHz で送るようにした（issue #86）。R1 のシンクと低遅延は 48 kHz のまま。エンコーダの呼び出しは 2 ms（96 kHz では 192 フレーム）。Codecs の設定でサンプリングレートに 96 kHz を加え、ビット深度は aptX Adaptive と aptX HD で 24 ビットと表示する（常に 24 ビットで送っているのに 16 ビットと出ていた）。上流（f8a0908、2026-10-23）を見直したが、エンコーダのクレートは変わっていない。上流のプラグインでの変更のうち、ソースタイプ 0（シンクのリンクの時計に合わせたタイムスタンプ。ヘッドホンによってはこちらでないと切れる）はリンクの時計の値が要るので移していない。仮想シンクでのみ確認、実機では未確認。
 - 2026-10-22（aptX Adaptive）: AKS-Logic/aptx-adaptive-linux の Rust のエンコーダ（MIT、上流のコミット 25099004b2d3）を `app/src/crates/aptx-adaptive` に取り込み、aptX Adaptive を試験的に `aptxad` として追加した。R1 と R2 のシンク、48 kHz ステレオ、品質は高音質 / 標準 / モバイル / 低遅延（新しいキー `ll`）、高音質では ABR。Auto は選ばない。ストリームエンドポイントは 11 個になった。実機のヘッドホンでは未確認。[aptX Adaptive](#aptx-adaptive)を参照。
 - 2026-10-18（ブランチ名）: `develop-2.0` を `develop-v2.x`、v1 の `develop` を `develop-v1.x` に改名した。CI のプッシュ時のテストは `develop-v2.x` と `main` で動く。
 - 2026-10-18（未決事項の解消、ARM64）: `DiInstallDevice` が使えない環境では Zadig の案内に戻すと決めた（割り当ての失敗に専用の文言 `error.driver_assign_failed`、8言語）。実機（UB500）で割り当て → 解除 → 割り当ての往復を確認した。x64 の PC での ARM64 のビルドには、rustls の `ring` のために Visual Studio の clang が要る（`installer/build-release.ps1` が探して PATH に足す）。手元で ARM64 の3つの exe が組めることを確かめた（ARM64 の実機では未確認）。
 - 2026-10-18（Opus 05）: PipeWire 独自の A2DP Opus（ベンダー 0x000005F1 / 0x1005、`opus_05`）のステレオの音楽の方向を、試験的に `opus05` として追加した。Auto は選ばない。エンコーダは Opus のものを共用し、設定したビットレートで頭打ちにする。ストリームエンドポイントは 10 個になった。サラウンド、双方向、Pro Audio は未実装。[Opus 05](#opus-05)を参照。
-- 2026-10-18（アンインストール時のドライバ復元）: v1 との差の洗い出しで見つかった「v2 をアンインストールしてもアダプタが WinUSB のまま残る」を直した。アンインストーラが確認のうえで `a2dpwb-driver.exe restore --records` を1回昇格して、記録のあるアダプタを Windows に戻す。8言語の文言、セットアップガイドにデバイスマネージャーでの手順。[ドライバ](#ドライバwinusb)の「アンインストール時の復元」を参照。
+- 2026-10-18（アンインストール時のドライバ復元）: v1 との差の洗い出しで見つかった「v2 をアンインストールしてもアダプタが WinUSB のまま残る」を直した。アンインストーラが確認のうえで `bluecaster-driver.exe restore --records` を1回昇格して、記録のあるアダプタを Windows に戻す。8言語の文言、セットアップガイドにデバイスマネージャーでの手順。[ドライバ](#ドライバwinusb)の「アンインストール時の復元」を参照。
 - 2026-10-18（v1 との差の修正: UI）: v1 の同名プロファイルに「 (2)」「 (3)」…を付ける（移行時と読み込み時）。settings.json に言語がないときは Windows の表示言語を使う。使用中のプロファイルを保存すると新しい設定でつなぎ直す。「システムトレイに最小化」がオフならメインウィンドウを閉じるとアプリ全体が終了する。v1 が動いている間はホームとセットアップにバナー（スナップショットの `v1_running`）。このアプリについてにサードパーティの一覧を戻し、ライセンスはプログラム横の `licenses` フォルダ（開発ビルドではリリースタグのページ）を開く。Ctrl+Shift+D で診断。トレイのツールチップに配信中のデバイス名。接続フローの列見出し。プロファイル一覧に品質とビットレート。
 - 2026-10-18（ストリームの v1 との差）: サスペンド中・再接続中はパケットを捨てて ABR を止め、再接続後に ABR を戻すようにした。再接続ではデバイスの能力から設定を作り直し、MTU などが変わればパイプラインを作り直す。SBC XQ の設定を拒否するシンクでは SBC で接続し直す。UI の ABR はエンコーダが実際に動かしているかを表示する。既定の出力デバイスは切り替えの一部失敗でも戻す。取り込みリングのあふれと WASAPI の不連続をログに出す。[音声パイプライン・スレッド設計](#音声パイプラインスレッド設計)の「設計上の決まり」と [v2 で加えたコーデック](#v2-で加えたコーデック)の SBC XQ を参照。
 
@@ -546,6 +546,6 @@ v1 の `feat/le-audio`（b819893）にあった実験的な LE Audio を、動�
 - 2026-10-17（SBC XQ）: SBC XQ（dual channel、高 bitpool）を独立したコーデック `sbcxq` として追加した。交渉、品質ごとの bitpool、Auto の位置は[v2 で加えたコーデック](#v2-で加えたコーデック)に記した。
 
 - 2026-10-17（v2 に一本化）: v1 の保守を終了し、develop-2.0 から v1 のコード（C++ / wxWidgets、Inno Setup のインストーラ、CMake のビルド、実験的な LE Audio）を削除した。v2 を `v2/` から `app/src/` に移し、`core` / `ui` / `driver` / `crates` に分けた。Cargo workspace はリポジトリ直下、インストーラの台本は `installer/`、この設計書は `docs/v2-design.md`。デコーダの開発ツール `tools/a2dp_decode` は単独の CMake プロジェクトにした。
-- 2026-10-17（フェーズ3）: NSISのインストールはユーザー単位だけにした（全ユーザー向けを選べるとUACが毎回出るため）。セットアップ画面は8言語。更新のマニフェストはリリースごとに添付し、コアの更新チェックがURLを決める。コアに `--quit`、IPCに `app.quit_for_update`（配信中は断る）を追加。v1からの移行（`backup-v1\`、`schema_version`、古い `max_media_payload` をプロファイルへ）をコアの初回起動に入れた。待機中メモリの計測結果と、注入DLLを除く計り方を追記。開発用に `A2DPWB_INSTANCE`（別のパイプとmutexで2つ目のコアを動かす）。
-- 2026-10-17（実装に合わせた変更）: TypeScriptの型生成は `specta`（2.0 がまだ RC）ではなく `ts-rs` を使う。Named Pipe は tokio の非同期パイプ（同じ接続で読み書きを同時に行うため。同期ハンドルでは読み取り中の書き込みが待たされる）で、ユーザーだけに絞るDACLは `win-sys::pipe` で付ける。トレイは `tray-icon` を `tao` のイベントループで動かす（右クリックのネイティブメニュー、左クリックでUIのフライアウト）。`a2dpwb-core.exe` は GUI サブシステムで、`--cli` のときだけ呼び出し元のコンソールにつなぐ。
-- 2026-10-17: 未決事項の決定を反映。フロントエンドを SolidJS に変更。ARM64 を v2.0 の対象に追加。アプリ内でのWinUSB割り当て / 解除（SetupAPI、昇格ヘルパー `a2dpwb-driver.exe`）を追加し、libwdi を使わない理由を記録。作業ブランチを `feat/v2-rust` から `develop-2.0`（`feat/le-audio` から分岐）に変更。FFI を bindgen から手書き + Cシムに変更（libclang を不要にするため）。`core` クレートのパッケージ名を `a2dpwb-core` に。移行計画の4フェーズと完了条件を表にした。
+- 2026-10-17（フェーズ3）: NSISのインストールはユーザー単位だけにした（全ユーザー向けを選べるとUACが毎回出るため）。セットアップ画面は8言語。更新のマニフェストはリリースごとに添付し、コアの更新チェックがURLを決める。コアに `--quit`、IPCに `app.quit_for_update`（配信中は断る）を追加。v1からの移行（`backup-v1\`、`schema_version`、古い `max_media_payload` をプロファイルへ）をコアの初回起動に入れた。待機中メモリの計測結果と、注入DLLを除く計り方を追記。開発用に `BLUECASTER_INSTANCE`（別のパイプとmutexで2つ目のコアを動かす）。
+- 2026-10-17（実装に合わせた変更）: TypeScriptの型生成は `specta`（2.0 がまだ RC）ではなく `ts-rs` を使う。Named Pipe は tokio の非同期パイプ（同じ接続で読み書きを同時に行うため。同期ハンドルでは読み取り中の書き込みが待たされる）で、ユーザーだけに絞るDACLは `win-sys::pipe` で付ける。トレイは `tray-icon` を `tao` のイベントループで動かす（右クリックのネイティブメニュー、左クリックでUIのフライアウト）。`bluecaster-core.exe` は GUI サブシステムで、`--cli` のときだけ呼び出し元のコンソールにつなぐ。
+- 2026-10-17: 未決事項の決定を反映。フロントエンドを SolidJS に変更。ARM64 を v2.0 の対象に追加。アプリ内でのWinUSB割り当て / 解除（SetupAPI、昇格ヘルパー `bluecaster-driver.exe`）を追加し、libwdi を使わない理由を記録。作業ブランチを `feat/v2-rust` から `develop-2.0`（`feat/le-audio` から分岐）に変更。FFI を bindgen から手書き + Cシムに変更（libclang を不要にするため）。`core` クレートのパッケージ名を `bluecaster-core` に。移行計画の4フェーズと完了条件を表にした。

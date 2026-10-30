@@ -1,5 +1,5 @@
 # tools/emu Python environment (installed by setup_env.py into tools/emu/.venv).
-# Development / testing only: nothing here is linked into or shipped with A2DPWB.
+# Development / testing only: nothing here is linked into or shipped with BlueCaster.
 # Everything is pinned so the environment is reproducible; licenses are listed
 # in THIRD_PARTY_LICENSES.md section 13. Update both together, and
 # tools/linux_sink/requirements.txt (the same pins).

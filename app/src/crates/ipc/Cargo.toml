@@ -1,6 +1,6 @@
 [package]
 name = "ipc"
-description = "Protocol between a2dpwb-core.exe and the UI: message and state types (TypeScript generated with ts-rs) and the framed Named Pipe transport"
+description = "Protocol between bluecaster-core.exe and the UI: message and state types (TypeScript generated with ts-rs) and the framed Named Pipe transport"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

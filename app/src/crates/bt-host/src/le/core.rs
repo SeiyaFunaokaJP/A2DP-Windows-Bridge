@@ -898,7 +898,7 @@ impl<'a> LeCtx<'a> {
             }
         };
         if stray {
-            // A2DPWB never advertises: this is the connect of an attempt
+            // BlueCaster never advertises: this is the connect of an attempt
             // given up (timeout / cancel) that completed before the cancel
             // did. Nobody manages the link: drop it.
             if status == ERROR_CODE_SUCCESS {
@@ -1163,8 +1163,8 @@ impl<'a> LeCtx<'a> {
                 self.stack.sm_numeric_comparison_confirm(handle);
             }
             SM_EVENT_PASSKEY_INPUT_NUMBER => {
-                // No keyboard: such a device cannot pair with A2DPWB
-                tracing::warn!("LE Audio: {addr} asks for a passkey, which A2DPWB cannot enter");
+                // No keyboard: such a device cannot pair with BlueCaster
+                tracing::warn!("LE Audio: {addr} asks for a passkey, which BlueCaster cannot enter");
                 self.stack.sm_bonding_decline(handle);
             }
             SM_EVENT_PAIRING_STARTED => {

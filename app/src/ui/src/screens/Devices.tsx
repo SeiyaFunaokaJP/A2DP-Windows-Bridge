@@ -1,6 +1,6 @@
 // Audio Devices: what holds for every audio device (Windows Volume Sync, the
 // buttons, the remembered volume: one switch each, issue #86), then the
-// headphones and speakers A2DPWB knows, each with its own settings (capture
+// headphones and speakers BlueCaster knows, each with its own settings (capture
 // source, default output switching), and a card to add one: scan for new
 // ones or type an address. Profiles then pick from this list.
 

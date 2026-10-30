@@ -1,13 +1,13 @@
-# Contributing to A2DP Windows Bridge (A2DPWB)
+# Contributing to BlueCaster
 
-Thank you for your interest in contributing to A2DP Windows Bridge!
+Thank you for your interest in contributing to BlueCaster!
 
 ## Bug Reports & Feature Requests
 
 Feel free to [open an issue](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new/choose) — you'll find a few simple forms there:
 
 - **Bug report**: Something isn't working right.
-- **Device compatibility report**: How A2DPWB works with your adapter and headphones. "It just works" reports are welcome too!
+- **Device compatibility report**: How BlueCaster works with your adapter and headphones. "It just works" reports are welcome too!
 - **Feature request**: Ideas big or small.
 
 You don't need to fill in every field. Rough reports are fine, and I'll ask if I need more details.
@@ -33,9 +33,9 @@ For detailed setup instructions, see the [GitHub Pages](https://seiyafunaokajp.g
 ```bash
 git clone --recursive https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge.git
 cd A2DP-Windows-Bridge
-cargo build --release -p a2dpwb-core-exe -p a2dpwb-driver
+cargo build --release -p bluecaster-core-exe -p bluecaster-driver
 cd app/src/ui && pnpm install && pnpm build && cd ../../..
-cargo build --release -p a2dpwb-ui
+cargo build --release -p bluecaster-ui
 ```
 
 **Before a pull request:** `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and in `app/src/ui` `pnpm exec tsc --noEmit` and `pnpm exec vitest run`; `pwsh ./build.ps1 -Test` builds and runs them all (with `cargo fmt --check`), plus `python tools/check_lang.py`. The design is described in [docs/v2-design.md](docs/v2-design.md) (Japanese).
@@ -50,7 +50,7 @@ cargo build --release -p a2dpwb-ui
 
 ## License
 
-A2DPWB is dual-licensed under the [Apache License 2.0](LICENSE-APACHE) or the
+BlueCaster is dual-licensed under the [Apache License 2.0](LICENSE-APACHE) or the
 [MIT License](LICENSE-MIT), at the user's option. Unless you explicitly state
 otherwise, any contribution you submit is provided under the same dual license
 (`Apache-2.0 OR MIT`), without any additional terms or conditions.

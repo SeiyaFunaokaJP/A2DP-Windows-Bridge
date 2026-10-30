@@ -1,4 +1,4 @@
-//! A2DP codecs for A2DPWB.
+//! A2DP codecs for BlueCaster.
 //!
 //! - [`Encoder`]: what the encode thread drives. One call encodes
 //!   [`Encoder::pcm_frames_per_encode`] PCM frames.
@@ -35,7 +35,7 @@ pub mod opus;
 
 use std::fmt;
 
-/// The A2DP codecs A2DPWB can stream
+/// The A2DP codecs BlueCaster can stream
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CodecKind {
     Sbc,

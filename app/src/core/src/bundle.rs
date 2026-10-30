@@ -28,8 +28,8 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use a2dpwb_core::diag::{Masker, quoted};
-use a2dpwb_core::paths;
+use bluecaster_core::diag::{Masker, quoted};
+use bluecaster_core::paths;
 use ipc::DiagBundle;
 
 use crate::state::CoreState;
@@ -59,12 +59,12 @@ pub fn create(state: &CoreState, mask: bool, hci: bool) -> Result<DiagBundle, St
     // One masker for all the files: a device name is the same <device-N>
     // in each of them
     let mut masker = Masker::new();
-    for p in a2dpwb_core::profiles::load(&config) {
+    for p in bluecaster_core::profiles::load(&config) {
         for n in [&p.device_name, &p.audio_device_name, &p.volume_device_name, &p.name] {
             masker.know(n);
         }
     }
-    for d in a2dpwb_core::devices::load(&config).into_iter().chain(a2dpwb_core::devices::load_le(&config)) {
+    for d in bluecaster_core::devices::load(&config).into_iter().chain(bluecaster_core::devices::load_le(&config)) {
         masker.know(&d.name);
     }
     for a in crate::adapter_addresses(&state.snapshot().1.adapter.adapters) {
@@ -78,7 +78,7 @@ pub fn create(state: &CoreState, mask: bool, hci: bool) -> Result<DiagBundle, St
 
     // Logs: core, UI, driver helper; the newest first while the budget lasts
     let mut budget = LOG_BUDGET;
-    for (name, path) in newest_first(files_in(&logs, |n| n.starts_with("a2dpwb-") && n.contains(".log"))) {
+    for (name, path) in newest_first(files_in(&logs, |n| n.starts_with("bluecaster-") && n.contains(".log"))) {
         if budget == 0 {
             skipped.push(format!("{name}: over the size limit"));
             continue;
@@ -150,7 +150,7 @@ pub fn create(state: &CoreState, mask: bool, hci: bool) -> Result<DiagBundle, St
     let data = zip.finish();
     let dir = logs.join("bundles");
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let path = dir.join(format!("a2dpwb-diag-{stamp}.zip"));
+    let path = dir.join(format!("bluecaster-diag-{stamp}.zip"));
     std::fs::write(&path, &data).map_err(|e| format!("{}: {e}", path.display()))?;
     prune(&dir);
     tracing::info!("diagnostic bundle: {files} files, {} bytes -> {}", data.len(), path.display());
@@ -177,7 +177,7 @@ fn newest_first(mut files: Vec<(String, PathBuf)>) -> Vec<(String, PathBuf)> {
 }
 
 fn prune(dir: &Path) {
-    let all = files_in(dir, |n| n.starts_with("a2dpwb-diag-") && n.ends_with(".zip"));
+    let all = files_in(dir, |n| n.starts_with("bluecaster-diag-") && n.ends_with(".zip"));
     for (_, p) in &all[..all.len().saturating_sub(KEEP_BUNDLES)] {
         let _ = std::fs::remove_file(p);
     }
@@ -185,10 +185,10 @@ fn prune(dir: &Path) {
 
 fn readme(stamp: &str, mask: bool, hci: bool, skipped: &[String]) -> String {
     let mut s = format!(
-        "A2DP Windows Bridge {} diagnostic bundle, {stamp}\n\n\
+        "BlueCaster {} diagnostic bundle, {stamp}\n\n\
          diagnostics.txt  the diagnostic info (as copied from Diagnostics)\n\
          system.txt       Windows, USB Bluetooth adapters and drivers, paired devices, audio endpoints\n\
-         logs/            log files: a2dpwb-core (the service), a2dpwb-ui (the window), a2dpwb-driver (driver changes)\n\
+         logs/            log files: bluecaster-core (the service), bluecaster-ui (the window), bluecaster-driver (driver changes)\n\
          config/          settings, profiles, known devices (no link keys; addresses and names masked as everywhere)\n\
          crash/           crash reports: .txt, and .dmp minidumps for Visual Studio / WinDbg (raw memory: not masked)\n\
          hci/             HCI captures (.pklg) for Wireshark: recorder-* is the flight recorder at the time of\n\
@@ -224,7 +224,7 @@ fn system_text(config: &Path) -> String {
     let mut s = String::new();
     let _ = writeln!(
         s,
-        "A2DPWB {} ({}), Windows build {}, pid {}",
+        "BlueCaster {} ({}), Windows build {}, pid {}",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::ARCH,
         audio_capture::windows_build(),

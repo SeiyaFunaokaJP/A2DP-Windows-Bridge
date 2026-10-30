@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""a2dpwb_sink - A2DP sink on Linux that measures the stream A2DPWB sends.
+"""bluecaster_sink - A2DP sink on Linux that measures the stream BlueCaster sends.
 
 Runs on a Linux PC with an ordinary Bluetooth adapter (built-in is fine).
 While it runs, the adapter is taken from BlueZ and driven directly through
 the kernel's HCI user channel by Bumble, which acts as an A2DP sink offering
 SBC (SBC XQ capable), AAC, aptX, aptX HD, aptX LL, LDAC, Opus and FastStream
 with an L2CAP MTU of choice
-(BlueZ always uses 672 bytes, too small for LDAC). A2DPWB streams to it like
+(BlueZ always uses 672 bytes, too small for LDAC). BlueCaster streams to it like
 to headphones. Nothing is played; every media packet is measured:
 
   - received packets / bytes / bitrate, RTP sequence gaps (lost packets),
@@ -16,7 +16,7 @@ to headphones. Nothing is played; every media packet is measured:
   - a playout buffer model: how often a sink holding --buffer ms of audio
     would have run dry (audible dropouts) and for how long, and how often a
     burst would have overflowed it (audio skipped). A source that sends
-    nothing for more than 3 s (A2DPWB capturing a silent PC) is counted as a
+    nothing for more than 3 s (BlueCaster capturing a silent PC) is counted as a
     pause, not as a dropout
   - frame checks (SBC / FastStream / LDAC headers, Opus TOC, aptX sync) and,
     where a decoder library is installed, decode errors: libsbc (SBC, SBC XQ,
@@ -27,16 +27,16 @@ to headphones. Nothing is played; every media packet is measured:
     absolute level: 0 means within the controller's golden receive range
     (roughly -60 to -40 dBm), negative below it, positive above it
 
-Statistics are printed once per second and served to A2DPWB over TCP (one
-JSON object per line, default port 51201); A2DPWB shows them in its link
-quality window next to what it sent. A2DPWB finds the receiver by itself on
+Statistics are printed once per second and served to BlueCaster over TCP (one
+JSON object per line, default port 51201); BlueCaster shows them in its link
+quality window next to what it sent. BlueCaster finds the receiver by itself on
 the local network (UDP broadcast on the same port). Optional CSV log, WAV of
-the decoded audio and HCI capture for a2dpwb_decode --received.
+the decoded audio and HCI capture for bluecaster_decode --received.
 
 Requirements: Python 3.11+, Bumble (see requirements.txt), root for the HCI
 user channel; optional libsbc1, libfreeaptx0, libfdk-aac2, libopus0. See README.md.
 
-    sudo .venv/bin/python a2dpwb_sink.py [--adapter hci0] [--mtu 1005]
+    sudo .venv/bin/python bluecaster_sink.py [--adapter hci0] [--mtu 1005]
 
 Stop with Ctrl+C; the adapter then returns to BlueZ.
 """
@@ -95,7 +95,7 @@ SBC_FAMILY = (SBC, SBC_XQ, FASTSTREAM)
 # libldac encoders refuse an L2CAP MTU below 679 bytes
 LDAC_MIN_MTU = 679
 # SBC XQ is not an endpoint of its own: it is the SBC endpoint configured for
-# dual channel. A2DPWB uses it when that endpoint allows dual channel and a
+# dual channel. BlueCaster uses it when that endpoint allows dual channel and a
 # bitpool of at least 43 (app/src/crates/codec/src/caps.rs
 # SBC_XQ_MIN_MAX_BITPOOL), and then sends bitpool 47 (44.1 kHz) / 43 (48 kHz)
 SBC_XQ_MIN_MAX_BITPOOL = 43
@@ -144,7 +144,7 @@ def endpoint_capabilities(codec, sbc_max_bitpool, sbc_xq=True):
         # frames (0x08 / 0x10), mono / stereo (0x01 / 0x02)
         OPUS: (0xFF, vendor_caps(0x000000E0, 0x0001, [0x9B])),
         # FastStream (CSR; PipeWire a2dp_faststream_t): the music direction
-        # only (0x01; A2DPWB has no voice backchannel) at 44.1 / 48 kHz
+        # only (0x01; BlueCaster has no voice backchannel) at 44.1 / 48 kHz
         FASTSTREAM: (0xFF, vendor_caps(0x0000000A, 0x0001, [0x01, 0x03])),
     }[codec]
 
@@ -186,7 +186,7 @@ class CodecConfig:
             alloc = ['loudness', 'SNR'][ai] if ai is not None else '?'
             self.sbc_min_bitpool, self.sbc_max_bitpool = c[2], c[3]
             if mi == 2:
-                # dual channel: what A2DPWB sends as SBC XQ
+                # dual channel: what BlueCaster sends as SBC XQ
                 self.codec = SBC_XQ
             self.desc = (f'{CODEC_NAMES[self.codec]} {self.sample_rate} Hz, {mode}, {blocks} blocks, '
                          f'{subbands} subbands, {alloc}, bitpool {c[2]}-{c[3]}')
@@ -232,7 +232,7 @@ class CodecConfig:
     @property
     def has_rtp(self):
         # Classic aptX, aptX LL and FastStream are sent without an RTP header
-        # (as by Android, PipeWire and A2DPWB)
+        # (as by Android, PipeWire and BlueCaster)
         return self.codec not in (APTX, APTX_LL, FASTSTREAM)
 
 
@@ -728,7 +728,7 @@ class StreamStats:
 
     def _opus(self, p):
         # A 1-byte media payload header (frame count in the low 4 bits: 1 from
-        # Android and A2DPWB, the only count PipeWire takes), then one Opus packet
+        # Android and BlueCaster, the only count PipeWire takes), then one Opus packet
         if len(p) < 2:
             self.issue('Opus: empty media payload')
             return
@@ -1009,7 +1009,7 @@ class StatsServer:
 
 
 # ---------------------------------------------------------------------------
-# Discovery (UDP): A2DPWB broadcasts {"type":"discover"}, we answer
+# Discovery (UDP): BlueCaster broadcasts {"type":"discover"}, we answer
 # ---------------------------------------------------------------------------
 
 class DiscoveryResponder(asyncio.DatagramProtocol):
@@ -1039,8 +1039,8 @@ class DiscoveryResponder(asyncio.DatagramProtocol):
 # ---------------------------------------------------------------------------
 
 class PacketLoggerSnooper(Snooper):
-    """Writes HCI packets in PacketLogger format (as A2DPWB's own capture),
-    for a2dpwb_decode --received."""
+    """Writes HCI packets in PacketLogger format (as BlueCaster's own capture),
+    for bluecaster_decode --received."""
 
     def __init__(self, path):
         self.file = open(path, 'wb', buffering=0)  # unbuffered: survives being killed
@@ -1137,7 +1137,7 @@ class Sink:
         self.hci_transport = transport
 
         config = DeviceConfiguration(
-            name=a.name or f'A2DPWB Sink ({socket.gethostname()})',
+            name=a.name or f'BlueCaster Sink ({socket.gethostname()})',
             class_of_device=0x240404,  # Audio / Video, wearable headset
             classic_enabled=True,
             le_enabled=False,
@@ -1167,7 +1167,7 @@ class Sink:
         log(f'A2DP sink: {", ".join(CODEC_NAMES[c] for c in a.codecs)}; L2CAP MTU {a.mtu}')
         log(f'analysis: {dec}')
         if LDAC in a.codecs and a.mtu < LDAC_MIN_MTU:
-            log(f'warning: LDAC needs an MTU of at least {LDAC_MIN_MTU}; A2DPWB cannot stream LDAC with {a.mtu}')
+            log(f'warning: LDAC needs an MTU of at least {LDAC_MIN_MTU}; BlueCaster cannot stream LDAC with {a.mtu}')
 
         self.server = StatsServer(a.bind, a.port, self.on_message)
         self.server.hello = self.hello_line()
@@ -1175,12 +1175,12 @@ class Sink:
         await loop.create_datagram_endpoint(lambda: DiscoveryResponder(self), local_addr=(a.bind, a.port),
                                             allow_broadcast=True)
         log(f'statistics: TCP {a.bind}:{a.port}, discovery: UDP {a.port} '
-            f'(A2DPWB finds this PC on the local network)')
+            f'(BlueCaster finds this PC on the local network)')
         if a.csv:
             self.open_csv(a.csv)
 
     def on_message(self, msg):
-        """Settings from A2DPWB, applied from the next connection on:
+        """Settings from BlueCaster, applied from the next connection on:
         {"type":"configure","mtu":1005,"codecs":["SBC",...],"buffer_ms":200}"""
         if msg.get('type') != 'configure':
             return
@@ -1205,7 +1205,7 @@ class Sink:
             a.buffer = buffer_ms
             changes.append(f'buffer {buffer_ms} ms')
         if changes:
-            log('configured by A2DPWB (from the next connection): ' + '; '.join(changes))
+            log('configured by BlueCaster (from the next connection): ' + '; '.join(changes))
             self.server.hello = self.hello_line()
 
     def announcement(self):
@@ -1432,7 +1432,7 @@ class Sink:
 async def run(args):
     sink = Sink(args)
     await sink.start()
-    log('waiting for A2DPWB to connect... (Ctrl+C to stop)')
+    log('waiting for BlueCaster to connect... (Ctrl+C to stop)')
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -1449,7 +1449,7 @@ async def run(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='A2DP sink on Linux that measures the stream A2DPWB sends (Bumble, HCI user channel).',
+        description='A2DP sink on Linux that measures the stream BlueCaster sends (Bumble, HCI user channel).',
         epilog='Needs root. The adapter is not available to BlueZ while this runs. See README.md.')
     parser.add_argument('--adapter', help='adapter to use, e.g. hci0 (default: the first one)')
     parser.add_argument('--transport', help='Bumble transport instead of an adapter (testing), '
@@ -1474,14 +1474,14 @@ def main():
     parser.add_argument('--wav', metavar='PREFIX',
                         help='write the decoded audio to PREFIX_<stream>_<codec>.wav')
     parser.add_argument('--capture', metavar='FILE.pklg',
-                        help='HCI capture of the whole run, for a2dpwb_decode --received')
-    parser.add_argument('--name', help='Bluetooth name (default "A2DPWB Sink (<host name>)")')
+                        help='HCI capture of the whole run, for bluecaster_decode --received')
+    parser.add_argument('--name', help='Bluetooth name (default "BlueCaster Sink (<host name>)")')
     parser.add_argument('--keys', default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                       'a2dpwb_sink_keys.json'),
+                                                       'bluecaster_sink_keys.json'),
                         help='where pairing keys are kept (default: next to this script)')
     parser.add_argument('--verbose', action='store_true', help='show Bumble warnings and debug logs')
     parser.add_argument('--no-discoverable', action='store_true',
-                        help='connectable but not discoverable (A2DPWB must know the address)')
+                        help='connectable but not discoverable (BlueCaster must know the address)')
     args = parser.parse_args()
     if not 2 <= args.sbc_max_bitpool <= 250:
         parser.error('--sbc-max-bitpool must be 2-250')
@@ -1497,7 +1497,7 @@ def main():
                         format='%(asctime)s %(name)s %(levelname)s: %(message)s')
     if not args.verbose:
         # Bumble warns about sources that close the signaling channel right
-        # after SUSPEND (as A2DPWB does when stopping); the stream end is
+        # after SUSPEND (as BlueCaster does when stopping); the stream end is
         # detected anyway
         logging.getLogger('bumble').setLevel(logging.ERROR)
         warnings.filterwarnings('ignore', category=RuntimeWarning, message='coroutine .* was never awaited')

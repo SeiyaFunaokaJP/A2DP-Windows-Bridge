@@ -5,7 +5,7 @@ import type { Snapshot } from "./Snapshot";
 
 export type ServerMessage = { "type": "welcome", protocol: number, 
 /**
- * "a2dpwb-core/2.0.0"
+ * "bluecaster-core/2.0.0"
  */
 server: string, 
 /**

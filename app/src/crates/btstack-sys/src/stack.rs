@@ -53,7 +53,7 @@ const INIT_HFP: u32 = 128;
 const INIT_RFCOMM: u32 = 256;
 
 /// Largest codec information of a stream endpoint or a SET_CONFIGURATION
-/// (shim.c A2DPWB_CODEC_INFO_MAX): aptX Adaptive's 40 bytes
+/// (shim.c BLUECASTER_CODEC_INFO_MAX): aptX Adaptive's 40 bytes
 pub const CODEC_INFO_MAX: usize = 40;
 
 thread_local! {
@@ -97,7 +97,7 @@ impl Stack {
         tracing::debug!(target: "btstack", "hci_init (async transport {is_async})");
         // SAFETY: on the BTstack thread; the backend is installed, so the
         // transport table's callbacks have something to call.
-        unsafe { ffi::a2dpwb_hci_init(is_async as c_int) };
+        unsafe { ffi::bluecaster_hci_init(is_async as c_int) };
         mark(INIT_HCI);
     }
 
@@ -113,7 +113,7 @@ impl Stack {
     pub fn hci_init_installed(&self) {
         tracing::debug!(target: "btstack", "hci_init on the installed transport (async {})", transport::is_async());
         // SAFETY: on the BTstack thread.
-        unsafe { ffi::a2dpwb_hci_init(transport::is_async() as c_int) };
+        unsafe { ffi::bluecaster_hci_init(transport::is_async() as c_int) };
         mark(INIT_HCI);
     }
 
@@ -123,19 +123,19 @@ impl Stack {
         tracing::debug!(target: "btstack", "link key store: {}", if rust { "file" } else { "memory" });
         LINK_KEYS.with(|s| *s.borrow_mut() = store);
         // SAFETY: on the BTstack thread, after hci_init.
-        unsafe { ffi::a2dpwb_set_link_key_db(rust as c_int) };
+        unsafe { ffi::bluecaster_set_link_key_db(rust as c_int) };
     }
 
     pub fn set_packet_logger(&self, logger: Option<PacketLogger>) {
         LOGGER.with(|l| *l.borrow_mut() = logger);
     }
 
-    /// SSP Just Works, General Bonding, name "A2DPWB", role switch and
+    /// SSP Just Works, General Bonding, name "BlueCaster", role switch and
     /// sniff allowed
     pub fn gap_setup(&self, class_of_device: u32, page_timeout: u16) {
         tracing::debug!(target: "btstack", "gap setup: CoD 0x{class_of_device:06X}, page timeout 0x{page_timeout:04X}");
         // SAFETY: on the BTstack thread, after hci_init.
-        unsafe { ffi::a2dpwb_gap_setup(class_of_device, page_timeout) };
+        unsafe { ffi::bluecaster_gap_setup(class_of_device, page_timeout) };
     }
 
     pub fn l2cap_init(&self) {
@@ -153,18 +153,18 @@ impl Stack {
     /// HCI events go to the app ([`crate::Source::Hci`])
     pub fn add_hci_event_handler(&self) {
         // SAFETY: on the BTstack thread; the registration is static in C.
-        unsafe { ffi::a2dpwb_add_hci_event_handler() };
+        unsafe { ffi::bluecaster_add_hci_event_handler() };
     }
 
     pub fn a2dp_source_init(&self) {
         // SAFETY: on the BTstack thread, after l2cap / sdp init.
-        unsafe { ffi::a2dpwb_a2dp_source_init() };
+        unsafe { ffi::bluecaster_a2dp_source_init() };
         mark(INIT_A2DP);
     }
 
     pub fn avrcp_init(&self) {
         // SAFETY: on the BTstack thread, after l2cap / sdp init.
-        unsafe { ffi::a2dpwb_avrcp_init() };
+        unsafe { ffi::bluecaster_avrcp_init() };
         mark(INIT_AVRCP);
     }
 
@@ -174,7 +174,7 @@ impl Stack {
     pub fn hfp_ag_init(&self) {
         self.rfcomm_init();
         // SAFETY: on the BTstack thread, after l2cap / sdp / rfcomm init.
-        unsafe { ffi::a2dpwb_hfp_ag_init() };
+        unsafe { ffi::bluecaster_hfp_ag_init() };
         mark(INIT_HFP);
     }
 
@@ -187,7 +187,7 @@ impl Stack {
         }
         tracing::debug!(target: "btstack", "rfcomm init");
         // SAFETY: on the BTstack thread, after l2cap_init.
-        unsafe { ffi::a2dpwb_rfcomm_init() };
+        unsafe { ffi::bluecaster_rfcomm_init() };
         mark(INIT_RFCOMM);
     }
 
@@ -200,7 +200,7 @@ impl Stack {
     pub fn sdp_query_rfcomm(&self, addr: &[u8; 6], uuid128: &[u8; 16]) -> u8 {
         // SAFETY: on the BTstack thread after sdp_init; the shim copies
         // both (6 and 16 bytes).
-        let status = unsafe { ffi::a2dpwb_sdp_query_rfcomm(addr.as_ptr(), uuid128.as_ptr()) };
+        let status = unsafe { ffi::bluecaster_sdp_query_rfcomm(addr.as_ptr(), uuid128.as_ptr()) };
         tracing::debug!(target: "btstack", "sdp query rfcomm {} {uuid128:02X?}: 0x{status:02X}", addr_str(addr));
         status
     }
@@ -212,7 +212,7 @@ impl Stack {
         let mut cid = 0u16;
         // SAFETY: on the BTstack thread after rfcomm_init; addr is 6 bytes,
         // cid writable.
-        let status = unsafe { ffi::a2dpwb_rfcomm_create_channel(addr.as_ptr(), server_channel, &mut cid) };
+        let status = unsafe { ffi::bluecaster_rfcomm_create_channel(addr.as_ptr(), server_channel, &mut cid) };
         tracing::debug!(target: "btstack", "rfcomm create channel {} #{server_channel}: 0x{status:02X}, cid 0x{cid:04X}", addr_str(addr));
         if status == 0 { Ok(cid) } else { Err(status) }
     }
@@ -244,14 +244,14 @@ impl Stack {
     /// Opens the service level connection to the headphones' HFP
     pub fn hfp_ag_connect(&self, addr: &[u8; 6]) -> u8 {
         // SAFETY: on the BTstack thread after hfp_ag_init; 6 bytes.
-        let status = unsafe { ffi::a2dpwb_hfp_ag_connect(addr.as_ptr()) };
+        let status = unsafe { ffi::bluecaster_hfp_ag_connect(addr.as_ptr()) };
         tracing::debug!(target: "btstack", "hfp_ag_connect {}: 0x{status:02X}", addr_str(addr));
         status
     }
 
     pub fn hfp_ag_release(&self, acl_handle: u16) -> u8 {
         // SAFETY: on the BTstack thread after hfp_ag_init.
-        let status = unsafe { ffi::a2dpwb_hfp_ag_release(acl_handle) };
+        let status = unsafe { ffi::bluecaster_hfp_ag_release(acl_handle) };
         tracing::debug!(target: "btstack", "hfp_ag_release acl 0x{acl_handle:04X}: 0x{status:02X}");
         status
     }
@@ -261,7 +261,7 @@ impl Stack {
     pub fn sdp_register_records(&self, controller_features: u16, target_features: u16) {
         tracing::debug!(target: "btstack", "sdp records: AVRCP controller features 0x{controller_features:04X}, target 0x{target_features:04X}");
         // SAFETY: on the BTstack thread after sdp_init; buffers are static in C.
-        unsafe { ffi::a2dpwb_sdp_register_records(controller_features, target_features) };
+        unsafe { ffi::bluecaster_sdp_register_records(controller_features, target_features) };
     }
 
     /// A2DP source stream endpoint in slot 0..MAX_NR_AVDTP_STREAM_ENDPOINTS.
@@ -274,7 +274,7 @@ impl Stack {
         // SAFETY: on the BTstack thread after a2dp_source_init; the shim
         // copies caps / config into static buffers of CODEC_INFO_MAX bytes.
         let seid = unsafe {
-            ffi::a2dpwb_create_stream_endpoint(
+            ffi::bluecaster_create_stream_endpoint(
                 slot as c_int,
                 codec_type,
                 caps.as_ptr(),
@@ -310,7 +310,7 @@ impl Stack {
     pub fn set_chipset_realtek(&self) {
         tracing::debug!(target: "btstack", "chipset: Realtek driver registered");
         // SAFETY: on the BTstack thread after hci_init; the instance is static.
-        unsafe { ffi::hci_set_chipset(ffi::a2dpwb_realtek_instance()) };
+        unsafe { ffi::hci_set_chipset(ffi::bluecaster_realtek_instance()) };
     }
 
     /// Registers the Broadcom chipset driver with a PatchRAM (.hcd) file
@@ -330,7 +330,7 @@ impl Stack {
         tracing::debug!(target: "btstack", "intel firmware download: folder {firmware_folder}, async {}", transport::is_async());
         let p = keep_path(firmware_folder);
         // SAFETY: on the BTstack thread; transport installed; p outlives it.
-        unsafe { ffi::a2dpwb_intel_download_firmware(transport::is_async() as c_int, p) };
+        unsafe { ffi::bluecaster_intel_download_firmware(transport::is_async() as c_int, p) };
     }
 
     // ---- HCI ----
@@ -358,7 +358,7 @@ impl Stack {
             return HciState::Off;
         }
         // SAFETY: on the BTstack thread, after hci_init.
-        match unsafe { ffi::a2dpwb_hci_get_state() } {
+        match unsafe { ffi::bluecaster_hci_get_state() } {
             1 => HciState::Initializing,
             2 => HciState::Working,
             3 => HciState::Halting,
@@ -370,7 +370,7 @@ impl Stack {
 
     pub fn can_send_command_now(&self) -> bool {
         // SAFETY: on the BTstack thread, after hci_init.
-        unsafe { ffi::a2dpwb_hci_can_send_command_now() != 0 }
+        unsafe { ffi::bluecaster_hci_can_send_command_now() != 0 }
     }
 
     /// The HCI transport reported a permanent failure ([`crate::Upstream::fail`])
@@ -380,33 +380,33 @@ impl Stack {
 
     pub fn cmd_set_afh_classification(&self, map: &[u8; 10]) -> u8 {
         // SAFETY: on the BTstack thread; map has the 10 bytes the shim reads.
-        let status = unsafe { ffi::a2dpwb_cmd_set_afh_classification(map.as_ptr()) };
+        let status = unsafe { ffi::bluecaster_cmd_set_afh_classification(map.as_ptr()) };
         tracing::debug!(target: "btstack", "set AFH host classification {map:02X?}: 0x{status:02X}");
         status
     }
 
     pub fn cmd_read_afh_channel_map(&self, con_handle: u16) -> u8 {
         // SAFETY: on the BTstack thread.
-        let status = unsafe { ffi::a2dpwb_cmd_read_afh_channel_map(con_handle) };
+        let status = unsafe { ffi::bluecaster_cmd_read_afh_channel_map(con_handle) };
         tracing::trace!(target: "btstack", "read AFH channel map 0x{con_handle:04X}: 0x{status:02X}");
         status
     }
 
     pub fn cmd_read_rssi(&self, con_handle: u16) -> u8 {
         // SAFETY: on the BTstack thread.
-        let status = unsafe { ffi::a2dpwb_cmd_read_rssi(con_handle) };
+        let status = unsafe { ffi::bluecaster_cmd_read_rssi(con_handle) };
         tracing::trace!(target: "btstack", "read RSSI 0x{con_handle:04X}: 0x{status:02X}");
         status
     }
 
     pub fn cmd_read_bd_addr(&self) -> u8 {
         // SAFETY: on the BTstack thread.
-        unsafe { ffi::a2dpwb_cmd_read_bd_addr() }
+        unsafe { ffi::bluecaster_cmd_read_bd_addr() }
     }
 
     pub fn cmd_read_local_version(&self) -> u8 {
         // SAFETY: on the BTstack thread.
-        let status = unsafe { ffi::a2dpwb_cmd_read_local_version() };
+        let status = unsafe { ffi::bluecaster_cmd_read_local_version() };
         tracing::debug!(target: "btstack", "read local version: 0x{status:02X}");
         status
     }
@@ -414,7 +414,7 @@ impl Stack {
     pub fn acl_state(&self, addr: &[u8; 6]) -> AclState {
         let mut handle = 0u16;
         // SAFETY: on the BTstack thread; addr is 6 bytes, handle writable.
-        match unsafe { ffi::a2dpwb_acl_state(addr.as_ptr(), &mut handle) } {
+        match unsafe { ffi::bluecaster_acl_state(addr.as_ptr(), &mut handle) } {
             -1 => AclState::None,
             0 => AclState::Paging,
             1 => AclState::Open(handle),
@@ -451,7 +451,7 @@ impl Stack {
     /// controller then completes it with an error status
     pub fn cmd_remote_name_request_cancel(&self, addr: &[u8; 6]) -> u8 {
         // SAFETY: on the BTstack thread; addr is 6 bytes.
-        let status = unsafe { ffi::a2dpwb_cmd_remote_name_request_cancel(addr.as_ptr()) };
+        let status = unsafe { ffi::bluecaster_cmd_remote_name_request_cancel(addr.as_ptr()) };
         tracing::debug!(target: "btstack", "remote name request cancel {}: 0x{status:02X}", addr_str(addr));
         status
     }
@@ -533,7 +533,7 @@ impl Stack {
     ) -> u8 {
         // SAFETY: on the BTstack thread; plain values.
         unsafe {
-            ffi::a2dpwb_set_config_sbc(
+            ffi::bluecaster_set_config_sbc(
                 a2dp_cid,
                 local_seid,
                 remote_seid,
@@ -562,7 +562,7 @@ impl Stack {
     ) -> u8 {
         // SAFETY: on the BTstack thread; plain values.
         unsafe {
-            ffi::a2dpwb_set_config_aac(
+            ffi::bluecaster_set_config_aac(
                 a2dp_cid,
                 local_seid,
                 remote_seid,
@@ -582,7 +582,7 @@ impl Stack {
         }
         // SAFETY: on the BTstack thread; the shim copies info (<=
         // CODEC_INFO_MAX bytes) into a persistent buffer.
-        unsafe { ffi::a2dpwb_set_config_other(a2dp_cid, local_seid, remote_seid, info.as_ptr(), info.len() as u8) }
+        unsafe { ffi::bluecaster_set_config_other(a2dp_cid, local_seid, remote_seid, info.as_ptr(), info.len() as u8) }
     }
 
     pub fn a2dp_start_stream(&self, a2dp_cid: u16, local_seid: u8) -> u8 {
@@ -644,13 +644,13 @@ impl Stack {
     pub fn avdtp_state_for_addr(&self, addr: &[u8; 6]) -> (AvdtpState, u16) {
         let mut cid = 0u16;
         // SAFETY: on the BTstack thread; addr 6 bytes, cid writable.
-        let s = unsafe { ffi::a2dpwb_avdtp_state_for_addr(addr.as_ptr(), &mut cid) };
+        let s = unsafe { ffi::bluecaster_avdtp_state_for_addr(addr.as_ptr(), &mut cid) };
         (avdtp_state(s), cid)
     }
 
     pub fn avdtp_state_for_cid(&self, avdtp_cid: u16) -> AvdtpState {
         // SAFETY: on the BTstack thread.
-        avdtp_state(unsafe { ffi::a2dpwb_avdtp_state_for_cid(avdtp_cid) })
+        avdtp_state(unsafe { ffi::bluecaster_avdtp_state_for_cid(avdtp_cid) })
     }
 
     // ---- AVRCP ----
@@ -704,12 +704,12 @@ impl Stack {
     /// starting a running timer restarts it
     pub fn timer_start(&self, id: u32, timeout_ms: u32) -> bool {
         // SAFETY: on the BTstack thread; timers are static in C.
-        unsafe { ffi::a2dpwb_timer_start(id, timeout_ms) != 0 }
+        unsafe { ffi::bluecaster_timer_start(id, timeout_ms) != 0 }
     }
 
     pub fn timer_stop(&self, id: u32) {
         // SAFETY: on the BTstack thread.
-        unsafe { ffi::a2dpwb_timer_stop(id) }
+        unsafe { ffi::bluecaster_timer_stop(id) }
     }
 
     // ---- Teardown (crate::run) ----
@@ -721,7 +721,7 @@ impl Stack {
         // SAFETY: on the BTstack thread after the run loop has stopped; each
         // deinit only for what was initialized.
         unsafe {
-            if init & INIT_HCI != 0 && ffi::a2dpwb_hci_get_state() != 0 {
+            if init & INIT_HCI != 0 && ffi::bluecaster_hci_get_state() != 0 {
                 // Power off did not finish (or was skipped for an adapter
                 // that went away): release the device anyway, or the next
                 // open in this process finds it busy
@@ -744,10 +744,10 @@ impl Stack {
                 ffi::a2dp_source_deinit();
             }
             if init & INIT_HFP != 0 {
-                ffi::a2dpwb_hfp_ag_deinit();
+                ffi::bluecaster_hfp_ag_deinit();
             }
             if init & INIT_RFCOMM != 0 {
-                ffi::a2dpwb_rfcomm_deinit();
+                ffi::bluecaster_rfcomm_deinit();
             }
             if init & INIT_SDP != 0 {
                 ffi::sdp_client_deinit();

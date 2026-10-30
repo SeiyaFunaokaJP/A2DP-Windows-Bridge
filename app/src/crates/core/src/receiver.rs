@@ -1,7 +1,7 @@
 //! Peer receiver test: statistics from a measuring receiver on another PC —
 //! v1's remote_sink_client.cpp.
 //!
-//! tools/linux_sink/a2dpwb_sink.py runs on a Linux PC as an ordinary A2DP
+//! tools/linux_sink/bluecaster_sink.py runs on a Linux PC as an ordinary A2DP
 //! sink and measures what arrives: lost / late packets, jitter, gaps,
 //! dropouts of a modelled playout buffer, frame and decode errors, RSSI. It
 //! serves one JSON object per line over TCP (a "hello" line, then "stats"
@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::Value;
 
-/// TCP (statistics) and UDP (discovery) port of a2dpwb_sink.py
+/// TCP (statistics) and UDP (discovery) port of bluecaster_sink.py
 pub const DEFAULT_PORT: u16 = 51201;
 /// Target meaning: find the receiver on the local network
 pub const AUTO: &str = "auto";
@@ -254,7 +254,7 @@ pub fn parse_info(text: &str) -> Option<ReceiverInfo> {
     })
 }
 
-/// One "stats" line of a2dpwb_sink.py; None if it is no stats message
+/// One "stats" line of bluecaster_sink.py; None if it is no stats message
 pub fn parse_stats(line: &str) -> Option<ReceiverStats> {
     let j: Value = serde_json::from_str(line.trim()).ok()?;
     if j.get("type")?.as_str()? != "stats" {
@@ -698,7 +698,7 @@ mod tests {
     use std::net::TcpListener;
 
     const ANNOUNCE: &str = r#"{"type":"announce","version":1,"tool":"a2dpwb_sink","host":"pi5","port":51201,
-        "bt_address":"DC:A6:32:00:11:22","bt_name":"a2dpwb-sink","codecs":["SBC","AAC","LDAC"],"mtu":1005,
+        "bt_address":"DC:A6:32:00:11:22","bt_name":"bluecaster-sink","codecs":["SBC","AAC","LDAC"],"mtu":1005,
         "buffer_ms":200}"#;
 
     const STATS: &str = r#"{"type":"stats","version":1,"time":1760700000.123,"adapter":"hci0","address":"DC:A6:32:00:11:22",
@@ -723,7 +723,7 @@ mod tests {
         assert_eq!((i.mtu, i.port, i.buffer_ms), (1005, 51201, 200));
         let hello = ANNOUNCE.replace("\"announce\"", "\"hello\"");
         assert!(parse_info(&hello).is_some());
-        assert!(parse_info(&ANNOUNCE.replace("a2dpwb_sink", "other")).is_none());
+        assert!(parse_info(&ANNOUNCE.replace("bluecaster_sink", "other")).is_none());
         assert!(parse_info(STATS).is_none());
         assert!(parse_info("not json").is_none());
         assert!(parse_info(r#"{"type":"announce"}"#).is_none());
@@ -784,7 +784,7 @@ mod tests {
         i.ip = "192.168.1.20".into();
         assert_eq!(
             i.describe(true),
-            "Receiver: pi5 (192.168.1.20:51201), Bluetooth DC:A6:32:00:11:22 \"a2dpwb-sink\", L2CAP MTU 1005 \
+            "Receiver: pi5 (192.168.1.20:51201), Bluetooth DC:A6:32:00:11:22 \"bluecaster-sink\", L2CAP MTU 1005 \
              (first of several)"
         );
     }
@@ -864,7 +864,7 @@ mod tests {
         assert_eq!(client.target(), format!("127.0.0.1:{port}"));
         assert!(wait_for(|| client.latest().is_some()), "no stats");
         let info = client.receiver().unwrap();
-        assert_eq!((info.ip.as_str(), info.bt_name.as_str()), ("127.0.0.1", "a2dpwb-sink"));
+        assert_eq!((info.ip.as_str(), info.bt_name.as_str()), ("127.0.0.1", "bluecaster-sink"));
         assert_eq!(client.status().0, ReceiverStatus::Connected);
         assert!(client.summary().starts_with("Receiver: LDAC 9990 packets"));
 

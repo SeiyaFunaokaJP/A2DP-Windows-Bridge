@@ -1,19 +1,19 @@
 [package]
-name = "a2dpwb-ui"
-description = "a2dpwb.exe: the window process (main window and tray flyout, Tauri 2), a client of a2dpwb-core.exe over the user's Named Pipe"
+name = "bluecaster-ui"
+description = "bluecaster.exe: the window process (main window and tray flyout, Tauri 2), a client of bluecaster-core.exe over the user's Named Pipe"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "a2dpwb"
+name = "bluecaster"
 path = "src/main.rs"
 
 [features]
 # Serve the built frontend (../dist, embedded at compile time) instead of the
 # Vite dev server. On by default so that a plain `cargo build` gives a
-# working a2dpwb.exe; `cargo run --no-default-features` together with
+# working bluecaster.exe; `cargo run --no-default-features` together with
 # `pnpm dev` loads http://localhost:5173 with hot reload.
 default = ["embed-frontend"]
 embed-frontend = ["tauri/custom-protocol"]
@@ -34,7 +34,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 tokio = { version = "1", features = ["net", "io-util", "time", "sync", "macros", "rt"] }
 windows-version = "0.1"
-# logging.rs: a2dpwb-ui.YYYY-MM-DD.log next to the core's
+# logging.rs: bluecaster-ui.YYYY-MM-DD.log next to the core's
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender = "0.2"

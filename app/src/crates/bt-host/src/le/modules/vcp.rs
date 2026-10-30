@@ -13,7 +13,7 @@
 //! State and sends the operation once more. VOCS / AICS (included services)
 //! are only logged.
 //!
-//! The group: every connected device with VCS (A2DPWB connects only the
+//! The group: every connected device with VCS (BlueCaster connects only the
 //! devices it streams to, e.g. both earbuds of a set) shares one volume,
 //! the "group volume" (Volume_Setting 0-255):
 //! - It starts as the volume of the first device whose Volume State is read
@@ -23,7 +23,7 @@
 //! - `request_volume` (VolumeSync: the Windows volume changed) sets it and
 //!   writes Set Absolute Volume to every device; a muted device is unmuted
 //!   too when the level is above 0 (the user turned the volume up).
-//! - A device that reports another volume by notification while A2DPWB has
+//! - A device that reports another volume by notification while BlueCaster has
 //!   no write of its own pending (the earbud's buttons) sets it: the other
 //!   members get it written, and `remote_volume` reports it so VolumeSync
 //!   moves the Windows volume.
@@ -253,10 +253,10 @@ impl Group {
         }
 
         if v.busy() && !first && v.setting != v.op_from && v.setting != v.op_to && !v.device_changed {
-            // Not what A2DPWB's write leaves: the device changed meanwhile;
+            // Not what BlueCaster's write leaves: the device changed meanwhile;
             // applied when the write and its read are done (finish)
             v.device_changed = true;
-            info!("VCP: {}: volume changed on the device during a write of A2DPWB", v.addr);
+            info!("VCP: {}: volume changed on the device during a write of BlueCaster", v.addr);
         }
 
         if first {
@@ -276,7 +276,7 @@ impl Group {
             self.sync(id, out);
             return;
         }
-        // A2DPWB's own write runs or waits: its notifications are not
+        // BlueCaster's own write runs or waits: its notifications are not
         // followed (no echo); a change of the device meanwhile is flagged
         // above and applied by finish()
         if !from_notification || v.busy() || v.want.is_some() || v.want_unmute {
@@ -919,7 +919,7 @@ mod tests {
         g.set_group_volume(to_setting(20), &mut out);
         g.set_group_volume(to_setting(30), &mut out);
         assert!(out.is_empty(), "one write at a time: {out:?}");
-        // The echo of A2DPWB's own write is not followed
+        // The echo of BlueCaster's own write is not followed
         let status = sink.write(&w);
         g.on_state(A, CON_A, &sink.value(), true, &mut out);
         assert!(out.is_empty() && !g.devices[&A].device_changed);

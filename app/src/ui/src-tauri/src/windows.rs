@@ -3,7 +3,7 @@
 //! process: closing a window only hides it, so that reopening it from the
 //! tray is instant, and the process exits after everything was hidden for
 //! a few minutes (the core keeps streaming without it). With "Minimize to
-//! System Tray" off, closing the main window exits A2DPWB, core included,
+//! System Tray" off, closing the main window exits BlueCaster, core included,
 //! as the tray's Exit does (v1).
 
 use std::sync::Mutex;
@@ -72,7 +72,7 @@ fn mica() -> WindowEffectsConfig {
 fn builder<'a>(app: &'a AppHandle, label: &'a str) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
     // One page for both windows; the frontend picks the view by the label
     let b = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
-        .title("A2DP Windows Bridge")
+        .title("BlueCaster")
         .visible(false)
         .theme(Some(Theme::Dark));
     if mica_supported() {
@@ -237,13 +237,13 @@ fn main_closed(window: &tauri::Window) {
     });
 }
 
-/// Closing the main window exits A2DPWB: "Minimize to System Tray" is off
+/// Closing the main window exits BlueCaster: "Minimize to System Tray" is off
 /// in the core's snapshot
 fn quits_on_close(snapshot: &serde_json::Value) -> bool {
     snapshot.pointer("/settings/minimize_to_tray").and_then(serde_json::Value::as_bool) == Some(false)
 }
 
-/// A second `a2dpwb.exe` (from the tray or the Start menu) only forwards
+/// A second `bluecaster.exe` (from the tray or the Start menu) only forwards
 /// its arguments here
 pub fn on_second_instance(app: &AppHandle, args: &[String]) {
     let flyout = args.iter().any(|a| a == "--flyout");

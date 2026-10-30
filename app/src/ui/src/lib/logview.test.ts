@@ -16,7 +16,7 @@ import {
 const line = (seq: number | null, session: number | null, message = `line ${seq}`, level: LogLine["level"] = "info"): LogLine => ({
   time_ms: (seq ?? 0) * 10,
   level,
-  target: "a2dpwb_core::stream",
+  target: "bluecaster_core::stream",
   message,
   seq,
   session,
@@ -71,10 +71,10 @@ describe("log filters", () => {
     const old = line(null, null, "x");
     expect(logKey(old)).toBe(logKey({ ...old }));
     expect(formatLogLine(line(1, 1, "to AC:80:0A:12:34:56"), "12:00:00.000", true)).toMatch(
-      /^12:00:00\.000 INFO  a2dpwb_core::stream: to <addr-\d+>$/,
+      /^12:00:00\.000 INFO  bluecaster_core::stream: to <addr-\d+>$/,
     );
     expect(formatLogLine(line(1, 1, "to AC:80:0A:12:34:56", "error"), "t", false)).toBe(
-      "t ERROR a2dpwb_core::stream: to AC:80:0A:12:34:56",
+      "t ERROR bluecaster_core::stream: to AC:80:0A:12:34:56",
     );
   });
 

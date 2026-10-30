@@ -95,24 +95,24 @@ describe("connection flow", () => {
     const f = new FlowTracker();
     const at = (time_ms: number, target: string, message: string, level: LogLine["level"] = "info") =>
       f.feed({ time_ms, target, level, message });
-    at(1, "a2dpwb_core::stream", "stream: device 58:18:62:02:7A:D7 codec LDAC");
+    at(1, "bluecaster_core::stream", "stream: device 58:18:62:02:7A:D7 codec LDAC");
     at(2, "bt_host", "HCI ready after 69 ms");
     at(3, "bt_host", "connecting to 58:18:62:02:7A:D7");
     at(4, "bt_host", "signaling connection established (cid 0x0041, handle 0x0001)");
-    at(5, "a2dpwb_core::stream", "codec selected: LDAC");
+    at(5, "bluecaster_core::stream", "codec selected: LDAC");
     at(6, "audio_capture::loopback", 'audio capture: loopback of "CABLE Input": mix 96000 Hz 2 ch 32 bit');
-    at(7, "a2dpwb_core::stream", "capture: 96000 Hz, 2 channel(s), F32 -> 2 channel(s)");
+    at(7, "bluecaster_core::stream", "capture: 96000 Hz, 2 channel(s), F32 -> 2 channel(s)");
     at(8, "bt_host::app", "stream established (local 1, remote 3, mtu 895)");
-    at(9, "a2dpwb_core::service", "state Streaming: Streaming");
+    at(9, "bluecaster_core::service", "state Streaming: Streaming");
     expect(f.session!.steps.capture.status).toBe("done");
 
-    at(20, "a2dpwb_core::stream", "connection lost, reconnecting", "warn");
+    at(20, "bluecaster_core::stream", "connection lost, reconnecting", "warn");
     at(21, "bt_host", "reconnecting to 58:18:62:02:7A:D7");
     at(40, "bt_host::app", "signaling connection failed (0x67)", "warn");
     at(40, "bt_host::app", "stream establishment failed (0x67)", "warn");
-    at(40, "a2dpwb_core::stream", "reconnect attempt 1 failed", "warn");
+    at(40, "bluecaster_core::stream", "reconnect attempt 1 failed", "warn");
     at(43, "bt_host", "reconnecting to 58:18:62:02:7A:D7");
-    at(44, "a2dpwb_core::stream", "reconnected on attempt 2");
+    at(44, "bluecaster_core::stream", "reconnected on attempt 2");
     const s = f.session!;
     expect(s.steps.connect.status).toBe("done");
     expect(s.steps.config.status).toBe("done");
@@ -123,7 +123,7 @@ describe("connection flow", () => {
   it("shows a connection that needed a second attempt as a warning", () => {
     const f = new FlowTracker();
     const at = (time_ms: number, target: string, message: string) => f.feed({ time_ms, target, level: "info", message });
-    at(1, "a2dpwb_core::stream", "stream: device AA:BB:CC:DD:EE:FF");
+    at(1, "bluecaster_core::stream", "stream: device AA:BB:CC:DD:EE:FF");
     at(2, "bt_host", "connecting to AA:BB:CC:DD:EE:FF");
     at(3, "bt_host::app", "signaling connection failed (0x04)");
     at(4, "bt_host", "connection attempt 1/3 failed (PageTimeout), trying again");
@@ -408,17 +408,17 @@ describe("profiles", () => {
 
   it("masks a path above the app's own folder, or all but its last part", () => {
     const m = maskIdentifiers;
-    expect(m(String.raw`settings folder: C:\Users\Taro Yamada\AppData\Roaming\A2DPWB`)).toBe(String.raw`settings folder: <path>\A2DPWB`);
-    expect(m(String.raw`dump: C:\Users\admin\AppData\Roaming\A2DPWB\logs\crash\a2dpwb-core-20261022-235220-831.dmp`)).toBe(
-      String.raw`dump: <path>\A2DPWB\logs\crash\a2dpwb-core-20261022-235220-831.dmp`,
+    expect(m(String.raw`settings folder: C:\Users\Taro Yamada\AppData\Roaming\BlueCaster`)).toBe(String.raw`settings folder: <path>\BlueCaster`);
+    expect(m(String.raw`dump: C:\Users\admin\AppData\Roaming\BlueCaster\logs\crash\bluecaster-core-20261022-235220-831.dmp`)).toBe(
+      String.raw`dump: <path>\BlueCaster\logs\crash\bluecaster-core-20261022-235220-831.dmp`,
     );
-    expect(m(String.raw`C:\Program Files\A2DP Windows Bridge\a2dpwb-ui.exe`)).toBe(String.raw`<path>\A2DP Windows Bridge\a2dpwb-ui.exe`);
-    expect(m(String.raw`starting: pid 1, I:\A2DP-Windows-Bridge\target\release\a2dpwb-core.exe`)).toBe(
-      String.raw`starting: pid 1, <path>\a2dpwb-core.exe`,
+    expect(m(String.raw`C:\Program Files\BlueCaster\bluecaster-ui.exe`)).toBe(String.raw`<path>\BlueCaster\bluecaster-ui.exe`);
+    expect(m(String.raw`starting: pid 1, I:\A2DP-Windows-Bridge\target\release\bluecaster-core.exe`)).toBe(
+      String.raw`starting: pid 1, <path>\bluecaster-core.exe`,
     );
     expect(m(String.raw`C:\Users\山田太郎\Music\foobar2000\foobar2000.exe`)).toBe(String.raw`<path>\foobar2000.exe`);
     // The last part takes the text after it, but not another path; a trailing separator keeps the folder
-    expect(m(String.raw`HCI capture running: C:\x\A2DPWB\hci.pklg (3.0 MB)`)).toBe(String.raw`HCI capture running: <path>\A2DPWB\hci.pklg (3.0 MB)`);
+    expect(m(String.raw`HCI capture running: C:\x\BlueCaster\hci.pklg (3.0 MB)`)).toBe(String.raw`HCI capture running: <path>\BlueCaster\hci.pklg (3.0 MB)`);
     expect(m(String.raw`moved C:\a\b\x.bin to C:\a\c\x.bin`)).toBe(String.raw`moved <path>\x.bin to <path>\x.bin`);
     expect(m("folder C:\\a\\b\\\n")).toBe("folder <path>\\b\\\n");
     expect(m(String.raw`C:\ only`)).toBe(String.raw`<path>\ only`);
@@ -429,12 +429,12 @@ describe("profiles", () => {
     expect(m("dump: C:\\Users\\taro\n")).toBe("dump: <path>\\xxxx\n");
     // Not paths
     expect(m("at 23:52:25 LE Audio: 46 kHz, x:y, C: drive, https://a.b/c")).toBe("at 23:52:25 LE Audio: 46 kHz, x:y, C: drive, https://a.b/c");
-    expect(m(String.raw`\\.\pipe\a2dpwb-x`)).toBe(String.raw`\\.\pipe\a2dpwb-x`);
+    expect(m(String.raw`\\.\pipe\bluecaster-x`)).toBe(String.raw`\\.\pipe\bluecaster-x`);
   });
 
   it("masks the Windows user name in a path without a drive", () => {
     const m = maskIdentifiers;
-    expect(m(String.raw`\Users\Taro Yamada\AppData\Roaming\A2DPWB`)).toBe(String.raw`\Users\xxxxxxxxxxx\AppData\Roaming\A2DPWB`);
+    expect(m(String.raw`\Users\Taro Yamada\AppData\Roaming\BlueCaster`)).toBe(String.raw`\Users\xxxxxxxxxxx\AppData\Roaming\BlueCaster`);
     expect(m(String.raw`\Users\山田太郎\AppData`)).toBe(String.raw`\Users\xxxx\AppData`);
     expect(m("/users/taro/x.txt")).toBe("/users/xxxx/x.txt");
     expect(m(String.raw`\Users\Public\Desktop and \Users\All Users\y`)).toBe(String.raw`\Users\Public\Desktop and \Users\All Users\y`);
@@ -444,13 +444,13 @@ describe("profiles", () => {
 
   it("masks account SIDs", () => {
     const m = maskIdentifiers;
-    expect(m(String.raw`IPC: listening on \\.\pipe\a2dpwb-S-1-5-21-2123068572-4202720387-3275098450-1001`)).toBe(
-      String.raw`IPC: listening on \\.\pipe\a2dpwb-<sid>`,
+    expect(m(String.raw`IPC: listening on \\.\pipe\bluecaster-S-1-5-21-2123068572-4202720387-3275098450-1001`)).toBe(
+      String.raw`IPC: listening on \\.\pipe\bluecaster-<sid>`,
     );
     expect(m("user S-1-5-21-1-2-3-500, then")).toBe("user <sid>, then");
     // Well-known SIDs, the start of one, a longer word
     expect(m("S-1-5-18 S-1-5-32-544 S-1-5-21- S-1-")).toBe("S-1-5-18 S-1-5-32-544 S-1-5-21- S-1-");
-    expect(m("xS-1-5-21-1-2-3-4 S-1-5-21-1-2-3-4x a2dpwb-S-1-5-21-1-2-3-4-dev")).toBe("xS-1-5-21-1-2-3-4 S-1-5-21-1-2-3-4x a2dpwb-<sid>-dev");
+    expect(m("xS-1-5-21-1-2-3-4 S-1-5-21-1-2-3-4x bluecaster-S-1-5-21-1-2-3-4-dev")).toBe("xS-1-5-21-1-2-3-4 S-1-5-21-1-2-3-4x bluecaster-<sid>-dev");
   });
 
   it("masks quoted device names, the same name the same number", () => {
@@ -478,8 +478,8 @@ describe("about", () => {
 });
 
 describe("bug report", () => {
-  const info = "```text\nA2DPWB diagnostics - 2026-10-22\nVersion      : 2.0.3\nOS           : Windows build 26100 (x86_64)\n```\n";
-  const base = { version: "2.0.3", info, bundle: "a2dpwb-diag-20261022_120000.zip" };
+  const info = "```text\nBlueCaster diagnostics - 2026-10-22\nVersion      : 2.0.3\nOS           : Windows build 26100 (x86_64)\n```\n";
+  const base = { version: "2.0.3", info, bundle: "bluecaster-diag-20261022_120000.zip" };
 
   it("fills the issue form's fields the app knows", () => {
     const url = new URL(
@@ -496,9 +496,9 @@ describe("bug report", () => {
     expect(q.get("codec")).toBe("LDAC");
     expect(q.get("capture_mode")).toBe("Application");
     expect(q.get("interface")).toBe("Window / tray");
-    expect(q.get("bundle")).toMatch(/^a2dpwb-diag-20261022_120000\.zip\n/);
+    expect(q.get("bundle")).toMatch(/^bluecaster-diag-20261022_120000\.zip\n/);
     // The log field is a code block already: no fence of its own
-    expect(q.get("logs")).toBe("A2DPWB diagnostics - 2026-10-22\nVersion      : 2.0.3\nOS           : Windows build 26100 (x86_64)\n");
+    expect(q.get("logs")).toBe("BlueCaster diagnostics - 2026-10-22\nVersion      : 2.0.3\nOS           : Windows build 26100 (x86_64)\n");
   });
 
   it("leaves out what it does not know and cuts a long log", () => {
@@ -509,7 +509,7 @@ describe("bug report", () => {
     expect(q.has("adapter")).toBe(false);
     expect(url.length).toBeLessThan(8000);
     expect(q.get("logs")).toMatch(/\n\.\.\. \(cut here: the full text is diagnostics\.txt in the bundle\)$/);
-    expect(q.get("logs")).toMatch(/^A2DPWB diagnostics/);
+    expect(q.get("logs")).toMatch(/^BlueCaster diagnostics/);
   });
 });
 

@@ -8,7 +8,7 @@
 //! driver > Browse > Let me pick > Have Disk > winusb.inf > WinUsb Device":
 //!
 //! 1. open the device by its instance ID
-//! 2. write `DeviceInterfaceGUIDs` (REG_MULTI_SZ, A2DPWB's own GUID) into
+//! 2. write `DeviceInterfaceGUIDs` (REG_MULTI_SZ, BlueCaster's own GUID) into
 //!    its `Device Parameters` key, the value Zadig's INF writes: WinUSB
 //!    registers a device interface only for the GUIDs found there
 //! 3. point the device's install parameters at winusb.inf alone
@@ -23,7 +23,7 @@
 //! again. The driver from before (INF name, version, service) is recorded
 //! by `assign_winusb` and compared after the restore.
 //!
-//! Both need administrator rights (`a2dpwb-driver.exe`, started elevated);
+//! Both need administrator rights (`bluecaster-driver.exe`, started elevated);
 //! `driver_state` is read-only and needs none.
 //!
 //! Not yet verified on hardware (design.md phase 0): whether
@@ -57,7 +57,7 @@ use crate::autostart::RegKey;
 use crate::elevation::is_elevated;
 use crate::usb_adapters::{DevInfoSet, format_guid, parse_multi_sz, problem_code};
 
-/// The device interface GUID A2DPWB registers for adapters it puts on
+/// The device interface GUID BlueCaster registers for adapters it puts on
 /// WinUSB (`DeviceInterfaceGUIDs`), so its own adapters can be told apart
 /// from other WinUSB devices
 pub const INTERFACE_GUID: &str = "{03D8E127-01B1-4A98-9F22-AC8E41AA0CFD}";
@@ -74,7 +74,7 @@ const RESTORE_WAIT: Duration = Duration::from_secs(30);
 /// Which kind of driver owns a device
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DriverKind {
-    /// WINUSB: A2DPWB can use the adapter
+    /// WINUSB: BlueCaster can use the adapter
     WinUsb,
     /// BTHUSB or another driver of the Bluetooth class: Windows uses it
     Bluetooth,
@@ -141,8 +141,8 @@ pub struct DriverState {
 }
 
 impl DriverState {
-    /// On WinUSB with A2DPWB's interface GUID
-    pub fn has_a2dpwb_interface(&self) -> bool {
+    /// On WinUSB with BlueCaster's interface GUID
+    pub fn has_bluecaster_interface(&self) -> bool {
         self.interface_guids.iter().any(|g| g.eq_ignore_ascii_case(INTERFACE_GUID))
     }
 }
@@ -183,7 +183,7 @@ impl DriverRecord {
 /// Whether a failed assignment was undone
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rollback {
-    /// Nothing had changed but A2DPWB's interface GUID, which was removed
+    /// Nothing had changed but BlueCaster's interface GUID, which was removed
     NotNeeded,
     /// The device was put back as by `restore`
     Restored,
@@ -633,7 +633,7 @@ fn write_interface_guid(set: &DevInfoSet, data: &SP_DEVINFO_DATA) -> windows::co
         key.set(INTERFACE_GUIDS_VALUE, REG_MULTI_SZ, &multi_sz(&guids))?;
         tracing::debug!("driver: {INTERFACE_GUIDS_VALUE} written: {guids:?}");
     } else {
-        tracing::debug!("driver: {INTERFACE_GUIDS_VALUE} has A2DPWB's GUID already: {guids:?}");
+        tracing::debug!("driver: {INTERFACE_GUIDS_VALUE} has BlueCaster's GUID already: {guids:?}");
     }
     Ok(before)
 }
@@ -906,7 +906,7 @@ mod tests {
 
     #[test]
     fn unknown_device_is_not_found() {
-        assert!(matches!(driver_state(r"USB\VID_FFFF&PID_FFFF\A2DPWB_TEST"), Err(DriverError::DeviceNotFound(_))));
+        assert!(matches!(driver_state(r"USB\VID_FFFF&PID_FFFF\BLUECASTER_TEST"), Err(DriverError::DeviceNotFound(_))));
     }
 
     /// Read-only: the driver state of every present USB device that looks
@@ -918,12 +918,12 @@ mod tests {
             assert!(s.present);
             assert_eq!(s.driver, d.driver);
             eprintln!(
-                "{} -> {:?} {:?} guids={:?} a2dpwb={}",
+                "{} -> {:?} {:?} guids={:?} bluecaster={}",
                 s.instance_id,
                 s.kind,
                 s.driver,
                 s.interface_guids,
-                s.has_a2dpwb_interface()
+                s.has_bluecaster_interface()
             );
         }
     }

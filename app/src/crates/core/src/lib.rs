@@ -1,4 +1,4 @@
-//! A2DPWB's core, shared by the resident process (tray, IPC for the UI) and
+//! BlueCaster's core, shared by the resident process (tray, IPC for the UI) and
 //! the command line: the streaming state machine, the Bluetooth stack's
 //! lifecycle, and the settings, profiles and devices of the settings folder
 //! (v1's files, read and written in their format).

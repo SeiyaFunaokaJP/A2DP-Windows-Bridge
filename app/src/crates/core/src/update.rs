@@ -164,7 +164,7 @@ pub fn parse_list(json: &str) -> Result<Release, UpdateError> {
 fn get(url: &str) -> Result<String, UpdateError> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(TIMEOUT))
-        .user_agent(concat!("A2DPWB/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("BlueCaster/", env!("CARGO_PKG_VERSION")))
         .build()
         .into();
     let started = std::time::Instant::now();
@@ -287,7 +287,7 @@ mod tests {
     fn parses_latest() {
         let json = r#"{"url":"https://api.github.com/repos/x/y/releases/1","html_url":
             "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/tag/v1.1.0","tag_name":"v1.1.0",
-            "name":"A2DPWB 1.1.0","draft":false,"prerelease":false,"assets":[]}"#;
+            "name":"BlueCaster 1.1.0","draft":false,"prerelease":false,"assets":[]}"#;
         let r = parse_latest(json).unwrap();
         assert_eq!(
             r,
@@ -364,7 +364,7 @@ mod tests {
         assert!(!automatic_check_due(&s, "2099-01-01"));
     }
 
-    /// Really asks GitHub: `cargo test -p a2dpwb-core update -- --ignored`
+    /// Really asks GitHub: `cargo test -p bluecaster-core update -- --ignored`
     #[test]
     #[ignore = "network"]
     fn queries_github() {

@@ -1,21 +1,21 @@
-"""Virtual LE Audio unicast sink(s) for testing A2DPWB's experimental LE Audio.
+"""Virtual LE Audio unicast sink(s) for testing BlueCaster's experimental LE Audio.
 
 Runs Bumble virtual controllers on one in-process link (as emu_sink.py does
 for A2DP):
-  - controller "A2DPWB" is served as H4 over TCP; A2DPWB connects to it with
-    `a2dpwb-core.exe --cli --hci-tcp 127.0.0.1:<port> --le-audio -d <sink> ...`
+  - controller "BlueCaster" is served as H4 over TCP; BlueCaster connects to it with
+    `bluecaster-core.exe --cli --hci-tcp 127.0.0.1:<port> --le-audio -d <sink> ...`
   - one or two sink controllers, each driven by a Bumble host acting as a BAP
     unicast server (PACS, ASCS, CAS; le_audio/bap.py) plus the profile
     modules of le_audio/ (CSIP, VCP, MCP, CCP, TMAP / GMAP)
 
 The controllers carry HCI ISO data between each other (le_audio/
 controller.py). Each sink's HCI traffic, ISO data included, is written to a
-PacketLogger capture so a2dpwb_decode --le-audio --received can check what
+PacketLogger capture so bluecaster_decode --le-audio --received can check what
 arrived.
 
 Layouts (--layout):
   stereo   one headset, Front Left + Right, 2 sink ASEs, 1 or 2 channels per
-           ASE (A2DPWB uses one 2-channel ASE: 1 CIS)
+           ASE (BlueCaster uses one 2-channel ASE: 1 CIS)
   two-ase  one headset, Front Left + Right, 2 sink ASEs of 1 channel (2 CIS)
   earbuds  two earbuds, Front Left / Front Right, 1 sink ASE each (2 CIS on
            2 LE links)
@@ -26,7 +26,7 @@ link went down); READY then lists their current RPAs, not the public
 (identity) addresses.
 
 Run with the Python of the tools/emu virtual environment (see setup_env.py).
-Prints "READY <host:port> sinks=<addr>[,<addr>]" once A2DPWB can connect;
+Prints "READY <host:port> sinks=<addr>[,<addr>]" once BlueCaster can connect;
 stops on SIGTERM / Ctrl+C.
 """
 
@@ -42,16 +42,16 @@ import le_audio
 from le_audio.controller import LeEmuController, LeLocalLink
 from le_audio.sink import SinkContext, create_device, current_address, power_on_and_advertise
 
-A2DPWB_ADDRESS = '00:A2:D0:00:00:11'
+BLUECASTER_ADDRESS = '00:A2:D0:00:00:11'
 SINK_ADDRESSES = ['00:A2:D0:00:00:12', '00:A2:D0:00:00:13']
 FL, FR = 0x1, 0x2
 
 LAYOUTS = {
     # name: [(name, locations, sink ASEs, channel counts), ...]
-    'stereo': [('A2DPWB LE', FL | FR, 2, [1, 2])],
-    'two-ase': [('A2DPWB LE', FL | FR, 2, [1])],
-    'earbuds': [('A2DPWB LE L', FL, 1, [1]), ('A2DPWB LE R', FR, 1, [1])],
-    'mono': [('A2DPWB LE M', 0, 1, [1])],
+    'stereo': [('BlueCaster LE', FL | FR, 2, [1, 2])],
+    'two-ase': [('BlueCaster LE', FL | FR, 2, [1])],
+    'earbuds': [('BlueCaster LE L', FL, 1, [1]), ('BlueCaster LE R', FR, 1, [1])],
+    'mono': [('BlueCaster LE M', 0, 1, [1])],
 }
 
 log = logging.getLogger('emu_le_audio')
@@ -68,11 +68,11 @@ async def main(args):
     link = LeLocalLink()
     transport = await open_transport(f'tcp-server:127.0.0.1:{args.port}')
     LeEmuController(
-        'A2DPWB',
+        'BlueCaster',
         host_source=transport.source,
         host_sink=transport.sink,
         link=link,
-        public_address=A2DPWB_ADDRESS,
+        public_address=BLUECASTER_ADDRESS,
     )
     sinks = []
     for index, (name, locations, ases, counts) in enumerate(LAYOUTS[args.layout]):
@@ -86,7 +86,7 @@ async def main(args):
         await le_audio.start(sink, args)
     if args.drop_link_after:
         # Link loss test: the first sink ends its LE link once, some time
-        # after A2DPWB connected (A2DPWB must set the stream up again)
+        # after BlueCaster connected (BlueCaster must set the stream up again)
         def on_connection(connection):
             async def drop():
                 await asyncio.sleep(args.drop_link_after)
@@ -102,13 +102,13 @@ async def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--port', type=int, default=9001, help='TCP port for A2DPWB (H4)')
+    parser.add_argument('--port', type=int, default=9001, help='TCP port for BlueCaster (H4)')
     parser.add_argument('--capture', help='PacketLogger capture of the (first) sink; '
                                           'further sinks get -2, -3 before the extension')
     parser.add_argument('--layout', choices=sorted(LAYOUTS), default='stereo')
     parser.add_argument('--log-level', default='WARNING')
     parser.add_argument('--drop-link-after', type=float, metavar='SECONDS',
-                        help='the first sink drops its LE link once, this long after A2DPWB connected')
+                        help='the first sink drops its LE link once, this long after BlueCaster connected')
     parser.add_argument('--privacy', action='store_true',
                         help='sinks advertise with resolvable private addresses (IRK distributed when paired) '
                              'and take a new one whenever a link went down')

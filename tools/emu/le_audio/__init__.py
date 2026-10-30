@@ -24,7 +24,7 @@ MODULES = [bap, csip, vcp, mcp, ccp, tmap_gmap, bas]
 def add_arguments(parser):
     # The emulated controllers themselves (controller.py)
     parser.add_argument('--no-iso-buffers', action='store_true',
-                        help="A2DPWB's controller has LE but no ISO buffers (LE Read Buffer Size v2: 0)")
+                        help="BlueCaster's controller has LE but no ISO buffers (LE Read Buffer Size v2: 0)")
     for module in MODULES:
         if hasattr(module, 'add_arguments'):
             module.add_arguments(parser)
@@ -32,7 +32,7 @@ def add_arguments(parser):
 
 def configure_sink(sink, args):
     if args.no_iso_buffers:
-        controller.NO_ISO_BUFFERS.add('A2DPWB')   # the controller served over H4 (emu_le_audio_sink.py)
+        controller.NO_ISO_BUFFERS.add('BlueCaster')   # the controller served over H4 (emu_le_audio_sink.py)
     for module in MODULES:
         if hasattr(module, 'configure_sink'):
             module.configure_sink(sink, args)

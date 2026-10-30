@@ -1,7 +1,7 @@
 {
-  "name": "a2dpwb-ui",
+  "name": "bluecaster-ui",
   "private": true,
-  "version": "2.0.2-beta.12",
+  "version": "3.0.0-alpha.1",
   "type": "module",
   "packageManager": "pnpm@11.14.0",
   "license": "Apache-2.0 OR MIT",

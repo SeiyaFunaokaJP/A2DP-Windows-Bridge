@@ -8,21 +8,21 @@ between the two controllers of a LocalLink. LeEmuController adds that:
     CIS ID), with a time stamp and the sender's sequence number, at the next
     free SDU interval of that CIS (like the air schedule: one SDU per
     interval), and Number Of Completed Packets goes back to the sender then.
-    So A2DPWB is paced by the "controller" as with a real one.
+    So BlueCaster is paced by the "controller" as with a real one.
   - LE CIS Established reports the CIG parameters (ISO interval, max PDU,
     PHY 2M) instead of zeros.
   - pending ISO deliveries are flushed before a CIS disconnects or its CIG
-    is removed, so the sink receives every SDU A2DPWB sent.
+    is removed, so the sink receives every SDU BlueCaster sent.
   - every command gets its Command Complete / Command Status, as from a real
-    controller: Set AFH Host Channel Classification succeeds (A2DPWB sends
+    controller: Set AFH Host Channel Classification succeeds (BlueCaster sends
     it depending on the PC's Wi-Fi), others Bumble does not implement fail
     with Unknown HCI Command. Bumble alone answered nothing to commands it
     has no class for, and BTstack then waited for ever.
-  - with --no-iso-buffers (le_audio/__init__.py) the "A2DPWB" controller
+  - with --no-iso-buffers (le_audio/__init__.py) the "BlueCaster" controller
     reports no ISO buffers in LE Read Buffer Size v2 (LE without ISO).
 
 PacketLoggerSnooper also writes ISO data (PacketLogger types 0x0c / 0x0d),
-which a2dpwb_decode --le-audio reads.
+which bluecaster_decode --le-audio reads.
 """
 
 import asyncio
@@ -76,7 +76,7 @@ LATE_INTERVALS = 3
 LATE_US = 30000      # the same tolerance in time for shorter SDU intervals
 # An SDU that reaches this controller more than HOST_LATE_MS after the start
 # of its SDU interval would have missed it on a real controller (whose queue,
-# 2 SDUs per CIS from A2DPWB, ran empty): logged as "late SDU" (run_test.py
+# 2 SDUs per CIS from BlueCaster, ran empty): logged as "late SDU" (run_test.py
 # fails the case). The time this emulation's own event loop was stalled in
 # between is not counted (see LeEmuController._heartbeat).
 HOST_LATE_MS = 2.0
@@ -105,7 +105,7 @@ class LeEmuController(EmuController):
     def _heartbeat(self, due):
         """Every HEARTBEAT_S while ISO data flows: when this timer fires more
         than STALL_S late, the event loop did not run in between (a stall of
-        this emulation; it delays reading A2DPWB's SDUs as much)."""
+        this emulation; it delays reading BlueCaster's SDUs as much)."""
         loop = asyncio.get_running_loop()
         now = loop.time()
         if now - due > STALL_S:
@@ -249,7 +249,7 @@ class LeEmuController(EmuController):
         # as it delays reading the SDU as much, and while the last completion
         # on the CIS was held up, as the host can only send when its queue
         # has room. More than HOST_LATE_MS is logged as a late SDU (with 2
-        # SDUs queued per CIS, as A2DPWB does, the host has 2 intervals after
+        # SDUs queued per CIS, as BlueCaster does, the host has 2 intervals after
         # a completion). Only when the host is late by more than
         # LATE_INTERVALS does the SDU move to a later interval (a real
         # controller would have flushed it): that is in time, not intervals,
@@ -372,7 +372,7 @@ class LeLocalLink(LocalLink):
 
 
 class PacketLoggerSnooper(Snooper):
-    """Writes HCI packets in PacketLogger format (as A2DPWB's own capture),
+    """Writes HCI packets in PacketLogger format (as BlueCaster's own capture),
     ISO data included."""
 
     def __init__(self, path):

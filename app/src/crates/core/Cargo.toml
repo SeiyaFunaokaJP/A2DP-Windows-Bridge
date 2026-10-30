@@ -1,13 +1,13 @@
 [package]
-name = "a2dpwb-core"
-description = "A2DPWB's core: the streaming state machine, Bluetooth stack lifecycle, profiles, settings, devices"
+name = "bluecaster-core"
+description = "BlueCaster's core: the streaming state machine, Bluetooth stack lifecycle, profiles, settings, devices"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [lib]
-name = "a2dpwb_core"
+name = "bluecaster_core"
 
 [dependencies]
 bt-host.workspace = true

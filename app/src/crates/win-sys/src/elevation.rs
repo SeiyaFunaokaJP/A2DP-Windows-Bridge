@@ -1,7 +1,7 @@
 //! Administrator rights: whether this process has them, and running another
 //! program with them (the UAC prompt).
 //!
-//! Only the WinUSB driver helper (`a2dpwb-driver.exe`) needs administrator
+//! Only the WinUSB driver helper (`bluecaster-driver.exe`) needs administrator
 //! rights. The core service stays unelevated and starts the helper through
 //! `run_elevated` for the one operation, so a UAC prompt appears only when
 //! the user asked to assign or restore a driver.
@@ -68,7 +68,7 @@ pub fn is_elevated() -> bool {
 ///
 /// The elevated program's stdout cannot be read by the caller (ShellExecute
 /// gives no pipes), so a program that reports results must write them to a
-/// file the caller names: `a2dpwb-driver.exe` takes `--out <file>` for this.
+/// file the caller names: `bluecaster-driver.exe` takes `--out <file>` for this.
 /// Waits without a time limit: the user may take a while on the prompt.
 pub fn run_elevated<S: AsRef<OsStr>>(exe: &Path, args: &[S]) -> Result<u32, ElevationError> {
     let file = wide(exe.as_os_str());
@@ -199,7 +199,7 @@ mod tests {
             r"trailing\",
             r"C:\my dir\",
         ];
-        let line = wide(OsStr::new(&format!("a2dpwb-driver.exe {}", join_args(&args))));
+        let line = wide(OsStr::new(&format!("bluecaster-driver.exe {}", join_args(&args))));
         let mut n = 0i32;
         // SAFETY: NUL-terminated command line and out pointer; the array
         // is freed with LocalFree below.

@@ -1,12 +1,12 @@
-//! a2dpwb-driver.exe: puts a USB Bluetooth adapter on Windows' WinUSB driver
+//! bluecaster-driver.exe: puts a USB Bluetooth adapter on Windows' WinUSB driver
 //! and back (win-sys::driver), for the core service and the UI.
 //!
 //! ```text
-//! a2dpwb-driver list [--all] [--out <file>]
-//! a2dpwb-driver state <instance-id> [--out <file>]
-//! a2dpwb-driver assign <instance-id> [--out <file>]
-//! a2dpwb-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
-//! a2dpwb-driver restore --records <dir> [--out <file>]
+//! bluecaster-driver list [--all] [--out <file>]
+//! bluecaster-driver state <instance-id> [--out <file>]
+//! bluecaster-driver assign <instance-id> [--out <file>]
+//! bluecaster-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
+//! bluecaster-driver restore --records <dir> [--out <file>]
 //! ```
 //!
 //! The result is one JSON object on stdout (and in `--out`), logs go to
@@ -60,11 +60,11 @@ mod exit {
 }
 
 const USAGE: &str = "usage:
-  a2dpwb-driver list [--all] [--out <file>]
-  a2dpwb-driver state <instance-id> [--out <file>]
-  a2dpwb-driver assign <instance-id> [--out <file>]
-  a2dpwb-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
-  a2dpwb-driver restore --records <dir> [--out <file>]
+  bluecaster-driver list [--all] [--out <file>]
+  bluecaster-driver state <instance-id> [--out <file>]
+  bluecaster-driver assign <instance-id> [--out <file>]
+  bluecaster-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
+  bluecaster-driver restore --records <dir> [--out <file>]
 every command: [--log <file>] [--verbose]";
 
 #[derive(Debug, PartialEq)]
@@ -127,7 +127,7 @@ fn main() -> ExitCode {
     let (log, verbose, argv) = log_args(std::env::args().skip(1).collect());
     init_logging(log.as_deref(), verbose);
     tracing::info!(
-        "a2dpwb-driver {} ({}), elevated {}: {}",
+        "bluecaster-driver {} ({}), elevated {}: {}",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::ARCH,
         win_sys::elevation::is_elevated(),
@@ -302,8 +302,8 @@ fn plan_record(text: &str) -> RecordPlan {
     let Some(instance_id) = value.get("instance_id").and_then(Value::as_str).filter(|s| !s.is_empty()) else {
         return RecordPlan::Skip { reason: "not_a_record", remove: false };
     };
-    // The adapter was on WinUSB (Zadig's, or another tool's) before A2DPWB
-    // was asked to assign it: nothing of A2DPWB's to undo
+    // The adapter was on WinUSB (Zadig's, or another tool's) before BlueCaster
+    // was asked to assign it: nothing of BlueCaster's to undo
     if value.get("already_winusb").and_then(Value::as_bool) == Some(true) {
         return RecordPlan::Skip { reason: "winusb_before", remove: true };
     }
@@ -496,7 +496,7 @@ struct StateJson {
     driver: DriverJson,
     problem_code: Option<u32>,
     interface_guids: Vec<String>,
-    a2dpwb_interface: bool,
+    bluecaster_interface: bool,
 }
 
 impl From<&DriverState> for StateJson {
@@ -508,7 +508,7 @@ impl From<&DriverState> for StateJson {
             driver: DriverJson::from(&s.driver),
             problem_code: s.problem_code,
             interface_guids: s.interface_guids.clone(),
-            a2dpwb_interface: s.has_a2dpwb_interface(),
+            bluecaster_interface: s.has_bluecaster_interface(),
         }
     }
 }
@@ -585,11 +585,11 @@ mod tests {
 
     #[test]
     fn log_options_come_out_first() {
-        let argv: Vec<String> = ["assign", "--log", r"C:\l\a2dpwb-driver.log", "X", "--verbose", "--out", "o.json"]
+        let argv: Vec<String> = ["assign", "--log", r"C:\l\bluecaster-driver.log", "X", "--verbose", "--out", "o.json"]
             .map(String::from)
             .into();
         let (log, verbose, rest) = log_args(argv);
-        assert_eq!(log, Some(PathBuf::from(r"C:\l\a2dpwb-driver.log")));
+        assert_eq!(log, Some(PathBuf::from(r"C:\l\bluecaster-driver.log")));
         assert!(verbose);
         assert_eq!(rest, ["assign", "X", "--out", "o.json"]);
         let (log, verbose, _) = log_args(vec!["list".into()]);
@@ -623,9 +623,9 @@ mod tests {
         assert!(args(&["list", "--force"]).is_err());
         assert!(args(&["format"]).is_err());
         assert_eq!(
-            args(&["restore", "--records", r"C:\u\A2DPWB\driver", "--out", "o.json"]).unwrap(),
+            args(&["restore", "--records", r"C:\u\BlueCaster\driver", "--out", "o.json"]).unwrap(),
             Args {
-                command: Command::RestoreRecords { dir: PathBuf::from(r"C:\u\A2DPWB\driver") },
+                command: Command::RestoreRecords { dir: PathBuf::from(r"C:\u\BlueCaster\driver") },
                 out: Some(PathBuf::from("o.json"))
             }
         );
@@ -669,7 +669,7 @@ mod tests {
         let (code, v) = restore_records(std::path::Path::new(r"Z:\no\such\folder"));
         assert_eq!(code, exit::OK);
         assert_eq!(v["adapters"].as_array().unwrap().len(), 0);
-        let dir = std::env::temp_dir().join(format!("a2dpwb_driver_records_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster_driver_records_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.json"), r#"{"instance_id":"USB\\X","already_winusb":true}"#).unwrap();
         std::fs::write(dir.join("b.json"), "not json").unwrap();
@@ -707,7 +707,7 @@ mod tests {
 
     #[test]
     fn previous_from_file() {
-        let path = std::env::temp_dir().join(format!("a2dpwb_driver_prev_{}.json", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bluecaster_driver_prev_{}.json", std::process::id()));
         // With a BOM, as PowerShell's Out-File writes it
         std::fs::write(&path, "\u{FEFF}{\"inf_name\":\"bth.inf\",\"version\":\"10.0.1\",\"service\":\"BTHUSB\"}")
             .unwrap();

@@ -136,7 +136,7 @@ function MainWindow() {
 
   // "Minimize to System Tray": the tray icon is the core's, so minimizing
   // only has to take the window off the taskbar. The core says once that
-  // A2DPWB still runs in the tray (closing the window does the same, in
+  // BlueCaster still runs in the tray (closing the window does the same, in
   // src-tauri/src/windows.rs)
   core.transport.onMinimized(() => {
     if (core.state.snap?.settings.minimize_to_tray) void hideToTray(core);

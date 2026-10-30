@@ -124,7 +124,7 @@ pub(crate) fn with_app<R>(stack: &Stack, f: impl FnOnce(&mut dyn App, &Stack) ->
 // ---- Run loop ----
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_on_wake() {
+extern "C" fn bluecaster_rs_on_wake() {
     guard((), || {
         let stack = Stack::new();
         transport::pump();
@@ -140,7 +140,7 @@ extern "C" fn a2dpwb_rs_on_wake() {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_on_timer(id: u32) {
+extern "C" fn bluecaster_rs_on_timer(id: u32) {
     guard((), || {
         let stack = Stack::new();
         tracing::trace!(target: "btstack", "timer {id} fired");
@@ -151,7 +151,7 @@ extern "C" fn a2dpwb_rs_on_timer(id: u32) {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_on_packet(source: u8, packet_type: u8, channel: u16, packet: *mut u8, size: u16) {
+extern "C" fn bluecaster_rs_on_packet(source: u8, packet_type: u8, channel: u16, packet: *mut u8, size: u16) {
     guard((), || {
         let data: &[u8] = if packet.is_null() || size == 0 {
             &[]
@@ -183,7 +183,7 @@ extern "C" fn a2dpwb_rs_on_packet(source: u8, packet_type: u8, channel: u16, pac
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_intel_done(result: c_int) {
+extern "C" fn bluecaster_rs_intel_done(result: c_int) {
     guard((), || {
         let stack = Stack::new();
         tracing::debug!(target: "btstack", "intel firmware loader done: {result}");
@@ -196,12 +196,12 @@ extern "C" fn a2dpwb_rs_intel_done(result: c_int) {
 // ---- HCI transport ----
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_transport_open() -> c_int {
+extern "C" fn bluecaster_rs_transport_open() -> c_int {
     guard(-1, || if transport::open() { 0 } else { -1 })
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_transport_close() -> c_int {
+extern "C" fn bluecaster_rs_transport_close() -> c_int {
     guard(0, || {
         transport::close();
         0
@@ -209,12 +209,12 @@ extern "C" fn a2dpwb_rs_transport_close() -> c_int {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_transport_can_send(packet_type: u8) -> c_int {
+extern "C" fn bluecaster_rs_transport_can_send(packet_type: u8) -> c_int {
     guard(0, || transport::can_send(packet_type) as c_int)
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_transport_send(packet_type: u8, packet: *const u8, size: c_int) -> c_int {
+extern "C" fn bluecaster_rs_transport_send(packet_type: u8, packet: *const u8, size: c_int) -> c_int {
     guard(-1, || {
         if packet.is_null() || size < 0 {
             return -1;
@@ -229,7 +229,7 @@ extern "C" fn a2dpwb_rs_transport_send(packet_type: u8, packet: *const u8, size:
 // ---- HCI dump ----
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_log_packet(packet_type: u8, incoming: u8, packet: *const u8, len: u16) {
+extern "C" fn bluecaster_rs_log_packet(packet_type: u8, incoming: u8, packet: *const u8, len: u16) {
     guard((), || {
         if packet.is_null() {
             return;
@@ -247,7 +247,7 @@ extern "C" fn a2dpwb_rs_log_packet(packet_type: u8, incoming: u8, packet: *const
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_log_message(level: c_int, message: *const c_char) {
+extern "C" fn bluecaster_rs_log_message(level: c_int, message: *const c_char) {
     guard((), || {
         if message.is_null() {
             return;
@@ -335,7 +335,7 @@ fn read_addr(addr: *const u8) -> Option<[u8; 6]> {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_lk_get(addr: *const u8, key: *mut u8, key_type: *mut c_int) -> c_int {
+extern "C" fn bluecaster_rs_lk_get(addr: *const u8, key: *mut u8, key_type: *mut c_int) -> c_int {
     guard(0, || {
         let Some(a) = read_addr(addr) else { return 0 };
         let found = LINK_KEYS.with(|s| s.borrow_mut().as_mut().and_then(|s| s.get(&a)));
@@ -355,7 +355,7 @@ extern "C" fn a2dpwb_rs_lk_get(addr: *const u8, key: *mut u8, key_type: *mut c_i
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_lk_put(addr: *const u8, key: *const u8, key_type: c_int) {
+extern "C" fn bluecaster_rs_lk_put(addr: *const u8, key: *const u8, key_type: c_int) {
     guard((), || {
         let Some(a) = read_addr(addr) else { return };
         if key.is_null() {
@@ -373,7 +373,7 @@ extern "C" fn a2dpwb_rs_lk_put(addr: *const u8, key: *const u8, key_type: c_int)
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_lk_delete(addr: *const u8) {
+extern "C" fn bluecaster_rs_lk_delete(addr: *const u8) {
     guard((), || {
         let Some(a) = read_addr(addr) else { return };
         LINK_KEYS.with(|s| {
@@ -385,7 +385,7 @@ extern "C" fn a2dpwb_rs_lk_delete(addr: *const u8) {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_lk_at(index: c_int, addr: *mut u8, key: *mut u8, key_type: *mut c_int) -> c_int {
+extern "C" fn bluecaster_rs_lk_at(index: c_int, addr: *mut u8, key: *mut u8, key_type: *mut c_int) -> c_int {
     guard(0, || {
         if index < 0 || addr.is_null() || key.is_null() || key_type.is_null() {
             return 0;

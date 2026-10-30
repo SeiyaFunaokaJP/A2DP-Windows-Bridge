@@ -1,14 +1,14 @@
-//! The settings folder: %APPDATA%\A2DPWB, or A2DPWB_CONFIG_DIR (development
+//! The settings folder: %APPDATA%\BlueCaster, or BLUECASTER_CONFIG_DIR (development
 //! and tests: tools/emu pairs with virtual devices and must not touch the
 //! user's real link keys). Shared with v1.
 
 use std::path::{Path, PathBuf};
 
 pub fn config_dir() -> PathBuf {
-    let dir = match std::env::var_os("A2DPWB_CONFIG_DIR").filter(|v| !v.is_empty()) {
+    let dir = match std::env::var_os("BLUECASTER_CONFIG_DIR").filter(|v| !v.is_empty()) {
         Some(d) => PathBuf::from(d),
         None => match std::env::var_os("APPDATA") {
-            Some(a) => PathBuf::from(a).join("A2DPWB"),
+            Some(a) => PathBuf::from(a).join("BlueCaster"),
             None => PathBuf::from("."),
         },
     };
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn loose_firmware_moves_into_its_folder_once() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-fw-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-fw-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("rtl8761bu_fw.bin"), [1u8]).unwrap();

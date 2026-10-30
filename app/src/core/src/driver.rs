@@ -1,5 +1,5 @@
 //! WinUSB assignment and restore through the elevated helper
-//! a2dpwb-driver.exe (the core itself never runs as administrator).
+//! bluecaster-driver.exe (the core itself never runs as administrator).
 //!
 //! The helper writes its JSON result to a file we name (an elevated process
 //! started with ShellExecuteEx gives no stdout). The "previous driver"
@@ -22,8 +22,8 @@ fn err(code: &str, key: &str) -> ErrorInfo {
 fn helper() -> PathBuf {
     std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|d| d.join("a2dpwb-driver.exe")))
-        .unwrap_or_else(|| "a2dpwb-driver.exe".into())
+        .and_then(|p| p.parent().map(|d| d.join("bluecaster-driver.exe")))
+        .unwrap_or_else(|| "bluecaster-driver.exe".into())
 }
 
 /// File of the assignment record of an adapter
@@ -33,13 +33,13 @@ fn record_path(state: &CoreState, instance_id: &str) -> PathBuf {
 }
 
 fn run(args: &[&str]) -> Result<(u32, Value), ErrorInfo> {
-    let out = std::env::temp_dir().join(format!("a2dpwb-driver-{}.json", std::process::id()));
+    let out = std::env::temp_dir().join(format!("bluecaster-driver-{}.json", std::process::id()));
     let _ = std::fs::remove_file(&out);
     let mut all: Vec<&str> = args.to_vec();
     let out_s = out.to_string_lossy().into_owned();
     all.extend(["--out", &out_s]);
     // The elevated run's log next to the core's
-    let log = a2dpwb_core::paths::log_dir(&a2dpwb_core::paths::config_dir()).join("a2dpwb-driver.log");
+    let log = bluecaster_core::paths::log_dir(&bluecaster_core::paths::config_dir()).join("bluecaster-driver.log");
     let log_s = log.to_string_lossy().into_owned();
     all.extend(["--log", &log_s]);
     if crate::logging::verbose_now().is_some() {

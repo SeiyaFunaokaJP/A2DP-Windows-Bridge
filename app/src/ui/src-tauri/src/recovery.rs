@@ -6,7 +6,7 @@
 //!
 //! WebView2 reports this (ProcessFailed). A renderer that exited or hangs
 //! is reloaded; a browser process that exited cannot be brought back in
-//! this process, so a2dpwb.exe starts itself again with the window that
+//! this process, so bluecaster.exe starts itself again with the window that
 //! was shown. The core keeps streaming meanwhile. Restarts that follow each
 //! other quickly are counted (in the environment the new process inherits),
 //! so a crash on every start ends the UI instead of looping; the next click
@@ -22,7 +22,7 @@ use win_sys::webview::ProcessFailed;
 use crate::windows::{FLYOUT, MAIN};
 
 /// "<restarts>,<unix seconds of the first>" for the restarts in a row
-const RESTARTS_ENV: &str = "A2DPWB_UI_RESTARTS";
+const RESTARTS_ENV: &str = "BLUECASTER_UI_RESTARTS";
 /// Restarts closer together than this count as in a row...
 const RESTART_SPAN: Duration = Duration::from_secs(120);
 /// ...and after this many the UI ends instead
@@ -93,7 +93,7 @@ fn browser_exited(app: &AppHandle) {
         ),
         Some(args) => {
             tracing::error!(
-                "the WebView2 browser process exited (window black); starting a2dpwb again ({restarts}/{MAX_RESTARTS})"
+                "the WebView2 browser process exited (window black); starting bluecaster again ({restarts}/{MAX_RESTARTS})"
             );
             *RELAUNCH.lock().unwrap_or_else(|e| e.into_inner()) = Some((args, format!("{restarts},{first}")));
         }
@@ -114,13 +114,13 @@ fn next_restart(previous: Option<&str>, now: u64) -> (u32, u64) {
 }
 
 /// On RunEvent::Exit, after the single-instance plugin let go of its lock
-/// (plugins see the event first): starts the new a2dpwb.exe if one is due
+/// (plugins see the event first): starts the new bluecaster.exe if one is due
 pub fn relaunch_if_due() {
     let Some((args, restarts)) = RELAUNCH.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
     let started = std::env::current_exe()
         .and_then(|exe| std::process::Command::new(exe).args(&args).env(RESTARTS_ENV, restarts).spawn());
     if let Err(e) = started {
-        tracing::error!("cannot start a2dpwb again: {e}");
+        tracing::error!("cannot start bluecaster again: {e}");
     }
 }
 

@@ -1,17 +1,17 @@
 [package]
-name = "a2dpwb-core-exe"
-description = "a2dpwb-core.exe: the resident A2DPWB process (tray, IPC) and the command line"
+name = "bluecaster-core-exe"
+description = "bluecaster-core.exe: the resident BlueCaster process (tray, IPC) and the command line"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "a2dpwb-core"
+name = "bluecaster-core"
 path = "src/main.rs"
 
 [dependencies]
-a2dpwb-core.workspace = true
+bluecaster-core.workspace = true
 bt-host.workspace = true
 # cli.rs: -u (UsbSelector)
 hci-transport.workspace = true

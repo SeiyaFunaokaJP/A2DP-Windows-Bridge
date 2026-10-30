@@ -1,7 +1,7 @@
 # Link the Visual C++ runtime statically into every program, so the installer
 # and the portable zip need no VC++ Redistributable. The cc crate follows
 # crt-static, so the C libraries in the *-sys crates are compiled with /MT.
-# a2dpwb.exe additionally gets tauri-build's static_vcruntime link arguments
+# bluecaster.exe additionally gets tauri-build's static_vcruntime link arguments
 # (static VC runtime, UCRT from Windows), which expect this flag as well.
 [target.'cfg(all(windows, target_env = "msvc"))']
 rustflags = ["-C", "target-feature=+crt-static"]

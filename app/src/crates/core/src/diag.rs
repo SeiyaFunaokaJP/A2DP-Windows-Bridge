@@ -263,7 +263,7 @@ const fn rule(
 }
 
 const BT: &str = "bt_host";
-const STREAM: &str = "a2dpwb_core::stream";
+const STREAM: &str = "bluecaster_core::stream";
 const CAPTURE: &str = "audio_capture";
 
 use Action as A;
@@ -327,8 +327,8 @@ const RULES: &[Rule] = &[
 /// Adapter and controller lines kept for the diagnostics (target, message
 /// prefix: a newer line with the same prefix replaces the older one)
 const ADAPTER_LINES: &[(&str, &str)] = &[
-    ("a2dpwb_core::adapter", "chip: "),
-    ("a2dpwb_core::adapter", "no Realtek chip "),
+    ("bluecaster_core::adapter", "chip: "),
+    ("bluecaster_core::adapter", "no Realtek chip "),
     (BT, "controller: "),
     (BT, "Realtek adapter PID "),
     (BT, "no Realtek PID configured"),
@@ -429,7 +429,7 @@ impl ConnectionFlow {
 
         // Service state: "state Connecting: Connecting to the device..."
         let mut state = None;
-        if target_matches(target, "a2dpwb_core::service")
+        if target_matches(target, "bluecaster_core::service")
             && let Some(rest) = message.strip_prefix("state ")
             && let Some((name, text)) = rest.split_once(": ")
             && let Some(s) = state_from_name(name)
@@ -735,11 +735,11 @@ pub fn quoted(name: &str) -> String {
 ///   it was told ([`Masker::know`]: the profile's, the saved devices')
 ///   wherever they appear -> `<device-1>`, `<device-2>`..., the same name
 ///   the same number for the masker's lifetime, so a bundle's files agree.
-/// - Paths: everything above the app's own folder (`A2DPWB`, the settings
-///   folder; `A2DP Windows Bridge`, the installed one) -> `<path>`, so
-///   `C:\Users\taro\AppData\Roaming\A2DPWB\logs\x.log` is
-///   `<path>\A2DPWB\logs\x.log`. A path without the app's folder keeps its
-///   last part only: `<path>\a2dpwb-core.exe`, `<path>\foobar2000.exe`.
+/// - Paths: everything above the app's own folder (`BlueCaster`, the settings
+///   folder; `BlueCaster`, the installed one) -> `<path>`, so
+///   `C:\Users\taro\AppData\Roaming\BlueCaster\logs\x.log` is
+///   `<path>\BlueCaster\logs\x.log`. A path without the app's folder keeps its
+///   last part only: `<path>\bluecaster-core.exe`, `<path>\foobar2000.exe`.
 ///   Drive paths ('/' too, JSON's doubled '\' too, `\\?\` before); the
 ///   drive, the user's folders and whatever else the PC's layout tells are
 ///   gone.
@@ -918,7 +918,7 @@ impl Masker {
 }
 
 /// The app's own folders: a path is kept from one of these on
-const APP_FOLDERS: &[&str] = &["A2DPWB", "A2DP Windows Bridge"];
+const APP_FOLDERS: &[&str] = &["BlueCaster", "A2DPWB", "A2DP Windows Bridge"];
 
 /// `X:\` (or '/') at `i`, not inside a word
 fn path_start_at(b: &[u8], i: usize) -> bool {
@@ -976,7 +976,7 @@ fn mask_path_heads(text: &str) -> String {
 
 /// A SID with a machine or domain part, `S-1-5-21-a-b-c-rid` (`S-1-`, then
 /// five or more numbers) -> `<sid>`; not inside a longer word (a '-' on
-/// either side is fine: the pipe's `a2dpwb-<sid>-<instance>`)
+/// either side is fine: the pipe's `bluecaster-<sid>-<instance>`)
 fn mask_sids(text: &str) -> String {
     let b = text.as_bytes();
     let mut out = String::with_capacity(text.len());
@@ -1376,7 +1376,7 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
     let mut out = String::with_capacity(16 * 1024);
     let s = d.settings;
     out.push_str("```text\n");
-    let _ = writeln!(out, "A2DPWB diagnostics - {}", d.env.generated);
+    let _ = writeln!(out, "BlueCaster diagnostics - {}", d.env.generated);
     let _ = writeln!(out, "Version      : {}", d.env.app_version);
     let _ = writeln!(out, "OS           : Windows build {} ({})", d.env.windows_build, d.env.arch);
     let _ = writeln!(out, "Language     : {}, theme {}", s.language, s.theme);
@@ -1596,7 +1596,7 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
 mod tests {
     use super::*;
 
-    const SVC: &str = "a2dpwb_core::service";
+    const SVC: &str = "bluecaster_core::service";
     const APP: &str = "bt_host::app";
 
     /// A successful attempt as v2 logs it (abridged)
@@ -1610,7 +1610,7 @@ mod tests {
                 "stream: device 00:1A:7D:DA:71:13 codec Some(Ldac) quality High bit depth None rate None source SystemLoopback",
             ),
             (1002, SVC, Level::INFO, "state Connecting: Initializing Bluetooth..."),
-            (1010, "a2dpwb_core::adapter", Level::INFO, "chip: RTL8761B (0x8771) (auto)"),
+            (1010, "bluecaster_core::adapter", Level::INFO, "chip: RTL8761B (0x8771) (auto)"),
             (1020, APP, Level::INFO, "Realtek adapter PID 0x8771, firmware folder C:\\x"),
             (1030, APP, Level::INFO, "hci_init done, powering on"),
             (
@@ -1890,7 +1890,7 @@ mod tests {
         let mut f = ConnectionFlow::new();
         f.feed(0, STREAM, Level::INFO, "stream: device AA:BB:CC:DD:EE:FF codec None");
         f.feed(1, "bt_hostile", Level::INFO, "streaming started");
-        f.feed(2, "a2dpwb_core::streamer", Level::INFO, "codec selected: SBC");
+        f.feed(2, "bluecaster_core::streamer", Level::INFO, "codec selected: SBC");
         assert_eq!(status(&f, Step::Stream), StepStatus::Pending);
         assert_eq!(status(&f, Step::Codec), StepStatus::Pending);
     }
@@ -1960,29 +1960,26 @@ mod tests {
         let m = mask_identifiers;
         // From the app's own folder on, whatever is above it
         assert_eq!(
-            m(r"settings folder: C:\Users\Taro Yamada\AppData\Roaming\A2DPWB"),
-            r"settings folder: <path>\A2DPWB"
+            m(r"settings folder: C:\Users\Taro Yamada\AppData\Roaming\BlueCaster"),
+            r"settings folder: <path>\BlueCaster"
         );
         assert_eq!(
-            m(r"dump: C:\Users\admin\AppData\Roaming\A2DPWB\logs\crash\a2dpwb-core-20261022-235220-831.dmp"),
-            r"dump: <path>\A2DPWB\logs\crash\a2dpwb-core-20261022-235220-831.dmp"
+            m(r"dump: C:\Users\admin\AppData\Roaming\BlueCaster\logs\crash\bluecaster-core-20261022-235220-831.dmp"),
+            r"dump: <path>\BlueCaster\logs\crash\bluecaster-core-20261022-235220-831.dmp"
         );
-        assert_eq!(m(r"D:\Apps\a2dpwb\firmware\x.bin"), r"<path>\a2dpwb\firmware\x.bin");
-        assert_eq!(
-            m(r"C:\Program Files\A2DP Windows Bridge\a2dpwb-ui.exe"),
-            r"<path>\A2DP Windows Bridge\a2dpwb-ui.exe"
-        );
+        assert_eq!(m(r"D:\Apps\bluecaster\firmware\x.bin"), r"<path>\bluecaster\firmware\x.bin");
+        assert_eq!(m(r"C:\Program Files\BlueCaster\bluecaster-ui.exe"), r"<path>\BlueCaster\bluecaster-ui.exe");
         // Without it: the last part only (the executable, an app captured)
         assert_eq!(
-            m(r"starting: pid 1, Windows build 26200, I:\A2DP-Windows-Bridge\target\release\a2dpwb-core.exe"),
-            r"starting: pid 1, Windows build 26200, <path>\a2dpwb-core.exe"
+            m(r"starting: pid 1, Windows build 26200, I:\A2DP-Windows-Bridge\target\release\bluecaster-core.exe"),
+            r"starting: pid 1, Windows build 26200, <path>\bluecaster-core.exe"
         );
         assert_eq!(m(r"C:\Users\山田太郎\Music\foobar2000\foobar2000.exe"), r"<path>\foobar2000.exe");
         // The last part takes the text after it (a path is not delimited),
         // but not another path; a trailing separator keeps the folder
         assert_eq!(
-            m(r"HCI capture running: C:\x\A2DPWB\hci.pklg (3.0 MB)"),
-            r"HCI capture running: <path>\A2DPWB\hci.pklg (3.0 MB)"
+            m(r"HCI capture running: C:\x\BlueCaster\hci.pklg (3.0 MB)"),
+            r"HCI capture running: <path>\BlueCaster\hci.pklg (3.0 MB)"
         );
         assert_eq!(m(r"moved C:\a\b\x.bin to C:\a\c\x.bin"), r"moved <path>\x.bin to <path>\x.bin");
         assert_eq!(m("folder C:\\a\\b\\\n"), "folder <path>\\b\\\n");
@@ -1999,7 +1996,7 @@ mod tests {
             m("at 23:52:25 LE Audio: 46 kHz, x:y, C: drive, https://a.b/c"),
             "at 23:52:25 LE Audio: 46 kHz, x:y, C: drive, https://a.b/c"
         );
-        assert_eq!(m(r"\\.\pipe\a2dpwb-x"), r"\\.\pipe\a2dpwb-x");
+        assert_eq!(m(r"\\.\pipe\bluecaster-x"), r"\\.\pipe\bluecaster-x");
     }
 
     #[test]
@@ -2007,7 +2004,10 @@ mod tests {
         // A user's folder in a path without a drive: the name as 'x's,
         // one per character
         let m = mask_identifiers;
-        assert_eq!(m(r"\Users\Taro Yamada\AppData\Roaming\A2DPWB"), r"\Users\xxxxxxxxxxx\AppData\Roaming\A2DPWB");
+        assert_eq!(
+            m(r"\Users\Taro Yamada\AppData\Roaming\BlueCaster"),
+            r"\Users\xxxxxxxxxxx\AppData\Roaming\BlueCaster"
+        );
         assert_eq!(m(r"\Users\山田太郎\AppData"), r"\Users\xxxx\AppData");
         assert_eq!(m(r"/users/taro/x.txt"), r"/users/xxxx/x.txt");
         // Nobody's folders, and "Users" elsewhere
@@ -2025,12 +2025,15 @@ mod tests {
     fn masks_sids() {
         let m = mask_identifiers;
         assert_eq!(
-            m(r"IPC: listening on \\.\pipe\a2dpwb-S-1-5-21-2123068572-4202720387-3275098450-1001"),
-            r"IPC: listening on \\.\pipe\a2dpwb-<sid>"
+            m(r"IPC: listening on \\.\pipe\bluecaster-S-1-5-21-2123068572-4202720387-3275098450-1001"),
+            r"IPC: listening on \\.\pipe\bluecaster-<sid>"
         );
         assert_eq!(m("user S-1-5-21-1-2-3-500, then"), "user <sid>, then");
         // An instance suffix after it (ipc::instance_suffix)
-        assert_eq!(m(r"S-1-5-21-1-2-3-1001\x and a2dpwb-S-1-5-21-1-2-3-1001-dev"), r"<sid>\x and a2dpwb-<sid>-dev");
+        assert_eq!(
+            m(r"S-1-5-21-1-2-3-1001\x and bluecaster-S-1-5-21-1-2-3-1001-dev"),
+            r"<sid>\x and bluecaster-<sid>-dev"
+        );
         // Well-known SIDs, the start of one, a longer word
         assert_eq!(m("S-1-5-18 S-1-5-32-544 S-1-5-21- S-1-"), "S-1-5-18 S-1-5-32-544 S-1-5-21- S-1-");
         assert_eq!(m("xS-1-5-21-1-2-3-4 S-1-5-21-1-2-3-4x"), "xS-1-5-21-1-2-3-4 S-1-5-21-1-2-3-4x");
@@ -2122,7 +2125,7 @@ mod tests {
         let mut log: Vec<LogEntry<'_>> = vec![LogEntry {
             time_ms: 10,
             level: Level::WARN,
-            target: "a2dpwb_core::service",
+            target: "bluecaster_core::service",
             message: "before the attempt",
         }];
         for (t, target, level, msg) in &session {
@@ -2203,7 +2206,7 @@ mod tests {
             profile: Some(&profile),
             stream: Some(&info),
             stats: Some(&stats),
-            hci_capture: Some((Path::new("C:\\a2dpwb\\hci.pklg"), 3 * 1024 * 1024)),
+            hci_capture: Some((Path::new("C:\\bluecaster\\hci.pklg"), 3 * 1024 * 1024)),
             flow: &f,
             rates: None,
             log: &log,
@@ -2214,7 +2217,7 @@ mod tests {
             logging: None,
         };
         let text = diag_text(&input);
-        assert!(text.starts_with("```text\nA2DPWB diagnostics - 2026-10-17 10:00:00\n"), "{text}");
+        assert!(text.starts_with("```text\nBlueCaster diagnostics - 2026-10-17 10:00:00\n"), "{text}");
         assert!(text.ends_with("```\n"));
         assert!(text.contains("OS           : Windows build 26200 (x86_64)\n"));
         assert!(text.contains("State        : Streaming (Connected)\n"));
@@ -2237,7 +2240,7 @@ mod tests {
         ));
         assert!(text.contains("  Media packets sent 1500 (0 bytes), queue drops 0, send errors 0\n"));
         // Masked: the path from the app's folder on
-        assert!(text.contains("  HCI capture running: <path>\\a2dpwb\\hci.pklg (3.0 MB)\n"), "{text}");
+        assert!(text.contains("  HCI capture running: <path>\\bluecaster\\hci.pklg (3.0 MB)\n"), "{text}");
         assert!(text.contains("[Flow]\nConnection flow: attempt #1, started T+1.001\n"));
         // Issues and lines of the current attempt only
         assert!(!text.contains("before the attempt"));

@@ -1,5 +1,5 @@
-//! BTstack for A2DPWB: the C library built from extern/btstack, and a safe
-//! layer over the parts A2DPWB uses.
+//! BTstack for BlueCaster: the C library built from extern/btstack, and a safe
+//! layer over the parts BlueCaster uses.
 //!
 //! BTstack is not thread-safe. Everything that calls into it takes a
 //! [`Stack`], a token that only exists on the thread running the BTstack run
@@ -212,10 +212,10 @@ impl Remote {
 fn post_wake() {
     WAKERS.fetch_add(1, Ordering::AcqRel);
     if ALIVE.load(Ordering::Acquire) {
-        // SAFETY: ALIVE is set only between a2dpwb_runloop_init() and the
+        // SAFETY: ALIVE is set only between bluecaster_runloop_init() and the
         // run loop's teardown, which waits for WAKERS to drop to zero first;
-        // a2dpwb_wake() is thread-safe (mutex-protected callback list).
-        unsafe { ffi::a2dpwb_wake() };
+        // bluecaster_wake() is thread-safe (mutex-protected callback list).
+        unsafe { ffi::bluecaster_wake() };
     }
     WAKERS.fetch_sub(1, Ordering::AcqRel);
 }
@@ -243,8 +243,8 @@ where
     // uses BTstack (RUNNING).
     unsafe {
         ffi::btstack_memory_init();
-        ffi::a2dpwb_runloop_init();
-        ffi::a2dpwb_hci_dump_init();
+        ffi::bluecaster_runloop_init();
+        ffi::bluecaster_hci_dump_init();
     }
     ALIVE.store(true, Ordering::Release);
 
@@ -271,7 +271,7 @@ where
     // SAFETY: all profiles and HCI are deinitialized (stack.deinit()), the
     // run loop no longer runs; this resets BTstack's global state.
     unsafe {
-        ffi::a2dpwb_timers_clear();
+        ffi::bluecaster_timers_clear();
         ffi::btstack_memory_deinit();
         ffi::btstack_run_loop_deinit();
     }
@@ -308,7 +308,7 @@ pub fn realtek_usb_firmware() -> &'static [(u16, u16, &'static str)] {
                 unsafe { ffi::btstack_chipset_realtek_get_vendor_product_id(i, &mut vid, &mut pid) };
                 // SAFETY: i < n; the name is a string literal of the table
                 // (static), or NULL
-                let name = unsafe { ffi::a2dpwb_realtek_usb_fw_name(i) };
+                let name = unsafe { ffi::bluecaster_realtek_usb_fw_name(i) };
                 let name = if name.is_null() {
                     ""
                 } else {
@@ -341,8 +341,9 @@ pub mod sbc_reference {
             bitpool: i32,
         ) -> Encoder {
             // SAFETY: plain values; returns an owned, heap-allocated state.
-            let p =
-                unsafe { ffi::a2dpwb_sbc_ref_new(sample_rate, channel_mode, blocks, subbands, allocation, bitpool) };
+            let p = unsafe {
+                ffi::bluecaster_sbc_ref_new(sample_rate, channel_mode, blocks, subbands, allocation, bitpool)
+            };
             assert!(!p.is_null());
             Encoder(p)
         }
@@ -354,7 +355,7 @@ pub mod sbc_reference {
             // SAFETY: self.0 is a live state; the encoder reads blocks *
             // subbands * channels samples, which the caller provides; out has
             // out.len() bytes.
-            let n = unsafe { ffi::a2dpwb_sbc_ref_encode(self.0, pcm.as_ptr(), out.as_mut_ptr(), out.len() as i32) };
+            let n = unsafe { ffi::bluecaster_sbc_ref_encode(self.0, pcm.as_ptr(), out.as_mut_ptr(), out.len() as i32) };
             assert!(n >= 0);
             out.truncate(n as usize);
             out
@@ -363,8 +364,8 @@ pub mod sbc_reference {
 
     impl Drop for Encoder {
         fn drop(&mut self) {
-            // SAFETY: allocated by a2dpwb_sbc_ref_new, freed once.
-            unsafe { ffi::a2dpwb_sbc_ref_free(self.0) };
+            // SAFETY: allocated by bluecaster_sbc_ref_new, freed once.
+            unsafe { ffi::bluecaster_sbc_ref_free(self.0) };
         }
     }
 }

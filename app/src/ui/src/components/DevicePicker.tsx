@@ -91,7 +91,7 @@ export function DevicePicker(props: {
   /** With onConnect: the address being connected (its button spins, the
    *  others wait) */
   connecting?: string | null;
-  /** With onConnect: no connection now (another A2DPWB holds the adapter) */
+  /** With onConnect: no connection now (another BlueCaster holds the adapter) */
   connectDisabled?: boolean;
   /** With onConnect: the device already added, no longer listed (issue #86) */
   hidden?: string;

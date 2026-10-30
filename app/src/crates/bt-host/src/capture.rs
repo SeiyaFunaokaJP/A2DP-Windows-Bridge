@@ -448,17 +448,17 @@ impl HciCapture {
             Ok(())
         };
         let head = format!(
-            "A2DPWB flight recorder ({why}): the last {} packets; media, SCO and ISO payloads cut to {RECORDER_PAYLOAD} bytes",
+            "BlueCaster flight recorder ({why}): the last {} packets; media, SCO and ISO payloads cut to {RECORDER_PAYLOAD} bytes",
             recent.len()
         );
         put(&mut out, &record(0xFC, head.as_bytes()))?;
         if !setup.is_empty() {
-            let note = format!("A2DPWB: {} connection setup packets recorded earlier follow", setup.len());
+            let note = format!("BlueCaster: {} connection setup packets recorded earlier follow", setup.len());
             put(&mut out, &record(0xFC, note.as_bytes()))?;
             for r in &setup {
                 put(&mut out, r)?;
             }
-            put(&mut out, &record(0xFC, b"A2DPWB: the recorded packets follow"))?;
+            put(&mut out, &record(0xFC, b"BlueCaster: the recorded packets follow"))?;
         }
         for r in &recent {
             put(&mut out, r)?;
@@ -495,7 +495,7 @@ impl HciCapture {
         let mut written = 0u64;
         if !s.setup.is_empty() {
             let note = format!(
-                "A2DPWB: capture started during a connection; {} connection setup packets recorded earlier follow",
+                "BlueCaster: capture started during a connection; {} connection setup packets recorded earlier follow",
                 s.setup.len()
             );
             let rec = record(0xFC, note.as_bytes());
@@ -506,7 +506,7 @@ impl HciCapture {
                 written += r.len() as u64;
             }
         }
-        let rec = record(0xFC, b"A2DPWB: live capture starts");
+        let rec = record(0xFC, b"BlueCaster: live capture starts");
         f.write_all(&rec)?;
         written += rec.len() as u64;
         self.bytes.store(written, Ordering::Relaxed);
@@ -519,7 +519,7 @@ impl HciCapture {
     pub fn stop(&self) {
         let mut s = self.lock();
         let Some(mut f) = s.file.take() else { return };
-        let _ = f.write_all(&record(0xFC, b"A2DPWB: capture stopped"));
+        let _ = f.write_all(&record(0xFC, b"BlueCaster: capture stopped"));
         let _ = f.flush();
         tracing::info!("HCI capture: stopped ({} bytes) -> {}", self.bytes.load(Ordering::Relaxed), s.path.display());
     }
@@ -549,7 +549,7 @@ mod tests {
         cap.log_packet(HCI_EVENT_PACKET, true, &[0x03, 11, 0, 0x0B, 0x00, 1, 2, 3, 4, 5, 6, 1, 0]);
         // Some unrelated event: not remembered
         cap.log_packet(HCI_EVENT_PACKET, true, &[0x0E, 4, 1, 0x03, 0x0C, 0]);
-        let path = std::env::temp_dir().join(format!("a2dpwb-cap-{}.pklg", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bluecaster-cap-{}.pklg", std::process::id()));
         cap.start(&path).unwrap();
         cap.log_packet(HCI_COMMAND_DATA_PACKET, false, &[0x03, 0x0C, 0x00]);
         cap.stop();
@@ -602,7 +602,7 @@ mod tests {
         // A media packet of 600 bytes, then an unrelated event
         cap.log_packet(HCI_ACL_DATA_PACKET, false, &acl(0x51, &[0u8; 600]));
         cap.log_packet(HCI_EVENT_PACKET, true, &[0x0E, 4, 1, 0x03, 0x0C, 0]);
-        let dir = std::env::temp_dir().join(format!("a2dpwb-rec-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-rec-{}", std::process::id()));
         let path = cap.save_recent(&dir, "20261021_120000", "Stream error", false).unwrap();
         assert!(path.ends_with("hci-20261021_120000-stream_error.pklg"), "{}", path.display());
         // Within 30 s only when forced
@@ -632,7 +632,7 @@ mod tests {
             assert_eq!(s.recent.buf.capacity(), RECENT_BYTES + 0x10000);
             assert!(s.recent.records()[0].0 > 1, "the Connection Complete fell out");
         }
-        let path = std::env::temp_dir().join(format!("a2dpwb-rec2-{}.pklg", std::process::id()));
+        let path = std::env::temp_dir().join(format!("bluecaster-rec2-{}.pklg", std::process::id()));
         cap.write_recent(&path, "test").unwrap();
         let data = std::fs::read(&path).unwrap();
         let _ = std::fs::remove_file(&path);
@@ -714,7 +714,7 @@ mod tests {
 
     #[test]
     fn keeps_the_newest_recordings() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-prune-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-prune-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for i in 0..KEEP_RECORDINGS + 3 {
             std::fs::write(dir.join(format!("hci-20261021_1200{i:02}-x.pklg")), "").unwrap();

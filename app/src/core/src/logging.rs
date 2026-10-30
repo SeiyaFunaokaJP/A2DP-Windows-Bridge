@@ -2,15 +2,15 @@
 //! `<config dir>\logs\` (v1 wrote one debug.log), to the console for `--cli`,
 //! and to the UI's log view through a broadcast layer.
 //!
-//! - Files: `a2dpwb-core.YYYY-MM-DD.log` (UTC date, as tracing-appender
+//! - Files: `bluecaster-core.YYYY-MM-DD.log` (UTC date, as tracing-appender
 //!   names them), the last 7 kept (developer mode: 1 to 365, [`set_dev`]);
-//!   the window's `a2dpwb-ui.*` files are kept as long (that process only
+//!   the window's `bluecaster-ui.*` files are kept as long (that process only
 //!   stops at 365). Written on a worker thread
 //!   (tracing-appender's non-blocking writer, lossy when it falls behind), so
 //!   logging never waits for the disk.
-//! - Filter: `A2DPWB_LOG` (EnvFilter syntax, default "info"), for every
+//! - Filter: `BLUECASTER_LOG` (EnvFilter syntax, default "info"), for every
 //!   output. Verbose logging ([`set_verbose`], the diagnostics' switch)
-//!   adds A2DPWB's own modules at debug (24 hours) or trace (1 hour), kept in
+//!   adds BlueCaster's own modules at debug (24 hours) or trace (1 hour), kept in
 //!   `logs\verbose.json` so that it also covers a restart (a problem at
 //!   start-up); the filter is swapped while running. Developer mode can
 //!   keep it on without a time limit ([`set_dev`], read from the settings
@@ -21,7 +21,7 @@
 //!   ([`LogHub::subscribe`], [`LogHub::subscribe_with`]), each with its level
 //!   and a bounded queue; a slow UI loses lines instead of blocking logging.
 //! - The last [`RING_LINES`] lines stay in memory, and every line feeds the
-//!   connection flow tracker (a2dpwb_core::diag), for the diagnostics view
+//!   connection flow tracker (bluecaster_core::diag), for the diagnostics view
 //!   and "copy diagnostic info" without reading the files back.
 //!
 //! Cost per event without subscribers: the ring's slots are reused (their
@@ -38,8 +38,8 @@ use std::sync::mpsc::{self, Receiver, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use a2dpwb_core::diag::{ConnectionFlow, LogEntry};
-use a2dpwb_core::settings::{DevLog, LOG_DAY_CAP_MB, LOG_KEEP_DAYS};
+use bluecaster_core::diag::{ConnectionFlow, LogEntry};
+use bluecaster_core::settings::{DevLog, LOG_DAY_CAP_MB, LOG_KEEP_DAYS};
 use ipc::{LogLevel, LogLine, VerboseState};
 use tracing::field::{Field, Visit};
 use tracing_appender::non_blocking::WorkerGuard;
@@ -56,7 +56,7 @@ pub const RING_LINES: usize = 2000;
 /// Daily log files kept, per process (developer mode changes it)
 static KEEP_DAYS: AtomicUsize = AtomicUsize::new(LOG_KEEP_DAYS as usize);
 /// The daily files of the core and of the window: what retention prunes
-const DAILY_PREFIXES: &[&str] = &["a2dpwb-core.", "a2dpwb-ui."];
+const DAILY_PREFIXES: &[&str] = &["bluecaster-core.", "bluecaster-ui."];
 /// Lines queued per [`LogHub::subscribe`] receiver before new ones are
 /// dropped
 #[cfg_attr(not(test), allow(dead_code))]
@@ -65,16 +65,16 @@ pub const SUBSCRIBER_QUEUE: usize = 1024;
 /// queue is allocated in full up front: tracing-appender's default (128 000
 /// lines) alone is 4 MB of the resident core's memory.
 const FILE_QUEUE_LINES: usize = 8192;
-const FILE_PREFIX: &str = "a2dpwb-core";
+const FILE_PREFIX: &str = "bluecaster-core";
 /// How long verbose logging stays on at debug
 pub const VERBOSE_FOR: Duration = Duration::from_secs(24 * 3600);
 /// ...and at trace: every HCI and media packet, hundreds of MB an hour
 pub const TRACE_FOR: Duration = Duration::from_secs(3600);
 const VERBOSE_FILE: &str = "verbose.json";
-/// A2DPWB's own modules (tracing targets): what verbose logging turns up,
+/// BlueCaster's own modules (tracing targets): what verbose logging turns up,
 /// leaving the libraries (tokio, reqwest, ...) at the base level
 pub const OWN_TARGETS: &[&str] = &[
-    "a2dpwb_core",
+    "bluecaster_core",
     "bt_host",
     "btstack_sys",
     "hci_transport",
@@ -221,7 +221,7 @@ fn prune(dir: &Path, keep: usize) -> usize {
     expired(dir, keep).iter().filter(|p| std::fs::remove_file(p).is_ok()).count()
 }
 
-/// `<dir>\a2dpwb-core.YYYY-MM-DD.log`, rotated daily (old files go by
+/// `<dir>\bluecaster-core.YYYY-MM-DD.log`, rotated daily (old files go by
 /// [`prune`], at the first line of each day and when the retention changes)
 pub fn file_appender(dir: &Path) -> Result<RollingFileAppender, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
@@ -282,7 +282,7 @@ pub fn init(opts: &LogOptions) -> LogGuard {
         .with(BroadcastLayer::new(hub.clone()))
         .try_init();
     if installed.is_err() {
-        eprintln!("a2dpwb-core: logging was set up already");
+        eprintln!("bluecaster-core: logging was set up already");
     }
     let _ = FILTER.set(filter_handle);
     if let Some(dir) = &opts.dir {
@@ -303,15 +303,15 @@ pub fn init(opts: &LogOptions) -> LogGuard {
 /// diagnostic info
 fn log_header(verbose: Option<VerboseState>, dev: &DevLog) {
     tracing::info!(
-        "a2dpwb-core {} ({}) starting: pid {}, Windows build {}, {}",
+        "bluecaster-core {} ({}) starting: pid {}, Windows build {}, {}",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::ARCH,
         std::process::id(),
         audio_capture::windows_build(),
         std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()
     );
-    if let Ok(env) = std::env::var("A2DPWB_LOG") {
-        tracing::info!("log filter A2DPWB_LOG={env}");
+    if let Ok(env) = std::env::var("BLUECASTER_LOG") {
+        tracing::info!("log filter BLUECASTER_LOG={env}");
     }
     if let Some(v) = verbose {
         let minutes = v.until_ms.saturating_sub(unix_ms()) / 60_000;
@@ -372,7 +372,7 @@ pub fn always_verbose() -> Option<LogLevel> {
     *lock(&ALWAYS)
 }
 
-/// The level A2DPWB's own modules log at beyond info, from either switch
+/// The level BlueCaster's own modules log at beyond info, from either switch
 pub fn verbose_now() -> Option<LogLevel> {
     effective_level(verbose(), always_verbose())
 }
@@ -389,9 +389,9 @@ pub fn mark(note: &str) -> u64 {
     let note: String = note.chars().filter(|c| !c.is_control()).take(200).collect();
     let note = note.trim();
     if note.is_empty() {
-        tracing::info!(target: "a2dpwb_core::mark", "===== MARK {n} =====");
+        tracing::info!(target: "bluecaster_core::mark", "===== MARK {n} =====");
     } else {
-        tracing::info!(target: "a2dpwb_core::mark", "===== MARK {n}: {note} =====");
+        tracing::info!(target: "bluecaster_core::mark", "===== MARK {n}: {note} =====");
     }
     n
 }
@@ -399,15 +399,15 @@ pub fn mark(note: &str) -> u64 {
 /// Panics: logged, and a crash report with the backtrace. Native crashes:
 /// a crash report (win_sys::crash).
 fn install_crash_reports(dir: &Path) {
-    win_sys::crash::install(dir, "a2dpwb-core", &format!("a2dpwb-core {}", env!("CARGO_PKG_VERSION")));
+    win_sys::crash::install(dir, "bluecaster-core", &format!("bluecaster-core {}", env!("CARGO_PKG_VERSION")));
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let thread = std::thread::current();
         let reason = format!("panic in thread {}: {info}", thread.name().unwrap_or("unnamed"));
-        tracing::error!(target: "a2dpwb_core::crash", "{reason}");
+        tracing::error!(target: "bluecaster_core::crash", "{reason}");
         let backtrace = std::backtrace::Backtrace::force_capture().to_string();
         if let Some(p) = win_sys::crash::write(&reason, &backtrace) {
-            tracing::error!(target: "a2dpwb_core::crash", "crash report written: {}", p.display());
+            tracing::error!(target: "bluecaster_core::crash", "crash report written: {}", p.display());
         }
         default_hook(info);
     }));
@@ -434,7 +434,7 @@ fn level_name(l: LogLevel) -> &'static str {
     }
 }
 
-/// The filter's directives: `base`, then A2DPWB's own modules at `verbose`
+/// The filter's directives: `base`, then BlueCaster's own modules at `verbose`
 pub fn filter_directives(base: &str, verbose: Option<LogLevel>) -> String {
     let mut s = base.to_owned();
     if let Some(l) = verbose {
@@ -446,7 +446,7 @@ pub fn filter_directives(base: &str, verbose: Option<LogLevel>) -> String {
 }
 
 fn make_filter(verbose: Option<LogLevel>) -> EnvFilter {
-    let base = std::env::var("A2DPWB_LOG").ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| "info".into());
+    let base = std::env::var("BLUECASTER_LOG").ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| "info".into());
     EnvFilter::try_new(filter_directives(&base, verbose)).unwrap_or_else(|_| EnvFilter::new("info"))
 }
 
@@ -811,7 +811,7 @@ impl<S: tracing::Subscriber> Layer<S> for BroadcastLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a2dpwb_core::diag::{Step, StepStatus};
+    use bluecaster_core::diag::{Step, StepStatus};
     use std::time::Duration;
 
     /// Runs `f` with a subscriber that feeds `hub` (not the global one)
@@ -940,7 +940,7 @@ mod tests {
     fn feeds_the_connection_flow() {
         let hub = LogHub::new(10);
         with_hub(&hub, || {
-            tracing::info!(target: "a2dpwb_core::stream", "stream: device AA:BB:CC:DD:EE:FF codec None");
+            tracing::info!(target: "bluecaster_core::stream", "stream: device AA:BB:CC:DD:EE:FF codec None");
             tracing::info!(target: "bt_host", "connecting to AA:BB:CC:DD:EE:FF");
             tracing::info!(target: "bt_host::app", "signaling connection established (cid 0x0041)");
         });
@@ -958,7 +958,7 @@ mod tests {
         let hub = LogHub::new(10);
         with_hub(&hub, || {
             tracing::info!(target: "t", "before");
-            tracing::info!(target: "a2dpwb_core::stream", "stream: device AA:BB:CC:DD:EE:FF codec None");
+            tracing::info!(target: "bluecaster_core::stream", "stream: device AA:BB:CC:DD:EE:FF codec None");
             tracing::info!(target: "bt_host", "connecting to AA:BB:CC:DD:EE:FF");
         });
         let lines = hub.recent();
@@ -985,7 +985,7 @@ mod tests {
     #[test]
     fn writes_daily_files() {
         use std::io::Write;
-        let dir = std::env::temp_dir().join(format!("a2dpwb-logs-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-logs-{}", std::process::id()));
         let mut appender = file_appender(&dir).unwrap();
         appender.write_all(b"hello\n").unwrap();
         appender.flush().unwrap();
@@ -993,7 +993,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(50));
         let names: Vec<String> =
             std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-        assert!(names.iter().any(|n| n.starts_with("a2dpwb-core.") && n.ends_with(".log")), "{names:?}");
+        assert!(names.iter().any(|n| n.starts_with("bluecaster-core.") && n.ends_with(".log")), "{names:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1001,7 +1001,7 @@ mod tests {
     fn verbose_turns_up_our_modules_only() {
         assert_eq!(filter_directives("info", None), "info");
         let d = filter_directives("info", Some(LogLevel::Debug));
-        assert!(d.starts_with("info,a2dpwb_core=debug,bt_host=debug,"), "{d}");
+        assert!(d.starts_with("info,bluecaster_core=debug,bt_host=debug,"), "{d}");
         assert!(!d.contains("tokio"));
         // Every directive parses
         assert!(EnvFilter::try_new(filter_directives("warn", Some(LogLevel::Trace))).is_ok());
@@ -1011,7 +1011,7 @@ mod tests {
 
     #[test]
     fn verbose_survives_a_restart_until_it_runs_out() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-verbose-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-verbose-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let on = VerboseState { level: LogLevel::Debug, until_ms: unix_ms() + 60_000 };
         std::fs::write(dir.join(VERBOSE_FILE), serde_json::to_vec(&on).unwrap()).unwrap();
@@ -1044,24 +1044,27 @@ mod tests {
 
     #[test]
     fn retention_keeps_the_newest_files_of_each_process() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-prune-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-prune-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for d in ["2026-10-01", "2026-10-02", "2026-10-03"] {
-            std::fs::write(dir.join(format!("a2dpwb-core.{d}.log")), "x").unwrap();
-            std::fs::write(dir.join(format!("a2dpwb-ui.{d}.log")), "x").unwrap();
+            std::fs::write(dir.join(format!("bluecaster-core.{d}.log")), "x").unwrap();
+            std::fs::write(dir.join(format!("bluecaster-ui.{d}.log")), "x").unwrap();
         }
-        std::fs::write(dir.join("a2dpwb-driver.log"), "x").unwrap();
+        std::fs::write(dir.join("bluecaster-driver.log"), "x").unwrap();
         std::fs::write(dir.join(VERBOSE_FILE), "{}").unwrap();
         let names = |v: Vec<PathBuf>| -> Vec<String> {
             v.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect()
         };
         assert!(expired(&dir, 3).is_empty());
-        assert_eq!(names(expired(&dir, 2)), ["a2dpwb-core.2026-10-01.log", "a2dpwb-ui.2026-10-01.log"]);
+        assert_eq!(names(expired(&dir, 2)), ["bluecaster-core.2026-10-01.log", "bluecaster-ui.2026-10-01.log"]);
         // At least one file each stays
         assert_eq!(prune(&dir, 0), 4);
         let mut left = names(std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).collect());
         left.sort();
-        assert_eq!(left, ["a2dpwb-core.2026-10-03.log", "a2dpwb-driver.log", "a2dpwb-ui.2026-10-03.log", VERBOSE_FILE]);
+        assert_eq!(
+            left,
+            ["bluecaster-core.2026-10-03.log", "bluecaster-driver.log", "bluecaster-ui.2026-10-03.log", VERBOSE_FILE]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

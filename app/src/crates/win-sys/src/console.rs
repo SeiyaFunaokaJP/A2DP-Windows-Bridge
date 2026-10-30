@@ -1,4 +1,4 @@
-//! a2dpwb-core.exe is a GUI-subsystem program (no console window for the
+//! bluecaster-core.exe is a GUI-subsystem program (no console window for the
 //! resident process); `--cli` attaches to the console of the shell that
 //! started it, so its output appears there.
 

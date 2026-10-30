@@ -1,6 +1,6 @@
 //! Starting with Windows: the value under
 //! HKCU\Software\Microsoft\Windows\CurrentVersion\Run, as v1
-//! system_integration.cpp writes it (value name "A2DPWB", REG_SZ with the
+//! system_integration.cpp writes it (value name "BlueCaster", REG_SZ with the
 //! quoted program path and its arguments).
 //!
 //! Also holds the small registry helpers the driver module uses.
@@ -19,7 +19,7 @@ use windows::core::{HSTRING, PCWSTR};
 pub const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 /// The value name v1 uses; v2 keeps it so that installing v2 over v1
 /// replaces the entry instead of starting both
-pub const VALUE_NAME: &str = "A2DPWB";
+pub const VALUE_NAME: &str = "BlueCaster";
 
 /// The command line registered under `value_name`, or None if there is none
 pub fn get(value_name: &str) -> windows::core::Result<Option<String>> {
@@ -42,7 +42,7 @@ pub fn remove(value_name: &str) -> windows::core::Result<bool> {
     r
 }
 
-/// `"C:\path\a2dpwb.exe" --minimized`: the program path quoted (it may
+/// `"C:\path\bluecaster.exe" --minimized`: the program path quoted (it may
 /// contain spaces), then the arguments, as v1 RegisterStartup builds it
 pub fn command_line(exe: &Path, args: &str) -> String {
     let exe = exe.display();
@@ -201,20 +201,20 @@ mod tests {
     #[test]
     fn command_line_quotes_the_path() {
         assert_eq!(
-            command_line(Path::new(r"C:\Program Files\A2DPWB\a2dpwb.exe"), "--minimized"),
-            r#""C:\Program Files\A2DPWB\a2dpwb.exe" --minimized"#
+            command_line(Path::new(r"C:\Program Files\BlueCaster\bluecaster.exe"), "--minimized"),
+            r#""C:\Program Files\BlueCaster\bluecaster.exe" --minimized"#
         );
         assert_eq!(command_line(Path::new(r"C:\a.exe"), ""), r#""C:\a.exe""#);
     }
 
     #[test]
     fn program_of_reads_the_path_back() {
-        let exe = Path::new(r"C:\Program Files\A2DPWB\a2dpwb-core.exe");
+        let exe = Path::new(r"C:\Program Files\BlueCaster\bluecaster-core.exe");
         assert_eq!(program_of(&command_line(exe, "--background")).as_deref(), Some(exe));
         assert_eq!(program_of(&command_line(exe, "")).as_deref(), Some(exe));
         assert_eq!(
-            program_of(r"C:\A2DPWB\A2DPWB.exe --minimized").as_deref(),
-            Some(Path::new(r"C:\A2DPWB\A2DPWB.exe"))
+            program_of(r"C:\BlueCaster\A2DPWB.exe --minimized").as_deref(),
+            Some(Path::new(r"C:\BlueCaster\A2DPWB.exe"))
         );
         assert_eq!(program_of(r#"  "C:\x y\a.exe"#).as_deref(), Some(Path::new(r"C:\x y\a.exe"))); // unclosed quote
         assert_eq!(program_of(""), None);
@@ -225,10 +225,10 @@ mod tests {
     #[test]
     fn set_get_remove_roundtrip() {
         let subkey = format!(r"Software\A2DPWB_test_autostart_{}", std::process::id());
-        let name = "A2DPWB_test";
+        let name = "BlueCaster_test";
         assert_eq!(get_in(&subkey, name).unwrap(), None);
         assert!(!remove_in(&subkey, name).unwrap());
-        let cmd = command_line(Path::new(r"C:\Program Files\A2DPWB\a2dpwb.exe"), "--minimized");
+        let cmd = command_line(Path::new(r"C:\Program Files\BlueCaster\bluecaster.exe"), "--minimized");
         set_in(&subkey, name, &cmd).unwrap();
         assert_eq!(get_in(&subkey, name).unwrap().as_deref(), Some(cmd.as_str()));
         assert!(remove_in(&subkey, name).unwrap());

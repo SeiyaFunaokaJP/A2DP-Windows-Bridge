@@ -3,7 +3,7 @@
 //! TMAP (Telephony and Media Audio Profile 1.0) and GMAP (Gaming Audio
 //! Profile 1.0) are role profiles on top of BAP / CAP.
 //!
-//! - TMAS on the PC (0x1855): TMAP Role = Unicast Media Sender only. A2DPWB
+//! - TMAS on the PC (0x1855): TMAP Role = Unicast Media Sender only. BlueCaster
 //!   sends media to unicast sink ASEs, which is what UMS is. Not claimed:
 //!   Call Gateway (needs a call control server and conversational,
 //!   bidirectional audio: source ASEs, the headset's microphone), Call

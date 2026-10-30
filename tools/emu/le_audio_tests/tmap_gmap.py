@@ -3,8 +3,8 @@
 Every emulated sink has a TMAS with TMAP Role UMR (le_audio/tmap_gmap.py);
 GMAS only with --gmap-role. The cases:
 
-  tmap-role              A2DPWB logs the sink's "TMAP: UMR"; the sink reads
-                         A2DPWB's TMAS (UMS) and GMAS (UGG, UGG Features 0x03)
+  tmap-role              BlueCaster logs the sink's "TMAP: UMR"; the sink reads
+                         BlueCaster's TMAS (UMS) and GMAS (UGG, UGG Features 0x03)
   gmap-low-latency       UGT with the Sink feature + --le-low-latency: GMAP
                          48_3_gr (48 kHz, 7.5 ms, 90 octets) with GMAP's QoS
                          (SDU interval 7500 us, RTN 1, 15 ms, 10 ms
@@ -28,19 +28,19 @@ UGT = ['--gmap-role', '0x02', '--gmap-ugt-features', '0x3C']   # UGT: sink, 64 k
 CASES = [
     Case('tmap-role', 'stereo', MEDIA, sink_args=['--tmap-read-peer'], tags=('tmap',)),
     Case('gmap-low-latency', 'stereo', r'LC3 48000 Hz 7\.5 ms 90 octets, 2 channel\(s\) over 1 CIS',
-         sink_args=UGT, a2dpwb_args=['--le-low-latency'], tags=('gmap', 'gmap_ll')),
+         sink_args=UGT, bluecaster_args=['--le-low-latency'], tags=('gmap', 'gmap_ll')),
     Case('gmap-earbuds', 'earbuds', r'LC3 48000 Hz 7\.5 ms 90 octets, 2 channel\(s\) over 2 CIS',
-         sink_args=UGT, a2dpwb_args=['--le-low-latency'], tags=('gmap', 'gmap_ll')),
+         sink_args=UGT, bluecaster_args=['--le-low-latency'], tags=('gmap', 'gmap_ll')),
     Case('gmap-off', 'stereo', MEDIA, sink_args=UGT, tags=('gmap',)),
     Case('gmap-not-ugt', 'stereo', MEDIA, sink_args=['--gmap-role', '0x08'],
-         a2dpwb_args=['--le-low-latency'], tags=('gmap',)),
+         bluecaster_args=['--le-low-latency'], tags=('gmap',)),
     Case('gmap-media-context', 'stereo', r'LC3 48000 Hz 7\.5 ms 90 octets, 2 channel\(s\) over 1 CIS',
-         sink_args=UGT + ['--gmap-available-contexts', '0x0006'], a2dpwb_args=['--le-low-latency'],
+         sink_args=UGT + ['--gmap-available-contexts', '0x0006'], bluecaster_args=['--le-low-latency'],
          tags=('gmap', 'gmap_ll', 'gmap_media')),
 ]
 
 # Config QoS of the GMAP 48_3_gr setting (GMAP 1.0 Table 3.16), as
-# a2dpwb_decode prints it
+# bluecaster_decode prints it
 GMAP_QOS = re.compile(r'Config QoS: CIG \d+ CIS \d+, SDU interval 7500 us, max SDU \d+, RTN 1, latency 15 ms, '
                       r'presentation delay 10000 us')
 ANY_QOS = re.compile(r'Config QoS: .*')
@@ -58,18 +58,18 @@ def check(case, ctx):
     if not {'tmap', 'gmap'} & set(case.tags):
         return []
     failures = []
-    log = ctx['a2dpwb_log']
+    log = ctx['bluecaster_log']
     sink_log = ctx['sink_log']
 
-    # Every sink has TMAS (UMR): A2DPWB reads it on every case of this module
+    # Every sink has TMAS (UMR): BlueCaster reads it on every case of this module
     if 'TMAP: UMR' not in log:
-        failures.append('A2DPWB did not log the sink\'s TMAP Role ("TMAP: UMR")')
+        failures.append('BlueCaster did not log the sink\'s TMAP Role ("TMAP: UMR")')
 
     if case.name == 'tmap-role':
         if 'peer TMAP Role 0x0004 (UMS)' not in sink_log:
-            failures.append('the sink did not read TMAP Role UMS from A2DPWB\'s TMAS')
+            failures.append('the sink did not read TMAP Role UMS from BlueCaster\'s TMAS')
         if 'peer GMAP Role 0x01 (UGG), UGG Features 0x03' not in sink_log:
-            failures.append('the sink did not read GMAP Role UGG / UGG Features 0x03 from A2DPWB\'s GMAS')
+            failures.append('the sink did not read GMAP Role UGG / UGG Features 0x03 from BlueCaster\'s GMAS')
         if 'GMAP: low latency off' not in log:
             failures.append('no "GMAP: low latency off" in the log')
 
@@ -77,14 +77,14 @@ def check(case, ctx):
     received_report = read(os.path.join(ctx['out'], 'received_report.txt'))
     if 'gmap_ll' in case.tags:
         if 'GMAP: UGT' not in log:
-            failures.append('A2DPWB did not log the sink\'s GMAP Role ("GMAP: UGT")')
+            failures.append('BlueCaster did not log the sink\'s GMAP Role ("GMAP: UGT")')
         if 'GMAP: low latency for' not in log:
             failures.append('the GMAP presets were not put first')
         context = '0x0004' if 'gmap_media' in case.tags else '0x0008'
         if not re.search(r'GMAP: streaming 48_3_gr, contexts ' + context, log):
             failures.append(f'not streaming 48_3_gr with the contexts {context}')
         if 'gmap_media' in case.tags and 'has no Game context available (0x0006): Media context instead' not in log:
-            failures.append('A2DPWB did not log the Media context instead of Game')
+            failures.append('BlueCaster did not log the Media context instead of Game')
         for side, text in (('sent', sent_report), ('received', received_report)):
             qos = ANY_QOS.findall(text)
             if not qos:
@@ -97,12 +97,12 @@ def check(case, ctx):
             failures.append('a GMAP / low-latency QoS was used although it should not')
         if case.name == 'gmap-off':
             if 'GMAP: UGT' not in log:
-                failures.append('A2DPWB did not log the sink\'s GMAP Role ("GMAP: UGT")')
+                failures.append('BlueCaster did not log the sink\'s GMAP Role ("GMAP: UGT")')
             if 'GMAP: low latency off' not in log:
                 failures.append('no "GMAP: low latency off" in the log')
         if case.name == 'gmap-not-ugt':
             if 'GMAP: BGR' not in log:
-                failures.append('A2DPWB did not log the sink\'s GMAP Role ("GMAP: BGR")')
+                failures.append('BlueCaster did not log the sink\'s GMAP Role ("GMAP: BGR")')
             if 'not a Unicast Game Terminal' not in log:
                 failures.append('no "not a Unicast Game Terminal" in the log')
     return failures

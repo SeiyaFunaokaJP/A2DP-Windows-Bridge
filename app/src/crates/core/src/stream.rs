@@ -1724,7 +1724,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                     inner.notify(StreamState::Error, Msg::with("error.codec_not_supported", &[&kind.name()]));
                 } else if restart_why.is_none() {
                     // The adapter works, the headphones never answered: off
-                    // or out of range, not an error of A2DPWB
+                    // or out of range, not an error of BlueCaster
                     inner.notify(StreamState::Idle, Msg::new("status.device_unreachable"));
                 } else {
                     inner.notify(StreamState::Error, Msg::new("error.reconnect_failed"));

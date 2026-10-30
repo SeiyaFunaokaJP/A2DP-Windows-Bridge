@@ -1,4 +1,4 @@
-//! The window process' own log: `<config dir>\logs\a2dpwb-ui.YYYY-MM-DD.log`
+//! The window process' own log: `<config dir>\logs\bluecaster-ui.YYYY-MM-DD.log`
 //! next to the core's (local timestamps as the core's). The core removes
 //! the old ones with its own (7 days, developer mode: 1 to 365), daily and
 //! when the setting changes; this process only stops at 365 files.
@@ -7,7 +7,7 @@
 //! shown actually has its page drawn (a blank or hung webview is the
 //! "white window").
 //!
-//! Filter: `A2DPWB_LOG` (EnvFilter syntax, default "info"), as the core.
+//! Filter: `BLUECASTER_LOG` (EnvFilter syntax, default "info"), as the core.
 //! Verbose logging the core keeps in `logs\verbose.json`, and developer
 //! mode's verbose logging that stays on (settings.json), also turn this
 //! process' own modules up, from its next start.
@@ -28,7 +28,7 @@ use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-const FILE_PREFIX: &str = "a2dpwb-ui";
+const FILE_PREFIX: &str = "bluecaster-ui";
 /// The core prunes by the retention setting; this is only a ceiling (the
 /// setting's maximum), so a longer retention set while this process runs
 /// is not cut short by it
@@ -40,12 +40,12 @@ const PROBE_DELAY: Duration = Duration::from_secs(3);
 /// ...and must answer within this time
 const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
 
-/// The settings folder, as a2dpwb_core::paths::config_dir finds it
+/// The settings folder, as bluecaster_core::paths::config_dir finds it
 fn config_dir() -> PathBuf {
-    match std::env::var_os("A2DPWB_CONFIG_DIR").filter(|v| !v.is_empty()) {
+    match std::env::var_os("BLUECASTER_CONFIG_DIR").filter(|v| !v.is_empty()) {
         Some(d) => PathBuf::from(d),
         None => match std::env::var_os("APPDATA") {
-            Some(a) => PathBuf::from(a).join("A2DPWB"),
+            Some(a) => PathBuf::from(a).join("BlueCaster"),
             None => PathBuf::from("."),
         },
     }
@@ -91,9 +91,9 @@ pub fn init() -> Option<WorkerGuard> {
     })?;
     let (writer, guard) = tracing_appender::non_blocking(appender);
     let verbose = verbose_level(&dir).max(always_verbose(&config_dir()));
-    let base = std::env::var("A2DPWB_LOG").ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| "info".into());
+    let base = std::env::var("BLUECASTER_LOG").ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| "info".into());
     let directives = match verbose {
-        Some(l) => format!("{base},a2dpwb={l},frontend={l},win_sys={l}"),
+        Some(l) => format!("{base},bluecaster={l},frontend={l},win_sys={l}"),
         None => base,
     };
     let filter = tracing_subscriber::EnvFilter::try_new(directives)
@@ -103,8 +103,8 @@ pub fn init() -> Option<WorkerGuard> {
     if let Some(l) = verbose {
         tracing::info!("verbose logging ({l}) as the core's");
     }
-    let about = format!("a2dpwb-ui {}", env!("CARGO_PKG_VERSION"));
-    win_sys::crash::install(&dir.join("crash"), "a2dpwb-ui", &about);
+    let about = format!("bluecaster-ui {}", env!("CARGO_PKG_VERSION"));
+    win_sys::crash::install(&dir.join("crash"), "bluecaster-ui", &about);
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let reason = format!("panic in thread {}: {info}", std::thread::current().name().unwrap_or("unnamed"));

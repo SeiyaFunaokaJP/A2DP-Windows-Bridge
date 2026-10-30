@@ -225,7 +225,7 @@ export function update(m: TestModel, i: Inputs): string[] {
   // 4: this PC's own connection, with its status messages in the log
   if (m.measuring && m.leftIdle && i.serviceText !== m.serviceText) {
     m.serviceText = i.serviceText;
-    if (i.serviceText) log.push(`A2DPWB: ${i.serviceText}`);
+    if (i.serviceText) log.push(`BlueCaster: ${i.serviceText}`);
   }
   const link = m.steps.link.state;
   if (link === "running") {

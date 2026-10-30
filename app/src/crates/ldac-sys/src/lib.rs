@@ -1,7 +1,7 @@
 //! libldac, the LDAC encoder of AOSP (Sony, Apache-2.0), with its adaptive
 //! bit rate module (ldacBT_abr), built from the git submodule extern/libldac.
 //!
-//! [`ffi`] has hand-written declarations of the functions A2DPWB uses,
+//! [`ffi`] has hand-written declarations of the functions BlueCaster uses,
 //! matching inc/ldacBT.h and abr/inc/ldacBT_abr.h. [`LdacBt`] and [`LdacAbr`]
 //! own the C handles and check what the C code cannot (input and output
 //! buffer sizes, sample format), so that callers need no `unsafe`.
@@ -120,7 +120,7 @@ pub mod ffi {
 }
 
 /// Input sample format of the safe layer: interleaved 16-bit, or 32-bit
-/// (full scale; A2DPWB feeds 24-bit audio MSB-aligned in it)
+/// (full scale; BlueCaster feeds 24-bit audio MSB-aligned in it)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SampleFormat {
     S16,

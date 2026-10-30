@@ -89,7 +89,7 @@ const RTL: AdapterInfo = {
   windows_name: "TP-Link Bluetooth USB Adapter",
 };
 
-/** A chip A2DPWB has no firmware loader for (the first run lists it too) */
+/** A chip BlueCaster has no firmware loader for (the first run lists it too) */
 const MEDIATEK: AdapterInfo = {
   ...RTL,
   instance_id: "USB\\VID_0E8D&PID_7925\\000000000",
@@ -278,7 +278,7 @@ export function sampleSnapshot(scenario: MockScenario = "normal"): Snapshot {
             ]
           : []),
       ];
-  const config_dir = "C:\\Users\\you\\AppData\\Roaming\\A2DPWB";
+  const config_dir = "C:\\Users\\you\\AppData\\Roaming\\BlueCaster";
   return {
     adapter: {
       status: "stopped",
@@ -342,11 +342,11 @@ export function sampleSnapshot(scenario: MockScenario = "normal"): Snapshot {
       scenario === "crash"
         ? [
             {
-              name: "a2dpwb-core-20261022-012338-512",
-              process: "a2dpwb-core",
+              name: "bluecaster-core-20261022-012338-512",
+              process: "bluecaster-core",
               time: "2026-10-22 01:23:38",
               reason: "panic in thread encode: index out of bounds: the len is 1024 but the index is 1024",
-              text: "a2dpwb-core 2.0.2-beta.4\nprocess 4242 thread 77\npanic in thread encode: index out of bounds: the len is 1024 but the index is 1024\nno dump\n   0: std::backtrace::Backtrace::force_capture\n   1: a2dpwb_core::encode::run\n",
+              text: "bluecaster-core 2.0.2-beta.4\nprocess 4242 thread 77\npanic in thread encode: index out of bounds: the len is 1024 but the index is 1024\nno dump\n   0: std::backtrace::Backtrace::force_capture\n   1: bluecaster_core::encode::run\n",
             },
           ]
         : [],
@@ -418,7 +418,7 @@ const RECEIVER: ReceiverInfo = {
   port: 51201,
   host: "sink-pi",
   bt_address: "DC:A6:32:01:02:03",
-  bt_name: "a2dpwb-sink",
+  bt_name: "bluecaster-sink",
   codecs: ["SBC", "AAC", "aptX", "aptX HD", "LDAC"],
   mtu: 895,
   buffer_ms: 200,
@@ -631,8 +631,8 @@ export class MockCore implements Transport {
     this.onMessage = onMessage;
     onStatus({ state: "connecting" });
     this.later(400, () => {
-      onMessage({ type: "welcome", protocol: 1, server: "a2dpwb-core/2.0.0-alpha.1 (mock)", features: ["rfcomm"] });
-      onStatus({ state: "connected", server: "a2dpwb-core/2.0.0-alpha.1 (mock)" });
+      onMessage({ type: "welcome", protocol: 1, server: "bluecaster-core/2.0.0-alpha.1 (mock)", features: ["rfcomm"] });
+      onStatus({ state: "connected", server: "bluecaster-core/2.0.0-alpha.1 (mock)" });
       onMessage({ type: "snapshot", rev: this.rev, state: structuredClone(this.snap) });
     });
   }
@@ -732,7 +732,7 @@ export class MockCore implements Transport {
           const st = this.snap.stream.state;
           const busy = this.snap.scanning || st === "connecting" || st === "streaming" || st === "reconnecting";
           const on = this.snap.settings.le_audio_experimental ? "on" : "off";
-          this.log("info", "a2dpwb_core_exe::state", `LE Audio (experimental) ${on}${busy ? ": takes effect at the next scan or connection" : ""}`);
+          this.log("info", "bluecaster_core_exe::state", `LE Audio (experimental) ${on}${busy ? ": takes effect at the next scan or connection" : ""}`);
           if (!busy && this.snap.adapter.status !== "stopped") this.setAdapter("stopped");
           le_audio_deferred = busy;
         }
@@ -740,7 +740,7 @@ export class MockCore implements Transport {
           // As the core's reload_adapter: the firmware state for the new
           // chip, then an idle stack is released so the firmware loads again
           this.refreshFirmware();
-          this.log("info", "a2dpwb_core_exe::state", "adapter settings changed: Bluetooth stopped, it starts again at the next use");
+          this.log("info", "bluecaster_core_exe::state", "adapter settings changed: Bluetooth stopped, it starts again at the next use");
           if (this.snap.stream.state === "idle" || this.snap.stream.state === "error") this.setAdapter("stopped");
         }
         return { le_audio_deferred };
@@ -779,22 +779,22 @@ export class MockCore implements Transport {
         const level = p.level === "debug" || p.level === "trace" ? (p.level as LogLevel) : null;
         const v = level ? { level, until_ms: Date.now() + (level === "trace" ? 1 : 24) * 3600 * 1000 } : null;
         this.snap.verbose = v;
-        this.log("info", "a2dpwb_core", v ? `verbose logging on (${level}) for 24 hours` : "verbose logging off");
+        this.log("info", "bluecaster_core", v ? `verbose logging on (${level}) for 24 hours` : "verbose logging off");
         this.emit({ kind: "verbose", value: v });
         return v;
       }
       case "diag.mark": {
         this.marks += 1;
         const note = String(p.note ?? "").trim();
-        this.log("info", "a2dpwb_core::mark", note ? `===== MARK ${this.marks}: ${note} =====` : `===== MARK ${this.marks} =====`);
+        this.log("info", "bluecaster_core::mark", note ? `===== MARK ${this.marks}: ${note} =====` : `===== MARK ${this.marks} =====`);
         return this.marks;
       }
       case "diag.bundle": {
         const d = new Date();
         const pad = (n: number) => String(n).padStart(2, "0");
         const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-        const path = `${this.snap.log_dir}\\bundles\\a2dpwb-diag-${stamp}.zip`;
-        this.log("info", "a2dpwb_core::bundle", `diagnostic bundle: 14 files, 812345 bytes -> ${path}`);
+        const path = `${this.snap.log_dir}\\bundles\\bluecaster-diag-${stamp}.zip`;
+        this.log("info", "bluecaster_core::bundle", `diagnostic bundle: 14 files, 812345 bytes -> ${path}`);
         return { path, bytes: 812345, files: 14 };
       }
       case "diag.flow":
@@ -1020,7 +1020,7 @@ export class MockCore implements Transport {
           ...this.downloaded.filter((f) => f.stem !== chip.stem),
           { stem: chip.stem, display_name: chip.name, pid: chip.pid, has_config: true },
         ];
-        this.log("info", "a2dpwb_core::firmware", `firmware download for ${chip.name}: saved ["${file}", "${chip.stem}_config.bin"]`);
+        this.log("info", "bluecaster_core::firmware", `firmware download for ${chip.name}: saved ["${file}", "${chip.stem}_config.bin"]`);
         this.refreshFirmware();
         resolve(this.snap.adapter.adapters);
       });
@@ -1042,7 +1042,7 @@ export class MockCore implements Transport {
 
   private setStream(state: Snapshot["stream"]["state"], key: string, args: string[] = []) {
     this.snap.stream = { ...this.snap.stream, state, message: { key, args } };
-    this.log("info", "a2dpwb_core::service", `state ${state[0].toUpperCase()}${state.slice(1)}: ${key}`);
+    this.log("info", "bluecaster_core::service", `state ${state[0].toUpperCase()}${state.slice(1)}: ${key}`);
     this.emit({ kind: "stream", value: this.snap.stream });
   }
 
@@ -1058,7 +1058,7 @@ export class MockCore implements Transport {
           : null;
       if (refused) {
         this.snap.stream = { state: "error", message: { key: refused, args: [] }, profile: name, info: null, volume: null, battery: null, battery_refused: false };
-        this.log("error", "a2dpwb_core::le_stream", englishText({ key: refused, args: [] }));
+        this.log("error", "bluecaster_core::le_stream", englishText({ key: refused, args: [] }));
         this.emit({ kind: "stream", value: this.snap.stream });
         return null;
       }
@@ -1112,8 +1112,8 @@ export class MockCore implements Transport {
     this.dropped = 0;
     this.snap.stream = { state: "connecting", message: { key: "status.initializing_btstack", args: [] }, profile: name, info: null, volume: null, battery: null, battery_refused: false };
     this.emit({ kind: "stream", value: this.snap.stream });
-    this.log("info", "a2dpwb_core::stream", `stream: device ${t.address} codec ${t.codec} quality hq source ${t.source.kind}`);
-    this.log("info", "a2dpwb_core::service", "state Connecting: Initializing BTstack...");
+    this.log("info", "bluecaster_core::stream", `stream: device ${t.address} codec ${t.codec} quality hq source ${t.source.kind}`);
+    this.log("info", "bluecaster_core::service", "state Connecting: Initializing BTstack...");
     if (this.snap.adapter.status !== "ready") this.setAdapter("initializing");
     const set = this.snap.devices.find((d) => sameEntry(d, t.address, true))?.le_audio_set ?? false;
     const info = (): StreamInfo => {
@@ -1150,11 +1150,11 @@ export class MockCore implements Transport {
       this.log("info", "bt_host::app", "capability discovery complete (LDAC=true aptX HD=false aptX LL=false aptX=false aptX Adaptive=false [not encodable] SBC=true AAC=true LHDC V5=false Opus=false)");
       this.learnCodecs(t.address);
       const i = info();
-      this.log("info", "a2dpwb_core::stream", `codec selected: ${i.codec}`);
-      this.log("info", "a2dpwb_core::stream", "capture: 48000 Hz, 2 channel(s), F32 -> 2 channel(s)");
+      this.log("info", "bluecaster_core::stream", `codec selected: ${i.codec}`);
+      this.log("info", "bluecaster_core::stream", "capture: 48000 Hz, 2 channel(s), F32 -> 2 channel(s)");
       this.log("info", "bt_host::app", "codec configured (local 1, remote 3)");
       this.log("info", "bt_host::app", "stream established (local 1, remote 3, mtu 1005, used 1005, limit 1023)");
-      this.log("info", "a2dpwb_core::stream", `encoder ready: ${i.codec} ${i.bitrate_kbps} kbps, mtu 1005, 24-bit, ABR false`);
+      this.log("info", "bluecaster_core::stream", `encoder ready: ${i.codec} ${i.bitrate_kbps} kbps, mtu 1005, 24-bit, ABR false`);
       this.log("info", "bt_host::app", "streaming started");
     });
     this.later(1600, () => {
@@ -1178,7 +1178,7 @@ export class MockCore implements Transport {
               battery_refused: false,
             }
           : { state: "streaming", message: { key: "status.connected", args: [] }, profile: name, info: info(), volume: 76, ...(this.scenario === "battery_refused" ? { battery: null, battery_refused: true } : { battery: 80, battery_refused: false }) };
-      this.log("info", "a2dpwb_core::service", "state Streaming: Streaming");
+      this.log("info", "bluecaster_core::service", "state Streaming: Streaming");
       this.emit({ kind: "stream", value: this.snap.stream });
       if (this.snap.stream.info?.details?.sbc?.abr_bitpool) this.later(500, () => this.sbcAbrStep(0));
     });
@@ -1240,7 +1240,7 @@ export class MockCore implements Transport {
   private stopStream() {
     const was = this.snap.stream.state;
     this.snap.stream = { state: "idle", message: { key: "status.idle", args: [] }, profile: null, info: null, volume: null, battery: null, battery_refused: false };
-    if (was !== "idle") this.log("info", "a2dpwb_core::stream", "streaming stopped, cleaning up");
+    if (was !== "idle") this.log("info", "bluecaster_core::stream", "streaming stopped, cleaning up");
     this.emit({ kind: "stream", value: this.snap.stream });
   }
 
@@ -1567,7 +1567,7 @@ export class MockCore implements Transport {
   private diagText(mask: boolean) {
     const s = this.snap;
     const text = [
-      "A2DP Windows Bridge 2.0.0-alpha.1 (mock core)",
+      "BlueCaster 2.0.0-alpha.1 (mock core)",
       `Adapter: ${s.adapter.adapters.map((a) => `${a.display_name} [${a.driver_service}]`).join(", ") || "none"}`,
       `Firmware files: ${s.adapter.adapters.map((a) => `${a.display_name}: ${a.firmware_present === null ? "none needed" : a.firmware_present ? "present" : "MISSING"} (${a.firmware_files.join(", ")})`).join("; ")}`,
       `State: ${s.stream.state}${s.stream.info ? ` ${s.stream.info.codec} ${s.stream.info.bitrate_kbps} kbps` : ""}${s.stream.info?.le ? ` (${s.stream.info.le.summary})` : ""}`,

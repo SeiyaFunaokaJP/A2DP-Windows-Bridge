@@ -1,24 +1,24 @@
-"""Virtual Bluetooth link between A2DPWB and the Linux Bluetooth stack (BlueZ).
+"""Virtual Bluetooth link between BlueCaster and the Linux Bluetooth stack (BlueZ).
 
 Linux only, as root (opens /dev/vhci). Runs two Bumble virtual controllers on
 one in-process link:
-  - controller "A2DPWB" is served as H4 over TCP; A2DPWB connects to it with
-    `a2dpwb-core.exe --cli --hci-tcp <this host>:<port>` (from another PC too)
+  - controller "BlueCaster" is served as H4 over TCP; BlueCaster connects to it with
+    `bluecaster-core.exe --cli --hci-tcp <this host>:<port>` (from another PC too)
   - controller "LINUX" is attached to the kernel through /dev/vhci, so BlueZ
     sees it as a new adapter (hciN) and everything above it - bluetoothd,
-    PipeWire, tools/linux_sink/a2dpwb_sink.py - runs unmodified
+    PipeWire, tools/linux_sink/bluecaster_sink.py - runs unmodified
 
 Lets tools/linux_sink be tested end to end without Bluetooth hardware.
---drop and --stall impair the AVDTP media packets A2DPWB sends (random loss,
+--drop and --stall impair the AVDTP media packets BlueCaster sends (random loss,
 periodic hold-and-burst like radio interference) to check that the receiver
 reports them; signaling is never touched. --silent-links N makes the first N
-connections go silent right after they come up (nothing A2DPWB sends gets
-through), as radio links sometimes do, to check A2DPWB's connection retry.
+connections go silent right after they come up (nothing BlueCaster sends gets
+through), as radio links sometimes do, to check BlueCaster's connection retry.
 --detach-after S makes the first streaming link end S seconds after media
-started the way a lost radio link can end: A2DPWB's controller reports the
+started the way a lost radio link can end: BlueCaster's controller reports the
 link terminated by the remote, the Linux side is never told.
 Run with the Python of a virtual environment holding tools/emu/requirements.txt.
-Prints "READY" once A2DPWB can connect; stops on SIGTERM / Ctrl+C (the hciN
+Prints "READY" once BlueCaster can connect; stops on SIGTERM / Ctrl+C (the hciN
 adapter disappears with it). For an HCI capture of the Linux side use
 `btmon -w <file>`.
 """
@@ -34,7 +34,7 @@ from bumble import hci, lmp
 from bumble.link import LocalLink
 from bumble.transport import open_transport
 
-from emu_sink import A2DPWB_ADDRESS, EmuController
+from emu_sink import BLUECASTER_ADDRESS, EmuController
 
 LINUX_ADDRESS = '00:A2:D0:00:00:03'
 
@@ -93,10 +93,10 @@ class LinuxController(EmuController):
         0x1405: (None, bytes([0x00])),           # Read RSSI: 0 = within the golden range
     }
 
-    # Impairment of media packets from A2DPWB (set from the command line)
+    # Impairment of media packets from BlueCaster (set from the command line)
     drop_fraction = 0.0
     stall = None          # (hold seconds, period seconds)
-    silent_links = 0      # the first N connections carry nothing from A2DPWB
+    silent_links = 0      # the first N connections carry nothing from BlueCaster
     detach_after = None   # seconds of media before the first link is cut
     AVDTP_PSM = 0x0019
 
@@ -186,7 +186,7 @@ class LinuxController(EmuController):
         super().on_link_acl_data(sender_address, transport, data)
 
     def _detach(self, peer_address):
-        log.warning('cutting the link (--detach-after): A2DPWB is told, Linux is not')
+        log.warning('cutting the link (--detach-after): BlueCaster is told, Linux is not')
         self.send_lmp_packet(peer_address, lmp.LmpDetach(hci.HCI_ErrorCode.REMOTE_USER_TERMINATED_CONNECTION_ERROR))
         self.silent = True  # nothing more gets through on the stale link
 
@@ -240,13 +240,13 @@ class LinuxController(EmuController):
 
 async def main(args):
     link = LocalLink()
-    a2dpwb_transport = await open_transport(f'tcp-server:{args.bind}:{args.port}')
+    bluecaster_transport = await open_transport(f'tcp-server:{args.bind}:{args.port}')
     EmuController(
-        'A2DPWB',
-        host_source=a2dpwb_transport.source,
-        host_sink=a2dpwb_transport.sink,
+        'BlueCaster',
+        host_source=bluecaster_transport.source,
+        host_sink=bluecaster_transport.sink,
         link=link,
-        public_address=A2DPWB_ADDRESS,
+        public_address=BLUECASTER_ADDRESS,
     )
     vhci_transport = await open_transport('vhci')
     LinuxController.drop_fraction = args.drop / 100.0
@@ -274,16 +274,16 @@ async def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--bind', default='0.0.0.0', help='address the H4 TCP port listens on')
-    parser.add_argument('--port', type=int, default=9001, help='TCP port for A2DPWB (H4)')
+    parser.add_argument('--port', type=int, default=9001, help='TCP port for BlueCaster (H4)')
     parser.add_argument('--drop', type=float, default=0.0, metavar='PERCENT',
-                        help='drop this share of the media packets A2DPWB sends')
+                        help='drop this share of the media packets BlueCaster sends')
     parser.add_argument('--stall', metavar='MS/SECONDS',
                         help='hold media packets back for MS milliseconds every SECONDS seconds, '
                              'then deliver them at once (e.g. 300/5)')
     parser.add_argument('--silent-links', type=int, default=0, metavar='N',
-                        help='the first N connections carry nothing from A2DPWB after they come up')
+                        help='the first N connections carry nothing from BlueCaster after they come up')
     parser.add_argument('--detach-after', type=float, metavar='SECONDS',
-                        help='cut the first streaming link after this much media, telling only A2DPWB')
+                        help='cut the first streaming link after this much media, telling only BlueCaster')
     parser.add_argument('--log-level', default='WARNING')
     bumble.logging.setup_basic_logging(parser.parse_known_args()[0].log_level)
     asyncio.run(main(parser.parse_args()))

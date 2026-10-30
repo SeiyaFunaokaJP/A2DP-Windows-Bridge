@@ -1,4 +1,4 @@
-//! `a2dpwb-core.exe --quit`: asks the running core of this user to exit
+//! `bluecaster-core.exe --quit`: asks the running core of this user to exit
 //! (app.quit over its pipe, as the UI does) and waits until it has. The
 //! installer and the uninstaller run it before they replace or remove the
 //! program's files, so that streaming stops and the adapter is released
@@ -38,7 +38,7 @@ async fn request_quit(name: &str) -> std::io::Result<()> {
     let io = |e: ipc::FrameError| std::io::Error::other(e.to_string());
     let hello = ClientMessage::Hello {
         protocol: PROTOCOL_VERSION,
-        client: format!("a2dpwb-quit/{}", env!("CARGO_PKG_VERSION")),
+        client: format!("bluecaster-quit/{}", env!("CARGO_PKG_VERSION")),
     };
     ipc::write_frame(&mut wr, &hello).await.map_err(io)?;
     ipc::write_frame(&mut wr, &ClientMessage::Request { id: 1, call: Method::AppQuit }).await.map_err(io)?;
@@ -65,7 +65,7 @@ pub fn run() -> i32 {
     let sid = match win_sys::pipe::current_user_sid() {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("a2dpwb-core --quit: user SID: {e}");
+            eprintln!("bluecaster-core --quit: user SID: {e}");
             return 1;
         }
     };
@@ -73,19 +73,19 @@ pub fn run() -> i32 {
     let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
         Ok(rt) => rt,
         Err(e) => {
-            eprintln!("a2dpwb-core --quit: {e}");
+            eprintln!("bluecaster-core --quit: {e}");
             return 1;
         }
     };
     match rt.block_on(async { tokio::time::timeout(REQUEST_TIMEOUT, request_quit(&name)).await }) {
         Ok(Ok(())) => {}
-        Ok(Err(e)) => eprintln!("a2dpwb-core --quit: {e}"),
-        Err(_) => eprintln!("a2dpwb-core --quit: no answer"),
+        Ok(Err(e)) => eprintln!("bluecaster-core --quit: {e}"),
+        Err(_) => eprintln!("bluecaster-core --quit: no answer"),
     }
     let start = Instant::now();
     while core_running() {
         if start.elapsed() >= EXIT_TIMEOUT {
-            eprintln!("a2dpwb-core --quit: the core still runs");
+            eprintln!("bluecaster-core --quit: the core still runs");
             return 1;
         }
         std::thread::sleep(Duration::from_millis(100));

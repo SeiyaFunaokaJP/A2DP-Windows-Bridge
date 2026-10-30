@@ -72,24 +72,24 @@ describe("update check", () => {
   });
 
   it("Later closes the update dialog for that version; a portable copy opens the download page", async () => {
-    localStorage.removeItem("a2dpwb.update_later");
+    localStorage.removeItem("bluecaster.update_later");
     const { mock } = start("#/codecs", { scenario: "update" });
     (mock as unknown as { updatePhase: UpdatePhase }).updatePhase = { state: "unavailable", reason: "portable" };
     const dialog = await screen.findByRole("dialog", { name: "Update Available" });
     expect(within(dialog).getByRole("button", { name: "Open download page" })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Later" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(localStorage.getItem("a2dpwb.update_later")).toBe("2.0.0-beta.1");
-    localStorage.removeItem("a2dpwb.update_later");
+    expect(localStorage.getItem("bluecaster.update_later")).toBe("2.0.0-beta.1");
+    localStorage.removeItem("bluecaster.update_later");
   });
 
-  it("a crash of A2DPWB shows on every screen, ready to report, until closed", async () => {
+  it("a crash of BlueCaster shows on every screen, ready to report, until closed", async () => {
     const { mock } = start("#/profiles", { scenario: "crash" });
     const open = vi.spyOn(mock, "openUrl").mockResolvedValue();
     const write = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText: write }, configurable: true });
     const banner = (await screen.findByText(t("ui.crash.title"))).closest(".banner") as HTMLElement;
-    expect(banner).toHaveTextContent("a2dpwb-core, 2026-10-22 01:23:38");
+    expect(banner).toHaveTextContent("bluecaster-core, 2026-10-22 01:23:38");
     expect(banner).toHaveTextContent("panic in thread encode");
 
     fireEvent.click(within(banner).getByRole("button", { name: t("ui.diag.report_github") }));
@@ -98,8 +98,8 @@ describe("update check", () => {
     expect(url.searchParams.get("what_happened")).toContain("panic in thread encode");
     // The backtrace first, then the diagnostic info
     const logs = url.searchParams.get("logs")!;
-    expect(logs).toContain("a2dpwb_core::encode::run");
-    expect(logs.indexOf("a2dpwb_core::encode::run")).toBeLessThan(logs.indexOf("A2DP Windows Bridge"));
+    expect(logs).toContain("bluecaster_core::encode::run");
+    expect(logs.indexOf("bluecaster_core::encode::run")).toBeLessThan(logs.indexOf("BlueCaster"));
     expect(write.mock.calls[0][0]).toContain("```text\n");
 
     const seen = vi.spyOn(mock, "call");
@@ -187,7 +187,7 @@ describe("Home", () => {
     await waitFor(() => expect(write).toHaveBeenCalled());
     const text = write.mock.calls[0][0] as string;
     expect(text.startsWith(`${t("error.connect_no_answer")}\n\n`)).toBe(true);
-    expect(text).toContain("A2DP Windows Bridge");
+    expect(text).toContain("BlueCaster");
     expect(await screen.findByText(t("ui.error.copied"))).toBeInTheDocument();
   });
 
@@ -200,11 +200,11 @@ describe("Home", () => {
     expect(isAppFault("error.connect_no_answer")).toBe(false);
     expect(isAppFault("error.encoder_init", "stream.bad_codec")).toBe(false);
     expect(isAppFault("error.encoder_init")).toBe(true);
-    // Not known to be the user's: A2DPWB's own
+    // Not known to be the user's: BlueCaster's own
     expect(isAppFault("error.something_new")).toBe(true);
   });
 
-  it("reports an error of A2DPWB itself on GitHub with the form filled in", async () => {
+  it("reports an error of BlueCaster itself on GitHub with the form filled in", async () => {
     const { mock } = start("#/home", { scenario: "error" });
     const open = vi.spyOn(mock, "openUrl").mockResolvedValue();
     const write = vi.fn().mockResolvedValue(undefined);
@@ -218,7 +218,7 @@ describe("Home", () => {
     const url = new URL(open.mock.calls[0][0]);
     expect(url.searchParams.get("template")).toBe("bug_report.yml");
     expect(url.searchParams.get("what_happened")).toContain(t("error.encoder_init"));
-    expect(url.searchParams.get("logs")).toContain("A2DP Windows Bridge");
+    expect(url.searchParams.get("logs")).toContain("BlueCaster");
     // No bundle was saved: its field stays empty
     expect(url.searchParams.has("bundle")).toBe(false);
     expect(write).toHaveBeenCalled();
@@ -261,7 +261,7 @@ describe("flyout", () => {
 describe("setup device step", () => {
   async function toDeviceStep(opts: MockOptions = {}) {
     const r = start("#/setup", opts);
-    await screen.findByRole("heading", { level: 1, name: "Set up A2DP Windows Bridge" });
+    await screen.findByRole("heading", { level: 1, name: "Set up BlueCaster" });
     for (let i = 0; i < 2; i++) {
       const next = screen.getByRole("button", { name: "Next" });
       await waitFor(() => expect(next).not.toBeDisabled());
@@ -348,7 +348,7 @@ describe("setup device step", () => {
     expect(calls.find((c) => c.method === "stream.start")!.params).toEqual({ profile: "11:22:33:44:55:66 | Auto" });
   });
 
-  it("asks whether A2DPWB starts with Windows, and then in the tray (issue #86)", async () => {
+  it("asks whether BlueCaster starts with Windows, and then in the tray (issue #86)", async () => {
     const { core } = await toDeviceStep();
     await core.request("settings.set", {
       settings: { ...core.state.snap!.settings, start_with_windows: false, start_minimized: false },
@@ -366,7 +366,7 @@ describe("setup device step", () => {
 
   it("starts with Windows, in the tray, by default on a first setup (issue #86)", async () => {
     const { core, mock: m } = start("#/setup");
-    await screen.findByRole("heading", { level: 1, name: "Set up A2DP Windows Bridge" });
+    await screen.findByRole("heading", { level: 1, name: "Set up BlueCaster" });
     // A first run: no profile yet, both off
     for (const p of [...core.state.snap!.profiles]) await m.call("profile.delete", { name: p.name });
     await core.request("settings.set", {
@@ -393,7 +393,7 @@ describe("setup device step", () => {
 
   it("also turns on the tray when only Start with Windows was on (issue #86)", async () => {
     const { core, mock: m } = start("#/setup");
-    await screen.findByRole("heading", { level: 1, name: "Set up A2DP Windows Bridge" });
+    await screen.findByRole("heading", { level: 1, name: "Set up BlueCaster" });
     for (const p of [...core.state.snap!.profiles]) await m.call("profile.delete", { name: p.name });
     await core.request("settings.set", {
       settings: { ...core.state.snap!.settings, start_with_windows: true, start_minimized: false },
@@ -432,9 +432,9 @@ describe("setup device step", () => {
 });
 
 describe("setup adapter step", () => {
-  it("marks the adapters A2DPWB supports, and lists one it does not without letting it be chosen (issue #86)", async () => {
+  it("marks the adapters BlueCaster supports, and lists one it does not without letting it be chosen (issue #86)", async () => {
     start("#/setup", { scenario: "fresh" });
-    await screen.findByRole("heading", { level: 1, name: "Set up A2DP Windows Bridge" });
+    await screen.findByRole("heading", { level: 1, name: "Set up BlueCaster" });
     const radios = screen.getAllByRole("radio");
     // The supported one first, and chosen
     const rtl = radios[0].closest(".choice") as HTMLElement;

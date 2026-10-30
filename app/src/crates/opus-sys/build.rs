@@ -62,7 +62,7 @@ fn main() {
         .warnings(false)
         .cargo_warnings(false)
         // The encoder runs in real time on the encode thread: keep it
-        // optimized in debug builds of A2DPWB too
+        // optimized in debug builds of BlueCaster too
         .opt_level(2);
     if build.get_compiler().is_like_msvc() {
         build.flag("/std:c11").flag("/W1").flag("/utf-8");

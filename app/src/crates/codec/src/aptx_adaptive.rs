@@ -4,7 +4,7 @@
 //!
 //! The encoder covers the R1 and R2 bitstreams of a host (software) source:
 //! high quality (HQ) and low latency (LL), with the reference's per-packet
-//! loop, mode tables and bit rate levels (`aptx_adaptive::Stream`). A2DPWB
+//! loop, mode tables and bit rate levels (`aptx_adaptive::Stream`). BlueCaster
 //! streams 48 kHz stereo, the rate every aptX Adaptive sink takes and the only
 //! one an R1 sink is ever streamed at, or 96 kHz in HQ to an R2 sink that
 //! lists it when the profile asks for 96 kHz (as upstream's plugin: config 3,
@@ -53,7 +53,7 @@ const RTP_PAYLOAD_TYPE: u8 = 0x60;
 pub const SSRC_HQ: u32 = 0x0000_00A3;
 pub const SSRC_LL: u32 = 0x0000_00A1;
 
-/// The rate A2DPWB streams by default, to every sink
+/// The rate BlueCaster streams by default, to every sink
 pub const SAMPLE_RATE: u32 = 48000;
 /// HQ to an R2 sink that lists it
 pub const SAMPLE_RATE_96K: u32 = 96000;

@@ -8,8 +8,8 @@ the Sink, 64 kbps Sink, Multiplex and Multisink features. The sink PAC
 record (bap.py: 16-48 kHz, 7.5 and 10 ms frames, 26-155 octets) already
 covers all of GMAP's UGG -> UGT configurations (32_1_gr ... 48_4_gr).
 
---tmap-read-peer: once A2DPWB has connected and encrypted the link, the
-sink reads A2DPWB's TMAS / GMAS (Read By Type) and logs
+--tmap-read-peer: once BlueCaster has connected and encrypted the link, the
+sink reads BlueCaster's TMAS / GMAS (Read By Type) and logs
 "peer TMAP Role 0x0004 (UMS)" / "peer GMAP Role 0x01 (UGG), UGG Features
 0x03" to sink.log for the run_test.py checks.
 
@@ -44,7 +44,7 @@ def add_arguments(parser):
     parser.add_argument('--gmap-ugt-features', type=lambda s: int(s, 0), default=0,
                         help='UGT Features of the GMAS (e.g. 0x3C: sink, 64 kbps sink, multiplex, multisink)')
     parser.add_argument('--tmap-read-peer', action='store_true',
-                        help='read and log A2DPWB\'s TMAP / GMAP roles once it connected')
+                        help='read and log BlueCaster\'s TMAP / GMAP roles once it connected')
     parser.add_argument('--gmap-available-contexts', type=lambda s: int(s, 0),
                         help='Available Audio Contexts (sink) of the PACS instead of bap.py\'s, e.g. 0x0006 '
                              '(Conversational + Media, no Game)')

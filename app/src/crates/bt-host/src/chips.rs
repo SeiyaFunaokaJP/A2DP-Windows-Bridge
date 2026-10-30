@@ -199,7 +199,7 @@ pub fn is_bluetooth_vendor_vid(vid: u16, pid: u16) -> bool {
 }
 
 /// Name for a Bluetooth SIG company ID from HCI Read Local Version (None if
-/// not one A2DPWB cares about)
+/// not one BlueCaster cares about)
 pub fn company_name(company_id: u16) -> Option<&'static str> {
     Some(match company_id {
         0x0002 => "Intel",

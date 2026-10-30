@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn second_acquire_fails_until_released() {
-        let name = format!("A2DPWB_test_single_instance_{}", std::process::id());
+        let name = format!("BlueCaster_test_single_instance_{}", std::process::id());
         assert!(!is_held(&name));
         let first = SingleInstance::acquire(&name).unwrap().expect("first instance");
         assert!(is_held(&name));

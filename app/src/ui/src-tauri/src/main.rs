@@ -1,5 +1,5 @@
-//! a2dpwb.exe: the A2DPWB window process. It shows the state of
-//! a2dpwb-core.exe and sends it the user's requests; the core keeps
+//! bluecaster.exe: the BlueCaster window process. It shows the state of
+//! bluecaster-core.exe and sends it the user's requests; the core keeps
 //! streaming when this process ends.
 //!
 //! Arguments: `--flyout` opens the tray flyout instead of the main window
@@ -23,7 +23,7 @@ fn main() {
     let _log = logging::init();
     let flyout = std::env::args().any(|a| a == "--flyout");
     tracing::info!(
-        "a2dpwb {} starting{} (WebView2 {})",
+        "bluecaster {} starting{} (WebView2 {})",
         env!("CARGO_PKG_VERSION"),
         if flyout { " with the flyout" } else { "" },
         tauri::webview_version().unwrap_or_else(|e| format!("unknown: {e}"))
@@ -82,7 +82,7 @@ fn main() {
         Ok(app) => app,
         Err(e) => {
             tracing::error!("cannot start the window: {e}");
-            eprintln!("a2dpwb: cannot start the window: {e}");
+            eprintln!("bluecaster: cannot start the window: {e}");
             drop(_log);
             std::process::exit(1);
         }
@@ -96,7 +96,7 @@ fn main() {
             api.prevent_exit();
         }
         tauri::RunEvent::Exit => {
-            tracing::info!("a2dpwb exiting");
+            tracing::info!("bluecaster exiting");
             recovery::relaunch_if_due();
         }
         _ => {}

@@ -61,7 +61,7 @@ fn main() {
         .warnings(false)
         .flag_if_supported("/w")
         // The encoder runs in real time on the encode thread: keep it
-        // optimized in debug builds of A2DPWB too
+        // optimized in debug builds of BlueCaster too
         .opt_level(2);
     compile_parallel(&build, &sources, "fdkaac");
 

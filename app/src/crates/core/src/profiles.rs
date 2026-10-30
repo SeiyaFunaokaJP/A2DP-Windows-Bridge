@@ -669,7 +669,7 @@ mod tests {
 
     #[test]
     fn load_makes_names_unique_in_memory() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-profiles-dup-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-profiles-dup-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let text = r#"{"profiles":[{"name":"WH LDAC","device_address":"00:A2:D0:00:00:02","codec":"ldac"},

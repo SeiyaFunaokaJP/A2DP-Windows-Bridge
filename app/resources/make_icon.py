@@ -1,4 +1,4 @@
-"""Draws the A2DPWB icon (headphones with the Bluetooth rune on a blue tile)
+"""Draws the BlueCaster icon (headphones with the Bluetooth rune on a blue tile)
 and writes app/resources/app.ico, the Tauri copy and the UI's app-icon.png.
 
     python app/resources/make_icon.py        (needs Pillow)

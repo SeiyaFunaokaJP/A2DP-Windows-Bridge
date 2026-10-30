@@ -1,4 +1,4 @@
-# A2DPWB: checks on every pull request and push, the emulator end-to-end
+# BlueCaster: checks on every pull request and push, the emulator end-to-end
 # test on pushes to develop-v2.x and main, nightly and on demand.
 name: ci
 
@@ -59,7 +59,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      # a2dpwb.exe embeds the built UI (app/src/ui/dist, frontendDist in
+      # bluecaster.exe embeds the built UI (app/src/ui/dist, frontendDist in
       # tauri.conf.json); the ui job builds it, here an empty folder lets
       # the Rust side compile
       - name: Placeholder for the UI build
@@ -139,17 +139,17 @@ jobs:
           python-version: "3.12"
       - name: Bumble environment
         run: python tools/emu/setup_env.py
-      - name: a2dpwb_decode (decoder tool)
+      - name: bluecaster_decode (decoder tool)
         run: |
           cmake -S tools/a2dp_decode -B build/a2dp_decode -A x64
           cmake --build build/a2dp_decode --config Release
-      - name: a2dpwb-core.exe
-        run: cargo build --release -p a2dpwb-core-exe
+      - name: bluecaster-core.exe
+        run: cargo build --release -p bluecaster-core-exe
       - name: run_test.py
         run: >
           tools/emu/.venv/Scripts/python.exe tools/emu/run_test.py
-          --a2dpwb target/release/a2dpwb-core.exe
-          --decoder build/a2dp_decode/Release/a2dpwb_decode.exe
+          --bluecaster target/release/bluecaster-core.exe
+          --decoder build/a2dp_decode/Release/bluecaster_decode.exe
           --out emu-out
       # LE Audio (experimental): the 41 cases of tools/emu/le_audio_tests,
       # also when an A2DP case failed
@@ -157,8 +157,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: >
           tools/emu/.venv/Scripts/python.exe tools/emu/run_test.py --le-audio
-          --a2dpwb target/release/a2dpwb-core.exe
-          --decoder build/a2dp_decode/Release/a2dpwb_decode.exe
+          --bluecaster target/release/bluecaster-core.exe
+          --decoder build/a2dp_decode/Release/bluecaster_decode.exe
           --out emu-out-le
       - uses: actions/upload-artifact@v4
         if: failure()

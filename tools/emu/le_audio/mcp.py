@@ -1,7 +1,7 @@
-"""MCP on the emulated sinks: a Media Control Client of A2DPWB's GMCS.
+"""MCP on the emulated sinks: a Media Control Client of BlueCaster's GMCS.
 
 The PC is the media control server (GMCS); with --mcp-client the first sink
-is the client (as earbuds are): once A2DPWB's link is encrypted it discovers
+is the client (as earbuds are): once BlueCaster's link is encrypted it discovers
 GMCS with Bumble's GenericMediaControlServiceProxy, reads every
 characteristic, subscribes and writes the --mcp-ops control point
 operations, logging what it reads, the notifications and the result codes
@@ -38,7 +38,7 @@ NOTIFY_TIMEOUT = 5.0
 
 def add_arguments(parser):
     parser.add_argument('--mcp-client', action='store_true',
-                        help='the first sink is a Media Control Client of the GMCS of A2DPWB')
+                        help='the first sink is a Media Control Client of the GMCS of BlueCaster')
     parser.add_argument('--mcp-ops', default='',
                         help='control point writes after reading, comma separated: play, pause, stop, '
                              'next, prev, move-relative:<0.01 s>, any opcode as 0xNN, raw:<hex bytes>; '
@@ -50,7 +50,7 @@ def add_arguments(parser):
                         help='after subscribing: read the first part of the track title, Next Track, then '
                              'the rest (Read Blob): expects ATT error 0x80')
     parser.add_argument('--mcp-check-db-hash', action='store_true',
-                        help="read every attribute of A2DPWB's GATT database, compute its Database Hash "
+                        help="read every attribute of BlueCaster's GATT database, compute its Database Hash "
                              '(Core Vol 3 Part G 7.3.1) and compare it with the Database Hash characteristic')
     parser.add_argument('--mcp-resume', action='store_true',
                         help='on the reconnection after a link loss (bonded): do not subscribe again, write '
@@ -58,7 +58,7 @@ def add_arguments(parser):
     parser.add_argument('--mcp-delay', type=float, default=0.5,
                         help='seconds between encryption and the first GMCS request')
     parser.add_argument('--mcp-mtu', type=int,
-                        help='largest ATT MTU the sink accepts (A2DPWB negotiates the MTU)')
+                        help='largest ATT MTU the sink accepts (BlueCaster negotiates the MTU)')
 
 
 def configure_sink(sink, args):
@@ -147,7 +147,7 @@ async def run_resumed(sink, args, connection):
 
 
 async def check_db_hash(name, peer):
-    """The Database Hash A2DPWB serves against one computed here from the
+    """The Database Hash BlueCaster serves against one computed here from the
     attributes it serves (an independent check of its hash)."""
     client = peer.gatt_client
     attributes, start = [], 1

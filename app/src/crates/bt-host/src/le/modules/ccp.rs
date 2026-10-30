@@ -637,7 +637,7 @@ mod tests {
     fn values_without_calls() {
         let mut m = built();
         let h = m.h;
-        assert_eq!(m.read(CON, h.provider, 0), Ok(b"A2DPWB".to_vec()));
+        assert_eq!(m.read(CON, h.provider, 0), Ok(b"BlueCaster".to_vec()));
         assert_eq!(m.read(CON, h.uci, 0), Ok(b"un000".to_vec()));
         assert_eq!(m.read(CON, h.technology, 0), Ok(vec![0x04]));
         assert_eq!(m.read(CON, h.schemes, 0), Ok(b"tel,sip".to_vec()));

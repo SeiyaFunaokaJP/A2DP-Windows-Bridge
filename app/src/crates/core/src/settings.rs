@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn unknown_theme_is_dark_as_in_v1() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-theme-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-theme-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for (v1, v2) in [("white", "dark"), ("light", "light"), ("system", "system"), ("", "dark")] {
             std::fs::write(Settings::path(&dir), format!(r#"{{"theme":"{v1}"}}"#)).unwrap();
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn experimental_codecs_off_loads_as_on() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-experimental-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-experimental-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(Settings::path(&dir), r#"{"schema_version":5,"experimental_codecs":false}"#).unwrap();
         assert!(Settings::load(&dir).experimental_codecs);

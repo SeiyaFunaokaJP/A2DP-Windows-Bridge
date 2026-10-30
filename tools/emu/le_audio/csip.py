@@ -9,11 +9,11 @@ Resolvable Set Identifier (AD 0x2E) into its advertising data. With
 the link (sef, CSIS 4.5).
 
 The CSIS is a primary service here, not included by the CAS (bap.py adds a
-plain CAS before this module runs); A2DPWB looks for the CSIS among primary
+plain CAS before this module runs); BlueCaster looks for the CSIS among primary
 and included services alike.
 
 --csip-missing: the second sink stops advertising right after power on (a
-set member out of range): A2DPWB must stream to the first one alone.
+set member out of range): BlueCaster must stream to the first one alone.
 
 The Set Member Lock follows CSIS 5.3 (LoggingCsis; logged as "CSIS lock:
 ..."). --csip-lock-deny N[@S]: sink S (default 1) answers the first N lock
@@ -82,13 +82,13 @@ class LoggingCsis(csip.CoordinatedSetIdentificationService):
                 raise ATT_Error(LOCK_DENIED)
             self.lock_owner = connection
             connection.once('disconnection', lambda *_: self.on_owner_gone(connection))
-            log.info('%s: CSIS lock: locked by A2DPWB', self.sink_name)
+            log.info('%s: CSIS lock: locked by BlueCaster', self.sink_name)
         else:
             if self.lock_owner is not connection:
                 log.info('%s: CSIS lock: Lock Release Not Allowed', self.sink_name)
                 raise ATT_Error(LOCK_RELEASE_NOT_ALLOWED)
             self.lock_owner = None
-            log.info('%s: CSIS lock: released by A2DPWB', self.sink_name)
+            log.info('%s: CSIS lock: released by BlueCaster', self.sink_name)
 
     def on_owner_gone(self, connection):
         if self.lock_owner is connection:

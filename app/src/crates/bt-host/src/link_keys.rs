@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn v1_file_round_trip() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-lk-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-lk-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join(FILE_NAME),

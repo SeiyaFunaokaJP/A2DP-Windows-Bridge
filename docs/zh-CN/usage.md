@@ -18,7 +18,7 @@ nav_order: 2
 
 ## 窗口
 
-从“开始”菜单启动 **A2DP Windows Bridge**（或运行 `a2dpwb.exe`）。左侧菜单包含以下页面（主页、编解码器、音频设备、适配器、诊断、设置、关于）；窗口较窄时，菜单会折叠为图标。窗口只显示常驻程序 `a2dpwb-core.exe` 的运行情况：关闭窗口不会停止串流（请参阅[托盘与浮出窗口](#tray)）。
+从“开始”菜单启动 **BlueCaster**（或运行 `bluecaster.exe`）。左侧菜单包含以下页面（主页、编解码器、音频设备、适配器、诊断、设置、关于）；窗口较窄时，菜单会折叠为图标。窗口只显示常驻程序 `bluecaster-core.exe` 的运行情况：关闭窗口不会停止串流（请参阅[托盘与浮出窗口](#tray)）。
 
 ### 主页
 
@@ -49,11 +49,11 @@ nav_order: 2
 
 默认值即可获得最佳音质；大多数设备只需保持**自动**。LE Audio 设备（实验性）只有一张 LC3 卡片，以及**游戏耳机低延迟（GMAP，实验性）**（请参阅 [LE Audio](#le-audio)）。
 
-在后台，A2DPWB 在 `profiles.json` 中为每台设备保留一个配置文件，其名称为“*设备* | *编解码器*”；窗口和托盘菜单显示设备的名称。早期版本允许为同一台设备建立多个配置文件：首次启动带有“编解码器”页面的版本时，会保留最近使用的那个（否则保留第一个），并把其他的合并进去，同时为它们各自的编解码器保留其编解码器设置（音质、采样率、位深度、ABR、SBC 设置）。它们自己的名称、输出源和数据包大小不会保留；原来的 `profiles.json` 会作为 `profiles-before-codecs.json` 在设置文件夹中保存一次。
+在后台，BlueCaster 在 `profiles.json` 中为每台设备保留一个配置文件，其名称为“*设备* | *编解码器*”；窗口和托盘菜单显示设备的名称。早期版本允许为同一台设备建立多个配置文件：首次启动带有“编解码器”页面的版本时，会保留最近使用的那个（否则保留第一个），并把其他的合并进去，同时为它们各自的编解码器保留其编解码器设置（音质、采样率、位深度、ABR、SBC 设置）。它们自己的名称、输出源和数据包大小不会保留；原来的 `profiles.json` 会作为 `profiles-before-codecs.json` 在设置文件夹中保存一次。
 
 ### 音频设备
 
-A2DPWB 可以串流到的耳机和扬声器，各有自己的设置：**扫描设备**会通过 USB 适配器查找附近的设备（约 10 秒；请让耳机进入配对模式）。A2DPWB 之前配对过的设备会标记为**已配对**。如果扫描找不到耳机，请在**手动：**下输入地址并单击**使用**；输入或粘贴的地址会自动格式化（`aa-bb-cc-dd-ee-ff`、`AABBCCDDEEFF` 和 `AA BB CC DD EE FF` 都会变为 `AA:BB:CC:DD:EE:FF`）。已保存的设备可以重命名或移除，并具有：
+BlueCaster 可以串流到的耳机和扬声器，各有自己的设置：**扫描设备**会通过 USB 适配器查找附近的设备（约 10 秒；请让耳机进入配对模式）。BlueCaster 之前配对过的设备会标记为**已配对**。如果扫描找不到耳机，请在**手动：**下输入地址并单击**使用**；输入或粘贴的地址会自动格式化（`aa-bb-cc-dd-ee-ff`、`AABBCCDDEEFF` 和 `AA BB CC DD EE FF` 都会变为 `AA:BB:CC:DD:EE:FF`）。已保存的设备可以重命名或移除，并具有：
 
 - **输出源**：系统环回（新设备的默认值）、虚拟设备或应用程序（请参阅[捕获模式](#capture-modes)）。旁边显示 Windows 混合所捕获设备时使用的格式（采样率和位深度，只读）；当设备的编解码器设置要求其他格式时显示为琥珀色，并在下方用一行说明所需的格式（仍会转换后继续串流）；再下方是该输出源的说明
 - **自动切换 Windows 默认输出设备**，使用虚拟设备时
@@ -73,7 +73,7 @@ A2DPWB 可以串流到的耳机和扬声器，各有自己的设置：**扫描�
 
 ### 适配器
 
-- 检测到的 USB Bluetooth 适配器及其芯片、**驱动程序**和**固件**；插入或拔出适配器时列表会自动更新。A2DPWB 无法使用的适配器（MediaTek、Qualcomm）保留其驱动程序：其 WinUSB 和固件按钮处于禁用状态
+- 检测到的 USB Bluetooth 适配器及其芯片、**驱动程序**和**固件**；插入或拔出适配器时列表会自动更新。BlueCaster 无法使用的适配器（MediaTek、Qualcomm）保留其驱动程序：其 WinUSB 和固件按钮处于禁用状态
 - **替换为 WinUSB 驱动程序** / **恢复原始驱动程序**（请参阅[安装与设置](setup#winusb)）；每次操作 Windows 都会请求管理员权限
 - 用于固件的 **Bluetooth 芯片**，以及**下载固件**、**打开下载页面**和**打开配置文件夹**（请参阅[固件](setup#firmware)）
 - **AFH**：自动、关或手动，旁边显示 Wi-Fi 信道：自动时为当前避开的信道，关时不显示（两者均为只读），手动时为您输入的信道（请参阅[链路质量与 AFH](#link-quality)）
@@ -88,35 +88,35 @@ A2DPWB 可以串流到的耳机和扬声器，各有自己的设置：**扫描�
 | 通知 | **设备连接时通知**（设备、电量、编解码器及其运行参数；默认开启）、**电池电量低时通知**：**低于 20%**（默认）、**低于 10%**、**低于 5%** 或**从不**，每次连接只通知一次（电量回升到高出 5 个百分点后才会再次通知） |
 | 更新 | **检查更新**、**启动时检查更新**、**检查更新时包括预发布版本**（也会提示 beta 版本）、**立即更新**（请参阅[更新](#updates)） |
 | 高级 | **开发者模式**（添加含每台设备**最大媒体数据包大小**及对端接收器测试的**开发者**页面，并在日志中输出更多细节；无需重新启动）、**设置文件夹**及**打开配置文件夹**、**运行设置向导** |
-| 关于 A2DPWB | 版本、许可证、第三方许可证、**退出 A2DPWB** |
+| 关于 BlueCaster | 版本、许可证、第三方许可证、**退出 BlueCaster** |
 
 ### 首次运行设置
 
-首次启动时（还没有配置文件，或没有使用 WinUSB 的适配器），会打开**设置 A2DPWB**：选择适配器、驱动程序和固件、查找音频设备（“连接”会创建配置文件并连接；此步骤还有**随 Windows 启动**和**在托盘中启动**）。请参阅[安装与设置](setup#first-run)。**设置 > 运行设置向导**可再次打开它。
+首次启动时（还没有配置文件，或没有使用 WinUSB 的适配器），会打开**设置 BlueCaster**：选择适配器、驱动程序和固件、查找音频设备（“连接”会创建配置文件并连接；此步骤还有**随 Windows 启动**和**在托盘中启动**）。请参阅[安装与设置](setup#first-run)。**设置 > 运行设置向导**可再次打开它。
 
 ## 托盘与浮出窗口 {#tray}
 
-无论窗口是否打开，A2DPWB 都会在系统托盘中持续运行：
+无论窗口是否打开，BlueCaster 都会在系统托盘中持续运行：
 
 - **左键单击**托盘图标会打开浮出窗口：设备及其状态、**连接** / **断开连接**、音量、设备切换器、编解码器（与主页一样可从列表中选择）、链路质量以及**打开应用**。其高度与所显示的内容恰好一致。按 Esc 或单击其他位置即可隐藏。如果某个错误需要用到主窗口的某个页面（编解码器、音频设备、适配器），其按钮会打开窗口并转到该页面。开启**设置 > 单击托盘图标打开主窗口**时（默认关闭），左键单击会改为打开主窗口
-- **右键单击**打开菜单：**打开 A2DPWB**、前 10 台设备，按名称显示（LE Audio 条目带有“(LE Audio)”标记；正在串流的带勾选标记；单击即可连接该设备）、**断开连接**和**退出**。菜单会立即打开，无需启动窗口
-- 工具提示会显示 A2DPWB 处于空闲还是已连接
+- **右键单击**打开菜单：**打开 BlueCaster**、前 10 台设备，按名称显示（LE Audio 条目带有“(LE Audio)”标记；正在串流的带勾选标记；单击即可连接该设备）、**断开连接**和**退出**。菜单会立即打开，无需启动窗口
+- 工具提示会显示 BlueCaster 处于空闲还是已连接
 
-**设置 > 最小化到系统托盘**开启时（默认），最小化或关闭窗口只是将其隐藏到托盘，串流继续进行。关闭该项时，窗口会最小化到任务栏，关闭窗口则会退出 A2DPWB。托盘菜单中的**退出**或**设置 > 退出 A2DPWB** 会停止串流、释放适配器并完全关闭 A2DPWB。
+**设置 > 最小化到系统托盘**开启时（默认），最小化或关闭窗口只是将其隐藏到托盘，串流继续进行。关闭该项时，窗口会最小化到任务栏，关闭窗口则会退出 BlueCaster。托盘菜单中的**退出**或**设置 > 退出 BlueCaster** 会停止串流、释放适配器并完全关闭 BlueCaster。
 
 ## 随 Windows 启动 {#autostart}
 
-**设置 > 随 Windows 启动**会在你登录时启动 A2DPWB。开启**在托盘中启动**时，它在后台启动：只显示托盘图标，窗口可从托盘打开。关闭该项时（默认），会打开主窗口。它对应 `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` 下名为 `A2DPWB` 的值，数据为 `"<folder>\a2dpwb-core.exe"`，开启**在托盘中启动**时后面加上 `--background`。如需手动关闭，删除该值即可。在 v1 上覆盖安装 v2 时，**在托盘中启动**会被开启，因为 v1 总是在托盘中启动。
+**设置 > 随 Windows 启动**会在你登录时启动 BlueCaster。开启**在托盘中启动**时，它在后台启动：只显示托盘图标，窗口可从托盘打开。关闭该项时（默认），会打开主窗口。它对应 `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` 下名为 `BlueCaster` 的值，数据为 `"<folder>\bluecaster-core.exe"`，开启**在托盘中启动**时后面加上 `--background`。如需手动关闭，删除该值即可。在 v1 上覆盖安装 v2 时，**在托盘中启动**会被开启，因为 v1 总是在托盘中启动。
 
 ## CLI 模式
 
-`a2dpwb-core.exe --cli` 在控制台中串流，使用与窗口相同的核心。请先退出 A2DPWB（托盘 > **退出**）：同一时间只能有一个程序使用适配器。CLI 不读取配置文件；所有设置都通过选项指定。
+`bluecaster-core.exe --cli` 在控制台中串流，使用与窗口相同的核心。请先退出 BlueCaster（托盘 > **退出**）：同一时间只能有一个程序使用适配器。CLI 不读取配置文件；所有设置都通过选项指定。
 
 ### 基本用法
 
 ```bash
 # Auto-select best codec
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF
 ```
 
 按 Ctrl+C 停止串流。CLI 会输出状态、编解码器和比特率，并在结束时输出已发送和已丢弃的数据包数。
@@ -124,16 +124,16 @@ a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF
 ### 选择编解码器
 
 ```bash
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac      # LDAC
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxhd    # aptX HD
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxll    # aptX Low Latency
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptx      # aptX
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aac       # AAC
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c sbc       # SBC
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5    # LHDC V5
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c opus      # Opus (experimental; 48 kHz, 256 kbps)
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c opus05    # PipeWire's Opus 05 (experimental; to PipeWire sinks)
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad    # aptX Adaptive (48 kHz, --rate 96000 for 96 kHz)
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac      # LDAC
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxhd    # aptX HD
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxll    # aptX Low Latency
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptx      # aptX
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aac       # AAC
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c sbc       # SBC
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5    # LHDC V5
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c opus      # Opus (experimental; 48 kHz, 256 kbps)
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c opus05    # PipeWire's Opus 05 (experimental; to PipeWire sinks)
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad    # aptX Adaptive (48 kHz, --rate 96000 for 96 kHz)
 ```
 
 自动选择的优先级：LHDC V5 > LDAC > aptX Adaptive > Opus（实验性）> aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC（FastStream 和 Opus 05 均为实验性，仅在明确选择时使用）
@@ -143,23 +143,23 @@ a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad    # aptX Adaptive (48 kHz,
 ### 音质
 
 ```bash
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q hq   # 990 kbps (default)
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q sq   # 660 kbps
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q mq   # 330 kbps
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q hq   # 990 kbps (default)
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q sq   # 660 kbps
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -q mq   # 330 kbps
 
 # LHDC V5: hq 1000 / sq 500 / mq 400 kbps
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -q sq   # 500 kbps
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -q sq   # 500 kbps
 
 # aptX Adaptive: hq 427 / sq 364 / mq 318 / ll 265 kbps (R1 sinks)
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad -q ll   # Low Latency
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad -q ll   # Low Latency
 ```
 
 ### ABR（自适应比特率） {#abr}
 
 ```bash
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -a
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -a
-a2dpwb-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad -a
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c ldac -a
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -a
+bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad -a
 ```
 
 ABR 会在 Bluetooth 连接不稳定时自动降低比特率，并在状况改善后提高比特率。LDAC 在其各音质模式之间切换；LHDC V5 遵循 Android 的策略，保持在 160 到 400 kbps 之间；aptX Adaptive 在高音质下于其各级别之间逐级切换（请参阅 [aptX Adaptive](#aptx-adaptive)）。在窗口中，ABR 位于编解码器的设置中（**编解码器**页面卡片上的 **...**）。
@@ -168,7 +168,7 @@ ABR 会在 Bluetooth 连接不稳定时自动降低比特率，并在状况改�
 
 ```bash
 # Nearby devices, found with the USB adapter (10 seconds; --scan 20 for longer)
-a2dpwb-core.exe --cli --scan
+bluecaster-core.exe --cli --scan
 ```
 
 请先让耳机进入配对模式。
@@ -195,11 +195,11 @@ a2dpwb-core.exe --cli --scan
 
 用于开发和测试的选项还有：`--hci-tcp <host:port>`（通过 TCP 使用虚拟控制器，代替 WinUSB 适配器）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 的测试音代替捕获的音频）、`--duration <s>`（运行指定秒数后停止）和 `--hci-capture <file.pklg>`（对整个运行过程进行 HCI 捕获）；请参阅[构建](../building#emu)。
 
-不带 `--cli` 时，`a2dpwb-core.exe` 就是常驻程序：它也会启动窗口，但使用 `--background` 时除外（只显示托盘图标，开启**在托盘中启动**时供**随 Windows 启动**使用）。`a2dpwb-core.exe --quit` 会请求正在运行的 A2DPWB 停止串流并退出（安装程序会使用它）。
+不带 `--cli` 时，`bluecaster-core.exe` 就是常驻程序：它也会启动窗口，但使用 `--background` 时除外（只显示托盘图标，开启**在托盘中启动**时供**随 Windows 启动**使用）。`bluecaster-core.exe --quit` 会请求正在运行的 BlueCaster 停止串流并退出（安装程序会使用它）。
 
 ## 捕获模式 {#capture-modes}
 
-A2DPWB 支持三种音频捕获模式，分别录制音频路径中的不同位置：
+BlueCaster 支持三种音频捕获模式，分别录制音频路径中的不同位置：
 
 | 模式 | 录制内容 |
 |:-----|:----------------|
@@ -211,28 +211,28 @@ A2DPWB 支持三种音频捕获模式，分别录制音频路径中的不同位�
 
 系统环回只是复制音频，不会把声音从默认输出设备上拿走。声音会继续在该设备（扬声器、HDMI 电视等）上播放，同时也在 Bluetooth 耳机上播放。如果只想在耳机上听到，请使用虚拟设备模式，并选择不会在任何地方发声的设备，例如 VB-CABLE。
 
-在虚拟设备模式下，**自动切换默认设备**会在串流期间将所选设备设为 Windows 默认输出设备，这样无需更改 Windows 设置，应用就会播放到该设备。停止串流时，A2DPWB 会切换回之前的默认设备。
+在虚拟设备模式下，**自动切换默认设备**会在串流期间将所选设备设为 Windows 默认输出设备，这样无需更改 Windows 设置，应用就会播放到该设备。停止串流时，BlueCaster 会切换回之前的默认设备。
 
-- **音频设备**列表中只显示 A2DPWB 识别为虚拟音频设备的设备。如果没有这样的设备，**音频设备**界面会提供**下载 VB-Cable**。
+- **音频设备**列表中只显示 BlueCaster 识别为虚拟音频设备的设备。如果没有这样的设备，**音频设备**界面会提供**下载 VB-Cable**。
 - 默认通信设备（通话类应用使用的设备）不会被更改。
 - 某些应用在重新启动之前，仍会继续在之前的设备上播放。
-- 如果 A2DPWB 意外退出，默认设备不会被切换回去。请在 Windows 声音设置中更改。
+- 如果 BlueCaster 意外退出，默认设备不会被切换回去。请在 Windows 声音设置中更改。
 
 ### 应用程序模式 {#application-mode}
 
 应用程序模式发送某一个应用的音频，例如音乐播放器、浏览器或音效应用。在**应用**列表中选择该应用。列表显示当前正在播放音频的应用；如果找不到你的应用，请先在其中开始播放，然后单击**刷新**。应用的子进程也包含在内，因此在独立进程中播放音频的浏览器也能正常工作。
 
-- 应用不必正在运行。A2DPWB 仍会连接耳机，并在应用启动后开始发送。如果应用在串流期间退出，A2DPWB 会保持连接，并在应用重新启动后重新捕获它。
-- 应用仍会在其自身的输出设备上播放。如果只想在耳机上听到，请将该输出设备静音（其主音量）：这不会影响 A2DPWB 捕获的内容。但不要在 Windows 音量合成器中将该应用静音，否则耳机也会没有声音。
+- 应用不必正在运行。BlueCaster 仍会连接耳机，并在应用启动后开始发送。如果应用在串流期间退出，BlueCaster 会保持连接，并在应用重新启动后重新捕获它。
+- 应用仍会在其自身的输出设备上播放。如果只想在耳机上听到，请将该输出设备静音（其主音量）：这不会影响 BlueCaster 捕获的内容。但不要在 Windows 音量合成器中将该应用静音，否则耳机也会没有声音。
 - 应用在 Windows 音量合成器中的滑块会改变发送到耳机（以及其输出设备上）的音量。主音量和音量键不会改变发送的音频；当 **Windows 音量同步**开启时，它们改为调节耳机的音量（请参阅[音量](#volume)）。
-- Windows 会将音频转换为 A2DPWB 请求的采样率，因此声音设置中的设备格式不会对其造成限制。
+- Windows 会将音频转换为 BlueCaster 请求的采样率，因此声音设置中的设备格式不会对其造成限制。
 - 在 Windows 10 版本 2004（内部版本 19041）之前的版本上，Windows 不支持按应用捕获。此时连接设为“应用程序”捕获的设备会显示错误，提示选择其他输出源。
 
 ### 音量 {#volume}
 
 串流期间，如果耳机支持 AVRCP 绝对音量，主页和托盘浮出窗口会显示**音量**滑块。它直接设置耳机本身的音量，因此发送的音频保持完整的分辨率。旁边的扬声器图标可静音（耳机音量设为 0）和取消静音（恢复之前的音量）。该滑块也会跟随耳机上的音量按键和触控操作。
 
-**Windows 音量同步**（在**音频设备**页面，适用于所有设备；默认开启）会在串流期间将某个 Windows 音量与耳机音量合为一个音量。同步的是 A2DPWB 捕获的设备的 Windows 音量：系统环回和应用程序模式下为默认输出设备，虚拟设备模式下为所选设备。关闭时，Windows 音量与耳机音量相互独立。
+**Windows 音量同步**（在**音频设备**页面，适用于所有设备；默认开启）会在串流期间将某个 Windows 音量与耳机音量合为一个音量。同步的是 BlueCaster 捕获的设备的 Windows 音量：系统环回和应用程序模式下为默认输出设备，虚拟设备模式下为所选设备。关闭时，Windows 音量与耳机音量相互独立。
 
 - 耳机的音量按键和手势以及**音量**滑块会调节同步的 Windows 音量，而声音设置中该设备的滑块会调节耳机的音量。
 - 音量键和 Windows 音量浮出控件始终作用于默认输出设备，因此只有当默认输出设备就是同步的设备时，它们才会改变耳机音量（通常始终如此，但在未开启**自动切换默认设备**的虚拟设备模式下除外）。
@@ -242,14 +242,14 @@ A2DPWB 支持三种音频捕获模式，分别录制音频路径中的不同位�
 
 早期版本允许设备跟随另一个输出设备的音量（在开发者模式下）；该选择已不再使用。
 
-**记住蓝牙音频设备上次的音量**（在**音频设备**页面，适用于所有设备；默认开启）会保存每台音频设备自己的音量，并在其连接后、发送任何音频之前立即重新设置，因此一台设备的音量不会带到另一台设备上。关闭它后，每台设备会以其自身上次的音量启动，这可能比上次使用 A2DPWB 时的音量大得多（例如刚在手机上用过之后）。
+**记住蓝牙音频设备上次的音量**（在**音频设备**页面，适用于所有设备；默认开启）会保存每台音频设备自己的音量，并在其连接后、发送任何音频之前立即重新设置，因此一台设备的音量不会带到另一台设备上。关闭它后，每台设备会以其自身上次的音量启动，这可能比上次使用 BlueCaster 时的音量大得多（例如刚在手机上用过之后）。
 
 ### 耳机按键 {#headphone-buttons}
 
-串流期间，耳机上的播放/暂停、下一曲和上一曲控制（按键或触控手势，例如 WH-1000XM4 上的双击）可控制 PC 上的播放：A2DPWB 将它们作为媒体键传递给 Windows，由 Windows 媒体控件中显示的应用（Spotify、浏览器、媒体播放器等）接收。停止也会被传递。
+串流期间，耳机上的播放/暂停、下一曲和上一曲控制（按键或触控手势，例如 WH-1000XM4 上的双击）可控制 PC 上的播放：BlueCaster 将它们作为媒体键传递给 Windows，由 Windows 媒体控件中显示的应用（Spotify、浏览器、媒体播放器等）接收。停止也会被传递。
 
 - 播放和暂停都作为 Windows 的播放/暂停键处理，因此即使耳机所认为的状态已过时，每次轻点也总会在播放和暂停之间切换。
-- A2DPWB 会告诉耳机当前是否在播放音频（依据是否有可捕获的音频），因此摘下时会暂停的耳机也能发送正确的命令。
+- BlueCaster 会告诉耳机当前是否在播放音频（依据是否有可捕获的音频），因此摘下时会暂停的耳机也能发送正确的命令。
 - 快进 / 快退（长按按键）没有对应的 Windows 媒体键，会被忽略。
 - 音量手势会改变耳机自身的音量；开启 **Windows 音量同步**时，同步的 Windows 音量也会随之变化（请参阅[音量](#volume)）。
 - 可通过**音频设备 > 音频设备按钮控制播放**为每台设备关闭此功能，例如另一个程序已经响应媒体键、导致操作被执行两次时。
@@ -258,7 +258,7 @@ A2DPWB 支持三种音频捕获模式，分别录制音频路径中的不同位�
 
 ### 系统级音效应用 {#effects-apps}
 
-系统级音效应用（均衡器、音效增强、虚拟环绕声应用等）通常会安装自己的虚拟输出设备。其他应用播放到该设备；音效应用处理音频后，将结果播放到你在音效应用中选择的输出设备。在 A2DPWB 中选择哪种模式，决定了耳机是否能获得音效：
+系统级音效应用（均衡器、音效增强、虚拟环绕声应用等）通常会安装自己的虚拟输出设备。其他应用播放到该设备；音效应用处理音频后，将结果播放到你在音效应用中选择的输出设备。在 BlueCaster 中选择哪种模式，决定了耳机是否能获得音效：
 
 | 设置 | 到达耳机的内容 |
 |:--------|:----------------------------|
@@ -266,24 +266,24 @@ A2DPWB 支持三种音频捕获模式，分别录制音频路径中的不同位�
 | 应用程序：音效应用 | 音效处理**之后**的音频：音效应用播放的内容（推荐） |
 | 虚拟设备：音效应用的输出设备（例如将 VB-CABLE 设为其输出） | 音效处理之后的音频（适用于不支持应用程序模式的 Windows 版本） |
 
-在应用程序模式下，音效应用的输出设备可以是任意设备：A2DPWB 获取的是应用播放的内容，而不是设备播放的内容，因此该设备只是音频的去处。为了不让 PC 同时发声，请选择没人收听的输出（例如显示器的 HDMI 音频），或将该设备的主音量静音。VB-CABLE 这样的虚拟设备也可以作为静默的输出目标，但并非必需。该设备必须已启用且已连接。
+在应用程序模式下，音效应用的输出设备可以是任意设备：BlueCaster 获取的是应用播放的内容，而不是设备播放的内容，因此该设备只是音频的去处。为了不让 PC 同时发声，请选择没人收听的输出（例如显示器的 HDMI 音频），或将该设备的主音量静音。VB-CABLE 这样的虚拟设备也可以作为静默的输出目标，但并非必需。该设备必须已启用且已连接。
 
 如果音效应用自身的虚拟设备是 Windows 默认输出设备，其音量也会降低音效应用接收到的音频。此时若 **Windows 音量同步**开启，音量变化会被应用两次（在音效应用的输入端和耳机上）。请将其关闭，并使用耳机的音量或**音量**滑块。
 
-#### 为什么 A2DPWB 没有自己的虚拟输出设备 {#no-virtual-device}
+#### 为什么 BlueCaster 没有自己的虚拟输出设备 {#no-virtual-device}
 
-要在 Windows 输出设备列表中出现一个可供音效应用直接选择的 Bluetooth 耳机项，就需要内核模式音频驱动。A2DPWB 不包含这样的驱动：
+要在 Windows 输出设备列表中出现一个可供音效应用直接选择的 Bluetooth 耳机项，就需要内核模式音频驱动。BlueCaster 不包含这样的驱动：
 
 - 编写和维护内核音频驱动工作量很大，其中的错误可能导致 Windows 崩溃（蓝屏）。
 - Windows 10 和 11 只加载经过 Microsoft 签名的驱动。获得该签名需要 EV 代码签名证书（每年数百美元）和 Microsoft 合作伙伴中心帐户，通常需以公司名义注册。
-- 绕过签名的唯一方法是 Windows 测试签名模式，它会降低系统安全性，并导致部分软件（例如带反作弊的游戏）无法正常运行。A2DPWB 不会依赖它。
+- 绕过签名的唯一方法是 Windows 测试签名模式，它会降低系统安全性，并导致部分软件（例如带反作弊的游戏）无法正常运行。BlueCaster 不会依赖它。
 
 应用程序模式，或 VB-CABLE 等免费虚拟设备，可以满足相同的用途。
 
-- Windows 没有用于更改默认设备的公开 API。A2DPWB 与其他音频切换工具一样，使用未公开的 IPolicyConfig 接口（Windows 10 和 11）。
+- Windows 没有用于更改默认设备的公开 API。BlueCaster 与其他音频切换工具一样，使用未公开的 IPolicyConfig 接口（Windows 10 和 11）。
 
 {: .warning }
-系统环回和虚拟设备使用 WASAPI 共享模式：采样率为“自动”时（包括自动选择），A2DPWB 会请求 48 kHz（耳机未列出 48 kHz 时，请求其列出的最佳采样率），由 WASAPI 将设备的**默认格式**重采样为该采样率。如需以 96 kHz 使用 LDAC，请在编解码器的设置中选择 96 kHz；无需更改**声音设置 > 设备属性 > 高级**中的默认格式。
+系统环回和虚拟设备使用 WASAPI 共享模式：采样率为“自动”时（包括自动选择），BlueCaster 会请求 48 kHz（耳机未列出 48 kHz 时，请求其列出的最佳采样率），由 WASAPI 将设备的**默认格式**重采样为该采样率。如需以 96 kHz 使用 LDAC，请在编解码器的设置中选择 96 kHz；无需更改**声音设置 > 设备属性 > 高级**中的默认格式。
 
 ## 编解码器比较
 
@@ -301,13 +301,13 @@ A2DPWB 支持三种音频捕获模式，分别录制音频路径中的不同位�
 
 ## aptX 系列与 aptX Adaptive {#aptx-compatibility}
 
-A2DPWB 支持三种使用 [libopenaptx](https://github.com/pali/libopenaptx) 编码的 aptX 编解码器，以及使用 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 编码器编码的 aptX Adaptive。
+BlueCaster 支持三种使用 [libopenaptx](https://github.com/pali/libopenaptx) 编码的 aptX 编解码器，以及使用 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 编码器编码的 aptX Adaptive。
 
 {: .warning }
 **aptX HD 和 aptX Low Latency 为实验性功能。** 它们参照 Android / PipeWire 的实现，并通过了编码/解码往返测试，但尚未在真实耳机上验证。
 
 {: .note }
-**只需要经典 aptX？** Windows 10 的内置 Bluetooth 堆栈已经支持经典 aptX（不含 aptX HD、aptX LL 和 aptX Adaptive），因此无需 A2DPWB。A2DPWB 主要用于 LDAC、aptX HD 和 aptX Low Latency。
+**只需要经典 aptX？** Windows 10 的内置 Bluetooth 堆栈已经支持经典 aptX（不含 aptX HD、aptX LL 和 aptX Adaptive），因此无需 BlueCaster。BlueCaster 主要用于 LDAC、aptX HD 和 aptX Low Latency。
 
 | 编解码器 | Vendor ID / Codec ID | RTP 标头 | 状态 |
 |:------|:---------------------|:-----------|:-------|
@@ -340,7 +340,7 @@ A2DPWB 支持三种使用 [libopenaptx](https://github.com/pali/libopenaptx) 编
 
 ### 不存在从 aptX Adaptive 到 aptX 的“回退”
 
-A2DPWB 连接时，耳机会通告一个**编解码器列表**（AVDTP 流端点）。A2DPWB 从该列表中选择一种编解码器。aptX Adaptive 和经典 aptX 是列表中各自独立的项，因此在编解码器内部不存在从一方“回退”到另一方的情况：
+BlueCaster 连接时，耳机会通告一个**编解码器列表**（AVDTP 流端点）。BlueCaster 从该列表中选择一种编解码器。aptX Adaptive 和经典 aptX 是列表中各自独立的项，因此在编解码器内部不存在从一方“回退”到另一方的情况：
 
 - **耳机同时列出了经典 aptX**——许多 aptX Adaptive 耳机都是如此，因为 Qualcomm 宣传 aptX Adaptive 向下兼容 aptX / aptX HD。“自动”会选择 aptX Adaptive（高于 aptX HD 和 aptX）；经典 aptX 在您选择它时使用，它是耳机列表中独立的一种编解码器，而不是 aptX Adaptive 的降级模式。
 - **耳机只列出了 aptX Adaptive**（没有经典 aptX、aptX HD 或 aptX LL）——选择 aptX 时会回退到耳机提供的下一个更低的编解码器，通常是 AAC 或 SBC；要使用 aptX Adaptive，请选择 aptX Adaptive（或“自动”）。
@@ -361,7 +361,7 @@ A2DPWB 连接时，耳机会通告一个**编解码器列表**（AVDTP 流端点
 
 ### 耳机同时连接其他设备时缺少编解码器 {#sep-in-use}
 
-耳机通过流端点（SEP）提供各个编解码器。在双设备（多点）连接时，正在向手机或 PC 串流的端点会被报告为**正在使用**，在该串流停止之前无法使用其编解码器。有些耳机还只在仅连接一台设备时才提供高解析度编解码器（LDAC、L2HC 等）。此时 A2DPWB 会在日志中记录：
+耳机通过流端点（SEP）提供各个编解码器。在双设备（多点）连接时，正在向手机或 PC 串流的端点会被报告为**正在使用**，在该串流停止之前无法使用其编解码器。有些耳机还只在仅连接一台设备时才提供高解析度编解码器（LDAC、L2HC 等）。此时 BlueCaster 会在日志中记录：
 
 ```
 remote SEP 6: sink audio, IN USE (codec not queried)
@@ -373,14 +373,14 @@ capability discovery complete (LDAC=false ... , 1 of 6 audio sink SEP(s) in use)
 
 ### 采样率
 
-aptX、aptX HD 和 aptX LL 只支持 44.1 kHz 和 48 kHz（aptX Adaptive 为 48 kHz；选择 96 kHz 且耳机列出时为 96 kHz）。A2DPWB 会从耳机通告的采样率中选择一个（“自动”时为 48 kHz，没有则为 44.1 kHz），并由 WASAPI 对捕获的音频进行重采样。使用 aptX 时无需更改 Windows 声音设置。
+aptX、aptX HD 和 aptX LL 只支持 44.1 kHz 和 48 kHz（aptX Adaptive 为 48 kHz；选择 96 kHz 且耳机列出时为 96 kHz）。BlueCaster 会从耳机通告的采样率中选择一个（“自动”时为 48 kHz，没有则为 44.1 kHz），并由 WASAPI 对捕获的音频进行重采样。使用 aptX 时无需更改 Windows 声音设置。
 
 ### 查看耳机提供的编解码器
 
 1. 连接耳机。
 2. 打开**诊断**，在日志筛选框中输入 `remote`。
 
-相同的内容也会写入配置文件夹中的日志文件（`%APPDATA%\A2DPWB\logs\a2dpwb-core.<date>.log`）；在 CLI 模式下则输出到控制台。功能发现相关的日志行会准确显示耳机列出了哪些编解码器：
+相同的内容也会写入配置文件夹中的日志文件（`%APPDATA%\BlueCaster\logs\bluecaster-core.<date>.log`）；在 CLI 模式下则输出到控制台。功能发现相关的日志行会准确显示耳机列出了哪些编解码器：
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -391,28 +391,28 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 - `aptX=true`——可以使用经典 aptX（即使同时有 `aptX Adaptive=true`）；“自动”会使用它。
 - `aptX=false`、`aptX HD=false`、`aptX LL=false` 且 `aptX Adaptive=true`——耳机只提供 aptX Adaptive；请选择 aptX Adaptive，或使用“自动”、AAC 或 SBC。
-- `aptX Adaptive=true [not usable]`——耳机提供的 aptX Adaptive 不支持 A2DPWB 所需的 48 kHz 立体声。
-- `remote vendor codec ... - unsupported`——A2DPWB 未实现的其他厂商编解码器。
+- `aptX Adaptive=true [not usable]`——耳机提供的 aptX Adaptive 不支持 BlueCaster 所需的 48 kHz 立体声。
+- `remote vendor codec ... - unsupported`——BlueCaster 未实现的其他厂商编解码器。
 
 ## 最大媒体数据包大小（每台设备） {#max-packet}
 
-每台设备的**最大媒体数据包大小**（**开发者**页面，每台已保存的设备一个字段；CLI：`--max-packet <bytes>`）设置每个 Bluetooth 数据包中音频数据的上限，范围为 679 到 1679 字节，这样需要不同值的音频设备可以各自使用自己的设置。“开发者”页面在开发者模式（**设置 > 开发者模式**）下显示；大多数用户从不需要它。音频设备自身的上限（MTU）也始终有效；A2DPWB 使用两者中较小的值。更改从下次连接时生效。它以前是配置文件的设置（位于**高级**下）：设备会沿用其保留下来的配置文件的值（请参阅[编解码器](#codecs)）；1.1 之前的 v1 保存的配置文件会沿用当时全局设置的值。
+每台设备的**最大媒体数据包大小**（**开发者**页面，每台已保存的设备一个字段；CLI：`--max-packet <bytes>`）设置每个 Bluetooth 数据包中音频数据的上限，范围为 679 到 1679 字节，这样需要不同值的音频设备可以各自使用自己的设置。“开发者”页面在开发者模式（**设置 > 开发者模式**）下显示；大多数用户从不需要它。音频设备自身的上限（MTU）也始终有效；BlueCaster 使用两者中较小的值。更改从下次连接时生效。它以前是配置文件的设置（位于**高级**下）：设备会沿用其保留下来的配置文件的值（请参阅[编解码器](#codecs)）；1.1 之前的 v1 保存的配置文件会沿用当时全局设置的值。
 
 **推荐使用 1023（默认）。** 它正好容纳一个 Bluetooth 基带数据包（3-DH5）。更大的值只能节省 1-2% 的开销，而每丢失一个数据包会损失更多音频。679 正好容纳一个 2-DH5 数据包，也是 LDAC 接受的最小值。
 
-## 验证媒体流（a2dpwb_decode） {#verify-stream}
+## 验证媒体流（bluecaster_decode） {#verify-stream}
 
 大多数耳机无法显示正在使用的编解码器。**诊断 > 开始 HCI 捕获** / **停止 HCI 捕获**会记录一份 HCI 数据包日志（配置文件夹中的 `hci_<date>_<time>.pklg`），包含编解码器协商和发送的每个媒体数据包。在 LDAC 990 kbps 下，它每小时大约增长 0.5 GB，因此请只在需要时进行捕获。在 CLI 模式下，`--hci-capture <file.pklg>` 会记录整个运行过程。
 
-可以在连接前开始捕获，也可以在串流过程中开始。如果在连接期间开始捕获，A2DPWB 会先写入它记住的连接建立数据包（L2CAP 信道建立和 AVDTP 信令，包括编解码器协商），因此该文件仍然可以分析。“诊断”会在记录期间和停止后显示文件路径。
+可以在连接前开始捕获，也可以在串流过程中开始。如果在连接期间开始捕获，BlueCaster 会先写入它记住的连接建立数据包（L2CAP 信道建立和 AVDTP 信令，包括编解码器协商），因此该文件仍然可以分析。“诊断”会在记录期间和停止后显示文件路径。
 
-可以用 Wireshark 打开捕获文件，或使用开发者工具 `a2dpwb_decode`（需从源代码构建，请参阅[构建](../building)）进行检查：
+可以用 Wireshark 打开捕获文件，或使用开发者工具 `bluecaster_decode`（需从源代码构建，请参阅[构建](../building)）进行检查：
 
 ```
-a2dpwb_decode "%APPDATA%\A2DPWB\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
-该工具会跟踪 AVDTP 信令（SET_CONFIGURATION / RECONFIGURE 以及耳机是否接受），提取 A2DPWB 发送的媒体数据包，并对照协商的配置进行检查：
+该工具会跟踪 AVDTP 信令（SET_CONFIGURATION / RECONFIGURE 以及耳机是否接受），提取 BlueCaster 发送的媒体数据包，并对照协商的配置进行检查：
 
 | 编解码器 | 检查内容 | 输出 |
 |:------|:----------------|:-------|
@@ -422,13 +422,13 @@ a2dpwb_decode "%APPDATA%\A2DPWB\hci_20260925_120000.pklg" -o C:\temp\check
 对于每个流，它还会报告 RTP 序列号的间断、RTP 时间戳的推进速度、比特率，以及 Bluetooth 控制器报告已完成的 ACL 数据包数量。最后一行为 `RESULT: OK` 或 `RESULT: PROBLEMS FOUND`（退出代码为 0 或 1）。
 
 {: .note }
-这可以证明 A2DPWB 发送了什么，以及这些内容对于协商的编解码器是否有效。由于接收端只能解码协商好的编解码器，如果耳机播放的声音正常，同时报告也没有问题，就足以有力地证明该编解码器确实在使用中。
+这可以证明 BlueCaster 发送了什么，以及这些内容对于协商的编解码器是否有效。由于接收端只能解码协商好的编解码器，如果耳机播放的声音正常，同时报告也没有问题，就足以有力地证明该编解码器确实在使用中。
 
 ## 链路质量与 AFH {#link-quality}
 
-**诊断 > 链路质量**会显示串流期间 A2DPWB 发送的内容：实际比特率、已发送的数据包、发送前丢弃的数据包（发送队列已满：无线链路跟不上）、捕获时丢弃的音频、发送队列、无线占用时间，以及**信号**：连接的 RSSI（相对于控制器的理想接收范围，0 = 正常，负值 = 太弱；并非绝对电平），以及链路在 79 个 Bluetooth 信道中的多少个信道上跳频（AFH）。主页和托盘浮出窗口会将其概括为“良好”、“一般”或“较差”。
+**诊断 > 链路质量**会显示串流期间 BlueCaster 发送的内容：实际比特率、已发送的数据包、发送前丢弃的数据包（发送队列已满：无线链路跟不上）、捕获时丢弃的音频、发送队列、无线占用时间，以及**信号**：连接的 RSSI（相对于控制器的理想接收范围，0 = 正常，负值 = 太弱；并非绝对电平），以及链路在 79 个 Bluetooth 信道中的多少个信道上跳频（AFH）。主页和托盘浮出窗口会将其概括为“良好”、“一般”或“较差”。
 
-Bluetooth 会自行避开繁忙的信道（AFH），但它只能通过错误来了解 Wi-Fi 的存在。A2DPWB 还会在每次连接时告诉其控制器应避开哪些信道（AFH 主机信道分类）：
+Bluetooth 会自行避开繁忙的信道（AFH），但它只能通过错误来了解 Wi-Fi 的存在。BlueCaster 还会在每次连接时告诉其控制器应避开哪些信道（AFH 主机信道分类）：
 
 | AFH | |
 |:--|:--|
@@ -442,7 +442,7 @@ Bluetooth 会自行避开繁忙的信道（AFH），但它只能通过错误来�
 
 ## 对端接收器测试（tools/linux_sink） {#receiver}
 
-链路质量显示的是 A2DPWB 发送的内容。要查看实际到达的内容，请在另一台运行 Linux 的 PC 上运行 `tools/linux_sink/a2dpwb_sink.py`。它直接驱动该 PC 上的普通 Bluetooth 适配器（内置适配器即可），通过 HCI user channel 使用 Bumble，作为支持包括 LDAC 在内所有编解码器的 A2DP 接收端，测量到达的每个媒体数据包，并通过网络提供统计数据：
+链路质量显示的是 BlueCaster 发送的内容。要查看实际到达的内容，请在另一台运行 Linux 的 PC 上运行 `tools/linux_sink/bluecaster_sink.py`。它直接驱动该 PC 上的普通 Bluetooth 适配器（内置适配器即可），通过 HCI user channel 使用 Bumble，作为支持包括 LDAC 在内所有编解码器的 A2DP 接收端，测量到达的每个媒体数据包，并通过网络提供统计数据：
 
 将 `tools/linux_sink` 文件夹复制到 Linux PC 上（只需这个文件夹），然后运行：
 
@@ -451,24 +451,24 @@ sh setup.sh      # once: decoder libraries, Python environment (Ubuntu / Debian,
 sudo sh run.sh   # start the receiver (root: it takes the Bluetooth adapter)
 ```
 
-在 Windows PC 上退出 A2DPWB（托盘 > **退出**），然后运行：
+在 Windows PC 上退出 BlueCaster（托盘 > **退出**），然后运行：
 
 ```bash
-a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
+bluecaster-core.exe --cli --remote-sink auto -c ldac --test-tone
 ```
 
 `--remote-sink auto` 会在本地网络中查找接收器，向其 Bluetooth 适配器串流（除非 `-d` 指定了其他设备），并每 5 秒以及结束时输出接收器的统计数据：比特率、丢失和迟到的数据包（RTP 序列号）、抖动和间隔、模拟播放缓冲区中的断音和跳过、流 / 解码错误，以及接收端的 RSSI（相对于其理想接收范围：0 = 正常，负值 = 太弱）。不加 `--test-tone` 时发送系统音频。`--remote-sink <host[:port]>` 可直接指定接收器，而不进行查找。
 
 {: .note }
-同样的测试也可以在窗口中进行：开启**设置 > 开发者模式**，打开**开发者 > 对端接收器测试**。它会查找接收器（或使用输入的地址），以所选的编解码器和音源（测试音或系统音频）串流，逐步检查，并将发送的内容与接收器统计的内容并排显示。无需退出 A2DPWB。
+同样的测试也可以在窗口中进行：开启**设置 > 开发者模式**，打开**开发者 > 对端接收器测试**。它会查找接收器（或使用输入的地址），以所选的编解码器和音源（测试音或系统音频）串流，逐步检查，并将发送的内容与接收器统计的内容并排显示。无需退出 BlueCaster。
 
-双方都从流的第一个数据包开始计数，因此可以比较发送和接收的数据包数：两者应当相等。Bluetooth 会在控制器内部重传丢失的无线数据包，而 A2DPWB 在链路保持连接期间不会放弃任何数据包，因此较差的无线链路在接收端会表现为间隔、抖动和断音，而不是丢包；当链路跟不上时，数据包会在发送端于发送前被丢弃。双方都无法获得重传次数。
+双方都从流的第一个数据包开始计数，因此可以比较发送和接收的数据包数：两者应当相等。Bluetooth 会在控制器内部重传丢失的无线数据包，而 BlueCaster 在链路保持连接期间不会放弃任何数据包，因此较差的无线链路在接收端会表现为间隔、抖动和断音，而不是丢包；当链路跟不上时，数据包会在发送端于发送前被丢弃。双方都无法获得重传次数。
 
 工具运行期间，接收端的适配器无法供其自身的 Bluetooth 堆栈使用。发现过程使用 UDP 端口 51201 上的广播，因此两台 PC 必须位于同一网段（否则请输入地址）。所有选项和统计协议请参阅 `tools/linux_sink/README.md`。
 
 ## LE Audio（实验性） {#le-audio}
 
-A2DPWB 也可以向 LE Audio 耳机传输音频（BAP 单播，通过连接等时流传输 LC3），并支持耳机音量（VCP）、媒体按键（MCP）、一对耳机的左右两只（CSIP）以及游戏耳机的低延迟模式（GMAP）。此功能为**实验性功能**，按设备选择：只有设备的 LE Audio 条目才会使用它。它只在 Bluetooth 模拟器上测试过，**尚未在真实的 LE Audio 耳机上验证**，可能无法与您的设备配合使用；日常收听请使用传统的 A2DP。
+BlueCaster 也可以向 LE Audio 耳机传输音频（BAP 单播，通过连接等时流传输 LC3），并支持耳机音量（VCP）、媒体按键（MCP）、一对耳机的左右两只（CSIP）以及游戏耳机的低延迟模式（GMAP）。此功能为**实验性功能**，按设备选择：只有设备的 LE Audio 条目才会使用它。它只在 Bluetooth 模拟器上测试过，**尚未在真实的 LE Audio 耳机上验证**，可能无法与您的设备配合使用；日常收听请使用传统的 A2DP。
 
 需要：
 
@@ -477,26 +477,26 @@ A2DPWB 也可以向 LE Audio 耳机传输音频（BAP 单播，通过连接等�
 
 使用方法：
 
-1. 让耳机进入配对模式，在**音频设备**页面扫描设备。LE Audio 设备带有 **LE Audio** 标记，一对耳机带有 **LE Audio 组** 标记（选择其中任意一只，A2DPWB 会找到另一只）。同时支持 A2DP 的耳机会按类型显示两次。
-2. 在**编解码器**页面选择 LE Audio 条目的 LC3 卡片。不能选择编解码器和质量（A2DPWB 会选择耳机接受的最佳 LC3 配置），捕获方式只能使用系统环回和虚拟设备。
+1. 让耳机进入配对模式，在**音频设备**页面扫描设备。LE Audio 设备带有 **LE Audio** 标记，一对耳机带有 **LE Audio 组** 标记（选择其中任意一只，BlueCaster 会找到另一只）。同时支持 A2DP 的耳机会按类型显示两次。
+2. 在**编解码器**页面选择 LE Audio 条目的 LC3 卡片。不能选择编解码器和质量（BlueCaster 会选择耳机接受的最佳 LC3 配置），捕获方式只能使用系统环回和虚拟设备。
 3. 其下的 **游戏耳机低延迟（GMAP，实验性）** 默认开启：对支持 GMAP 游戏角色的耳机使用更短的 LC3 帧；其他耳机则无论开关都使用媒体配置。
 
 设置中没有 LE Audio 开关。如果 LE 部分干扰了适配器，可在 `settings.json`（**设置 > 设置文件夹**）中写入 `"le_audio_experimental": false`，将其完全关闭。
 
-在 CLI 模式下，`--le-audio -d <地址>` 向 LE Audio 设备传输，`--le-device <地址>` 添加组中的另一台设备（另一只耳机），`--le-scan` 列出附近的 LE Audio 设备，`--le-low-latency` / `--le-preset <名称>` 选择配置（所有 LE 选项见 `a2dpwb-core.exe --cli -h`）。
+在 CLI 模式下，`--le-audio -d <地址>` 向 LE Audio 设备传输，`--le-device <地址>` 添加组中的另一台设备（另一只耳机），`--le-scan` 列出附近的 LE Audio 设备，`--le-low-latency` / `--le-preset <名称>` 选择配置（所有 LE 选项见 `bluecaster-core.exe --cli -h`）。
 
 ## 更新 {#updates}
 
-A2DPWB 每天最多检查一次 GitHub Releases（**设置 > 启动时检查更新**；**检查更新时包括预发布版本**还会提示 beta 版本）。有新版本时，“设置”中会显示提示：
+BlueCaster 每天最多检查一次 GitHub Releases（**设置 > 启动时检查更新**；**检查更新时包括预发布版本**还会提示 beta 版本）。有新版本时，“设置”中会显示提示：
 
-- **安装版**：**立即更新**会下载已签名的更新。音频设备连接期间会等待，直到断开连接后再安装，因此更新永远不会打断音频。随后 A2DPWB 会关闭、安装新版本并自动重新启动。
+- **安装版**：**立即更新**会下载已签名的更新。音频设备连接期间会等待，直到断开连接后再安装，因此更新永远不会打断音频。随后 BlueCaster 会关闭、安装新版本并自动重新启动。
 - **便携版**（或未进行更新签名的构建）：**打开下载页面**会打开发布页面。
 
 ## 故障排除
 
 ### 窗口提示核心未运行
 
-窗口需要同一文件夹中的 `a2dpwb-core.exe`，并会自动启动它。“A2DPWB 核心未运行”表示无法启动它：请重新安装 A2DPWB（或重新解压便携版 zip）。“核心版本不同”表示两个程序来自不同的版本：请安装两者的相同版本（安装最新版本即可）。
+窗口需要同一文件夹中的 `bluecaster-core.exe`，并会自动启动它。“BlueCaster 核心未运行”表示无法启动它：请重新安装 BlueCaster（或重新解压便携版 zip）。“核心版本不同”表示两个程序来自不同的版本：请安装两者的相同版本（安装最新版本即可）。
 
 ### 分配或恢复驱动程序失败
 
@@ -506,17 +506,17 @@ A2DPWB 每天最多检查一次 GitHub Releases（**设置 > 启动时检查更�
 
 ### Bluetooth 适配器无响应 {#adapter-no-answer}
 
-如果适配器打开后没有任何回应（不响应 HCI Reset），A2DPWB 会在 5 秒后放弃，再打开一次；如果仍无响应，则显示“Bluetooth 适配器无响应”。请拔下适配器，重新插入后再试（或单击**重新启动 Bluetooth**）。无需重新启动 A2DPWB：启动失败时会释放适配器，每次新的启动都会重新初始化它。
+如果适配器打开后没有任何回应（不响应 HCI Reset），BlueCaster 会在 5 秒后放弃，再打开一次；如果仍无响应，则显示“Bluetooth 适配器无响应”。请拔下适配器，重新插入后再试（或单击**重新启动 Bluetooth**）。无需重新启动 BlueCaster：启动失败时会释放适配器，每次新的启动都会重新初始化它。
 
-为防止适配器卡住，A2DPWB 在打开适配器时会重置其 USB 管道，在关闭时会发送 HCI Reset。
+为防止适配器卡住，BlueCaster 在打开适配器时会重置其 USB 管道，在关闭时会发送 HCI Reset。
 
 ### 更新后出现配对问题
 
-A2DPWB 使用 SSP（Just Works）和 **General Bonding** 进行配对，并保存链接密钥，这样耳机无需重新配对即可再次连接（v2 会读取 v1 的链接密钥）。如果你曾用较旧的 A2DPWB 版本配对过耳机，且现在无法连接，请在耳机上删除 A2DPWB 的配对信息（清除配对列表的方法请参阅耳机的说明书），然后重新配对。
+BlueCaster 使用 SSP（Just Works）和 **General Bonding** 进行配对，并保存链接密钥，这样耳机无需重新配对即可再次连接（v2 会读取 v1 的链接密钥）。如果你曾用较旧的 BlueCaster 版本配对过耳机，且现在无法连接，请在耳机上删除 BlueCaster 的配对信息（清除配对列表的方法请参阅耳机的说明书），然后重新配对。
 
 ### 连接超时
 
-A2DPWB 会注册 SDP 记录（A2DP Source、AVRCP Controller / Target），以便耳机将其识别为音频源。如果连接尝试超时，半开的连接会被断开，因此可以直接重试，无需重新启动 A2DPWB。请确认耳机已开机、在范围内，并且没有连接到其他设备。
+BlueCaster 会注册 SDP 记录（A2DP Source、AVRCP Controller / Target），以便耳机将其识别为音频源。如果连接尝试超时，半开的连接会被断开，因此可以直接重试，无需重新启动 BlueCaster。请确认耳机已开机、在范围内，并且没有连接到其他设备。
 
 当链路建立后没有传输任何数据，或耳机没有应答时，失败的连接会自动重试（最多 3 次）。如果耳机已不再保留配对信息（被重置，或与其他 PC 配对过），已存储的密钥会被丢弃，并重新进行一次配对。随后错误消息会说明发生了什么：
 
@@ -529,4 +529,4 @@ A2DPWB 会注册 SDP 记录（A2DP Source、AVRCP Controller / Target），以�
 
 与耳机的**首次连接**需要配对模式；之后会使用保存的链路密钥自动重新连接。如果耳机已处于配对模式仍然失败，它可能仍连接着手机或其他电脑（包括通过 LE Audio）：请在那边断开连接，如耳机的应用中有该选项则关闭 LE Audio，然后让耳机进入配对模式并重新连接。此时日志会显示 `signaling connection failed (0x66)`（因安全原因被拒绝：耳机保留了之前配对的密钥，例如与这台电脑的 Windows Bluetooth 的配对）或 `(0x67)`（因资源不足被拒绝：正被其他设备占用）。
 
-连接中断后会自动重新连接（最多 10 次）。如果 PC 在串流期间进入睡眠，A2DPWB 会在恢复后重新连接；这些尝试不计入次数。
+连接中断后会自动重新连接（最多 10 次）。如果 PC 在串流期间进入睡眠，BlueCaster 会在恢复后重新连接；这些尝试不计入次数。

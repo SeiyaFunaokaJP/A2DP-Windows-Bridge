@@ -24,7 +24,7 @@ const INFO = {
   port: 51201,
   host: "sink-pi",
   bt_address: "DC:A6:32:01:02:03",
-  bt_name: "a2dpwb-sink",
+  bt_name: "bluecaster-sink",
   codecs: ["SBC", "LDAC"],
   mtu: 1005,
   buffer_ms: 200,
@@ -176,7 +176,7 @@ describe("receiver steps", () => {
     let log = run(m, before, stream("connecting", null, "status.connecting_device"), 1200);
     expect(m.steps.configure.state).toBe("running");
     // The core's status messages go to the log once each
-    expect(log).toEqual(["A2DPWB: status.connecting_device"]);
+    expect(log).toEqual(["BlueCaster: status.connecting_device"]);
     const configured = state({ stream: recv(4, { packets: 900 }), mtu: 679, buffer: 300 });
     log = run(m, configured, stream("connecting", null, "status.connecting_device"), 1500);
     expect(m.steps.configure).toMatchObject({ state: "ok", detail: "MTU 679, 300 ms", at: 500 });
@@ -263,7 +263,7 @@ describe("receiver steps", () => {
     run(m2, r, STREAMING, 100);
     const lost = run(m2, r, stream("reconnecting", null, "status.connection_lost"), 200);
     expect(m2.steps.link.state).toBe("running");
-    expect(lost).toContain("Bluetooth connection lost, A2DP Windows Bridge reconnects");
+    expect(lost).toContain("Bluetooth connection lost, BlueCaster reconnects");
     run(m2, r, STREAMING, 300);
     expect(m2.steps.link.state).toBe("ok");
   });

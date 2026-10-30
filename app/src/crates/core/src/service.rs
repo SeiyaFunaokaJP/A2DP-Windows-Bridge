@@ -1315,7 +1315,7 @@ mod tests {
     }
 
     fn service() -> Service {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-service-restart-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-service-restart-{}", std::process::id()));
         let opts = ServiceOptions {
             config_dir: dir,
             hci_tcp: None,

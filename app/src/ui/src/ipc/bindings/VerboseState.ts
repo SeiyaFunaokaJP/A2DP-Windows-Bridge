@@ -2,7 +2,7 @@
 import type { LogLevel } from "./LogLevel";
 
 /**
- * Verbose logging (diag.set_verbose): A2DPWB's own modules log at `level`
+ * Verbose logging (diag.set_verbose): BlueCaster's own modules log at `level`
  * until `until_ms`, then back to info by themselves
  */
 export type VerboseState = { level: LogLevel, 

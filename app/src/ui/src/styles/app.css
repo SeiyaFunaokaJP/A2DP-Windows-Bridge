@@ -1,5 +1,5 @@
 /*
- * A2DPWB v2 UI styles (design.md "ビジュアル言語").
+ * BlueCaster v2 UI styles (design.md "ビジュアル言語").
  *
  * - Dark by default; light from the same tokens (html[data-theme]).
  * - The accent gradient #4F8CFF -> #8B5CF6 appears only on the Connect
@@ -1746,7 +1746,7 @@ option {
   background: var(--surface-2);
   box-shadow: inset 3px 0 0 var(--text);
 }
-/* Listed, not chosen: an adapter A2DPWB cannot use (issue #86) */
+/* Listed, not chosen: an adapter BlueCaster cannot use (issue #86) */
 .choice.ro,
 .choice.ro input {
   cursor: default;

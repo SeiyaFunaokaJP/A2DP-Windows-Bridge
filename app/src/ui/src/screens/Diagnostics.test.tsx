@@ -75,7 +75,7 @@ describe("Diagnostics", () => {
     });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(calls.find((c) => c.method === "diag.bundle")!.params).toEqual({ mask: true, hci: true });
-    expect(saved).toHaveTextContent(/a2dpwb-diag-\d{8}_\d{6}\.zip · \d+ KB/);
+    expect(saved).toHaveTextContent(/bluecaster-diag-\d{8}_\d{6}\.zip · \d+ KB/);
     expect(saved).toHaveTextContent("Attach this file to your GitHub issue");
 
     // A prefilled issue, with the bundle shown in Explorer to drag in
@@ -85,9 +85,9 @@ describe("Diagnostics", () => {
     expect(url.pathname).toBe("/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new");
     expect(url.searchParams.get("template")).toBe("bug_report.yml");
     expect(url.searchParams.get("version")).toBe(core.state.snap!.update.current_version);
-    expect(url.searchParams.get("bundle")).toMatch(/^a2dpwb-diag-/);
+    expect(url.searchParams.get("bundle")).toMatch(/^bluecaster-diag-/);
     expect(calls.filter((c) => c.method === "diag.info").at(-1)!.params).toEqual({ mask: true });
-    expect(reveal).toHaveBeenCalledWith(expect.stringMatching(/\\bundles\\a2dpwb-diag-/));
+    expect(reveal).toHaveBeenCalledWith(expect.stringMatching(/\\bundles\\bluecaster-diag-/));
     fireEvent.click([...saved.querySelectorAll("button")].find((b) => b.textContent === "Close")!);
     await waitFor(() => expect(view.container.querySelector(".bundle-saved")).toBeNull());
     // Back to the default for the other tests (the choice lives with the window)

@@ -9,7 +9,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
-/// src/*.c not needed by A2DPWB (audio playback helpers, LC3 - LE Audio
+/// src/*.c not needed by BlueCaster (audio playback helpers, LC3 - LE Audio
 /// encodes with crate lc3-sys -, other HCI transports, HID)
 const CORE_EXCLUDE: &[&str] = &[
     "btstack_audio.c",
@@ -154,7 +154,7 @@ fn main() {
         build.include(enc.join("include"));
         build.files(SBC_ENCODER.iter().map(|f| enc.join("srce").join(f)));
         build.file(csrc.join("sbc_reference.c"));
-        build.define("A2DPWB_SBC_REFERENCE", None);
+        build.define("BLUECASTER_SBC_REFERENCE", None);
     }
 
     build.compile("btstack");
@@ -174,7 +174,7 @@ fn main() {
 ///
 /// BTstack 1.8.1 keeps the free sink SEPs a headset lists in a static array
 /// of AVDTP_MAX_SEP_NUM (10) without a bounds check: an 11th overwrites the
-/// statics after it (the HFP callbacks; A2DPWB then calls a NULL
+/// statics after it (the HFP callbacks; BlueCaster then calls a NULL
 /// hfp_ag_callback). Upstream fixed it in fc208fcce0 ("a2dp: ignore
 /// additional stream endpoints", 2026-07-22, not in a release) by ignoring
 /// SEPs beyond the array; that check is added here, and the array holds 62

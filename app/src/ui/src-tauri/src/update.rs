@@ -10,7 +10,7 @@
 //! 3. wait until the core has exited (stream stopped, adapter released),
 //!    without starting it again or ending this process on its Bye;
 //! 4. run the installer (Inno Setup, `/UPDATE /SILENT`: progress only, no
-//!    questions); this process exits. The installer starts a2dpwb.exe again,
+//!    questions); this process exits. The installer starts bluecaster.exe again,
 //!    which starts the core.
 //!
 //! Only an installed copy with an updater key updates itself. The portable
@@ -82,7 +82,7 @@ fn has_pubkey(app: &AppHandle) -> bool {
         .is_some_and(|k| !k.trim().is_empty())
 }
 
-/// Installed by the Inno Setup installer (installer/A2DPWB.iss), which
+/// Installed by the Inno Setup installer (installer/BlueCaster.iss), which
 /// leaves its uninstaller here
 fn installed() -> bool {
     std::env::current_exe().map(|e| e.with_file_name("unins000.exe").is_file()).unwrap_or(false)
@@ -116,7 +116,7 @@ impl Updates {
 
     fn fail(&self, app: &AppHandle, code: &str, detail: impl ToString) {
         let detail = detail.to_string();
-        eprintln!("a2dpwb: update failed ({code}): {detail}");
+        eprintln!("bluecaster: update failed ({code}): {detail}");
         self.set(app, Phase::Failed { code: code.into(), detail });
     }
 }
@@ -131,7 +131,7 @@ pub fn start(app: &AppHandle, manifest_url: String) -> Result<(), String> {
         Phase::Idle | Phase::Failed { .. } => {}
     }
     if !manifest_url.starts_with(MANIFEST_PREFIX) || !manifest_url.ends_with("/latest.json") {
-        return Err(format!("not a manifest of A2DPWB's releases: {manifest_url}"));
+        return Err(format!("not a manifest of BlueCaster's releases: {manifest_url}"));
     }
     let url: tauri::Url = manifest_url.parse().map_err(|e| format!("{manifest_url}: {e}"))?;
     updates.set(app, Phase::Downloading { version: String::new(), downloaded: 0, total: None });
@@ -163,8 +163,8 @@ type Failure = (&'static str, String);
 async fn download(app: &AppHandle, updates: &Updates, url: tauri::Url) -> Result<(), Failure> {
     // The plugin runs an .exe as an NSIS installer: `/UPDATE` and, with
     // tauri.conf.json's installMode "basicUi", none of NSIS's own options.
-    // Inno Setup's /SILENT is NSIS's passive mode; A2DPWB.iss starts
-    // a2dpwb.exe again after an /UPDATE, so no /R /ARGS
+    // Inno Setup's /SILENT is NSIS's passive mode; BlueCaster.iss starts
+    // bluecaster.exe again after an /UPDATE, so no /R /ARGS
     let updater = app
         .updater_builder()
         .installer_args(["/SILENT", "/NORESTART"])
@@ -217,7 +217,7 @@ async fn install(app: &AppHandle, updates: &Updates, ipc: &Ipc) -> Result<bool, 
     let start = Instant::now();
     while win_sys::single_instance::is_held(&ipc::core_mutex_name()) {
         if start.elapsed() >= CORE_EXIT_TIMEOUT {
-            return Err(("update.core_running", "a2dpwb-core.exe did not exit".into()));
+            return Err(("update.core_running", "bluecaster-core.exe did not exit".into()));
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
