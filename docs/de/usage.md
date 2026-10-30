@@ -69,7 +69,7 @@ Die Kopfhörer und Lautsprecher, an die A2DPWB streamen kann, jeweils mit eigene
 - **HCI-Aufzeichnung starten** / **HCI-Aufzeichnung beenden** (siehe [Den Medienstream prüfen](#verify-stream))
 - **Diagnose kopieren**: Version, Betriebssystem, Adapter, Profil, den Ablauf, Warnungen / Fehler und das aktuelle Protokoll in die Zwischenablage, bereit zum Einfügen in einen Fehlerbericht. **Bluetooth-Adressen maskieren** (standardmäßig aktiviert) ersetzt Adressen durch `<addr-1>`, `<addr-2>`... (die des Adapters durch `<adapter>`) und Gerätenamen durch `<device-1>`, `<device-2>`... und blendet USB-Seriennummern und Ihren Windows-Benutzernamen aus
 
-Mit **Einstellungen > Entwicklermodus** hat die Diagnose zusätzlich eine Registerkarte **Peer-Empfängertest** (siehe [Peer-Empfängertest](#receiver)).
+Mit **Einstellungen > Entwicklermodus** hat die Seite **Entwickler** eine Registerkarte **Peer-Empfängertest** (siehe [Peer-Empfängertest](#receiver)).
 
 ### Adapter
 
@@ -87,7 +87,7 @@ Mit **Einstellungen > Entwicklermodus** hat die Diagnose zusätzlich eine Regist
 | Start | **Mit Windows starten** und **Im Infobereich starten** (siehe [Mit Windows starten](#autostart)), **In den Infobereich minimieren** und **Klick auf das Infobereich-Symbol öffnet das Hauptfenster** (siehe [Infobereich und Flyout](#tray)) |
 | Benachrichtigungen | **Benachrichtigen, wenn ein Gerät verbunden wird** (das Gerät, sein Akkustand, der Codec und womit er läuft; standardmäßig aktiviert), **Bei niedrigem Akkustand benachrichtigen**: **Unter 20%** (Standard), **Unter 10%**, **Unter 5%** oder **Nie**, einmal pro Verbindung (erneut erst, nachdem der Akkustand wieder 5 Punkte darüber lag) |
 | Updates | **Nach Updates suchen**, **Beim Start nach Updates suchen**, **Vorabversionen bei der Updatesuche einbeziehen** (bietet auch Betaversionen an), **Jetzt aktualisieren** (siehe [Updates](#updates)) |
-| Erweitert | **Entwicklermodus** (fügt die Seite **Entwickler** mit der **Max. Mediapaketgröße** jedes Geräts, der Diagnose den Empfängertest und dem Protokoll mehr Details hinzu; kein Neustart nötig), **Einstellungsordner** mit **Konfigurationsordner öffnen**, **Einrichtung ausführen** |
+| Erweitert | **Entwicklermodus** (fügt die Seite **Entwickler** mit der **Max. Mediapaketgröße** jedes Geräts und dem Peer-Empfängertest sowie dem Protokoll mehr Details hinzu; kein Neustart nötig), **Einstellungsordner** mit **Konfigurationsordner öffnen**, **Einrichtung ausführen** |
 | Info über A2DPWB | Version, Lizenz, Lizenzen von Drittanbietern, **A2DPWB beenden** |
 
 ### Einrichtung beim ersten Start
@@ -193,7 +193,7 @@ Versetzen Sie die Kopfhörer vorher in den Kopplungsmodus.
 | `--scan [seconds]` | Geräte in der Nähe auflisten und beenden (Standard 10 Sekunden) |
 | `-h` | Hilfe anzeigen |
 
-Für Entwicklung und Tests gibt es außerdem `--hci-tcp <host:port>` (ein virtueller Controller über TCP statt des WinUSB-Adapters), `--test-tone` (1 kHz links / 1,5 kHz rechts statt des aufgenommenen Audios), `--duration <s>` (nach dieser Anzahl Sekunden beenden) und `--hci-capture <file.pklg>` (HCI-Aufzeichnung des gesamten Laufs); siehe [Bauen](building#emu).
+Für Entwicklung und Tests gibt es außerdem `--hci-tcp <host:port>` (ein virtueller Controller über TCP statt des WinUSB-Adapters), `--test-tone` (1 kHz links / 1,5 kHz rechts statt des aufgenommenen Audios), `--duration <s>` (nach dieser Anzahl Sekunden beenden) und `--hci-capture <file.pklg>` (HCI-Aufzeichnung des gesamten Laufs); siehe [Bauen](../building#emu).
 
 Ohne `--cli` ist `a2dpwb-core.exe` das residente Programm: Es startet auch das Fenster, außer mit `--background` (nur das Symbol im Infobereich, wird von **Mit Windows starten** verwendet, wenn **Im Infobereich starten** eingeschaltet ist). `a2dpwb-core.exe --quit` fordert ein laufendes A2DPWB auf, das Streaming zu beenden und sich zu schließen (das Installationsprogramm verwendet dies).
 
@@ -321,7 +321,7 @@ A2DPWB unterstützt drei aptX-Codecs, kodiert mit [libopenaptx](https://github.c
 {: .note }
 **aptX Adaptive ist bei 48 kHz mit echten Kopfhörern bestätigt:** Ein Nutzer hat es unter 2.0.2-beta.6 ohne Aussetzer oder Stottern an einen EarFun Air Pro 4+ gestreamt, so stabil wie klassisches aptX ([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)). Es besteht außerdem die Unit-Tests, die bitgenaue Testsuite des Originalprojekts und den End-to-End-Test gegen die virtuelle Bluetooth-Senke (`tools/emu`, die den RTP-Header, die Paketgrößen und die Frame-Typen prüft; das Audio wird nicht dekodiert, da es keinen offenen Decoder gibt). Das Originalprojekt meldet, dass es unter Linux / PipeWire mit Bose QuietComfort Ultra (1. Generation) und B&W Px7 S2e bei 48 kHz in Hoch und Niedrige Latenz funktioniert. 96 kHz (Hoch 646 kbps, Standard 340, Mobil 255) wird nur verwendet, wenn es in seinen Einstellungen (oder mit `--rate 96000`) gewählt ist und die Kopfhörer eine R2-Senke sind, die es meldet, nie in Niedrige Latenz; auch 96 kHz ist inzwischen mit echten Kopfhörern bestätigt ([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)). Automatisch, auch die automatische Auswahl, streamt 48 kHz. [Rückmeldungen willkommen](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/11).
 
-Der Encoder ist der rein in Rust geschriebene aptX-Adaptive-Encoder von [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) (MIT). Das Originalprojekt beschreibt ihn als Clean-Room-Neuimplementierung, deren Zahlentabellen aus rechtmäßig erworbenen, ausgelieferten Qualcomm-Binärdateien und Funkmitschnitten rekonstruiert wurden; Code, SDK oder Binärdateien von Qualcomm sind nicht enthalten (siehe [Lizenzen](licenses)).
+Der Encoder ist der rein in Rust geschriebene aptX-Adaptive-Encoder von [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) (MIT). Das Originalprojekt beschreibt ihn als Clean-Room-Neuimplementierung, deren Zahlentabellen aus rechtmäßig erworbenen, ausgelieferten Qualcomm-Binärdateien und Funkmitschnitten rekonstruiert wurden; Code, SDK oder Binärdateien von Qualcomm sind nicht enthalten (siehe [Lizenzen](../licenses)).
 
 - **Auswahl**: Automatisch wählt es, wenn die Kopfhörer weder LHDC V5 noch LDAC anbieten. Oder wählen Sie **aptX Adaptive** unter **Codecs** oder `-c aptxad`.
 - **Format**: 48 kHz Stereo, 24 Bit; 96 kHz in hoher Qualität, wenn gewählt, an ein Gerät, das sie meldet (aptX Adaptive R2); eine Anforderung von 44,1 kHz wird mit 48 kHz aufgenommen.
@@ -406,7 +406,7 @@ Die meisten Kopfhörer können nicht anzeigen, welcher Codec verwendet wird. **D
 
 Sie können eine Aufzeichnung vor dem Verbinden oder während des laufenden Streamings starten. Beginnt sie während einer Verbindung, schreibt A2DPWB zuerst die gemerkten Pakete des Verbindungsaufbaus (L2CAP-Kanalaufbau und AVDTP-Signalisierung, einschließlich der Codec-Aushandlung), sodass die Datei trotzdem ausgewertet werden kann. Die Diagnose zeigt den Dateipfad während der Aufzeichnung und nach dem Beenden an.
 
-Öffnen Sie die Aufzeichnung in Wireshark oder prüfen Sie sie mit dem Entwicklerwerkzeug `a2dpwb_decode` (aus dem Quellcode gebaut, siehe [Bauen](building)):
+Öffnen Sie die Aufzeichnung in Wireshark oder prüfen Sie sie mit dem Entwicklerwerkzeug `a2dpwb_decode` (aus dem Quellcode gebaut, siehe [Bauen](../building)):
 
 ```
 a2dpwb_decode "%APPDATA%\A2DPWB\hci_20260925_120000.pklg" -o C:\temp\check
@@ -460,7 +460,7 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 `--remote-sink auto` findet den Empfänger im lokalen Netzwerk, streamt an dessen Bluetooth-Adapter, sofern `-d` kein anderes Gerät angibt, und gibt die Statistik des Empfängers alle 5 Sekunden und am Ende aus: Bitrate, verlorene und verspätete Pakete (RTP-Sequenznummern), Jitter und Lücken, Aussetzer und Sprünge eines simulierten Wiedergabepuffers, Stream- / Dekodierfehler und den RSSI beim Empfänger (relativ zu dessen Golden Receive Range: 0 = gut, negativ = zu schwach). Ohne `--test-tone` sendet es das Systemaudio. `--remote-sink <host[:port]>` gibt den Empfänger direkt an, statt ihn zu suchen.
 
 {: .note }
-Mit **Einstellungen > Entwicklermodus** hat die Diagnose eine Registerkarte **Peer-Empfängertest**. In dieser Version ist sie eine Vorschau: Sie speichert die Empfängeradresse, streamt aber noch nicht. Verwenden Sie die Kommandozeile oben.
+Derselbe Test läuft auch im Fenster: Schalten Sie **Einstellungen > Entwicklermodus** ein und öffnen Sie **Entwickler > Peer-Empfängertest**. Er findet den Empfänger (oder nimmt seine Adresse), streamt mit dem gewählten Codec und der gewählten Quelle (Testton oder Systemaudio), prüft jeden Schritt und zeigt das Gesendete neben dem, was der Empfänger gezählt hat. A2DPWB muss dafür nicht beendet werden.
 
 Beide Seiten zählen die Pakete eines Streams ab dessen erstem Paket, sodass gesendete und empfangene Pakete verglichen werden können: Sie sollten gleich sein. Bluetooth überträgt verlorene Funkpakete innerhalb der Controller erneut, und A2DPWB gibt ein Paket nicht auf, solange die Verbindung besteht; eine schlechte Funkverbindung zeigt sich daher beim Empfänger als Lücken, Jitter und Aussetzer statt als verlorene Pakete. Kommt die Verbindung nicht nach, werden auf der Sendeseite Pakete vor dem Senden verworfen. Die Anzahl der Neuübertragungen ist auf keiner der beiden Seiten verfügbar.
 

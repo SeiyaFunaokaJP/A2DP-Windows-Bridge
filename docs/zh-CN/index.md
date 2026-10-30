@@ -85,7 +85,7 @@ has_toc: false
 | 组件 | Windows 10 (x64 / ARM64) | Windows 11 (x64 / ARM64) | Linux (Ubuntu) |
 |:----------|:----------------:|:----------------:|:--------------:|
 | **A2DPWB**（窗口、托盘、CLI） | ✅（尚未在实机上试用） | ✅ | ❌ |
-| [从源代码构建](building)（Rust、Visual Studio 2022+、Node.js） | ✅ | ✅ | ❌ |
+| [从源代码构建](../building)（Rust、Visual Studio 2022+、Node.js） | ✅ | ✅ | ❌ |
 | `a2dpwb_decode`（流检查工具） | ✅ | ✅ | ❌ |
 | 端到端测试 `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
 | 虚拟适配器 `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
@@ -96,6 +96,10 @@ A2DPWB 本身仅在 Windows 上运行（Windows 10 22H2 或 Windows 11），提�
 ## 已验证的硬件 {#verified-hardware}
 
 已在 TP-Link UB500、通用 RTL8761B、笔记本电脑内置的 RTL8852BE、ASUS BT400 和 CSR8510 适配器上，用 Sony WH-1000XM4 和 WH-1000XM6、EarFun Air Pro 4+、Grado GW100x 等确认。包含编解码器、版本及相关报告的完整列表：**[已验证的硬件](../hardware)**（英文）。
+
+## 配合使用的工具
+
+在 issue 中报告可与 A2DPWB 配合使用的第三方应用，例如耳机控制应用（并非 A2DPWB 制作或支持）：**[Works With](../works-with)**（英文）。
 
 ## 音频捕获模式
 
@@ -131,7 +135,7 @@ flowchart TD
     usb -.-> hp["耳机"]
 ```
 
-A2DPWB 完全绕过 Windows 的 Bluetooth 堆栈。它通过 WinUSB 直接与 USB Bluetooth 适配器通信，并使用 [BTstack](https://github.com/bluekitchen/btstack) 在用户模式下实现完整的 Bluetooth 协议栈。由一个小型常驻程序（`a2dpwb-core.exe`，带有托盘图标）负责串流音频；窗口只显示其状态，因此关闭窗口不会停止音频（请参阅[架构](architecture)）。
+A2DPWB 完全绕过 Windows 的 Bluetooth 堆栈。它通过 WinUSB 直接与 USB Bluetooth 适配器通信，并使用 [BTstack](https://github.com/bluekitchen/btstack) 在用户模式下实现完整的 Bluetooth 协议栈。由一个小型常驻程序（`a2dpwb-core.exe`，带有托盘图标）负责串流音频；窗口只显示其状态，因此关闭窗口不会停止音频（请参阅[架构](../architecture)）。
 
 ## 功能
 

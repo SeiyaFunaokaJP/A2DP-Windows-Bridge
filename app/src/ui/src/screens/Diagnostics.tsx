@@ -2,8 +2,8 @@
 // Audio stream's ISO counters), the eleven-step connection flow, the log
 // with level, text and attempt filters, HCI capture, "copy diagnostic
 // info", verbose logging, the diagnostic bundle (one .zip of logs,
-// captures and crash reports for a report), and in developer mode the
-// receiver test.
+// captures and crash reports for a report). The receiver test is on the
+// Developer screen.
 
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, untrack, type JSX } from "solid-js";
 import { errorText, useApp } from "../app/context";

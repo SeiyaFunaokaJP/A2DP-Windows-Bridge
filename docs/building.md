@@ -2,6 +2,7 @@
 title: Building
 layout: default
 nav_order: 4
+english_only: true
 ---
 
 # Building from Source
@@ -63,7 +64,8 @@ A2DP-Windows-Bridge/
 │   │   ├── ui/             a2dpwb.exe: Tauri 2 + SolidJS (pnpm dev runs it in a browser with a mock core)
 │   │   ├── driver/         a2dpwb-driver.exe: WinUSB assign / restore (elevated)
 │   │   └── crates/         Libraries: btstack-sys, hci-transport, bt-host, codec, the codec -sys crates,
-│   │                       pipeline, audio-capture, win-sys, core (a2dpwb-core), ipc, le-audio, lc3-sys
+│   │                       pipeline, audio-capture, win-sys, core (a2dpwb-core), ipc, le-audio, lc3-sys,
+│   │                       aptx-adaptive (aptX Adaptive encoder)
 │   ├── lang/               Localization (en.json is the source; tools/check_lang.py checks the others)
 │   └── resources/          Icon and manifest
 ├── Cargo.toml              Cargo workspace
@@ -86,6 +88,7 @@ A2DP-Windows-Bridge/
 ## Tests
 
 ```bash
+cargo fmt --all --check
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cd app/src/ui && pnpm exec tsc --noEmit && pnpm exec vitest run
@@ -109,12 +112,12 @@ python tools/emu/setup_env.py                       # once: creates tools/emu/.v
 cmake -S tools/a2dp_decode -B build/a2dp_decode     # once: the decoder tool
 cmake --build build/a2dp_decode --config Release
 cargo build --release -p a2dpwb-core-exe
-python tools/emu/run_test.py                        # about 35 s for all codecs
+python tools/emu/run_test.py                        # every codec and negotiation case
 ```
 
 How it works:
 
-- `emu_sink.py` runs two [Bumble](https://github.com/google/bumble) virtual controllers on an in-process link. One is served as H4 over TCP (`127.0.0.1`) for A2DPWB. The other is used by a Bumble A2DP sink that offers SBC, AAC, aptX, aptX HD, aptX LL and LDAC, and records its HCI traffic.
+- `emu_sink.py` runs two [Bumble](https://github.com/google/bumble) virtual controllers on an in-process link. One is served as H4 over TCP (`127.0.0.1`) for A2DPWB. The other is used by a Bumble A2DP sink that offers SBC (SBC XQ capable), AAC, aptX, aptX HD, aptX LL, LDAC, LHDC V5, FastStream, Opus, Opus 05 and aptX Adaptive, and records its HCI traffic.
 - `run_test.py` runs `a2dpwb-core.exe --cli` for each codec with development options: `--hci-tcp` (virtual controller instead of WinUSB), `--test-tone` (1 kHz left / 1.5 kHz right instead of system audio), `--duration`, `--hci-capture`. The environment variable `A2DPWB_CONFIG_DIR` points A2DPWB at a separate config folder, so pairing with the virtual sink never touches your real link keys.
 - Both HCI captures are then checked with `a2dpwb_decode` (the sink side with `--received`).
 
@@ -123,15 +126,19 @@ A codec passes when all of these hold:
 - the requested codec was negotiated
 - `a2dpwb_decode` finds no problem on the sent side or the received side
 - the sink received every media packet and frame A2DPWB sent, and at least 90% of the requested audio duration was sent
-- except LDAC (no open-source decoder): the decoded audio is identical on both sides and is the test tone
+- except LDAC, LHDC V5 and aptX Adaptive (no open-source decoder): the decoded audio is identical on both sides and is the test tone
 
 | Option | Description |
 |:-------|:------------|
-| `--codecs sbc aac ...` | Test only these codecs (`sbc aac aptx aptxhd aptxll ldac`, default: all) |
+| `--codecs sbc aac ...` | Test only these codecs (`sbc sbcxq aac aptx aptxhd aptxll ldac lhdcv5 faststream opus opus05`) or negotiation cases (sample rates, low bitpools, SBC frame setups, aptX Adaptive, ...; `-h` lists them); default: all |
+| `--le-audio [case ...]` | Run the LE Audio (experimental) cases instead (default: all of them) |
+| `--scan [case ...]` | Run the device scan cases instead (`eir`, `name-request`) |
 | `--duration <s>` | Seconds of streaming per codec (default 5) |
 | `--max-packet <bytes>` | Passed to A2DPWB (max media packet size, see [Usage](usage)) |
 | `--a2dpwb <exe>` | The core to test (default `target/release/a2dpwb-core.exe`) |
-| `--decoder <exe>` | The decoder tool (default `build/a2dp_decode/Release/a2dpwb_decode.exe`) |
+| `--decoder <exe>` | The decoder tool (default `<build-dir>/a2dp_decode/<config>/a2dpwb_decode.exe`) |
+| `--build-dir <dir>`, `--config <cfg>` | Where the decoder tool was built (default `build`, `Release`) |
+| `--base-port <port>` | First TCP port (default 9101; LE Audio cases use +100); change it to run several tests at once |
 | `--out <dir>` | Output folder (default `tools/emu/out`) |
 
 For each codec, `tools/emu/out/<codec>/` holds the captures (`a2dpwb.pklg`, `sink.pklg`), logs, the `a2dpwb_decode` reports and the decoded WAV files. The exit code is 0 when every codec passed.

@@ -85,7 +85,7 @@ has_toc: false
 | 元件 | Windows 10 (x64 / ARM64) | Windows 11 (x64 / ARM64) | Linux (Ubuntu) |
 |:----------|:----------------:|:----------------:|:--------------:|
 | **A2DPWB**（視窗、系統匣、CLI） | ✅（尚未在實機上試過） | ✅ | ❌ |
-| [從原始碼建置](building)（Rust、Visual Studio 2022 以上、Node.js） | ✅ | ✅ | ❌ |
+| [從原始碼建置](../building)（Rust、Visual Studio 2022 以上、Node.js） | ✅ | ✅ | ❌ |
 | `a2dpwb_decode`（串流檢查工具） | ✅ | ✅ | ❌ |
 | 端對端測試 `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
 | 虛擬介面卡 `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
@@ -96,6 +96,10 @@ A2DPWB 本身僅能在 Windows（Windows 10 22H2 或 Windows 11）上以 x64 與
 ## 已驗證的硬體 {#verified-hardware}
 
 已在 TP-Link UB500、通用 RTL8761B、筆電內建的 RTL8852BE、ASUS BT400 與 CSR8510 介面卡上，以 Sony WH-1000XM4 與 WH-1000XM6、EarFun Air Pro 4+、Grado GW100x 等確認。包含編解碼器、版本與相關回報的完整清單：**[已驗證的硬體](../hardware)**（英文）。
+
+## 搭配使用的工具
+
+在 issue 中回報可與 A2DPWB 搭配使用的第三方應用程式，例如耳機控制 App（並非 A2DPWB 製作或支援）：**[Works With](../works-with)**（英文）。
 
 ## 音訊擷取模式
 
@@ -131,7 +135,7 @@ flowchart TD
     usb -.-> hp["耳機"]
 ```
 
-A2DPWB 完全繞過 Windows 藍牙堆疊。它透過 WinUSB 直接與 USB 藍牙介面卡通訊，並使用 [BTstack](https://github.com/bluekitchen/btstack) 在使用者模式下實作完整的藍牙通訊協定堆疊。音訊由一個常駐的小程式（`a2dpwb-core.exe`，附系統匣圖示）負責串流；視窗只顯示其狀態，因此關閉視窗並不會停止音訊（請參閱 [架構](architecture)）。
+A2DPWB 完全繞過 Windows 藍牙堆疊。它透過 WinUSB 直接與 USB 藍牙介面卡通訊，並使用 [BTstack](https://github.com/bluekitchen/btstack) 在使用者模式下實作完整的藍牙通訊協定堆疊。音訊由一個常駐的小程式（`a2dpwb-core.exe`，附系統匣圖示）負責串流；視窗只顯示其狀態，因此關閉視窗並不會停止音訊（請參閱 [架構](../architecture)）。
 
 ## 功能
 

@@ -137,17 +137,17 @@ A2DPWB bypasses the Windows Bluetooth stack entirely. It communicates directly w
 
 ## Features
 
-- **Multi-codec**: LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, aptX Low Latency, AAC, SBC and (experimental) Opus / Opus 05 with automatic negotiation
+- **Multi-codec**: LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, aptX Low Latency, AAC, SBC XQ, SBC and (experimental) Opus / Opus 05 / FastStream with automatic negotiation
 - **LE Audio (experimental)**: LC3 to LE Audio headphones and earbuds (BAP unicast, both earbuds of a pair, headset volume, media buttons, GMAP low latency). Needs an adapter with Bluetooth 5.2 isochronous channels; tested only against the Bluetooth emulator, not yet with real LE Audio headphones ([Usage](usage#le-audio))
 - **Three capture modes**: System loopback, virtual audio device routing, or one application's output
 - **Window, tray and CLI**: a window for setup and diagnostics, a tray flyout and menu for everyday connecting, and a command line (see [Usage](usage))
 - **WinUSB in the app**: assigns the WinUSB driver to the adapter and restores the original driver, no Zadig needed (see [Setup](setup#winusb))
 - **First-run setup**: adapter, driver and firmware, headphones, a first connection
-- **ABR**: Adaptive Bit Rate for unstable connections (LDAC, LHDC V5 and aptX Adaptive)
+- **ABR**: Adaptive Bit Rate for unstable connections (LDAC, LHDC V5 and aptX Adaptive; adaptive bitpool for SBC and SBC XQ)
 - **Auto-reconnect**: Reconnects on disconnection (up to 10 attempts), and after the PC resumes from sleep
 - **Link quality and AFH**: Shows what is sent, the RSSI and the channels in use; tells the adapter which Wi-Fi channels to avoid (see [Usage](usage#link-quality))
 - **Headphone controls (AVRCP)**: Volume slider synced with the headphones and the Windows volume; their play/pause, next and previous buttons control playback on the PC (see [Usage](usage#headphone-buttons))
-- **Per-device settings**: a codec (with its own settings) and a output source for each audio device, side by side on Home and connectable from the tray
+- **Per-device settings**: a codec (with its own settings) and an output source for each audio device, side by side on Home and connectable from the tray
 - **Updates**: The installed version updates itself after the audio device disconnects (see [Usage](usage#updates))
 - **Localization**: English, Japanese, Simplified / Traditional Chinese, Korean, German, French and Spanish
 - **Realtek firmware**: Guided firmware download for Realtek adapters

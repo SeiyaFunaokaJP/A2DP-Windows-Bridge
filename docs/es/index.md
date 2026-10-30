@@ -85,7 +85,7 @@ Transmite el audio del sistema mediante **LHDC V5, LDAC, aptX Adaptive, aptX HD,
 | Componente | Windows 10 (x64 / ARM64) | Windows 11 (x64 / ARM64) | Linux (Ubuntu) |
 |:----------|:----------------:|:----------------:|:--------------:|
 | **A2DPWB** (ventana, bandeja, CLI) | ✅ (aún no probado en hardware real) | ✅ | ❌ |
-| [Compilación desde el código fuente](building) (Rust, Visual Studio 2022+, Node.js) | ✅ | ✅ | ❌ |
+| [Compilación desde el código fuente](../building) (Rust, Visual Studio 2022+, Node.js) | ✅ | ✅ | ❌ |
 | `a2dpwb_decode` (comprobador del flujo) | ✅ | ✅ | ❌ |
 | Prueba de extremo a extremo `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
 | Adaptador virtual `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
@@ -96,6 +96,10 @@ A2DPWB solo funciona en Windows (Windows 10 22H2 o Windows 11), con compilacione
 ## Hardware verificado {#verified-hardware}
 
 Probado con Sony WH-1000XM4 y WH-1000XM6, EarFun Air Pro 4+, Grado GW100x y otros, con los adaptadores TP-Link UB500, RTL8761B genérico, el RTL8852BE integrado de un portátil, ASUS BT400 y CSR8510. La lista completa con códecs, versiones y los informes en que se basa: **[Hardware verificado](../hardware)** (en inglés).
+
+## Funciona con
+
+Aplicaciones de terceros que funcionan junto con A2DPWB, como apps de control de auriculares, según lo informado en los issues (no las crea ni las soporta A2DPWB): **[Works With](../works-with)** (en inglés).
 
 ## Modos de captura de audio
 
@@ -131,7 +135,7 @@ flowchart TD
     usb -.-> hp["Auriculares"]
 ```
 
-A2DPWB omite por completo la pila Bluetooth de Windows. Se comunica directamente con un adaptador Bluetooth USB a través de WinUSB y usa [BTstack](https://github.com/bluekitchen/btstack) para implementar toda la pila de protocolos Bluetooth en modo de usuario. Un pequeño programa residente (`a2dpwb-core.exe`, con el icono de la bandeja) transmite el audio; la ventana solo muestra su estado, por lo que cerrarla no detiene el audio (consulte [Arquitectura](architecture)).
+A2DPWB omite por completo la pila Bluetooth de Windows. Se comunica directamente con un adaptador Bluetooth USB a través de WinUSB y usa [BTstack](https://github.com/bluekitchen/btstack) para implementar toda la pila de protocolos Bluetooth en modo de usuario. Un pequeño programa residente (`a2dpwb-core.exe`, con el icono de la bandeja) transmite el audio; la ventana solo muestra su estado, por lo que cerrarla no detiene el audio (consulte [Arquitectura](../architecture)).
 
 ## Funciones
 

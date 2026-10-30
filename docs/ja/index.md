@@ -85,7 +85,7 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LHDC V5、LDAC
 | コンポーネント | Windows 10 (x64 / ARM64) | Windows 11 (x64 / ARM64) | Linux (Ubuntu) |
 |:---------------|:----------------:|:----------------:|:--------------:|
 | **A2DPWB**（ウィンドウ / トレイ / CLI） | ✅（実機では未確認） | ✅ | ❌ |
-| [ソースからのビルド](building)（Rust、Visual Studio 2022 以降、Node.js） | ✅ | ✅ | ❌ |
+| [ソースからのビルド](../building)（Rust、Visual Studio 2022 以降、Node.js） | ✅ | ✅ | ❌ |
 | `a2dpwb_decode`（ストリーム検査ツール） | ✅ | ✅ | ❌ |
 | エンドツーエンドテスト `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
 | 仮想アダプター `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
@@ -96,6 +96,10 @@ A2DPWB 本体は Windows 専用（Windows 10 22H2 または Windows 11）で、x
 ## 検証済みの機器 {#verified-hardware}
 
 Sony WH-1000XM4・WH-1000XM6、EarFun Air Pro 4+、Grado GW100x などを、TP-Link UB500、汎用 RTL8761B、ノート PC 内蔵の RTL8852BE、ASUS BT400、CSR8510 のアダプターで確認しています。コーデック、バージョン、元になった報告まで含めた一覧は **[検証済みの機器](../hardware)**（英語） にあります。
+
+## 連携するツール
+
+イヤホンの操作アプリなど、A2DPWB と組み合わせて動くと issue で報告された他のアプリです（A2DPWB が作ったりサポートしたりしているものではありません）: **[Works With](../works-with)**（英語）。
 
 ## オーディオキャプチャモード
 
@@ -131,7 +135,7 @@ flowchart TD
     usb -.-> hp["ヘッドホン"]
 ```
 
-A2DPWB は Windows の Bluetooth スタックを完全にバイパスします。[BTstack](https://github.com/bluekitchen/btstack) を使用して WinUSB 経由で USB Bluetooth アダプターと直接通信し、Bluetooth プロトコルスタック全体をユーザーモードで実装します。音を送るのは小さな常駐プログラム（`a2dpwb-core.exe`、トレイのアイコン付き）で、ウィンドウはその状態を表示するだけなので、閉じても音は止まりません（[アーキテクチャ](architecture)を参照）。
+A2DPWB は Windows の Bluetooth スタックを完全にバイパスします。[BTstack](https://github.com/bluekitchen/btstack) を使用して WinUSB 経由で USB Bluetooth アダプターと直接通信し、Bluetooth プロトコルスタック全体をユーザーモードで実装します。音を送るのは小さな常駐プログラム（`a2dpwb-core.exe`、トレイのアイコン付き）で、ウィンドウはその状態を表示するだけなので、閉じても音は止まりません（[アーキテクチャ](../architecture)を参照）。
 
 ## 主な機能
 

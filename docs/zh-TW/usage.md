@@ -69,7 +69,7 @@ A2DPWB 可以串流到的耳機與喇叭，各有自己的設定：**掃描裝�
 - **開始 HCI 擷取** / **停止 HCI 擷取**（請參閱 [驗證媒體串流](#verify-stream)）
 - **複製診斷資訊**：將版本、作業系統、介面卡、設定檔、連線流程、警告 / 錯誤與最近的記錄複製到剪貼簿，可直接貼到錯誤回報中。**遮蔽藍牙位址**（預設開啟）將位址替換為 `<addr-1>`、`<addr-2>`...（介面卡自身為 `<adapter>`），裝置名稱替換為 `<device-1>`、`<device-2>`...，並隱藏 USB 序號和 Windows 使用者名稱
 
-開啟 **設定 > 開發人員模式** 後，「診斷」中還會出現 **對端接收器測試** 分頁（請參閱 [對端接收器測試](#receiver)）。
+開啟 **設定 > 開發人員模式** 後，**開發者** 畫面中有 **對端接收器測試** 分頁（請參閱 [對端接收器測試](#receiver)）。
 
 ### 介面卡
 
@@ -87,7 +87,7 @@ A2DPWB 可以串流到的耳機與喇叭，各有自己的設定：**掃描裝�
 | 啟動 | **隨 Windows 啟動** 與 **在系統匣中啟動**（請參閱 [隨 Windows 啟動](#autostart)）、**最小化至系統匣** 與 **按一下系統匣圖示開啟主視窗**（請參閱 [系統匣與快顯視窗](#tray)） |
 | 通知 | **裝置連線時通知**（裝置、電量、轉碼器及其執行參數；預設開啟）、**電池電量低時通知**：**低於 20%**（預設）、**低於 10%**、**低於 5%** 或 **永不**，每次連線只通知一次（電量回升至高出 5 個百分點後才會再次通知） |
 | 更新 | **檢查更新**、**啟動時檢查更新**、**檢查更新時包含搶先版**（也會通知 Beta 版本）、**立即更新**（請參閱 [更新](#updates)） |
-| 進階 | **開發人員模式**（加入含每個裝置 **媒體封包大小上限** 的 **開發者** 畫面，在「診斷」中加入接收器測試，並在記錄中寫入更多詳細資訊；不需要重新啟動）、**設定資料夾** 與 **開啟設定資料夾**、**執行設定精靈** |
+| 進階 | **開發人員模式**（加入含每個裝置 **媒體封包大小上限** 及對端接收器測試的 **開發者** 畫面，並在記錄中寫入更多詳細資訊；不需要重新啟動）、**設定資料夾** 與 **開啟設定資料夾**、**執行設定精靈** |
 | 關於 A2DPWB | 版本、授權、第三方授權、**結束 A2DPWB** |
 
 ### 首次執行設定
@@ -193,7 +193,7 @@ a2dpwb-core.exe --cli --scan
 | `--scan [seconds]` | 列出附近的裝置後結束（預設 10 秒） |
 | `-h` | 顯示說明 |
 
-開發與測試用途另有 `--hci-tcp <host:port>`（以 TCP 連線的虛擬控制器取代 WinUSB 介面卡）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 取代擷取的音訊）、`--duration <s>`（經過指定秒數後停止）與 `--hci-capture <file.pklg>`（擷取整個執行期間的 HCI）；請參閱 [建置](building#emu)。
+開發與測試用途另有 `--hci-tcp <host:port>`（以 TCP 連線的虛擬控制器取代 WinUSB 介面卡）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 取代擷取的音訊）、`--duration <s>`（經過指定秒數後停止）與 `--hci-capture <file.pklg>`（擷取整個執行期間的 HCI）；請參閱 [建置](../building#emu)。
 
 未加上 `--cli` 時，`a2dpwb-core.exe` 即為常駐程式：它也會啟動視窗，但加上 `--background` 時除外（只顯示系統匣圖示，開啟 **在系統匣中啟動** 時，**隨 Windows 啟動** 使用此選項）。`a2dpwb-core.exe --quit` 會要求執行中的 A2DPWB 停止串流並結束（安裝程式會使用此選項）。
 
@@ -321,7 +321,7 @@ A2DPWB 支援三種使用 [libopenaptx](https://github.com/pali/libopenaptx) 編
 {: .note }
 **aptX Adaptive 已在 48 kHz 下以實際耳機確認：** 有使用者在 2.0.2-beta.6 上將它串流到 EarFun Air Pro 4+，沒有斷音或卡頓，與傳統 aptX 一樣穩定（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）。它也通過了單元測試、上游的位元完全一致測試套件，以及針對虛擬藍牙接收端的端對端測試（`tools/emu`，會檢查 RTP 標頭、封包大小與訊框類型；由於沒有開放的解碼器，不會解碼音訊）。上游回報在 Linux / PipeWire 上搭配 Bose QuietComfort Ultra（第 1 代）與 B&W Px7 S2e，以 48 kHz 的高與低延遲模式可正常運作。96 kHz（高 646 kbps、標準 340、行動 255）僅在其設定中選擇（或使用 `--rate 96000`）且耳機為列出 96 kHz 的 R2 接收端時使用，低延遲時一律不使用；96 kHz 現在也已以實際耳機確認（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）。「自動」（包括自動選擇）以 48 kHz 串流。[歡迎回報](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/11)。
 
-編碼器為 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 以純 Rust 撰寫的 aptX Adaptive 編碼器（MIT）。上游說明它是無塵室（clean-room）重新實作，其數值表格由合法取得的 Qualcomm 出貨二進位檔與空中擷取資料重建而來；不含任何 Qualcomm 的程式碼、SDK 或二進位檔（請參閱 [授權](licenses)）。
+編碼器為 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 以純 Rust 撰寫的 aptX Adaptive 編碼器（MIT）。上游說明它是無塵室（clean-room）重新實作，其數值表格由合法取得的 Qualcomm 出貨二進位檔與空中擷取資料重建而來；不含任何 Qualcomm 的程式碼、SDK 或二進位檔（請參閱 [授權](../licenses)）。
 
 - **選擇方式**：耳機既不提供 LHDC V5 也不提供 LDAC 時，「自動」會選擇它。也可以在 **編解碼器** 畫面選擇 **aptX Adaptive**，或使用 `-c aptxad`。
 - **格式**：48 kHz 立體聲、24 位元；選擇 96 kHz 時，對列出 96 kHz 的裝置（aptX Adaptive R2）以高品質使用 96 kHz；要求 44.1 kHz 時會以 48 kHz 擷取。
@@ -406,7 +406,7 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 您可以在連線前或串流期間開始擷取。若在連線期間開始，A2DPWB 會先寫入它記住的連線建立封包（L2CAP 通道建立與 AVDTP 訊號，包含轉碼器協商），因此檔案仍可分析。錄製期間與停止後，「診斷」都會顯示檔案路徑。
 
-可在 Wireshark 中開啟擷取檔，或使用 `a2dpwb_decode` 開發者工具檢查（需從原始碼建置，請參閱 [建置](building)）：
+可在 Wireshark 中開啟擷取檔，或使用 `a2dpwb_decode` 開發者工具檢查（需從原始碼建置，請參閱 [建置](../building)）：
 
 ```
 a2dpwb_decode "%APPDATA%\A2DPWB\hci_20260925_120000.pklg" -o C:\temp\check
@@ -460,7 +460,7 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 `--remote-sink auto` 會在區域網路上尋找接收器，除非 `-d` 指定了其他裝置，否則會串流到其藍牙介面卡，並每 5 秒及結束時輸出接收器的統計資料：位元率、遺失與延遲的封包（RTP 序號）、抖動與間隔、模擬播放緩衝區的斷音與跳過、串流 / 解碼錯誤，以及接收端的 RSSI（相對於其黃金接收範圍：0 = 良好，負值 = 太弱）。未加上 `--test-tone` 時會傳送系統音訊。`--remote-sink <host[:port]>` 可直接指定接收器，而不進行搜尋。
 
 {: .note }
-開啟 **設定 > 開發人員模式** 後，「診斷」中會有 **對端接收器測試** 分頁。在此版本中它只是預覽：會儲存接收器位址，但尚無法串流。請使用上述命令列。
+同樣的測試也能在視窗中進行：開啟 **設定 > 開發人員模式**，打開 **開發者 > 對端接收器測試**。它會尋找接收器（或使用輸入的位址），以所選的轉碼器與音源（測試音或系統音訊）串流，逐步檢查，並將送出的內容與接收器統計的內容並列顯示。不需要結束 A2DPWB。
 
 兩端都從串流的第一個封包開始計算封包數，因此可以比較傳送與接收的封包數：兩者應該相等。藍牙會在控制器內部重新傳送遺失的無線封包，而且 A2DPWB 在連結存續期間不會放棄任何封包，因此無線連結不佳時，會在接收端呈現為間隔、抖動與斷音，而不是封包遺失；當連結跟不上時，傳送端會在傳送前捨棄封包。兩端都無法得知重新傳送的次數。
 

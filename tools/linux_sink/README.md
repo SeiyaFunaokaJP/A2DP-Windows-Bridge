@@ -76,9 +76,11 @@ On the A2DPWB PC (same network segment - the discovery is a broadcast):
   rate and bit depth given by `-c`, `-q`, `--rate` and `--bits` and a steady
   test tone (without `--test-tone`: the system audio), and prints its
   statistics every 5 seconds and at the end.
-- **Window**: with **Settings > Developer mode**, **Diagnostics** has a
-  **Peer Receiver Test** tab. In this version it is a preview that saves the
-  receiver address but does not stream yet; use the CLI.
+- **Window**: with **Settings > Developer mode**, open **Developer > Peer
+  Receiver Test** (A2DPWB keeps running). It finds the receiver (or takes
+  its address), streams to it with the codec, quality and source chosen
+  there (test tone or system audio), checks each step and shows what was
+  sent beside what the receiver counted.
 
 Open UDP and TCP port 51201 on the Linux PC if it has a firewall
 (`sudo ufw allow 51201`). A2DPWB can also be given the address directly

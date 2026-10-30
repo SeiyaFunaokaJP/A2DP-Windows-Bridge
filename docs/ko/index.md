@@ -85,7 +85,7 @@ WinUSB 모드의 USB Bluetooth 어댑터를 사용하여 시스템 오디오를 
 | 구성 요소 | Windows 10 (x64 / ARM64) | Windows 11 (x64 / ARM64) | Linux (Ubuntu) |
 |:----------|:----------------:|:----------------:|:--------------:|
 | **A2DPWB** (창, 트레이, CLI) | ✅ (실제 하드웨어에서는 아직 미확인) | ✅ | ❌ |
-| [소스에서 빌드](building) (Rust, Visual Studio 2022 이상, Node.js) | ✅ | ✅ | ❌ |
+| [소스에서 빌드](../building) (Rust, Visual Studio 2022 이상, Node.js) | ✅ | ✅ | ❌ |
 | `a2dpwb_decode` (스트림 검사 도구) | ✅ | ✅ | ❌ |
 | 엔드투엔드 테스트 `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
 | 가상 어댑터 `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
@@ -96,6 +96,10 @@ A2DPWB 자체는 Windows(Windows 10 22H2 또는 Windows 11) 전용이며 x64와 
 ## 검증된 하드웨어 {#verified-hardware}
 
 Sony WH-1000XM4·WH-1000XM6, EarFun Air Pro 4+, Grado GW100x 등을 TP-Link UB500, 범용 RTL8761B, 노트북 내장 RTL8852BE, ASUS BT400, CSR8510 어댑터에서 확인했습니다. 코덱, 버전, 근거가 된 보고까지 담은 전체 목록은 **[검증된 하드웨어](../hardware)** (영어)에 있습니다.
+
+## 함께 쓰는 도구
+
+이어폰 제어 앱처럼 A2DPWB와 함께 동작한다고 이슈에서 보고된 타사 앱입니다(A2DPWB가 만들거나 지원하지 않음): **[Works With](../works-with)**(영어).
 
 ## 오디오 캡처 모드
 
@@ -131,7 +135,7 @@ flowchart TD
     usb -.-> hp["헤드폰"]
 ```
 
-A2DPWB는 Windows Bluetooth 스택을 완전히 우회합니다. [BTstack](https://github.com/bluekitchen/btstack)을 사용해 WinUSB를 통해 USB Bluetooth 어댑터와 직접 통신하며, Bluetooth 프로토콜 스택 전체를 사용자 모드에서 구현합니다. 오디오는 작은 상주 프로그램(`a2dpwb-core.exe`, 트레이 아이콘 포함)이 스트리밍하고, 창은 그 상태를 표시할 뿐이므로 창을 닫아도 오디오는 멈추지 않습니다([아키텍처](architecture) 참조).
+A2DPWB는 Windows Bluetooth 스택을 완전히 우회합니다. [BTstack](https://github.com/bluekitchen/btstack)을 사용해 WinUSB를 통해 USB Bluetooth 어댑터와 직접 통신하며, Bluetooth 프로토콜 스택 전체를 사용자 모드에서 구현합니다. 오디오는 작은 상주 프로그램(`a2dpwb-core.exe`, 트레이 아이콘 포함)이 스트리밍하고, 창은 그 상태를 표시할 뿐이므로 창을 닫아도 오디오는 멈추지 않습니다([아키텍처](../architecture) 참조).
 
 ## 주요 기능
 

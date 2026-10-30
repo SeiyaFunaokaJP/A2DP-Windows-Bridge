@@ -2,6 +2,7 @@
 title: Architecture
 layout: default
 nav_order: 5
+english_only: true
 ---
 
 # Architecture
@@ -17,10 +18,11 @@ nav_order: 5
 
 ## Overview
 
-A2DP Windows Bridge (A2DPWB) enables LDAC, aptX HD, aptX Low Latency, aptX,
-AAC, and SBC Bluetooth audio on Windows. Windows' own Bluetooth stack supports
-only SBC, classic aptX and (Windows 11 only) AAC for A2DP — this tool adds LDAC, aptX HD and aptX
-Low Latency without requiring a kernel driver.
+A2DP Windows Bridge (A2DPWB) enables LHDC V5, LDAC, aptX Adaptive, aptX HD,
+aptX Low Latency, aptX, Opus, AAC, SBC XQ and SBC Bluetooth audio on Windows
+(and LC3 over LE Audio, experimental). Windows' own Bluetooth stack supports
+only SBC, classic aptX and (Windows 11 only) AAC for A2DP — this tool adds the
+others without requiring a kernel driver.
 
 Uses **BTstack + WinUSB** — entirely user-mode, no driver signing needed.
 
@@ -67,7 +69,7 @@ flowchart TB
   A per-session mutex keeps it to one instance; starting it again opens the
   window.
 - **The tray belongs to the core.** Its right-click menu (open, the first 10
-  profiles, disconnect, exit) opens at once, without starting the window. A
+  devices, disconnect, exit) opens at once, without starting the window. A
   left click starts the window's flyout (or the main window, as Settings
   say).
 - **The window only displays.** It receives a snapshot of the core's state
@@ -145,12 +147,14 @@ code; all other crates have `#![forbid(unsafe_code)]`.
 | Layer | Crate | Does |
 |:------|:------|:-----|
 | 1. FFI | `btstack-sys` | Builds BTstack with `cc` (MSVC), hand-written FFI declarations and safe wrappers, `btstack_config.h`. BTstack may only be called on its run loop thread: the `!Send` `Stack` token enforces it |
-| 1. FFI | `ldac-sys`, `openaptx-sys`, `fdkaac-sys`, `lhdcv5-sys`, `opus-sys` | Build the C encoders and expose them; one crate per library, so each license stays separate |
+| 1. FFI | `ldac-sys`, `openaptx-sys`, `fdkaac-sys`, `lhdcv5-sys`, `opus-sys`, `lc3-sys` | Build the C encoders and expose them; one crate per library, so each license stays separate |
 | 1. FFI | `win-sys` | Win32 APIs without a Rust library: MMCSS, the default audio device (IPolicyConfig), the WLAN API (AFH), power notifications, the Run key, media keys, the pipe's DACL, elevation, and the WinUSB driver assignment (SetupAPI) |
 | 2. Parts | `hci-transport` | HCI over USB ("H2") with `nusb`, and H4 over TCP to a virtual controller (`tools/emu`) |
+| 2. Parts | `aptx-adaptive` | The aptX Adaptive encoder in Rust (vendored from AKS-Logic/aptx-adaptive-linux, MIT) |
 | 2. Parts | `codec` | The `Encoder` trait, the SBC encoder (Rust port of Bluedroid's), safe wrappers of the C encoders, Codec Information parsing and the codec choice |
 | 2. Parts | `audio-capture` | WASAPI capture (`wasapi` crate): system loopback, virtual device, one application (process loopback); device and app lists, test tone |
-| 3. Engine | `bt-host` | Runs BTstack on its own thread, driven by commands and typed events: GAP, A2DP Source, AVRCP, SDP, link keys, AFH, firmware loading, HCI capture (`.pklg`) |
+| 3. Engine | `bt-host` | Runs BTstack on its own thread, driven by commands and typed events: GAP, A2DP Source, AVRCP, SDP, RFCOMM channels for the passthrough (`rfcomm.*`), link keys, AFH, firmware loading, HCI capture (`.pklg`), LE Audio (`le/`) |
+| 2. Parts | `le-audio` | LE Audio (experimental): the logic without BTstack or Windows (assigned numbers, LTV, PACS / ASCS PDUs, presets, the CSIP / VCP / MCP / CCP models) |
 | 3. Engine | `pipeline` | PCM rings, format conversion, downmix, encoding, media payloads, pacing, ABR |
 | 4. Core | `a2dpwb-core` (directory `core`) | The state machine, reconnects, sleep / resume, profiles, settings and the v1 migration, volume sync, update check, the receiver test client, statistics |
 | 4. Core | `ipc` | The protocol types shared by core and window (serde; TypeScript types generated with `ts-rs`) and the pipe framing |
@@ -182,7 +186,7 @@ flowchart TD
 | encode | MMCSS "Pro Audio" | Converts to what the encoder takes, encodes whole encoder blocks (the rest waits for the next round), packs frames into media payloads, in rounds of about 10 ms so packets go out evenly |
 | bt-runloop | -- | BTstack's run loop; sends a queued packet whenever L2CAP can send |
 | USB | -- | WinUSB transfers: three reads in flight on each IN pipe (events, ACL data), a writer for commands and ACL data |
-| core | Normal | State machine, IPC (tokio), settings, statistics (4 Hz), update check |
+| core | Normal | State machine, IPC (tokio; the RFCOMM passthrough's queues per connection), settings, statistics (4 Hz), update check |
 
 Once a stream runs, the audio path allocates no memory and takes no lock.
 Statistics are atomic counters that the core reads four times a second.
@@ -196,15 +200,21 @@ The window talks to the core over the user's named pipe
 length-prefixed JSON frames:
 
 1. The window sends `hello { protocol, client }`. A core with another
-   protocol version rejects it, and the window says that the two programs
-   are from different versions.
-2. The core answers with a `snapshot`: its whole state (adapter, devices,
+   protocol version answers `reject`, and the window says that the two
+   programs are from different versions. Otherwise the core answers
+   `welcome { protocol, server, features }`; `features` names additions to
+   the protocol (`rfcomm`).
+2. The core sends a `snapshot`: its whole state (adapter, devices,
    stream, profiles, settings, update) and a revision number.
 3. From then on the core sends `event`s with the changes. A missed revision
    makes the window fetch a new snapshot.
 4. Actions are `request { id, method, params }` with a `response { id,
-   result | error }`. The method groups are `stream.*`, `device.*`,
-   `profile.*`, `settings.*`, `adapter.*`, `audio.*`, `diag.*` and `app.*`.
+   result | error }`. The method groups are `state.*`, `stream.*`,
+   `device.*`, `profile.*`, `settings.*`, `adapter.*`, `audio.*`, `diag.*`,
+   `receiver.*`, `rfcomm.*` and `app.*`.
+
+Other programs use the same pipe; what they need is on
+[Integration (IPC)](integration).
 
 Errors are codes with parameters (for example `adapter.driver_missing`), not
 texts; the window translates them and offers the fix next to the message.
@@ -288,9 +298,10 @@ result. Listing adapters and their driver needs no elevation.
   the highest rate it lists nor the Windows mix rate)
 - Maps the profile's quality to the ones the codec offers
   (`Quality::for_codec`, issue #86): LDAC and LHDC V5 High / Medium
-  (`sq`) / Low (`mq`), aptX Adaptive High / Low Latency, every other codec
-  High (its highest bit rate the device takes); a quality saved before, such
-  as LHDC V5's Medium-High, runs as High
+  (`sq`) / Low (`mq`), LHDC V5 also Medium-High (`mhq`), aptX Adaptive
+  High / Low Latency, every other codec High (its highest bit rate the device
+  takes); a quality the codec no longer has (aptX Adaptive's Standard /
+  Mobile, AAC's lower levels) runs as High
 - Records what each codec the device offered lists (`KnownCodecs.caps`:
   sample rates, bit depths, maximum bit rate; `RemoteCaps::listed_*`), so the
   codec settings offer only those; SBC's bitpool range was already recorded
@@ -436,15 +447,20 @@ formats as v1:
 | `devices.txt`, `link_keys.txt` | Known devices and their link keys: headphones paired with v1 reconnect without pairing again |
 | `le_audio_devices.txt`, `le_audio_bonds.tlv`, `le_audio_csip.txt` | LE Audio (experimental): the LE Audio entries of the device list, LE bonds (with the GATT server's persistent CCC values) and coordinated sets |
 | `*.bin`, `*.hcd`, `ibt-*` | Firmware files |
+| `profiles-before-codecs.json` | `profiles.json` as it was before the Codecs screen folded several profiles of a device into one (written once) |
 | `hci_<date>_<time>.pklg` | HCI captures |
-| `logs\a2dpwb-core.<date>.log` | The core's log, one file per day (UTC), the last 7 kept |
+| `logs\a2dpwb-core.<date>.log`, `logs\a2dpwb-ui.<date>.log`, `logs\a2dpwb-driver.log` | The logs of the core and the window, one file per day (UTC), the last 7 kept, and of the driver helper; not masked |
+| `logs\hci\` | The HCI flight recorder's captures, written when a stream fails or a connection is lost (the newest 10) |
+| `logs\crash\` | Crash reports: a minidump and a text file per crash (the newest 5 per program) |
+| `logs\bundles\` | Diagnostic bundles (the newest 3) |
 | `driver\` | The previous driver of each adapter WinUSB was assigned to |
 | `backup-v1\` | A copy of the v1 settings, made once at the first v2 start |
 
 ## Build System
 
-- **Cargo** builds everything; there is no CMake. Each `-sys` crate compiles
-  its C library from the git submodule in `extern/` with MSVC in `build.rs`
+- **Cargo** builds the programs; they need no CMake. Each `-sys` crate
+  compiles its C library from the git submodule in `extern/` with MSVC in
+  `build.rs`. Only the developer tool `tools/a2dp_decode` is built with CMake
 - The window's page is built with **Vite** (`pnpm build` in `app/src/ui`) and
   embedded into `a2dpwb.exe` by Tauri
 - The TypeScript types of the IPC protocol are generated from the Rust types

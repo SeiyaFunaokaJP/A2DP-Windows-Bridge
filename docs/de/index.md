@@ -85,7 +85,7 @@ Streamt das Systemaudio über **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, apt
 | Komponente | Windows 10 (x64 / ARM64) | Windows 11 (x64 / ARM64) | Linux (Ubuntu) |
 |:-----------|:----------------:|:----------------:|:--------------:|
 | **A2DPWB** (Fenster, Infobereich, CLI) | ✅ (noch nicht auf echter Hardware getestet) | ✅ | ❌ |
-| [Aus dem Quellcode bauen](building) (Rust, Visual Studio 2022+, Node.js) | ✅ | ✅ | ❌ |
+| [Aus dem Quellcode bauen](../building) (Rust, Visual Studio 2022+, Node.js) | ✅ | ✅ | ❌ |
 | `a2dpwb_decode` (Stream-Prüfung) | ✅ | ✅ | ❌ |
 | End-to-End-Test `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
 | Virtueller Adapter `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
@@ -96,6 +96,10 @@ A2DPWB selbst läuft nur unter Windows (Windows 10 22H2 oder Windows 11), als Bu
 ## Geprüfte Hardware {#verified-hardware}
 
 Getestet mit Sony WH-1000XM4 und WH-1000XM6, EarFun Air Pro 4+, Grado GW100x und weiteren, an TP-Link UB500, einem generischen RTL8761B, dem eingebauten RTL8852BE eines Notebooks, ASUS BT400 und CSR8510. Die vollständige Liste mit Codecs, Versionen und den zugrunde liegenden Berichten: **[Geprüfte Hardware](../hardware)** (Englisch).
+
+## Zusammenarbeit mit anderen Tools
+
+Apps anderer Anbieter, die laut Berichten in den Issues mit A2DPWB zusammenarbeiten, etwa Apps zur Steuerung von Ohrhörern (nicht von A2DPWB erstellt oder unterstützt): **[Works With](../works-with)** (Englisch).
 
 ## Aufnahmemodi
 
@@ -131,7 +135,7 @@ flowchart TD
     usb -.-> hp["Kopfhörer"]
 ```
 
-A2DPWB umgeht den Bluetooth-Stack von Windows vollständig. Es kommuniziert über WinUSB direkt mit einem USB-Bluetooth-Adapter und implementiert mit [BTstack](https://github.com/bluekitchen/btstack) den kompletten Bluetooth-Protokollstack im Benutzermodus. Ein kleines residentes Programm (`a2dpwb-core.exe`, mit dem Symbol im Infobereich) streamt das Audio; das Fenster zeigt nur dessen Zustand an, daher stoppt das Schließen des Fensters das Audio nicht (siehe [Architektur](architecture)).
+A2DPWB umgeht den Bluetooth-Stack von Windows vollständig. Es kommuniziert über WinUSB direkt mit einem USB-Bluetooth-Adapter und implementiert mit [BTstack](https://github.com/bluekitchen/btstack) den kompletten Bluetooth-Protokollstack im Benutzermodus. Ein kleines residentes Programm (`a2dpwb-core.exe`, mit dem Symbol im Infobereich) streamt das Audio; das Fenster zeigt nur dessen Zustand an, daher stoppt das Schließen des Fensters das Audio nicht (siehe [Architektur](../architecture)).
 
 ## Funktionen
 
