@@ -7,37 +7,60 @@
 ;        /DPkgDir=<dir> /DWebView2Setup=<MicrosoftEdgeWebview2Setup.exe>
 ;        /DOutputDir=<dir> /DOutputBaseFilename=<name> BlueCaster.iss
 ;
+; Until 2.0.x the app was "A2DP Windows Bridge" (A2DPWB). 3.0.0 is BlueCaster,
+; with an AppId of its own: the earlier versions are uninstalled first, and
+; the app takes their settings over at its first start.
+;
 ; Install:
-;   - a running v2 core is closed cleanly (`bluecaster-core.exe --quit`: the
+;   - a running core is closed cleanly (`bluecaster-core.exe --quit`: the
 ;     stream stops and the adapter is released) and started again after;
 ;     with no installed copy to ask (a new installation beside a portable or
 ;     development build), Setup's own copy from {tmp} asks it;
+;   - A2DP Windows Bridge 2.0.x of this setup (Inno Setup, AppId OldV2Guid) is
+;     uninstalled: its core is asked to exit (`a2dpwb-core.exe --quit` in its
+;     folder), then its uninstaller runs silently, which keeps the user data
+;     and the adapters on WinUSB (it asks nothing in silent mode). Its folder
+;     (%LOCALAPPDATA%\A2DP Windows Bridge) is not reused: BlueCaster goes to
+;     %LOCALAPPDATA%\BlueCaster. Its settings folder %APPDATA%\A2DPWB is taken
+;     over into %APPDATA%\BlueCaster by the app at its first start;
 ;   - a running v1 (its mutex A2DPWB_SingleInstance) is asked to exit, and v1
-;     (Inno Setup, AppId below) is uninstalled. Its uninstaller removes the
-;     program files only: the settings folder %APPDATA%\BlueCaster (profiles,
-;     pairings, firmware) stays, and v2 reads it as it is;
-;   - 2.0.0 to 2.0.2-beta.5 (Tauri's NSIS installer) is uninstalled before the
-;     files are installed, with its uninstaller in update mode: the adapters
-;     stay on WinUSB, the settings, the shortcuts and the Run value stay. An
+;     (Inno Setup, V1UninstKey) is uninstalled. Its uninstaller removes the
+;     program files only: the settings folder %APPDATA%\A2DPWB (profiles,
+;     pairings, firmware) stays, and the app takes it over as above;
+;   - 2.0.0 to 2.0.2-beta.5 (Tauri's NSIS installer, NsisUninstKey) is
+;     uninstalled before the files are installed, with its uninstaller in
+;     update mode: the adapters stay on WinUSB, the settings stay. An
 ;     installation that fails or is cancelled after this leaves nothing
 ;     installed; running the setup again installs it;
-;   - "start with Windows" (HKCU Run, value BlueCaster, shared with v1) is
-;     pointed at `bluecaster-core.exe --background` when it was on;
+;   - "start with Windows" (HKCU Run, value BlueCaster) is pointed at
+;     `bluecaster-core.exe --background` when it was on: also when the old
+;     value A2DPWB pointed at a 2.0.x core (it is deleted then) or at v1 (v1's
+;     uninstaller deletes it). An A2DPWB value pointing anywhere else stays;
+;   - the old shortcuts ("A2DP Windows Bridge") are deleted, and made again as
+;     BlueCaster when the old ones were there;
 ;   - the WebView2 Runtime is installed where it is missing;
 ;   - a new installation asks for the language (AskLanguage, preselected from
-;     the Windows display language); an update of this installation uses the
-;     one chosen before without asking (UsePreviousLanguage), and so do
-;     /SILENT, /VERYSILENT, /P and /LANG=. Setup writes it to HKCU\Software\A2DPWB,
-;     value SetupLanguage, where the core takes its language from while the
-;     settings have none (settings.rs, default_language);
-;   - an update (of this installation, of the NSIS one or of v1) says so on
-;     the wizard's title and pages (UpdateWording).
+;     the language chosen for 2.0.x, else from the Windows display language);
+;     an update of this installation uses the one chosen before without asking
+;     (UsePreviousLanguage), and so do /SILENT, /VERYSILENT, /P and /LANG=.
+;     Setup writes it to HKCU\Software\BlueCaster, value SetupLanguage, where
+;     the core takes its language from while the settings have none
+;     (settings.rs, default_language); 2.0.x's HKCU\Software\A2DPWB goes;
+;   - an update (of this installation, of 2.0.x, of the NSIS one or of v1)
+;     says so on the wizard's title and pages (UpdateWording).
 ; Uninstall: a page of the uninstall wizard asks whether the adapters BlueCaster
 ; put on WinUSB go back to Windows (one UAC prompt) and whether
 ; %APPDATA%\BlueCaster (settings, codecs, pairings, firmware) and the window's
 ; own data (%LOCALAPPDATA%\io.github.seiyafunaokajp.bluecaster) are deleted,
-; both on by default (InitializeUninstallProgressForm); the core is closed;
-; the Run value is removed when it points at this installation.
+; both on by default (InitializeUninstallProgressForm), with what 2.0.x may
+; have left of them (%APPDATA%\A2DPWB, %LOCALAPPDATA%\io.github.seiyafunaokajp.a2dpwb);
+; the core is closed; the Run value is removed when it points at this
+; installation.
+;
+; Kept only for the step from 2.0.x (OldV2*, NsisUninstKey, V1*, OldCoreMutex,
+; OldAppMutex, OldRunValue, OldLanguageKey, the [InstallDelete] of the old
+; shortcuts, the A2DPWB data folders on uninstall): they can go 6 to 12 months
+; after 3.0.0, once nobody updates from 2.0.x any more.
 ;
 ; Command line, besides Inno Setup's own (/SILENT, /VERYSILENT, /DIR=, ...):
 ;   /UPDATE  the in-app update (app/src/ui/src-tauri/src/update.rs): starts
@@ -83,13 +106,16 @@
 #define AppUserModelId "io.github.seiyafunaokajp.bluecaster"
 ; Tauri's identifier: the window's WebView2 data is in %LOCALAPPDATA%\<this>
 #define AppIdentifier "io.github.seiyafunaokajp.bluecaster"
-; AppId without its braces
-#define AppGuid "DE4C0AE2-6745-4C09-9478-7FA6C48527F4"
+; AppId without its braces (BlueCaster 3.0.0 and later; 2.0.x's is OldV2Guid)
+#define AppGuid "C7A109ED-F618-4214-8186-E4472C3BDD10"
 #define RepoUrl "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge"
 
 [Setup]
 ; Never change AppId: it ties updates and the uninstaller to earlier installs.
-; v1 has its own ({4D8EA889-0FE6-4753-A25F-2C1A3E4BF658}, see V1UninstKey).
+; It changed once, at 3.0.0 (the rename to BlueCaster: a new name, folder and
+; Apps entry): A2DP Windows Bridge 2.0.x has {DE4C0AE2-...} (OldV2Guid), which
+; this setup uninstalls; v1 has {4D8EA889-0FE6-4753-A25F-2C1A3E4BF658}
+; (V1UninstKey).
 AppId={{{#AppGuid}}
 AppName={#AppName}
 AppVersion={#AppVersion}
@@ -104,7 +130,8 @@ VersionInfoProductTextVersion={#AppVersion}
 ; For the current user only (no administrator rights): an installation for
 ; all users would ask for them at every update
 PrivilegesRequired=lowest
-; Where the NSIS installer of 2.0.x put it, unless it was elsewhere
+; An update of this installation keeps its folder (UsePreviousAppDir); the
+; folder of 2.0.x is not reused (DefaultDir)
 DefaultDirName={code:DefaultDir}
 ; A Start Menu folder, offered as a task beside the desktop shortcut on one
 ; page (issue #86: a page of its own for each was one too many); its
@@ -123,7 +150,7 @@ MinVersion=10.0
 ; window, which exits on the core's Bye); the core is started again in [Run]
 CloseApplications=yes
 RestartApplications=no
-LicenseFile={#PkgDir}\LICENSE
+LicenseFile={#PkgDir}\licenses\bluecaster\LICENSE
 SetupIconFile=..\app\src\ui\src-tauri\icons\icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
@@ -152,14 +179,14 @@ Name: "zhcn"; MessagesFile: "languages\ChineseSimplified.isl"
 Name: "zhtw"; MessagesFile: "languages\ChineseTraditional.isl"
 
 [CustomMessages]
-en.OtherRunning=Another BlueCaster is running (v1, or a v2 that Setup could not close). Exit it (right-click its tray icon > Exit), then click Retry.%n%nCancel stops the installation.
-ja.OtherRunning=別の BlueCaster（v1、またはセットアップが終了できなかった v2）が起動しています。タスクトレイのアイコンを右クリックして「終了」を選んでから、「再試行」を押してください。%n%n「キャンセル」でインストールを中止します。
-de.OtherRunning=Ein anderes BlueCaster läuft noch (v1 oder ein v2, das Setup nicht beenden konnte). Beenden Sie es (Rechtsklick auf das Taskleistensymbol > Beenden) und klicken Sie dann auf Wiederholen.%n%nAbbrechen beendet die Installation.
-fr.OtherRunning=Un autre BlueCaster est en cours d'exécution (v1, ou une v2 que l'installation n'a pas pu fermer). Quittez-le (clic droit sur son icône dans la zone de notification > Quitter), puis cliquez sur Réessayer.%n%nAnnuler arrête l'installation.
-es.OtherRunning=Hay otro BlueCaster en ejecución (v1, o una v2 que el instalador no pudo cerrar). Ciérrelo (clic derecho en su icono de la bandeja > Salir) y pulse Reintentar.%n%nCancelar detiene la instalación.
-ko.OtherRunning=다른 BlueCaster(v1 또는 설치 프로그램이 종료하지 못한 v2)가 실행 중입니다. 트레이 아이콘을 마우스 오른쪽 버튼으로 클릭하고 [종료]를 선택한 다음 [다시 시도]를 누르세요.%n%n[취소]를 누르면 설치를 중단합니다.
-zhcn.OtherRunning=另一个 BlueCaster 正在运行（v1，或安装程序无法关闭的 v2）。请右键单击其托盘图标并选择“退出”，然后单击“重试”。%n%n单击“取消”将停止安装。
-zhtw.OtherRunning=另一個 BlueCaster 正在執行（v1，或安裝程式無法關閉的 v2）。請以滑鼠右鍵按一下其系統匣圖示並選擇「結束」，然後按一下「重試」。%n%n按一下「取消」將停止安裝。
+en.OtherRunning=BlueCaster or A2DP Windows Bridge is still running (v1, or a copy that Setup could not close). Exit it (right-click its tray icon > Exit), then click Retry.%n%nCancel stops the installation.
+ja.OtherRunning=BlueCaster または A2DP Windows Bridge（v1、またはセットアップが終了できなかったもの）が起動しています。タスクトレイのアイコンを右クリックして「終了」を選んでから、「再試行」を押してください。%n%n「キャンセル」でインストールを中止します。
+de.OtherRunning=BlueCaster oder A2DP Windows Bridge läuft noch (v1 oder eine Kopie, die Setup nicht beenden konnte). Beenden Sie es (Rechtsklick auf das Taskleistensymbol > Beenden) und klicken Sie dann auf Wiederholen.%n%nAbbrechen beendet die Installation.
+fr.OtherRunning=BlueCaster ou A2DP Windows Bridge est encore en cours d'exécution (v1, ou une copie que l'installation n'a pas pu fermer). Quittez-le (clic droit sur son icône dans la zone de notification > Quitter), puis cliquez sur Réessayer.%n%nAnnuler arrête l'installation.
+es.OtherRunning=BlueCaster o A2DP Windows Bridge sigue en ejecución (v1, o una copia que el instalador no pudo cerrar). Ciérrelo (clic derecho en su icono de la bandeja > Salir) y pulse Reintentar.%n%nCancelar detiene la instalación.
+ko.OtherRunning=BlueCaster 또는 A2DP Windows Bridge(v1 또는 설치 프로그램이 종료하지 못한 프로그램)가 실행 중입니다. 트레이 아이콘을 마우스 오른쪽 버튼으로 클릭하고 [종료]를 선택한 다음 [다시 시도]를 누르세요.%n%n[취소]를 누르면 설치를 중단합니다.
+zhcn.OtherRunning=BlueCaster 或 A2DP Windows Bridge 仍在运行（v1，或安装程序无法关闭的副本）。请右键单击其托盘图标并选择“退出”，然后单击“重试”。%n%n单击“取消”将停止安装。
+zhtw.OtherRunning=BlueCaster 或 A2DP Windows Bridge 仍在執行（v1，或安裝程式無法關閉的副本）。請以滑鼠右鍵按一下其系統匣圖示並選擇「結束」，然後按一下「重試」。%n%n按一下「取消」將停止安裝。
 
 en.V1Left=A2DP Windows Bridge v1 could not be uninstalled. You can remove it later in Settings > Apps; your settings, pairings and firmware stay in either case.
 ja.V1Left=A2DP Windows Bridge v1 をアンインストールできませんでした。あとで「設定」>「アプリ」から削除できます。設定、ペアリング、ファームウェアはどちらの場合も残ります。
@@ -169,6 +196,15 @@ es.V1Left=No se pudo desinstalar A2DP Windows Bridge v1. Puede quitarlo más tar
 ko.V1Left=A2DP Windows Bridge v1을 제거하지 못했습니다. 나중에 [설정] > [앱]에서 제거할 수 있습니다. 설정, 페어링, 펌웨어는 어느 경우에도 유지됩니다.
 zhcn.V1Left=无法卸载 A2DP Windows Bridge v1。您可以稍后在“设置”>“应用”中将其删除；无论如何，您的设置、配对和固件都会保留。
 zhtw.V1Left=無法解除安裝 A2DP Windows Bridge v1。您可以稍後在「設定」>「應用程式」中將其移除；無論如何，您的設定、配對和韌體都會保留。
+
+en.V2Left=The previous version, A2DP Windows Bridge 2.0.x, could not be uninstalled. You can remove it later in Settings > Apps; clear "%1" there to keep your settings, pairings and firmware.
+ja.V2Left=以前のバージョン（A2DP Windows Bridge 2.0.x）をアンインストールできませんでした。あとで「設定」>「アプリ」から削除できます。設定、ペアリング、ファームウェアを残すには、そのとき「%1」のチェックを外してください。
+de.V2Left=Die vorherige Version, A2DP Windows Bridge 2.0.x, konnte nicht deinstalliert werden. Sie können sie später unter Einstellungen > Apps entfernen; deaktivieren Sie dort „%1“, damit Ihre Einstellungen, Kopplungen und Firmware erhalten bleiben.
+fr.V2Left=La version précédente, A2DP Windows Bridge 2.0.x, n'a pas pu être désinstallée. Vous pourrez la supprimer plus tard dans Paramètres > Applications ; décochez alors « %1 » pour conserver vos réglages, appairages et firmware.
+es.V2Left=No se pudo desinstalar la versión anterior, A2DP Windows Bridge 2.0.x. Puede quitarla más tarde en Configuración > Aplicaciones; desmarque allí «%1» para conservar su configuración, emparejamientos y firmware.
+ko.V2Left=이전 버전(A2DP Windows Bridge 2.0.x)을 제거하지 못했습니다. 나중에 [설정] > [앱]에서 제거할 수 있습니다. 설정, 페어링, 펌웨어를 유지하려면 그때 [%1]의 선택을 해제하세요.
+zhcn.V2Left=无法卸载以前的版本（A2DP Windows Bridge 2.0.x）。您可以稍后在“设置”>“应用”中将其删除；若要保留您的设置、配对和固件，请在那时取消勾选“%1”。
+zhtw.V2Left=無法解除安裝先前的版本（A2DP Windows Bridge 2.0.x）。您可以稍後在「設定」>「應用程式」中將其移除；若要保留您的設定、配對和韌體，請在那時取消勾選「%1」。
 
 en.UninstallChoices=Uninstall options
 ja.UninstallChoices=アンインストールのオプション
@@ -273,32 +309,41 @@ zhcn.AppLanguage=zh-CN
 zhtw.AppLanguage=zh-TW
 
 ; The Ready page, when an earlier version is uninstalled first (ReadyNote)
-en.OldVersionsText=Setup first uninstalls the earlier versions of BlueCaster found on this PC (%1). Your settings, device pairings and firmware are kept.
-ja.OldVersionsText=セットアップは最初に、この PC にある以前のバージョンの BlueCaster（%1）をアンインストールします。設定、デバイスのペアリング、ファームウェアはそのまま残ります。
-de.OldVersionsText=Setup deinstalliert zuerst die früheren Versionen von BlueCaster auf diesem PC (%1). Ihre Einstellungen, Gerätekopplungen und Firmware bleiben erhalten.
-fr.OldVersionsText=L'installation désinstalle d'abord les versions précédentes d'BlueCaster trouvées sur ce PC (%1). Vos réglages, appairages et firmware sont conservés.
-es.OldVersionsText=El instalador desinstala primero las versiones anteriores de BlueCaster que hay en este equipo (%1). Su configuración, emparejamientos y firmware se conservan.
-ko.OldVersionsText=설치 프로그램은 먼저 이 PC에 있는 이전 버전의 BlueCaster(%1)를 제거합니다. 설정, 기기 페어링, 펌웨어는 그대로 유지됩니다.
-zhcn.OldVersionsText=安装程序会先卸载此电脑上早期版本的 BlueCaster（%1）。您的设置、设备配对和固件都会保留。
-zhtw.OldVersionsText=安裝程式會先解除安裝此電腦上舊版本的 BlueCaster（%1）。您的設定、裝置配對和韌體都會保留。
+en.OldVersionsText=Setup first uninstalls the earlier versions found on this PC (%1). Your settings, device pairings and firmware are kept.
+ja.OldVersionsText=セットアップは最初に、この PC にある以前のバージョン（%1）をアンインストールします。設定、デバイスのペアリング、ファームウェアはそのまま残ります。
+de.OldVersionsText=Setup deinstalliert zuerst die früheren Versionen auf diesem PC (%1). Ihre Einstellungen, Gerätekopplungen und Firmware bleiben erhalten.
+fr.OldVersionsText=L'installation désinstalle d'abord les versions précédentes trouvées sur ce PC (%1). Vos réglages, appairages et firmware sont conservés.
+es.OldVersionsText=El instalador desinstala primero las versiones anteriores que hay en este equipo (%1). Su configuración, emparejamientos y firmware se conservan.
+ko.OldVersionsText=설치 프로그램은 먼저 이 PC에 있는 이전 버전(%1)을 제거합니다. 설정, 기기 페어링, 펌웨어는 그대로 유지됩니다.
+zhcn.OldVersionsText=安装程序会先卸载此电脑上的早期版本（%1）。您的设置、设备配对和固件都会保留。
+zhtw.OldVersionsText=安裝程式會先解除安裝此電腦上的舊版本（%1）。您的設定、裝置配對和韌體都會保留。
 
-en.OldV1=v1
-ja.OldV1=v1
-de.OldV1=v1
-fr.OldV1=v1
-es.OldV1=v1
-ko.OldV1=v1
-zhcn.OldV1=v1
-zhtw.OldV1=v1
+en.OldV1=A2DP Windows Bridge v1
+ja.OldV1=A2DP Windows Bridge v1
+de.OldV1=A2DP Windows Bridge v1
+fr.OldV1=A2DP Windows Bridge v1
+es.OldV1=A2DP Windows Bridge v1
+ko.OldV1=A2DP Windows Bridge v1
+zhcn.OldV1=A2DP Windows Bridge v1
+zhtw.OldV1=A2DP Windows Bridge v1
 
-en.OldNsis=2.0.0 to 2.0.2-beta.5
-ja.OldNsis=2.0.0 から 2.0.2-beta.5 まで
-de.OldNsis=2.0.0 bis 2.0.2-beta.5
-fr.OldNsis=2.0.0 à 2.0.2-beta.5
-es.OldNsis=2.0.0 a 2.0.2-beta.5
-ko.OldNsis=2.0.0~2.0.2-beta.5
-zhcn.OldNsis=2.0.0 至 2.0.2-beta.5
-zhtw.OldNsis=2.0.0 至 2.0.2-beta.5
+en.OldNsis=A2DP Windows Bridge 2.0.0 to 2.0.2-beta.5
+ja.OldNsis=A2DP Windows Bridge 2.0.0 から 2.0.2-beta.5 まで
+de.OldNsis=A2DP Windows Bridge 2.0.0 bis 2.0.2-beta.5
+fr.OldNsis=A2DP Windows Bridge 2.0.0 à 2.0.2-beta.5
+es.OldNsis=A2DP Windows Bridge 2.0.0 a 2.0.2-beta.5
+ko.OldNsis=A2DP Windows Bridge 2.0.0~2.0.2-beta.5
+zhcn.OldNsis=A2DP Windows Bridge 2.0.0 至 2.0.2-beta.5
+zhtw.OldNsis=A2DP Windows Bridge 2.0.0 至 2.0.2-beta.5
+
+en.OldV2=A2DP Windows Bridge 2.0.x
+ja.OldV2=A2DP Windows Bridge 2.0.x
+de.OldV2=A2DP Windows Bridge 2.0.x
+fr.OldV2=A2DP Windows Bridge 2.0.x
+es.OldV2=A2DP Windows Bridge 2.0.x
+ko.OldV2=A2DP Windows Bridge 2.0.x
+zhcn.OldV2=A2DP Windows Bridge 2.0.x
+zhtw.OldV2=A2DP Windows Bridge 2.0.x
 
 en.OldSep=,%_
 ja.OldSep=、
@@ -427,9 +472,17 @@ Source: "{#PkgDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cre
 Source: "{#WebView2Setup}"; Flags: dontcopy
 
 [InstallDelete]
-; The Start Menu shortcut of 2.0.x (NSIS) and 2.0.2-beta.6, outside a
-; folder: it is in {group} now
-Type: files; Name: "{autoprograms}\{#AppName}.lnk"
+; The shortcuts of A2DP Windows Bridge 2.0.x, made again under BlueCaster's
+; name (WantDesktopIcon; the Start Menu task): the Start Menu shortcut of
+; the NSIS installer and 2.0.2-beta.6, outside a folder; the Start Menu
+; folder of 2.0.2-beta.7 and later (DefaultGroupName was the AppName: the
+; program and its uninstaller); the desktop shortcut. 2.0.x's uninstaller
+; removes its own; these are what the NSIS one keeps and what a failed
+; uninstall leaves.
+Type: files; Name: "{autoprograms}\A2DP Windows Bridge.lnk"
+Type: files; Name: "{autoprograms}\A2DP Windows Bridge\*.lnk"
+Type: dirifempty; Name: "{autoprograms}\A2DP Windows Bridge"
+Type: files; Name: "{autodesktop}\A2DP Windows Bridge.lnk"
 ; The Start Menu task turned off in an update: the folder an earlier
 ; installation made goes
 Type: files; Name: "{group}\*.lnk"; Tasks: not startmenuicon
@@ -440,13 +493,14 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "{#AppU
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"; Tasks: startmenuicon
 ; Kept where there is one: the NSIS installer of 2.0.x always made one, and
 ; its uninstaller leaves it (also after a failed installation, when the
-; setup is run again)
+; setup is run again); 2.0.x's (A2DP Windows Bridge.lnk) is made again here
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "{#AppUserModelId}"; Check: WantDesktopIcon
 
 [Registry]
 ; The language chosen in Setup, for the core while the settings have none
-; (settings.rs, default_language)
-Root: HKCU; Subkey: "Software\A2DPWB"; ValueType: string; ValueName: "SetupLanguage"; ValueData: "{cm:AppLanguage}"; Flags: uninsdeletevalue uninsdeletekeyifempty
+; (settings.rs, default_language); 2.0.x's HKCU\Software\A2DPWB is deleted
+; in CurStepChanged
+Root: HKCU; Subkey: "Software\BlueCaster"; ValueType: string; ValueName: "SetupLanguage"; ValueData: "{code:SetupLanguage}"; Flags: uninsdeletevalue uninsdeletekeyifempty
 
 [Run]
 ; The core (or, after an update, the window) is started in CurStepChanged,
@@ -459,25 +513,46 @@ const
   RunValue = 'BlueCaster';
   { This installation's registration (Setup's key for AppId) }
   UninstKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppGuid}}_is1';
+  LanguageKey = 'Software\BlueCaster';
+  { A2DP Windows Bridge 2.0.2-beta.6 to 2.0.x (this setup before 3.0.0, with
+    its own AppId): uninstalled first. Its core, its Run value, the window's
+    mutex (its identifier io.github.seiyafunaokajp.a2dpwb), its language. }
+  OldV2Guid = 'DE4C0AE2-6745-4C09-9478-7FA6C48527F4';
+  OldV2UninstKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{DE4C0AE2-6745-4C09-9478-7FA6C48527F4}_is1';
+  OldCoreExe = 'a2dpwb-core.exe';
+  OldRunValue = 'A2DPWB';
+  OldCoreMutex = 'Local\A2DPWB_v2_Core';
+  OldAppMutex = 'io.github.seiyafunaokajp.a2dpwb-sim';
+  OldLanguageKey = 'Software\A2DPWB';
   V1UninstKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{4D8EA889-0FE6-4753-A25F-2C1A3E4BF658}_is1';
   V1Mutex = 'A2DPWB_SingleInstance';
   { Tauri's NSIS installer of 2.0.0 to 2.0.2-beta.5 (installer.nsi:
     UNINSTKEY, MANUPRODUCTKEY, whose default value is the folder) }
-  NsisUninstKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppName}';
+  NsisUninstKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\A2DP Windows Bridge';
   NsisManuKey = 'Software\Seiya Funaoka';
-  NsisProductKey = 'Software\Seiya Funaoka\{#AppName}';
-  { The core's (ipc::core_mutex_name) and the window's
-    (tauri-plugin-single-instance: <identifier>-sim) }
-  CoreMutex = 'Local\A2DPWB_v2_Core';
-  AppMutexes = 'Local\A2DPWB_v2_Core,{#AppUserModelId}-sim';
+  NsisProductKey = 'Software\Seiya Funaoka\A2DP Windows Bridge';
+  { The core's (ipc::core_mutex_name, without a BLUECASTER_INSTANCE suffix)
+    and the window's (tauri-plugin-single-instance: <identifier>-sim), and
+    those of 2.0.x }
+  CoreMutex = 'Local\BlueCaster_Core';
+  AppMutexes = 'Local\BlueCaster_Core,Local\A2DPWB_v2_Core,{#AppUserModelId}-sim,io.github.seiyafunaokajp.a2dpwb-sim';
   WebView2Key = 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
 
 var
   UpdateMode, PassiveMode, KeepV1, CoreWasRunning, RunWasSet, HadDesktopIcon, DeleteData, RestoreChosen: Boolean;
-  { Setup replaces an installation: this one, the NSIS one of 2.0.x or v1 }
+  { Setup replaces an installation: this one, 2.0.x (Inno Setup or NSIS) or v1 }
   IsUpgrade: Boolean;
-  { An earlier version is uninstalled first: v1, the NSIS one of 2.0.x }
-  OldV1, OldNsis: Boolean;
+  { An earlier version is uninstalled first: v1, the NSIS one of 2.0.x,
+    2.0.x of this setup (OldV2Guid) }
+  OldV1, OldNsis, OldV2: Boolean;
+  { The Run value A2DPWB points at a 2.0.x core (or this one): it becomes
+    BlueCaster }
+  TakeOverOldRun: Boolean;
+  { The language chosen before (an app language code, AppLanguage), read
+    before 2.0.x's uninstaller deletes it; whether this Setup was given one
+    (AskLanguage, /LANG=) }
+  PrevLanguage: String;
+  LanguageChosen: Boolean;
   { The Ready page's list below its note (ReadyNote) }
   ReadyMemoGap, ReadyMemoBottom: Integer;
 
@@ -519,7 +594,7 @@ end;
   a copy in RelaunchDir is started; the next Setup deletes it. }
 function AskLanguage: Boolean;
 var
-  Names, Captions: TArrayOfString;
+  Names, Codes, Captions: TArrayOfString;
   Form: TSetupForm;
   Lbl: TNewStaticText;
   Combo: TNewComboBox;
@@ -530,6 +605,8 @@ var
 begin
   { The [Languages] above, each in its own language }
   Names := ['en', 'ja', 'de', 'fr', 'es', 'ko', 'zhcn', 'zhtw'];
+  { Their AppLanguage }
+  Codes := ['en', 'ja', 'de', 'fr', 'es', 'ko', 'zh-CN', 'zh-TW'];
   Captions := ['English', '日本語', 'Deutsch', 'Français', 'Español', '한국어', '简体中文', '繁體中文'];
   Form := CreateCustomForm(ScaleX(320), ScaleY(80), False, False);
   try
@@ -564,6 +641,11 @@ begin
       if Names[I] = ActiveLanguage then
         Combo.ItemIndex := I;
     end;
+    { The one chosen for 2.0.x (its setup's AppId is not this one's, so
+      Setup did not take it itself) }
+    for I := 0 to GetArrayLength(Codes) - 1 do
+      if CompareText(Codes[I], PrevLanguage) = 0 then
+        Combo.ItemIndex := I;
     OKButton := TNewButton.Create(Form);
     OKButton.Parent := Form;
     OKButton.Caption := SetupMessage(msgButtonOK);
@@ -589,8 +671,10 @@ begin
       Exit;
     end;
     Result := (Combo.ItemIndex < 0) or (Names[Combo.ItemIndex] = ActiveLanguage);
-    if Result then
+    if Result then begin
+      LanguageChosen := True;
       Exit;
+    end;
     { Setup's own arguments again, but /SL5= (the loader's) }
     Params := '/LANG=' + Names[Combo.ItemIndex];
     for I := 1 to ParamCount do
@@ -622,10 +706,22 @@ begin
   Result := WizardIsTaskSelected('desktopicon') or HadDesktopIcon;
 end;
 
+{ A new installation's folder. Not the folder of 2.0.x (NSIS or this setup
+  before 3.0.0): that one is uninstalled, under its old name. An update of
+  this installation keeps its own (UsePreviousAppDir). }
 function DefaultDir(Param: String): String;
 begin
-  if not RegQueryStringValue(HKCU, NsisProductKey, '', Result) or (Result = '') then
-    Result := ExpandConstant('{localappdata}\{#AppName}');
+  Result := ExpandConstant('{localappdata}\{#AppName}');
+end;
+
+{ [Registry]: the language chosen in this Setup, else the one chosen before
+  (a silent update from 2.0.x runs in the Windows display language) }
+function SetupLanguage(Param: String): String;
+begin
+  if LanguageChosen or (PrevLanguage = '') then
+    Result := CustomMessage('AppLanguage')
+  else
+    Result := PrevLanguage;
 end;
 
 { The settings folder, as the core finds it }
@@ -668,18 +764,29 @@ end;
 { Asks the running v2 core of this user to exit (the copy in Dir speaks to
   whichever core holds the user's pipe): the stream stops and the adapter is
   released. True when one ran. }
-function CloseCore(const Dir: String): Boolean;
+function CloseCoreExe(const Exe: String): Boolean;
 var
   Code: Integer;
 begin
   Result := False;
-  if not FileExists(Dir + '\{#CoreExe}') then
+  if not FileExists(Exe) then
     Exit;
   { Exit code 0: it ran and has exited; 2: none ran; 1: it still runs }
-  if Exec(Dir + '\{#CoreExe}', '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code) then begin
-    Log(Format('%s --quit: exit code %d', [Dir + '\{#CoreExe}', Code]));
+  if Exec(Exe, '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code) then begin
+    Log(Format('%s --quit: exit code %d', [Exe, Code]));
     Result := (Code = 0) or (Code = 1);
   end;
+end;
+
+function CloseCore(const Dir: String): Boolean;
+begin
+  Result := CloseCoreExe(Dir + '\{#CoreExe}');
+end;
+
+{ The core of 2.0.x in Dir (a2dpwb-core.exe): it speaks to 2.0.x's pipe }
+function CloseOldCore(const Dir: String): Boolean;
+begin
+  Result := (Dir <> '') and CloseCoreExe(AddBackslash(Dir) + OldCoreExe);
 end;
 
 { The window ends on the core's Bye; 10 s at most }
@@ -766,6 +873,82 @@ begin
   RegDeleteKeyIfEmpty(HKCU, NsisManuKey);
 end;
 
+{ The folder of 2.0.x of this setup (OldV2Guid); '' without one }
+function OldV2Dir: String;
+begin
+  if not RegQueryStringValue(HKCU, OldV2UninstKey, 'Inno Setup: App Path', Result) then
+    Result := '';
+  Result := RemoveBackslashUnlessRoot(Result);
+end;
+
+{ Uninstalls A2DP Windows Bridge 2.0.x of this setup before this one
+  installs: its core has exited already (PrepareToInstall). Its uninstaller
+  in silent mode asks nothing and does nothing besides the uninstall: the
+  adapters stay on WinUSB and the user data stays (its
+  InitializeUninstallProgressForm turns both off when UninstallSilent), for
+  the app to take over. It deletes its shortcuts, its SetupLanguage value
+  and its Run value when that points at its core (read before, in
+  PrepareToInstall). }
+procedure UninstallOldV2;
+var
+  Uninstaller: String;
+  Code: Integer;
+begin
+  if not RegQueryStringValue(HKCU, OldV2UninstKey, 'UninstallString', Uninstaller) then
+    Exit;
+  Uninstaller := UnquotedPath(Uninstaller);
+  if not FileExists(Uninstaller) then begin
+    { Its folder has gone: nothing left to uninstall }
+    Log('A2DP Windows Bridge 2.0.x has no uninstaller any more (' + Uninstaller + '): its registration goes');
+    RegDeleteKeyIncludingSubkeys(HKCU, OldV2UninstKey);
+    Exit;
+  end;
+  Log('Uninstalling A2DP Windows Bridge 2.0.x: ' + Uninstaller);
+  { Nothing that deletes the user data: no page, no choice in silent mode }
+  if not Exec(Uninstaller, '/SILENT /NORESTART /SUPPRESSMSGBOXES', '', SW_SHOW, ewWaitUntilTerminated, Code) then
+    Log(Format('Its uninstaller did not start: %s', [SysErrorMessage(Code)]));
+  { Inno Setup's uninstaller finishes in a copy of itself }
+  if WaitForKeyGone(HKCU, OldV2UninstKey, 30) then
+    Exit;
+  if FileExists(Uninstaller) then begin
+    { Kept: Settings > Apps can still remove it }
+    Log(CustomMessage('V2Left'));
+    SuppressibleMsgBox(FmtMessage(CustomMessage('V2Left'), [CustomMessage('DeleteChoice')]), mbInformation, MB_OK, IDOK);
+  end else begin
+    Log('The uninstaller of 2.0.x has gone, its registration not: it goes');
+    RegDeleteKeyIncludingSubkeys(HKCU, OldV2UninstKey);
+  end;
+end;
+
+{ Cmd (a Run value) starts one of Exes in Dir }
+function RunPointsInto(const Cmd, Dir: String; const Exes: TArrayOfString): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  if Dir = '' then
+    Exit;
+  for I := 0 to GetArrayLength(Exes) - 1 do
+    if Pos(Lowercase(AddBackslash(Dir) + Exes[I]), Lowercase(Cmd)) > 0 then begin
+      Result := True;
+      Exit;
+    end;
+end;
+
+{ The Run value A2DPWB starts a 2.0.x core of an installation that is
+  replaced (2.0.x of this setup, the NSIS one) or a core in this folder }
+function OldRunIsOurs(const Cmd: String): Boolean;
+var
+  Exes: TArrayOfString;
+  NsisDir: String;
+begin
+  Exes := [OldCoreExe, 'a2dpwb.exe', '{#CoreExe}', '{#AppExe}'];
+  if not RegQueryStringValue(HKCU, NsisProductKey, '', NsisDir) then
+    NsisDir := '';
+  Result := RunPointsInto(Cmd, OldV2Dir, Exes) or RunPointsInto(Cmd, RemoveBackslashUnlessRoot(NsisDir), Exes) or
+    RunPointsInto(Cmd, ExpandConstant('{app}'), Exes);
+end;
+
 function WebView2Present: Boolean;
 var
   Version: String;
@@ -829,13 +1012,24 @@ end;
 
 procedure InitializeWizard;
 var
-  NoIcons: String;
+  NoIcons, Deselected: String;
 begin
   { The Start Menu task alone decides about the folder (there is no Select
     Start Menu Folder page any more): an earlier installation's "Don't create
     a Start Menu folder" turns the task off instead }
   if RegQueryStringValue(HKCU, UninstKey, 'Inno Setup: No Icons', NoIcons) and (NoIcons = '1') then
     WizardSelectTasks('!startmenuicon');
+  { 2.0.x of this setup: its choices, as UsePreviousTasks does for this
+    AppId (the desktop shortcut: WantDesktopIcon) }
+  if OldV2 and not RegKeyExists(HKCU, UninstKey) then begin
+    if (RegQueryStringValue(HKCU, OldV2UninstKey, 'Inno Setup: No Icons', NoIcons) and (NoIcons = '1')) or
+       (RegQueryStringValue(HKCU, OldV2UninstKey, 'Inno Setup: Deselected Tasks', Deselected) and
+        (Pos(',startmenuicon,', ',' + Lowercase(Deselected) + ',') > 0)) then
+      WizardSelectTasks('!startmenuicon');
+    if RegQueryStringValue(HKCU, OldV2UninstKey, 'Inno Setup: Deselected Tasks', Deselected) and
+       (Pos(',desktopicon,', ',' + Lowercase(Deselected) + ',') > 0) then
+      WizardSelectTasks('!desktopicon');
+  end;
   WizardForm.NoIconsCheck.Checked := False;
   if not IsUpgrade then
     Exit;
@@ -845,7 +1039,7 @@ begin
     stays deleted (this installation's update keeps the previous choice
     itself, UsePreviousTasks) }
   if RegKeyExists(HKCU, NsisUninstKey) and not RegKeyExists(HKCU, UninstKey) and
-     not FileExists(ExpandConstant('{autodesktop}\{#AppName}.lnk')) then
+     not FileExists(ExpandConstant('{autodesktop}\A2DP Windows Bridge.lnk')) then
     WizardSelectTasks('!desktopicon');
 end;
 
@@ -857,7 +1051,7 @@ procedure ReadyNote;
 var
   Found, Sep: String;
 begin
-  if not (OldV1 or OldNsis) then
+  if not (OldV1 or OldNsis or OldV2) then
     Exit;
   if ReadyMemoBottom = 0 then begin
     ReadyMemoGap := WizardForm.ReadyMemo.Top - (WizardForm.ReadyLabel.Top + WizardForm.ReadyLabel.Height);
@@ -872,6 +1066,11 @@ begin
     if Found <> '' then
       Found := Found + Sep;
     Found := Found + CustomMessage('OldNsis');
+  end;
+  if OldV2 then begin
+    if Found <> '' then
+      Found := Found + Sep;
+    Found := Found + CustomMessage('OldV2');
   end;
   WizardForm.ReadyLabel.Caption := WizardForm.ReadyLabel.Caption + #13#10#13#10 +
     FmtMessage(CustomMessage('OldVersionsText'), [Found]);
@@ -909,11 +1108,18 @@ begin
   PassiveMode := HasParam('/P') and not WizardSilent;
   if PassiveMode then
     Log('NSIS passive mode (/P): the pages are skipped');
-  IsUpgrade := RegKeyExists(HKCU, UninstKey) or RegKeyExists(HKCU, NsisUninstKey) or
+  OldV2 := RegKeyExists(HKCU, OldV2UninstKey);
+  IsUpgrade := RegKeyExists(HKCU, UninstKey) or RegKeyExists(HKCU, NsisUninstKey) or OldV2 or
     (not KeepV1 and (RegKeyExists(HKCU, V1UninstKey) or RegKeyExists(HKLM, V1UninstKey)));
   if IsUpgrade then
     Log('Updating an earlier installation');
   OldNsis := RegKeyExists(HKCU, NsisUninstKey);
+  { Before 2.0.x's uninstaller deletes it }
+  if not RegQueryStringValue(HKCU, LanguageKey, 'SetupLanguage', PrevLanguage) or (Trim(PrevLanguage) = '') then
+    if not RegQueryStringValue(HKCU, OldLanguageKey, 'SetupLanguage', PrevLanguage) then
+      PrevLanguage := '';
+  PrevLanguage := Trim(PrevLanguage);
+  LanguageChosen := HasParamPrefix('/LANG=');
   OldV1 := not KeepV1 and (RegKeyExists(HKCU, V1UninstKey) or RegKeyExists(HKLM, V1UninstKey));
   { Asked once: an update of this installation has its language. Nobody to
     ask in silent and passive mode. }
@@ -924,20 +1130,26 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
-  NsisDir: String;
+  NsisDir, OldRun: String;
   V1Running: Boolean;
 begin
   Result := '';
   CoreWasRunning := CloseCore(ExpandConstant('{app}'));
-  HadDesktopIcon := FileExists(ExpandConstant('{autodesktop}\{#AppName}.lnk'));
+  HadDesktopIcon := FileExists(ExpandConstant('{autodesktop}\{#AppName}.lnk')) or
+    FileExists(ExpandConstant('{autodesktop}\A2DP Windows Bridge.lnk'));
   if RegKeyExists(HKCU, NsisUninstKey) then begin
     if RegQueryStringValue(HKCU, NsisProductKey, '', NsisDir) and (NsisDir <> '') and
-       (CompareText(NsisDir, ExpandConstant('{app}')) <> 0) and CloseCore(NsisDir) then
+       CloseOldCore(NsisDir) then
       CoreWasRunning := True;
   end;
+  { 2.0.x of this setup: its core (a2dpwb-core.exe, 2.0.x's pipe) }
+  if OldV2 and CloseOldCore(OldV2Dir) then
+    CoreWasRunning := True;
   { A core still runs with no installed copy to ask (a new installation
     beside a portable or development build): this Setup's own copy asks it.
-    It holds v1's mutex as well, which read as "v1 is running" below. }
+    It holds v1's mutex as well, which read as "v1 is running" below. A
+    2.0.x core that runs from elsewhere is not asked (another pipe): it
+    reads as "v1 is running" (OtherRunning). }
   if CheckForMutexes(CoreMutex) then begin
     try
       ExtractTemporaryFile('{#CoreExe}');
@@ -947,11 +1159,24 @@ begin
       Log('Extracting the core to close the running one failed: ' + GetExceptionMessage);
     end;
   end;
+  if CheckForMutexes(OldCoreMutex) then
+    Log('A core of A2DP Windows Bridge 2.0.x still runs');
 
-  RunWasSet := False;
+  { "Start with Windows": BlueCaster's value, or 2.0.x's (A2DPWB) when it
+    starts a core of an installation replaced here, read before 2.0.x's
+    uninstaller deletes it. An A2DPWB value that starts anything else is
+    left alone, but v1's (below). }
+  RunWasSet := RegValueExists(HKCU, RunKey, RunValue);
+  TakeOverOldRun := RegQueryStringValue(HKCU, RunKey, OldRunValue, OldRun) and OldRunIsOurs(OldRun);
+  if TakeOverOldRun then begin
+    Log('The Run value ' + OldRunValue + ' (' + OldRun + ') becomes ' + RunValue);
+    RunWasSet := True;
+  end;
   if not KeepV1 then begin
-    { Read before v1's uninstaller deletes its own Run value }
-    RunWasSet := RegValueExists(HKCU, RunKey, RunValue);
+    { v1's (A2DPWB.exe, value A2DPWB), read before v1's uninstaller deletes it }
+    if not TakeOverOldRun and RegQueryStringValue(HKCU, RunKey, OldRunValue, OldRun) and
+       (Pos('\a2dpwb.exe', Lowercase(OldRun)) > 0) then
+      RunWasSet := True;
     Result := WaitForV1Exit(V1Running);
     if Result <> '' then
       Exit;
@@ -968,16 +1193,28 @@ begin
     WaitForAppExit;
     UninstallNsis;
   end;
+  if RegKeyExists(HKCU, OldV2UninstKey) then begin
+    WaitForAppExit;
+    UninstallOldV2;
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Code: Integer;
+  OldRun: String;
 begin
   if CurStep <> ssPostInstall then
     Exit;
   if RunWasSet then
     RegWriteStringValue(HKCU, RunKey, RunValue, '"' + ExpandConstant('{app}\{#CoreExe}') + '" --background');
+  { 2.0.x's value, unless its uninstaller deleted it already; read again:
+    only while it still starts one of ours }
+  if TakeOverOldRun and RegQueryStringValue(HKCU, RunKey, OldRunValue, OldRun) and OldRunIsOurs(OldRun) then
+    RegDeleteValue(HKCU, RunKey, OldRunValue);
+  { 2.0.x's language (now in LanguageKey), unless its uninstaller deleted it }
+  RegDeleteValue(HKCU, OldLanguageKey, 'SetupLanguage');
+  RegDeleteKeyIfEmpty(HKCU, OldLanguageKey);
   InstallWebView2;
   { An update starts the window, which starts the core }
   if UpdateMode then
@@ -986,22 +1223,38 @@ begin
     Exec(ExpandConstant('{app}\{#CoreExe}'), '--background', ExpandConstant('{app}'), SW_SHOWNORMAL, ewNoWait, Code);
 end;
 
-{ The adapters BlueCaster put on WinUSB, as the core records them: one record per
-  adapter in <settings>\driver\ (the result of `bluecaster-driver assign`,
-  app/src/core/src/driver.rs), deleted on "Restore driver". Restoring needs
-  the driver tool next to the uninstaller. }
-function DriverRecords: String;
-begin
-  Result := ConfigDir + '\driver';
-end;
-
-function CanRestoreDrivers: Boolean;
+function HasRecords(const Dir: String): Boolean;
 var
   Find: TFindRec;
 begin
-  Result := FileExists(ExpandConstant('{app}\{#DriverExe}')) and FindFirst(DriverRecords + '\*.json', Find);
+  Result := FindFirst(Dir + '\*.json', Find);
   if Result then
     FindClose(Find);
+end;
+
+{ The adapters BlueCaster put on WinUSB, as the core records them: one record per
+  adapter in <settings>\adapters\driver\ (the result of `bluecaster-driver
+  assign`, app/src/core/src/driver.rs), deleted on "Restore driver". Before
+  3.0.0 they were in <settings>\driver\, and in %APPDATA%\A2DPWB\driver\
+  until the app has taken that folder over: the first folder with records.
+  Restoring needs the driver tool next to the uninstaller. }
+function DriverRecords: String;
+var
+  Dirs: TArrayOfString;
+  I: Integer;
+begin
+  Dirs := [ConfigDir + '\adapters\driver', ConfigDir + '\driver', ExpandConstant('{userappdata}\A2DPWB\driver')];
+  for I := 0 to GetArrayLength(Dirs) - 1 do
+    if HasRecords(Dirs[I]) then begin
+      Result := Dirs[I];
+      Exit;
+    end;
+  Result := Dirs[0];
+end;
+
+function CanRestoreDrivers: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\{#DriverExe}')) and HasRecords(DriverRecords);
 end;
 
 { Adds a choice of the uninstall page below Top, from Left and Width wide:
@@ -1157,6 +1410,10 @@ begin
         if DeleteData then begin
           DelTree(ExpandConstant('{userappdata}\BlueCaster'), True, True, True);
           DelTree(ExpandConstant('{localappdata}\{#AppIdentifier}'), True, True, True);
+          { What 2.0.x may have left: its settings (not taken over yet), its
+            window's data }
+          DelTree(ExpandConstant('{userappdata}\A2DPWB'), True, True, True);
+          DelTree(ExpandConstant('{localappdata}\io.github.seiyafunaokajp.a2dpwb'), True, True, True);
         end;
         if RegQueryStringValue(HKCU, RunKey, RunValue, Cmd) and
            (Pos(Lowercase(ExpandConstant('{app}\{#CoreExe}')), Lowercase(Cmd)) > 0) then
