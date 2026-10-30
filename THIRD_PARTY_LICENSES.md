@@ -54,12 +54,11 @@ The installer (`BlueCaster-<version>-win64-setup.exe`) installs, and the portabl
 | `bluecaster.exe` | The window (Tauri; SolidJS, `@tauri-apps/api` and the icons in its embedded page) |
 | `bluecaster-core.exe` | The resident core (BTstack and all codec libraries statically linked) |
 | `bluecaster-driver.exe` | The elevated WinUSB assignment helper |
-| `licenses/README.txt` | What is in the `licenses` folder |
+| `licenses/README.txt` | What is in the `licenses` folder, and where to get the complete corresponding source: the BlueCaster commit and the exact commits of every submodule |
 | `licenses/bluecaster/LICENSE` | License notice for the BlueCaster source code (`Apache-2.0 OR MIT`) |
 | `licenses/bluecaster/LICENSE-APACHE` | Apache License 2.0 text (BlueCaster source code option 1) |
 | `licenses/bluecaster/LICENSE-MIT` | MIT License text (BlueCaster source code option 2) |
-| `licenses/bluecaster/THIRD_PARTY_LICENSES.md` | This document |
-| `licenses/bluecaster/SOURCE.txt` | Where to get the complete corresponding source: the BlueCaster commit and the exact commits of every submodule |
+| `licenses/third-party/THIRD_PARTY_LICENSES.md` | This document |
 | `licenses/third-party/BTstack-LICENSE.txt` | BTstack license (`extern/btstack/LICENSE`) |
 | `licenses/third-party/libldac-LICENSE.txt` | libldac license (Apache-2.0 text, `extern/libldac/LICENSE`) |
 | `licenses/third-party/libldac-NOTICE.txt` | libldac NOTICE (`extern/libldac/NOTICE`) |
@@ -211,7 +210,7 @@ of copyright license fees, provided that:
   `licenses/third-party/fdk-aac-NOTICE.txt`)
 - "You must make available free of charge copies of the complete source code of
   the FDK AAC Codec and your modifications thereto to recipients of copies in
-  binary form." (The exact fdk-aac commit is listed in `SOURCE.txt` and is
+  binary form." (The exact fdk-aac commit is listed in `licenses/README.txt` and is
   available from the BlueCaster repository's submodule at the release tag.)
 - The name of Fraunhofer may not be used to endorse or promote products derived
   from the library without prior written permission
@@ -502,7 +501,7 @@ authoritative list for that release.
   available to recipients of the binaries, and they must be told how to get it.
   BlueCaster uses these crates unmodified, at the versions in `Cargo.lock`; their
   source is on crates.io and in the repositories listed in `rust-crates.txt`,
-  and `SOURCE.txt` points to the BlueCaster commit whose `Cargo.lock` pins them. The
+  and `licenses/README.txt` points to the BlueCaster commit whose `Cargo.lock` pins them. The
   MPL does not extend to BlueCaster's own code
 
 ---
@@ -931,7 +930,7 @@ LGPL-2.1 §6 as follows:
 3. **Relinking** — the complete corresponding source of BlueCaster (Apache-2.0 OR MIT) and of
    every library, including libopenaptx, is available from the BlueCaster GitHub
    repository at the release's commit together with its submodules and
-   `Cargo.lock`. `SOURCE.txt` lists the exact commits. With it, a user can
+   `Cargo.lock`. `licenses/README.txt` lists the exact commits. With it, a user can
    rebuild `bluecaster-core.exe` against a modified libopenaptx (the `openaptx-sys`
    crate compiles `extern/libopenaptx/openaptx.c`). The source is offered from
    the same place (GitHub) as the binary, in the sense of LGPL-2.1 §6(d).

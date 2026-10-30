@@ -325,7 +325,7 @@ v1から上書きインストールするだけで、プロファイル、ペア
 
 **配布物**
 
-- `BlueCaster-<版>-win64-setup.exe` / `BlueCaster-<版>-arm64-setup.exe`: Inno Setup で作ります（`installer/BlueCaster.iss`、`installer/build-release.ps1`）。中身はポータブル版と同じで、`bluecaster-core.exe`、`bluecaster.exe`、`bluecaster-driver.exe`、ライセンス文書（Rustのクレートは `cargo-about` で `licenses/rust-crates.txt` にまとめる）、`SOURCE.txt` です。インストールはユーザー単位だけにします（管理者権限なし、8言語のセットアップ画面）。全ユーザー向けは外しました。両方を選べるようにすると、管理者のアカウントでは起動時と更新のたびにUACの確認が出るためです。
+- `BlueCaster-<版>-win64-setup.exe` / `BlueCaster-<版>-arm64-setup.exe`: Inno Setup で作ります（`installer/BlueCaster.iss`、`installer/build-release.ps1`）。中身はポータブル版と同じで、`bluecaster-core.exe`、`bluecaster.exe`、`bluecaster-driver.exe`、ライセンス文書（Rustのクレートは `cargo-about` で `licenses/third-party/rust-crates.txt` にまとめる）、`licenses/README.txt` です。インストールはユーザー単位だけにします（管理者権限なし、8言語のセットアップ画面）。全ユーザー向けは外しました。両方を選べるようにすると、管理者のアカウントでは起動時と更新のたびにUACの確認が出るためです。
 - `BlueCaster-<版>-win64-portable.zip` / `BlueCaster-<版>-arm64-portable.zip`: 今と同じく用意します。ポータブル版では、更新機能は通知だけにします。
 - WebView2ランタイムは、無ければインストーラが入れます（ブートストラッパーを同梱。Windows 11には標準で入っています）。
 
