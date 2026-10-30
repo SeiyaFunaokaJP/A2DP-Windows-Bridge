@@ -30,7 +30,7 @@ pub use ipc::OLD_PIPE_PREFIX;
 
 /// The settings folder's name before 3.0.0 (`%APPDATA%\A2DPWB`), migrated
 /// to the new folder. Can be removed 6–12 months after 3.0.0.
-pub const OLD_SETTINGS_FOLDER: &str = "A2DPWB";
+pub use crate::paths::OLD_FOLDER_NAME as OLD_SETTINGS_FOLDER;
 
 /// The HKCU Run value name of v1 and 2.0.x (defined in win-sys' autostart).
 /// The core moves its own entry from it to the new name at start. Can be
