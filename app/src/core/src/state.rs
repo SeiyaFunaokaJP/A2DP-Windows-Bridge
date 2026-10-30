@@ -1004,7 +1004,7 @@ impl CoreState {
             update: UpdateState { current_version: env!("CARGO_PKG_VERSION").into(), ..Default::default() },
             config_dir: dir.display().to_string(),
             // Where main.rs has the log files written
-            log_dir: dir.join("logs").display().to_string(),
+            log_dir: paths::log_dir(&dir).display().to_string(),
             capture: None,
             // Set by logging::init, first thing in main
             clock_ms: crate::logging::hub().clock(),
@@ -1660,7 +1660,7 @@ impl CoreState {
         if let Some(p) = capture.path() {
             return Ok(p.display().to_string());
         }
-        let path = self.config_dir().join(format!("hci_{}.pklg", local_stamp()));
+        let path = paths::capture_file(&self.config_dir(), &local_stamp());
         capture.start(&path).map_err(|_| err("diag.capture_failed", "error.capture_start"))?;
         let path = path.display().to_string();
         self.publish(Event::Capture(Some(CaptureState {

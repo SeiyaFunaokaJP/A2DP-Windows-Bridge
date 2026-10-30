@@ -52,7 +52,7 @@ const VOLUME_RESPONSE_TIMEOUT: Duration = Duration::from_millis(1000);
 /// What the BTstack thread needs to set up HCI
 pub(crate) struct Setup {
     pub tcp: bool,
-    pub link_key_dir: Option<PathBuf>,
+    pub link_key_file: Option<PathBuf>,
     pub firmware_dir: PathBuf,
     pub realtek_pid: u16,
     /// Realtek firmware / config file stems (no extension) of the chip
@@ -243,14 +243,14 @@ impl HostApp {
         }
 
         tracing::debug!(
-            "hci setup: link key folder {:?}, battery (HFP) {}, LE Audio {}, tcp {}",
-            self.setup.link_key_dir,
+            "hci setup: link key file {:?}, battery (HFP) {}, LE Audio {}, tcp {}",
+            self.setup.link_key_file,
             self.setup.battery,
             self.le.is_some(),
             self.setup.tcp
         );
-        match &self.setup.link_key_dir {
-            Some(dir) => stack.set_link_key_store(Some(Box::new(FileLinkKeyStore::open(dir)))),
+        match &self.setup.link_key_file {
+            Some(file) => stack.set_link_key_store(Some(Box::new(FileLinkKeyStore::open(file)))),
             None => stack.set_link_key_store(None),
         }
         // Audio (major 0x04), Hi-Fi audio device (minor 0x28), A2DP source;

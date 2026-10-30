@@ -240,7 +240,15 @@ impl AfhSource for WifiAfh {
 
 // ---- What a stack learnt about an adapter (adapter_caps.json) ----
 
-const CAPS_FILE: &str = "adapter_caps.json";
+/// Writes adapter_caps.json (in `adapters\`)
+fn write_caps(dir: &Path, caps: &BTreeMap<String, AdapterCaps>) {
+    let text = serde_json::to_string_pretty(caps).unwrap_or_default();
+    let path = crate::paths::adapter_caps_file(dir);
+    if let Err(e) = std::fs::create_dir_all(crate::paths::adapters_dir(dir)).and_then(|()| std::fs::write(&path, text))
+    {
+        tracing::warn!("cannot write {}: {e}", path.display());
+    }
+}
 
 /// What BlueCaster learnt about an adapter when a stack ran on it
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -264,7 +272,10 @@ fn caps_key(vid: u16, pid: u16) -> String {
 }
 
 fn load_caps(dir: &Path) -> BTreeMap<String, AdapterCaps> {
-    std::fs::read_to_string(dir.join(CAPS_FILE)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    std::fs::read_to_string(crate::paths::adapter_caps_file(dir))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
 }
 
 /// Whether the adapter with this VID:PID has LE Audio's isochronous
@@ -281,11 +292,8 @@ pub fn save_le_audio(dir: &Path, vid: u16, pid: u16, capable: bool) {
         return;
     }
     entry.le_audio = Some(capable);
-    tracing::debug!("adapter caps: {} LE Audio {capable}, saving {CAPS_FILE}", caps_key(vid, pid));
-    let text = serde_json::to_string_pretty(&caps).unwrap_or_default();
-    if let Err(e) = std::fs::write(dir.join(CAPS_FILE), text) {
-        tracing::warn!("cannot write {CAPS_FILE}: {e}");
-    }
+    tracing::debug!("adapter caps: {} LE Audio {capable}, saving adapter_caps.json", caps_key(vid, pid));
+    write_caps(dir, &caps);
 }
 
 /// The adapter's own Bluetooth address, as a stack running on it read it
@@ -301,11 +309,8 @@ pub fn save_address(dir: &Path, vid: u16, pid: u16, address: &str) {
         return;
     }
     entry.address = Some(address.to_owned());
-    tracing::debug!("adapter caps: {} address {address}, saving {CAPS_FILE}", caps_key(vid, pid));
-    let text = serde_json::to_string_pretty(&caps).unwrap_or_default();
-    if let Err(e) = std::fs::write(dir.join(CAPS_FILE), text) {
-        tracing::warn!("cannot write {CAPS_FILE}: {e}");
-    }
+    tracing::debug!("adapter caps: {} address {address}, saving adapter_caps.json", caps_key(vid, pid));
+    write_caps(dir, &caps);
 }
 
 /// The HCI version the controller on this VID:PID reported, as a stack
@@ -322,11 +327,8 @@ pub fn save_hci_version(dir: &Path, vid: u16, pid: u16, version: u8) {
         return;
     }
     entry.hci_version = Some(version);
-    tracing::debug!("adapter caps: {} HCI version {version}, saving {CAPS_FILE}", caps_key(vid, pid));
-    let text = serde_json::to_string_pretty(&caps).unwrap_or_default();
-    if let Err(e) = std::fs::write(dir.join(CAPS_FILE), text) {
-        tracing::warn!("cannot write {CAPS_FILE}: {e}");
-    }
+    tracing::debug!("adapter caps: {} HCI version {version}, saving adapter_caps.json", caps_key(vid, pid));
+    write_caps(dir, &caps);
 }
 
 /// Device Manager's name for the adapter's radio, as Windows' Bluetooth
@@ -354,13 +356,10 @@ pub fn save_windows_radio(dir: &Path, vid: u16, pid: u16, name: &str, address: O
         return;
     }
     tracing::debug!(
-        "adapter caps: {} Windows radio {name:?} {address:?} HCI {hci_version:?}, saving {CAPS_FILE}",
+        "adapter caps: {} Windows radio {name:?} {address:?} HCI {hci_version:?}, saving adapter_caps.json",
         caps_key(vid, pid)
     );
-    let text = serde_json::to_string_pretty(&caps).unwrap_or_default();
-    if let Err(e) = std::fs::write(dir.join(CAPS_FILE), text) {
-        tracing::warn!("cannot write {CAPS_FILE}: {e}");
-    }
+    write_caps(dir, &caps);
 }
 
 /// The Bluetooth address a Realtek adapter reports as its USB serial number
@@ -432,7 +431,7 @@ mod tests {
         save_address(&dir, 0x0BDA, 0xA729, "00:11:22:33:44:55");
         assert_eq!(address(&dir, 0x0BDA, 0xA729).as_deref(), Some("00:11:22:33:44:55"));
         assert_eq!(le_audio(&dir, 0x0BDA, 0xA729), Some(false));
-        assert!(std::fs::read_to_string(dir.join(CAPS_FILE)).unwrap().contains("\"0BDA:A729\""));
+        assert!(std::fs::read_to_string(crate::paths::adapter_caps_file(&dir)).unwrap().contains("\"0BDA:A729\""));
         assert_eq!(hci_version(&dir, 0x0BDA, 0xA729), None);
         save_hci_version(&dir, 0x0BDA, 0xA729, 10);
         assert_eq!(hci_version(&dir, 0x0BDA, 0xA729), Some(10));

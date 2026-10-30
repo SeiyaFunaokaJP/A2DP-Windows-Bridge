@@ -1,4 +1,5 @@
-//! Link keys in link_keys.txt of the settings folder, in v1's format, so
+//! Link keys in link_keys.txt (the settings folder's `pairing\`, the caller
+//! names the file), in v1's format, so
 //! headphones paired with v1 connect without pairing again:
 //!
 //! ```text
@@ -14,7 +15,6 @@ use btstack_sys::LinkKeyStore;
 
 /// v1 kept at most 32 keys; the oldest goes first
 const MAX_LINK_KEYS: usize = 32;
-const FILE_NAME: &str = "link_keys.txt";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkKeyEntry {
@@ -58,9 +58,10 @@ fn format_entry(e: &LinkKeyEntry) -> String {
 }
 
 impl FileLinkKeyStore {
-    /// Loads `dir`/link_keys.txt (missing or unreadable: empty)
-    pub fn open(dir: &Path) -> FileLinkKeyStore {
-        let path = dir.join(FILE_NAME);
+    /// Loads the file (missing or unreadable: empty); its folder is made
+    /// when a key is saved
+    pub fn open(file: &Path) -> FileLinkKeyStore {
+        let path = file.to_path_buf();
         let entries: Vec<LinkKeyEntry> = std::fs::read_to_string(&path)
             .map(|text| text.lines().filter_map(parse_line).take(MAX_LINK_KEYS).collect())
             .unwrap_or_default();
@@ -78,7 +79,12 @@ impl FileLinkKeyStore {
             text.push_str(&format_entry(e));
         }
         let tmp = self.path.with_extension("txt.tmp");
-        let result = std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, &self.path));
+        let result = self
+            .path
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&tmp, text))
+            .and_then(|()| std::fs::rename(&tmp, &self.path));
         if let Err(e) = result {
             tracing::error!("link keys: cannot write {}: {e}", self.path.display());
         }
@@ -139,25 +145,26 @@ mod tests {
     fn v1_file_round_trip() {
         let dir = std::env::temp_dir().join(format!("bluecaster-lk-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("link_keys.txt");
         std::fs::write(
-            dir.join(FILE_NAME),
+            &file,
             "# BTstack link key database \u{2014} do not edit while app is running\n\
              00-A2-D0-00-00-02 00112233445566778899aabbccddeeff 4\n\
              garbage line\n",
         )
         .unwrap();
-        let mut store = FileLinkKeyStore::open(&dir);
+        let mut store = FileLinkKeyStore::open(&file);
         let addr = [0x00, 0xA2, 0xD0, 0x00, 0x00, 0x02];
         let (key, t) = store.get(&addr).unwrap();
         assert_eq!(key[0], 0x00);
         assert_eq!(key[15], 0xFF);
         assert_eq!(t, 4);
         store.put(&[1, 2, 3, 4, 5, 6], &[7; 16], 5);
-        let reread = FileLinkKeyStore::open(&dir);
+        let reread = FileLinkKeyStore::open(&file);
         assert_eq!(reread.entries().len(), 2);
         assert_eq!(reread.entries()[1].addr, [1, 2, 3, 4, 5, 6]);
         store.delete(&addr);
-        assert_eq!(FileLinkKeyStore::open(&dir).entries().len(), 1);
+        assert_eq!(FileLinkKeyStore::open(&file).entries().len(), 1);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -106,8 +106,8 @@ pub struct AfhClassification {
 
 pub struct HostConfig {
     pub transport: TransportConfig,
-    /// Folder of link_keys.txt (None: in memory only)
-    pub link_key_dir: Option<PathBuf>,
+    /// The link key file, link_keys.txt (None: in memory only)
+    pub link_key_file: Option<PathBuf>,
     /// Folder of the firmware files (None: the executable's folder)
     pub firmware_dir: Option<PathBuf>,
     /// Realtek USB product ID of the chip for the firmware download (0: not
@@ -136,7 +136,7 @@ impl HostConfig {
     pub fn new(transport: TransportConfig) -> HostConfig {
         HostConfig {
             transport,
-            link_key_dir: None,
+            link_key_file: None,
             firmware_dir: None,
             realtek_pid: 0,
             realtek_files: None,
@@ -389,7 +389,7 @@ impl BtHost {
                     let _priority = RUNLOOP_PRIORITY_HOOK.get().map(|h| h());
                     let HostConfig {
                         transport,
-                        link_key_dir,
+                        link_key_file,
                         firmware_dir,
                         realtek_pid,
                         realtek_files,
@@ -420,7 +420,7 @@ impl BtHost {
                         let _ = remote_tx.send((remote, sink));
                         let setup = Setup {
                             tcp,
-                            link_key_dir,
+                            link_key_file,
                             firmware_dir: firmware_dir.unwrap_or_else(exe_dir),
                             realtek_pid: if tcp { 0 } else { realtek_pid },
                             realtek_files,
