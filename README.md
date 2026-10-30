@@ -67,7 +67,7 @@ The sample rate is 48 kHz unless you choose another in a codec's settings on **C
 
 ## Features
 
-- **Codecs**: LHDC V5, LDAC, aptX Adaptive, experimental Opus, the rest of the aptX family, AAC and SBC XQ / SBC, with automatic choice and ABR (LHDC V5, LDAC, aptX Adaptive)
+- **Codecs**: LHDC V5, LDAC, aptX Adaptive, experimental Opus, the rest of the aptX family, AAC and SBC XQ / SBC, with automatic choice and ABR (LHDC V5, LDAC, aptX Adaptive; adaptive bitpool for SBC / SBC XQ)
 - **Capture**: all system audio, a virtual audio device (e.g. VB-CABLE), or one application
 - **Resident core with tray**: streams with the window closed; reconnects after link loss and after sleep
 - **WinUSB in the app**: assigns and restores the adapter's driver, no Zadig needed
@@ -87,7 +87,7 @@ cd A2DP-Windows-Bridge
 pwsh ./build.ps1
 ```
 
-`build.ps1` builds the window's page and the three programs into `target/release/` (`a2dpwb-core.exe`, `a2dpwb.exe`, `a2dpwb-driver.exe`); double-clicking `build.bat` runs the same. Switches: `-Test` (formatting, lints, tests), `-Emu` (end-to-end test against a virtual sink), `-Release -Arch x64|arm64` (installer, portable zip). See [Building](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/building) for the steps one by one, the tests and the release packages, and [Architecture](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/architecture) for how the programs fit together.
+`build.ps1` builds the window's page and the three programs into `target/release/` (`a2dpwb-core.exe`, `a2dpwb.exe`, `a2dpwb-driver.exe`); double-clicking `build.bat` runs the same. Switches: `-Debug` (debug build), `-Test` (formatting, lints, tests), `-Decoder` (the `a2dpwb_decode` tool), `-Emu` (end-to-end test against a virtual sink; `-Codecs` picks codecs), `-Release -Arch x64|arm64` (installer, portable zip). See [Building](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/building) for the steps one by one, the tests and the release packages, and [Architecture](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/architecture) for how the programs fit together.
 
 ## License
 

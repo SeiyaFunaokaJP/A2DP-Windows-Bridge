@@ -69,7 +69,7 @@ Les casques et enceintes vers lesquels A2DPWB peut diffuser, chacun avec ses pro
 - **Démarrer la capture HCI** / **Arrêter la capture HCI** (voir [Vérifier le flux média](#verify-stream))
 - **Copier le diagnostic** : place dans le presse-papiers la version, le système, l'adaptateur, le profil, le déroulement, les avertissements / erreurs et le journal récent, prêts à être collés dans un rapport de bogue. **Masquer les adresses Bluetooth** (activé par défaut) remplace les adresses par `<addr-1>`, `<addr-2>`... (celle de l'adaptateur par `<adapter>`) et les noms d'appareils par `<device-1>`, `<device-2>`..., et masque les numéros de série USB et votre nom d'utilisateur Windows
 
-Avec **Paramètres > Mode développeur**, Diagnostic comporte aussi un onglet **Test avec récepteur pair** (voir [Test avec récepteur pair](#receiver)).
+Avec **Paramètres > Mode développeur**, l'écran **Développeur** comporte un onglet **Test avec récepteur pair** (voir [Test avec récepteur pair](#receiver)).
 
 ### Adaptateur
 
@@ -87,7 +87,7 @@ Avec **Paramètres > Mode développeur**, Diagnostic comporte aussi un onglet **
 | Démarrage | **Démarrer avec Windows** et **Démarrer dans la zone de notification** (voir [Démarrer avec Windows](#autostart)), **Réduire dans la zone de notification** et **Un clic sur l'icône de la zone de notification ouvre la fenêtre principale** (voir [Zone de notification et volet](#tray)) |
 | Notifications | **Notifier lorsqu'un appareil se connecte** (l'appareil, sa batterie, le codec et ses paramètres ; activé par défaut), **Prévenir quand la batterie est faible** : **Sous 20%** (par défaut), **Sous 10%**, **Sous 5%** ou **Jamais**, une fois par connexion (de nouveau seulement après que la batterie est remontée 5 points au-dessus) |
 | Mises à jour | **Rechercher des mises à jour**, **Rechercher les mises à jour au démarrage**, **Inclure les préversions dans les mises à jour** (propose aussi les versions bêta), **Mettre à jour maintenant** (voir [Mises à jour](#updates)) |
-| Avancé | **Mode développeur** (ajoute l'écran **Développeur** avec la **Taille max. des paquets média** de chaque appareil, le test du récepteur au diagnostic et plus de détails au journal ; aucun redémarrage nécessaire), **Dossier des paramètres** avec **Ouvrir le dossier de configuration**, **Lancer la configuration** |
+| Avancé | **Mode développeur** (ajoute l'écran **Développeur** avec la **Taille max. des paquets média** de chaque appareil et le test avec récepteur pair, et plus de détails au journal ; aucun redémarrage nécessaire), **Dossier des paramètres** avec **Ouvrir le dossier de configuration**, **Lancer la configuration** |
 | À propos d'A2DPWB | Version, licence, licences tierces, **Quitter A2DPWB** |
 
 ### Configuration au premier lancement
@@ -193,7 +193,7 @@ Mettez d'abord le casque en mode d'association.
 | `--scan [seconds]` | Lister les appareils à proximité et quitter (10 secondes par défaut) |
 | `-h` | Afficher l'aide |
 
-Pour le développement et les tests, il existe aussi `--hci-tcp <host:port>` (un contrôleur virtuel via TCP au lieu de l'adaptateur WinUSB), `--test-tone` (1 kHz à gauche / 1,5 kHz à droite au lieu de l'audio capturé), `--duration <s>` (arrêt après ce nombre de secondes) et `--hci-capture <file.pklg>` (capture HCI de toute l'exécution) ; voir [Compilation](building#emu).
+Pour le développement et les tests, il existe aussi `--hci-tcp <host:port>` (un contrôleur virtuel via TCP au lieu de l'adaptateur WinUSB), `--test-tone` (1 kHz à gauche / 1,5 kHz à droite au lieu de l'audio capturé), `--duration <s>` (arrêt après ce nombre de secondes) et `--hci-capture <file.pklg>` (capture HCI de toute l'exécution) ; voir [Compilation](../building#emu).
 
 Sans `--cli`, `a2dpwb-core.exe` est le programme résident : il démarre aussi la fenêtre, sauf avec `--background` (icône de la zone de notification uniquement, utilisé par **Démarrer avec Windows** lorsque **Démarrer dans la zone de notification** est activé). `a2dpwb-core.exe --quit` demande à un A2DPWB en cours d'exécution d'arrêter la diffusion et de quitter (le programme d'installation l'utilise).
 
@@ -321,7 +321,7 @@ A2DPWB prend en charge trois codecs aptX encodés avec [libopenaptx](https://git
 {: .note }
 **L'aptX Adaptive est confirmé avec un vrai casque en 48 kHz :** un utilisateur l'a diffusé vers des EarFun Air Pro 4+ sur la 2.0.2-beta.6 sans coupure ni saccade, aussi stable que l'aptX classique ([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)). Il réussit aussi les tests unitaires, la suite de tests bit à bit de l'amont et le test de bout en bout avec le récepteur Bluetooth virtuel (`tools/emu`, qui vérifie l'en-tête RTP, la taille des paquets et les types de trames ; l'audio n'est pas décodé, faute de décodeur ouvert). L'amont indique qu'il fonctionne sous Linux / PipeWire avec les Bose QuietComfort Ultra (1re génération) et B&W Px7 S2e à 48 kHz en Haute et en Faible latence. Le 96 kHz (Haute 646 kbps, Standard 340, Mobile 255) n'est utilisé que s'il est choisi dans ses paramètres (ou avec `--rate 96000`) et que le casque est un récepteur R2 qui l'annonce, jamais en Faible latence ; le 96 kHz est désormais confirmé lui aussi avec un vrai casque ([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)). Auto, sélection automatique comprise, diffuse en 48 kHz. [Vos retours sont les bienvenus](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/11).
 
-L'encodeur est l'encodeur aptX Adaptive en Rust pur d'[AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) (MIT). L'amont le décrit comme une réimplémentation en salle blanche dont les tables numériques ont été reconstituées à partir de binaires Qualcomm distribués, obtenus légalement, et de captures radio ; aucun code, SDK ni binaire de Qualcomm n'est inclus (voir [Licences](licenses)).
+L'encodeur est l'encodeur aptX Adaptive en Rust pur d'[AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) (MIT). L'amont le décrit comme une réimplémentation en salle blanche dont les tables numériques ont été reconstituées à partir de binaires Qualcomm distribués, obtenus légalement, et de captures radio ; aucun code, SDK ni binaire de Qualcomm n'est inclus (voir [Licences](../licenses)).
 
 - **Le choisir** : Auto le choisit quand le casque ne propose ni LHDC V5 ni LDAC. Ou choisissez **aptX Adaptive** dans **Codecs**, ou `-c aptxad`.
 - **Format** : 48 kHz stéréo, 24 bits ; 96 kHz en haute qualité, s'il est choisi, vers un appareil qui l'annonce (aptX Adaptive R2) ; une demande en 44,1 kHz est capturée en 48 kHz.
@@ -406,7 +406,7 @@ La plupart des casques ne peuvent pas indiquer quel codec est utilisé. **Diagno
 
 Vous pouvez démarrer une capture avant la connexion ou pendant une diffusion en cours. Si elle démarre pendant une connexion, A2DPWB écrit d'abord les paquets d'établissement de connexion qu'il a mémorisés (établissement des canaux L2CAP et signalisation AVDTP, y compris la négociation du codec), afin que le fichier reste analysable. Diagnostic affiche le chemin du fichier pendant l'enregistrement et après son arrêt.
 
-Ouvrez la capture dans Wireshark, ou vérifiez-la avec l'outil de développement `a2dpwb_decode` (compilé depuis les sources, voir [Compilation](building)) :
+Ouvrez la capture dans Wireshark, ou vérifiez-la avec l'outil de développement `a2dpwb_decode` (compilé depuis les sources, voir [Compilation](../building)) :
 
 ```
 a2dpwb_decode "%APPDATA%\A2DPWB\hci_20260925_120000.pklg" -o C:\temp\check
@@ -460,7 +460,7 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 `--remote-sink auto` trouve le récepteur sur le réseau local, diffuse vers son adaptateur Bluetooth sauf si `-d` désigne un autre appareil, et affiche les statistiques du récepteur toutes les 5 secondes et à la fin : débit, paquets perdus et en retard (numéros de séquence RTP), gigue et trous, coupures et sauts d'un tampon de lecture modélisé, erreurs de flux / de décodage et RSSI au niveau du récepteur (relatif à sa plage de réception idéale : 0 = correct, négatif = trop faible). Sans `--test-tone`, il envoie l'audio du système. `--remote-sink <host[:port]>` désigne le récepteur au lieu de le rechercher.
 
 {: .note }
-Avec **Paramètres > Mode développeur**, Diagnostic comporte un onglet **Test avec récepteur pair**. Dans cette version, il s'agit d'un aperçu : il enregistre l'adresse du récepteur, mais ne diffuse pas encore. Utilisez la ligne de commande ci-dessus.
+Le même test fonctionne dans la fenêtre : activez **Paramètres > Mode développeur** et ouvrez **Développeur > Test avec récepteur pair**. Il trouve le récepteur (ou prend son adresse), diffuse avec le codec et la source choisis (son de test ou audio du système), vérifie chaque étape et affiche ce qui a été envoyé à côté de ce que le récepteur a compté. Inutile de quitter A2DPWB.
 
 Les deux côtés comptent les paquets d'un flux à partir de son premier paquet, ce qui permet de comparer les paquets envoyés et reçus : ils doivent être égaux. Le Bluetooth retransmet les paquets radio perdus à l'intérieur des contrôleurs, et A2DPWB n'abandonne pas un paquet tant que la liaison est active : une mauvaise liaison radio se traduit donc par des trous, de la gigue et des coupures au niveau du récepteur plutôt que par des paquets perdus ; lorsque la liaison ne suit pas, des paquets sont abandonnés avant l'envoi du côté émetteur. Le nombre de retransmissions n'est disponible d'aucun côté.
 

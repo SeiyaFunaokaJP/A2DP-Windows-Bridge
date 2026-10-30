@@ -80,6 +80,12 @@ not secret; once it is final it may also be committed as `plugins.updater.pubkey
 - Installs for the current user (no administrator rights), in 8 languages, into
   `%LOCALAPPDATA%\A2DP Windows Bridge`, with the WebView2 bootstrapper embedded (it runs only
   where WebView2 is missing). Every run writes a log, `%TEMP%\Setup Log <date> #<n>.txt`.
+- A new installation asks for the language (preselected from the Windows display language); an
+  update uses the one chosen before, and so do `/SILENT`, `/VERYSILENT`, `/P` and `/LANG=`. Setup
+  writes it to `HKCU\Software\A2DPWB`, value `SetupLanguage`, which the core uses while its
+  settings have no language yet.
+- Tasks: a Start menu shortcut and a desktop icon, both checked; an update keeps the previous
+  choice.
 - Closes a running v2 core with `a2dpwb-core.exe --quit` (stream stopped, adapter released),
   ends what still runs from the folder (Restart Manager) and starts the core again afterwards.
 - Asks a running v1 to exit (its mutex `A2DPWB_SingleInstance`) and uninstalls v1 (Inno Setup,
@@ -96,18 +102,21 @@ not secret; once it is final it may also be committed as `plugins.updater.pubkey
   from `[Run]`, which comes first.
 - Points "start with Windows" (HKCU Run, value `A2DPWB`) at `a2dpwb-core.exe --background` when
   it was on; the uninstaller removes it when it points at that installation.
-- The uninstaller gives the adapters A2DPWB put on WinUSB back to Windows, after asking. The core
-  keeps one record per assigned adapter in `%APPDATA%\A2DPWB\driver\` (the `assign` result,
-  deleted by **Restore driver**); when there are records, the uninstaller asks (No is the default
-  while v1 is running or installed, since v1 needs WinUSB too) and runs
-  `a2dpwb-driver.exe restore --records <folder>` elevated: one UAC prompt for all adapters, and the
-  records of the adapters given back are deleted. An unplugged adapter keeps its record and the
-  uninstaller points to Device Manager. Not in silent mode (`/SILENT`, `/VERYSILENT`: nobody to
-  ask, and no UAC prompt), where the adapters stay on WinUSB. An adapter that already had WinUSB
-  (Zadig) when A2DPWB was asked to assign it is left alone. Updates do not run the uninstaller.
-- The uninstaller then asks whether to delete `%APPDATA%\A2DPWB` (settings, profiles, pairings,
-  firmware; No is the default, and silent mode keeps it). The download cache
-  `%TEMP%\A2DPWB_cache` always stays.
+- The uninstall wizard has a page with two choices, both on by default:
+  - **Restore the original Bluetooth driver** (shown only when there are records): the core
+    keeps one record per adapter it put on WinUSB in `%APPDATA%\A2DPWB\driver\` (the `assign`
+    result, deleted by **Restore driver**); the uninstaller runs
+    `a2dpwb-driver.exe restore --records <folder>` elevated: one UAC prompt for all adapters, and
+    the records of the adapters given back are deleted. An unplugged adapter keeps its record and
+    the uninstaller points to Device Manager. An adapter that already had WinUSB (Zadig) when
+    A2DPWB was asked to assign it is left alone.
+  - **Delete user data**: `%APPDATA%\A2DPWB` (settings, codecs, pairings, firmware; not a folder
+    that `A2DPWB_CONFIG_DIR` names) and the window's own data
+    (`%LOCALAPPDATA%\io.github.seiyafunaokajp.a2dpwb`).
+
+  Silent mode (`/SILENT`, `/VERYSILENT`) shows no page: the adapters stay on WinUSB and the data
+  stays. Updates do not run the uninstaller. The download cache `%TEMP%\A2DPWB_cache` always
+  stays.
 - `/KEEPV1` on the command line leaves v1, a running v1 and the Run value alone. Only for testing
   v2 beside an installed v1 (both use the same settings folder). The core still replaces v1 when it
   starts, as in a normal install: it asks a running v1 to exit and takes over v1's Run value.
@@ -131,6 +140,6 @@ uses the real settings folder.
 
 ```powershell
 $env:A2DPWB_CONFIG_DIR = "$env:TEMP\a2dpwb-test"; $env:A2DPWB_INSTANCE = 'test'
-v2\target\release\a2dpwb-core.exe --background
-v2\target\release\a2dpwb-core.exe --quit
+target\release\a2dpwb-core.exe --background
+target\release\a2dpwb-core.exe --quit
 ```

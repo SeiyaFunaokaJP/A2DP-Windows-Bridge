@@ -69,7 +69,7 @@ A2DPWB 可以串流到的耳机和扬声器，各有自己的设置：**扫描�
 - **开始 HCI 捕获** / **停止 HCI 捕获**（请参阅[验证媒体流](#verify-stream)）
 - **复制诊断信息**：将版本、操作系统、适配器、配置文件、连接流程、警告 / 错误以及最近的日志复制到剪贴板，可直接粘贴到错误报告中。**隐藏 Bluetooth 地址**（默认开启）将地址替换为 `<addr-1>`、`<addr-2>`...（适配器自身为 `<adapter>`），设备名称替换为 `<device-1>`、`<device-2>`...，并隐藏 USB 序列号和 Windows 用户名
 
-开启**设置 > 开发者模式**后，“诊断”中还会出现**对端接收器测试**选项卡（请参阅[对端接收器测试](#receiver)）。
+开启**设置 > 开发者模式**后，**开发者**页面中有**对端接收器测试**选项卡（请参阅[对端接收器测试](#receiver)）。
 
 ### 适配器
 
@@ -87,7 +87,7 @@ A2DPWB 可以串流到的耳机和扬声器，各有自己的设置：**扫描�
 | 启动 | **随 Windows 启动**和**在托盘中启动**（请参阅[随 Windows 启动](#autostart)）、**最小化到系统托盘**和**单击托盘图标打开主窗口**（请参阅[托盘与浮出窗口](#tray)） |
 | 通知 | **设备连接时通知**（设备、电量、编解码器及其运行参数；默认开启）、**电池电量低时通知**：**低于 20%**（默认）、**低于 10%**、**低于 5%** 或**从不**，每次连接只通知一次（电量回升到高出 5 个百分点后才会再次通知） |
 | 更新 | **检查更新**、**启动时检查更新**、**检查更新时包括预发布版本**（也会提示 beta 版本）、**立即更新**（请参阅[更新](#updates)） |
-| 高级 | **开发者模式**（添加含每台设备**最大媒体数据包大小**的**开发者**页面，在“诊断”中添加接收器测试，并在日志中输出更多细节；无需重新启动）、**设置文件夹**及**打开配置文件夹**、**运行设置向导** |
+| 高级 | **开发者模式**（添加含每台设备**最大媒体数据包大小**及对端接收器测试的**开发者**页面，并在日志中输出更多细节；无需重新启动）、**设置文件夹**及**打开配置文件夹**、**运行设置向导** |
 | 关于 A2DPWB | 版本、许可证、第三方许可证、**退出 A2DPWB** |
 
 ### 首次运行设置
@@ -193,7 +193,7 @@ a2dpwb-core.exe --cli --scan
 | `--scan [seconds]` | 列出附近的设备并退出（默认 10 秒） |
 | `-h` | 显示帮助 |
 
-用于开发和测试的选项还有：`--hci-tcp <host:port>`（通过 TCP 使用虚拟控制器，代替 WinUSB 适配器）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 的测试音代替捕获的音频）、`--duration <s>`（运行指定秒数后停止）和 `--hci-capture <file.pklg>`（对整个运行过程进行 HCI 捕获）；请参阅[构建](building#emu)。
+用于开发和测试的选项还有：`--hci-tcp <host:port>`（通过 TCP 使用虚拟控制器，代替 WinUSB 适配器）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 的测试音代替捕获的音频）、`--duration <s>`（运行指定秒数后停止）和 `--hci-capture <file.pklg>`（对整个运行过程进行 HCI 捕获）；请参阅[构建](../building#emu)。
 
 不带 `--cli` 时，`a2dpwb-core.exe` 就是常驻程序：它也会启动窗口，但使用 `--background` 时除外（只显示托盘图标，开启**在托盘中启动**时供**随 Windows 启动**使用）。`a2dpwb-core.exe --quit` 会请求正在运行的 A2DPWB 停止串流并退出（安装程序会使用它）。
 
@@ -321,7 +321,7 @@ A2DPWB 支持三种使用 [libopenaptx](https://github.com/pali/libopenaptx) 编
 {: .note }
 **aptX Adaptive 已在 48 kHz 下用真实耳机确认：** 有用户在 2.0.2-beta.6 上将它串流到 EarFun Air Pro 4+，没有断音或卡顿，与经典 aptX 一样稳定（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）。它还通过了单元测试、上游的逐位一致性测试套件，以及针对虚拟 Bluetooth 接收端的端到端测试（`tools/emu`，检查 RTP 标头、数据包大小和帧类型；由于没有开源解码器，不对音频进行解码）。上游报告它在 Linux / PipeWire 上可用于 Bose QuietComfort Ultra（第 1 代）和 B&W Px7 S2e，48 kHz，高音质和低延迟均可。96 kHz（高 646 kbps、标准 340、移动 255）仅在其设置中选择（或使用 `--rate 96000`）且耳机是列出 96 kHz 的 R2 接收端时使用，低延迟下从不使用；96 kHz 现在也已用真实耳机确认（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）。“自动”（包括自动选择）以 48 kHz 串流。[欢迎反馈](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/11)。
 
-编码器是 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 的纯 Rust aptX Adaptive 编码器（MIT）。上游称其为净室重新实现，其中的数值表是根据合法获得的 Qualcomm 已出货二进制文件和空中抓包重建的；不包含任何 Qualcomm 代码、SDK 或二进制文件（请参阅[许可证](licenses)）。
+编码器是 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 的纯 Rust aptX Adaptive 编码器（MIT）。上游称其为净室重新实现，其中的数值表是根据合法获得的 Qualcomm 已出货二进制文件和空中抓包重建的；不包含任何 Qualcomm 代码、SDK 或二进制文件（请参阅[许可证](../licenses)）。
 
 - **选择方式**：耳机既不提供 LHDC V5 也不提供 LDAC 时，“自动”会选择它。也可以在**编解码器**页面选择 **aptX Adaptive**，或使用 `-c aptxad`。
 - **格式**：48 kHz 立体声、24-bit；选择 96 kHz 时，对列出 96 kHz 的设备（aptX Adaptive R2）以高音质使用 96 kHz；请求 44.1 kHz 时以 48 kHz 捕获。
@@ -406,7 +406,7 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 可以在连接前开始捕获，也可以在串流过程中开始。如果在连接期间开始捕获，A2DPWB 会先写入它记住的连接建立数据包（L2CAP 信道建立和 AVDTP 信令，包括编解码器协商），因此该文件仍然可以分析。“诊断”会在记录期间和停止后显示文件路径。
 
-可以用 Wireshark 打开捕获文件，或使用开发者工具 `a2dpwb_decode`（需从源代码构建，请参阅[构建](building)）进行检查：
+可以用 Wireshark 打开捕获文件，或使用开发者工具 `a2dpwb_decode`（需从源代码构建，请参阅[构建](../building)）进行检查：
 
 ```
 a2dpwb_decode "%APPDATA%\A2DPWB\hci_20260925_120000.pklg" -o C:\temp\check
@@ -460,7 +460,7 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 `--remote-sink auto` 会在本地网络中查找接收器，向其 Bluetooth 适配器串流（除非 `-d` 指定了其他设备），并每 5 秒以及结束时输出接收器的统计数据：比特率、丢失和迟到的数据包（RTP 序列号）、抖动和间隔、模拟播放缓冲区中的断音和跳过、流 / 解码错误，以及接收端的 RSSI（相对于其理想接收范围：0 = 正常，负值 = 太弱）。不加 `--test-tone` 时发送系统音频。`--remote-sink <host[:port]>` 可直接指定接收器，而不进行查找。
 
 {: .note }
-开启**设置 > 开发者模式**后，“诊断”中会有**对端接收器测试**选项卡。在此版本中它仍是预览：可以保存接收器地址，但尚不能串流。请使用上面的命令行。
+同样的测试也可以在窗口中进行：开启**设置 > 开发者模式**，打开**开发者 > 对端接收器测试**。它会查找接收器（或使用输入的地址），以所选的编解码器和音源（测试音或系统音频）串流，逐步检查，并将发送的内容与接收器统计的内容并排显示。无需退出 A2DPWB。
 
 双方都从流的第一个数据包开始计数，因此可以比较发送和接收的数据包数：两者应当相等。Bluetooth 会在控制器内部重传丢失的无线数据包，而 A2DPWB 在链路保持连接期间不会放弃任何数据包，因此较差的无线链路在接收端会表现为间隔、抖动和断音，而不是丢包；当链路跟不上时，数据包会在发送端于发送前被丢弃。双方都无法获得重传次数。
 

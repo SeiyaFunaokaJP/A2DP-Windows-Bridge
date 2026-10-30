@@ -17,7 +17,7 @@ nav_order: 2
 
 ## Prerequisites
 
-- **Windows 10 (22H2) / 11** (x64)
+- **Windows 10 (22H2) / 11** (x64 or ARM64)
 - **A USB Bluetooth adapter for A2DPWB**: a separate dongle is recommended; a built-in USB adapter works too, but Windows then has no Bluetooth of its own (see [Step 2](#winusb))
 
 A2DPWB assigns the WinUSB driver to the adapter itself. [Zadig](https://zadig.akeo.ie/) is not needed any more (it still works, see [Using Zadig instead](#zadig)).
@@ -43,7 +43,7 @@ Plug in the USB Bluetooth adapter and start A2DPWB. When there is no audio devic
 
 1. **Choose the adapter**: the USB Bluetooth adapters found. If yours is missing, plug it in and press **Refresh**. A green **Supported** or a red **Unsupported** says whether A2DPWB can use each one; an unsupported one is listed but cannot be chosen
 2. **Driver and firmware**: **Replace with WinUSB driver** (see [Step 2](#winusb)), and for Realtek adapters the firmware files (see [Firmware](#firmware))
-3. **Find your audio devices**: the scan starts by itself. Put the audio device into pairing mode and press **Connect** next to it (or type its address and press **Use**): A2DPWB saves it with the best codec it has (Auto) and connects; it leaves the list (also after **Back** and **Next**). Then **Finish** (see [Step 3](#headphones)). Its codec can be changed later on **Codecs**. The step's **Startup** block has **Start with Windows** and **Start in the tray**, the same switches as in Settings, saved at once
+3. **Find your audio devices**: the scan starts by itself. Put the audio device into pairing mode and press **Connect** next to it (or type its address and press **Use**): A2DPWB saves it with the best codec it has (Auto) and connects; it leaves the list (also after **Back** and **Next**) and its row gets **Disconnect** (**Cancel** while it connects): a wrong device goes back to the list and the scan resumes, so that you can connect another one. Then **Finish** (see [Step 3](#headphones)). Its codec can be changed later on **Codecs**. The step's **Startup** block has **Start with Windows** and **Start in the tray**, the same switches as in Settings, saved at once
 
 **Set up later** skips the rest; **Settings > Run setup** opens it again.
 
@@ -90,7 +90,7 @@ If the adapter is missing from A2DPWB's list, a button on the **Adapter** screen
 
 ## Step 3: Find Your Headphones {#headphones}
 
-**Scan Devices** (on **Audio Devices**) finds nearby devices with the USB adapter for 30 seconds, listing them as they answer. In the setup the scan starts by itself and goes on until a device is connected (it then leaves the list), **Stop** is pressed or the setup is closed. Put the headphones into pairing mode first. Devices A2DPWB has paired with before are listed as **Paired**.
+**Scan Devices** (on **Audio Devices**) finds nearby devices with the USB adapter for 30 seconds, listing them as they answer. In the setup the scan starts by itself and goes on until a device is connected (it then leaves the list; **Disconnect** on its row puts it back and resumes the scan), **Stop** is pressed or the setup is closed. Put the headphones into pairing mode first. Devices A2DPWB has paired with before are listed as **Paired**.
 
 If the scan does not find them, enter the Bluetooth address under **Manual:** and click **Use**. Typed or pasted addresses are formatted as you go: `AA:BB:CC:DD:EE:FF`, `aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` and `AA BB CC DD EE FF` all become `AA:BB:CC:DD:EE:FF`.
 

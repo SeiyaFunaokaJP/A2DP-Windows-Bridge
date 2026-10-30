@@ -17,13 +17,13 @@ nav_order: 3
 
 ## The Window
 
-Start **A2DP Windows Bridge** from the Start menu (or `a2dpwb.exe`). The menu on the left has the screens below (Home, Codecs, Audio Devices, Adapters, Diagnostics, Settings, About); it folds to icons when the window is narrow. The window only shows what the resident `a2dpwb-core.exe` does: closing it does not stop streaming (see [Tray and Flyout](#tray)).
+Start **A2DP Windows Bridge** from the Start menu (or `a2dpwb.exe`). The menu on the left has the screens below (Home, Codecs, Audio Devices, Adapters, Diagnostics, Settings, About, and Developer in developer mode); it folds to icons when the window is narrow. The window only shows what the resident `a2dpwb-core.exe` does: closing it does not stop streaming (see [Tray and Flyout](#tray)).
 
 ### Home
 
 - A card for each saved audio device, side by side: its state, battery and, for the one connected, the codec in use (a list in place of its name, see below) with its bitrate. When a different codec than the one chosen is used, the codec line says why beside its name for a few seconds, e.g. **aptX Adaptive (Opus is unsupported)** (or *is in use*, *is experimental*), then only its warning mark stays (hover for why); the status line just says **Connected**
 - **Connect** / **Disconnect** under each card. One device is connected at a time: **Connect** on another device disconnects the one in use and connects that one
-- **Volume**: the headphones' volume (see [Volume](#volume)); click the speaker to mute and again to unmute. The cards of the other devices keep the slider, disabled
+- **Volume**: the headphones' volume (see [Volume](#volume)); click the speaker to mute (silence is sent) and again to unmute. The cards of the other devices keep the slider, disabled
 - The codec of the device in use, chosen from the list on its card to switch quickly (say, one for games and one for music): the codecs the device supports, as on [Codecs](#codecs), by name only. It shows the codec in use, also under **Auto-select**; choosing a codec turns Auto-select off (turn it back on on Codecs). A choice applies at once (the device connects again with it; the next choice waits until it is connected, as on Codecs)
 - For the device in use, the link quality with a small graph, below the cards. The output source is chosen on **Audio Devices**; while an application set as the output source is not running yet, the device's card says so
 - An error comes with its cause and, where there is one, the button that fixes it (**Replace with WinUSB driver**, **Open Download Page**, **Restart Bluetooth**, **Try again**, **Codecs**, **Audio Devices**, ...)
@@ -34,7 +34,7 @@ The sidebar shows the same for every device on every screen, and the tray flyout
 
 The codec of each saved audio device, one section per device (a dot that is green while the device is connected, its name, **Paired** / **Audio** tags; the address is on **Audio Devices**) with its codec cards, highest sound quality first unless you put them in your own order, each with three bars (sound quality, low latency, stability) and whether the device offered it when it last connected: **Supported** (green mark) or **Unsupported** (red mark). With **Show only supported codecs** on (the default), the cards shown need no **Supported** tag and have none. Every codec is offered; the experimental ones (🧪 in the README's codec table) are marked only in the documentation.
 
-- **Auto-select the codec with the highest quality** (one setting for every device, at the top of the page; on by default): each device uses the codec with the highest sound quality it supports, in this order: LHDC V5 > LDAC > aptX Adaptive > Opus > aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC, with its best settings: high quality, 24-bit where the codec carries it and the highest sample rate the device lists (e.g. LDAC 96 kHz, LHDC V5 up to 192 kHz; aptX Adaptive 48 kHz, see [aptX Adaptive](#aptx-adaptive); Windows' own rate is resampled). The line under the switch says to turn it off to choose, set up and order the codecs yourself. The cards are read-only, in the default order, and the codec in use (or the one Auto will pick) is highlighted; clicking a card or its **...** asks whether to turn Auto-select off (**Disable Auto-select** / **Cancel**). Turn it off to choose each device's codec and its settings yourself; a device with none chosen yet keeps Auto's pick. The codec chosen for a device is kept while Auto-select is on. Settings from before 2.0.2 that chose a codec for any device start with it off
+- **Auto-select the codec with the highest quality** (one setting for every device, at the top of the page; on by default): each device uses the codec with the highest sound quality it supports, in this order: LHDC V5 > LDAC > aptX Adaptive > Opus > aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC, with its best settings: high quality, 24-bit where the codec carries it and the highest sample rate the device lists (e.g. LDAC 96 kHz, LHDC V5 up to 192 kHz; aptX Adaptive 48 kHz, see [aptX Adaptive](#aptx-adaptive); Windows' own rate is resampled). The line under the switch says to turn it off to choose, set up and order the codecs yourself. The cards are read-only, in the default order, and the codec in use (or the one Auto will pick) is highlighted; clicking a card or its **...** asks whether to turn Auto-select off (**Disable Auto-select** / **Cancel**); once it is off, the card clicked is chosen (its **...** opens its settings). Turn it off to choose each device's codec and its settings yourself; a device with none chosen yet keeps Auto's pick. The codec chosen for a device is kept while Auto-select is on. Settings from before 2.0.2 that chose a codec for any device start with it off
 - With it off, click a card to choose that device's codec; it is saved at once, and a device streaming connects again with it. A card the device does not support (shown with **Show only supported codecs** off) chooses the first card in the device's order that it supports instead: the best codec it supports unless you changed the order (see [Explicitly Selected Codec Not Offered](#codec-fallback))
 - With it off, drag a device's cards (the hand shows while the button is held; or press Alt with an arrow key on a card) to put its codecs in your own order; each device keeps its own order. A device with no codec chosen yet uses the first card it supports, and so does a chosen codec it does not support. FastStream and Opus 05 are never used unless chosen, wherever they stand. **Reset codecs order** resets it; it shows only while the cards shown are out of their default order (moved back, they are in the default order again). Under Auto-select the order is not used. A device streaming with a codec this changes connects again
 - Choosing another codec for the device that is streaming connects it again with that codec. The cards (and the codec list on Home and in the tray flyout) then wait until it is connected again (**Switching the codec. Wait a moment before choosing another.**, at least 1 second, at most 15) before the next choice, so a quick series of clicks does not break off a connection still being set up. Switching codecs shows no connection notification; connecting a device does
@@ -64,7 +64,7 @@ The headphones and speakers A2DPWB can stream to, each with its own settings: **
 - **Link Quality** while streaming: actual bitrate, packets, packets dropped before sending, audio dropped at capture, send queue, radio time used, signal (RSSI) and the AFH channels (see [Link Quality and AFH](#link-quality))
 - **Codec details** while streaming: the media payload, headers, codec frame and frames per packet, and what the device's endpoint lists beside what is in use: for SBC the bitpool, sample rates, channel modes, blocks, subbands and bit allocation; for AAC the object types, sample rates, channels, peak bit rate and VBR; for the other codecs the sample rates, bit depths and peak bit rate
 - **Connection Flow**: the eleven stages of the latest connection attempt (start, Bluetooth adapter, ACL / AVDTP connect, capability discovery, codec selection, audio capture, stream configuration, encoder, stream start, audio sending, connection upkeep with disconnects / reconnects) as OK, Warning or Failed, with the time it took. **Copy Flow** copies it
-- **Log**: live, filtered by level (all, info and above, warnings and errors, errors only) and by text. **Copy Shown Log** copies what is shown
+- **Log**: live, filtered by level (all, info and above, warnings and errors, errors only), by text and to the current connection attempt (**Current attempt only**). **Copy Shown Log** copies what is shown. **Open log folder** opens the folder of the log files; unlike **Copy Diagnostics**, those files are not masked (they include Bluetooth addresses and your Windows user name)
 - **Start HCI Capture** / **Stop HCI Capture** (see [Verifying the Media Stream](#verify-stream))
 - **Copy Diagnostics**: version, OS, adapter, audio device (codec, its settings and order), the flow, warnings / errors and the recent log on the clipboard, ready to paste into a bug report. **Mask Bluetooth addresses** (on by default) replaces addresses with `<addr-1>`, `<addr-2>`... (the adapter's own with `<adapter>`) and device names with `<device-1>`, `<device-2>`..., and hides USB serial numbers, file paths above the app's own folder (`<path>\A2DPWB\logs\...`) and your Windows account (user name and SID). The same masking applies to the crash report and error texts copied for a bug report
 - **Report a problem**:
@@ -79,7 +79,13 @@ A2DPWB also records some things all the time, so that a problem that happened on
 
 Disk use stays bounded: a normal day's log is well under 1 MB and 7 days are kept; with verbose logging a day's file takes at most 100 MB of debug and trace lines (then only info and above go on until the next day); the flight recorder files are a few MB at most, 10 kept.
 
-With **Settings > Developer mode**, Diagnostics also has a **Peer Receiver Test** tab (see [Peer Receiver Test](#receiver)).
+### Developer
+
+Shown while **Settings > Developer mode** is on; most users never need it. Three tabs:
+
+- **Overrides**: switches for finding out why a device stays silent (RTP marker bit, logging the first media packets, AAC configuration and encoder options), each saved device's **Max media packet size** (see [Max Media Packet Size](#max-packet)). Everything is off by default and applies when the next stream starts; while one is on, a banner says so. **Turn all off** resets them
+- **Logging**: how long log files are kept (default 7 days), the daily size limit (default 100 MB), verbose logging that stays on (no 24-hour or 1-hour limit, also from the core's start), the stream health line every 10 seconds, and **Add marker** (a numbered line in the log, to find a moment again). Turning developer mode off goes back to the defaults
+- **Peer Receiver Test**: streams to the measuring receiver on another PC and compares what was sent with what arrived (see [Peer Receiver Test](#receiver))
 
 ### Adapter
 
@@ -97,7 +103,7 @@ With **Settings > Developer mode**, Diagnostics also has a **Peer Receiver Test*
 | Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray** and **Clicking the tray icon opens the full app window** (see [Tray and Flyout](#tray)) |
 | Notifications | **Notify when a device connects** (the device, its battery, the codec and what it runs with; on by default), **Notify when the battery is low**: **Below 20%** (the default), **Below 10%**, **Below 5%** or **Never**, once per connection (again only after the battery was back 5 points above) |
 | Updates | **Check for Updates**, **Check for Updates on Startup**, **Include Pre-releases in Update Checks** (also offer beta releases), **Update now** (see [Updates](#updates)) |
-| Advanced | **Developer mode** (adds the **Developer** screen with codec overrides, each device's **Max media packet size** and logging options, the receiver test to Diagnostics and more details to the log; no restart needed), **Settings folder** with **Open Config Folder**, **Run setup** |
+| Advanced | **Developer mode** (adds the [Developer](#developer) screen with codec overrides, each device's **Max media packet size**, logging options and the peer receiver test, and more details to the log; no restart needed), **Settings folder** with **Open Config Folder**, **Run setup** |
 | About A2DP Windows Bridge | Version, license, third-party licenses, **Quit A2DP Windows Bridge** |
 
 ### First-Run Setup
@@ -189,9 +195,11 @@ Put the headphones into pairing mode first.
 
 | Option | Description |
 |:-------|:------------|
-| `-d <addr>` | Bluetooth address of the headphones / receiver (`AA:BB:CC:DD:EE:FF`) |
-| `-c <codec>` | `ldac`, `aptxhd`, `aptxll`, `aptx`, `aac`, `sbc`, `lhdcv5`, `opus`, `opus05`, `aptxad`, `auto` (default: `auto`) |
-| `-q <mode>` | Quality: `hq` (High, default); LDAC and LHDC V5 also `sq` (Medium) and `mq` (Low); aptX Adaptive also `ll` (Low Latency). Other codecs run any level as `hq` |
+| `-d <addr>` | Bluetooth address of the headphones / receiver (`AA:BB:CC:DD:EE:FF`; default: the first audio device paired with Windows) |
+| `-l` | List the Bluetooth devices paired with Windows and exit |
+| `-u <adapter>` | The USB adapter to use when several have WinUSB: instance ID, device path or `VID:PID` (e.g. `0bda:8771`) |
+| `-c <codec>` | `ldac`, `aptxhd`, `aptxll`, `aptx`, `aptxad`, `aac`, `sbcxq`, `sbc`, `lhdcv5`, `opus`, `opus05`, `faststream`, `auto` (default: `auto`) |
+| `-q <mode>` | Quality: `hq` (High, default); LDAC and LHDC V5 also `sq` (Medium) and `mq` (Low), LHDC V5 also `mhq` (Medium-High); aptX Adaptive also `ll` (Low Latency). Other codecs run any level as `hq` |
 | `-a` | ABR (LDAC, LHDC V5 and aptX Adaptive; SBC / SBC XQ: adaptive bitpool) |
 | `--fallback` | A codec `-c` the headphones do not offer falls back to the best one they offer, as the app does, instead of an error |
 | `--no-experimental` | Never use the experimental codecs (aptX HD, aptX LL, Opus, Opus 05, FastStream) |
@@ -201,12 +209,14 @@ Put the headphones into pairing mode first.
 | `--rate <hz>` | Capture sample rate (default: the device's) |
 | `--bits <16\|24>` | Bit depth (default: 24 where the codec carries it) |
 | `--max-packet <bytes>` | Max media packet size, 679-1679, default 1023 (see [Max Media Packet Size](#max-packet)) |
+| `--sbc-blocks <n>`, `--sbc-subbands <n>`, `--sbc-alloc <method>`, `--sbc-bitpool <n>` | SBC / SBC XQ frame setup: blocks 4/8/12/16 (default 16), subbands 4/8 (default 8), allocation `loudness` (default) or `snr`, bitpool (default: by quality) |
+| `--sbc-mode <mode>` | SBC channel mode: `joint_stereo` (default), `stereo`, `mono` (dual channel is `-c sbcxq`) |
 | `--afh <auto\|off\|6,11>` | AFH host channel classification (see [Link Quality and AFH](#link-quality)) |
 | `--remote-sink <host[:port]\|auto>` | Show what the peer receiver gets; without `-d`, stream to that receiver (see [Peer Receiver Test](#receiver)) |
 | `--scan [seconds]` | List nearby devices and exit (default 10 seconds) |
 | `-h` | Show the help |
 
-For development and testing there are also `--hci-tcp <host:port>` (a virtual controller over TCP instead of the WinUSB adapter), `--test-tone` (1 kHz left / 1.5 kHz right instead of captured audio), `--duration <s>` (stop after this many seconds) and `--hci-capture <file.pklg>` (HCI capture of the whole run); see [Building](building#emu).
+For development and testing there are also `--hci-tcp <host:port>` (a virtual controller over TCP instead of the WinUSB adapter), `--test-tone` (1 kHz left / 1.5 kHz right instead of captured audio), `--duration <s>` (stop after this many seconds), `--sessions <n>` (stream n times in a row, as Disconnect / Connect in the app), `--restart` (with `--sessions`: restart Bluetooth between them) and `--hci-capture <file.pklg>` (HCI capture of the whole run); see [Building](building#emu). The LE Audio options are listed by `-h` (see [LE Audio](#le-audio)).
 
 Without `--cli`, `a2dpwb-core.exe` is the resident program: it starts the window too, except with `--background` (tray icon only, used by **Start with Windows** when **Start in the tray** is on). `a2dpwb-core.exe --quit` asks a running A2DPWB to stop streaming and exit (the installer uses it).
 
@@ -243,7 +253,7 @@ Application mode sends the audio of one app, for example a music player, a brows
 
 ### Volume {#volume}
 
-While streaming, Home and the tray flyout show a **Volume** slider when the headphones support AVRCP absolute volume. It sets the volume on the headphones themselves, so the audio sent keeps its full resolution. The speaker beside it mutes (volume 0 on the headphones) and unmutes (back to the volume before). The slider also follows the volume buttons and touch controls on the headphones.
+While streaming, Home and the tray flyout show a **Volume** slider when the headphones support AVRCP absolute volume. It sets the volume on the headphones themselves, so the audio sent keeps its full resolution. The speaker beside it mutes (volume 0 on the headphones) and unmutes (back to the volume before). At volume 0, however it was set (the speaker, the slider, Windows or the headphones' buttons), A2DPWB sends silence, since many headphones still play faintly at their lowest volume. The slider also follows the volume buttons and touch controls on the headphones.
 
 **Windows Volume Sync** (on **Audio Devices**, for every device; on by default) makes a Windows volume and the headphones' volume one volume while streaming. The Windows volume synced is that of the device A2DPWB captures: the default output device in System Loopback and Application mode, the selected device in Virtual Device mode. Off, the Windows volume and the headphones' volume are separate.
 
@@ -265,7 +275,7 @@ The play/pause, next and previous track controls on the headphones (buttons or t
 - A2DPWB tells the headphones whether audio is playing (from whether there is audio to capture), so headphones that pause when taken off send the right command.
 - Fast forward / rewind (holding a button) have no Windows media key and are ignored.
 - Volume gestures change the headphones' own volume; with **Windows Volume Sync** the synced Windows volume follows (see [Volume](#volume)).
-- Turn this off for a device with **Audio Devices > Audio Device Buttons Control Playback**, e.g. if another program already reacts to the media keys twice.
+- Turn this off with **Audio Devices > Audio Device Buttons Playback Control** (one switch for every device), e.g. if another program already reacts to the media keys twice.
 
 This needs AVRCP on the headphones, which nearly all have. Without it, streaming works as usual, just without the buttons.
 
@@ -302,12 +312,16 @@ System Loopback and Virtual Device use WASAPI shared mode: with the sample rate 
 
 | Codec | Best For | Trade-off |
 |:------|:---------|:----------|
-| LDAC (HQ) | Highest audio quality | Higher latency, needs stable connection |
+| LHDC V5 | Highest bit rate and sample rate (up to 1000 kbps, 192 kHz) | Few devices; needs a stable connection |
+| LDAC (HQ) | Highest audio quality on many Sony and Android-oriented devices | Higher latency, needs stable connection |
 | LDAC (ABR) | Quality + stability | Bitrate fluctuates with connection |
+| aptX Adaptive | High quality with a low-latency mode, on Qualcomm-based devices | Bit rate varies with the link |
+| Opus 🧪 | Efficient, good quality at 256 kbps | Few sinks (Android's A2DP Opus, PipeWire) |
 | aptX HD | High quality, wider device support | Fixed 576 kbps |
 | aptX | Widest aptX device support | 16-bit, 352/384 kbps |
 | aptX LL | Gaming, video (low latency) | Lower audio quality (16-bit) |
 | AAC | Apple devices, good efficiency | Moderate quality |
+| SBC XQ | Much better than SBC on any device whose SBC allows it | Needs dual channel and bitpool ≥ 29; ~385-552 kbps |
 | SBC | Maximum compatibility | Lowest audio quality |
 
 The **Codecs** screen shows the same comparison as three bars on each codec card.
@@ -390,7 +404,7 @@ aptX, aptX HD and aptX LL support only 44.1 kHz and 48 kHz (aptX Adaptive 48 kHz
 1. Connect to the headphones.
 2. Open **Diagnostics** and type `remote` into the log filter.
 
-The same lines are in the log files in the config folder (`%APPDATA%\A2DPWB\logs\a2dpwb-core.<date>.log`); in CLI mode they are printed to the console. The capability lines show exactly which codecs the headphones list:
+The same lines are in the log files in the config folder (`%APPDATA%\A2DPWB\logs\a2dpwb-core.<date>.log`; not masked, so check them before attaching one to a report); in CLI mode they are printed to the console. The capability lines show exactly which codecs the headphones list:
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -426,8 +440,12 @@ The tool follows the AVDTP signaling (SET_CONFIGURATION / RECONFIGURE and whethe
 
 | Codec | What is checked | Output |
 |:------|:----------------|:-------|
-| SBC, AAC, aptX, aptX HD, aptX LL | Full decode with the reference decoders; frame parameters vs configuration; media payload header frame count | `<prefix>.<n>.<codec>.wav` to listen to |
+| SBC, SBC XQ, FastStream, AAC, aptX, aptX HD, aptX LL, Opus, Opus 05 | Full decode with the reference decoders; frame parameters vs configuration; media payload header frame count | `<prefix>.<n>.<codec>.wav` to listen to |
 | LDAC | Frame headers only (sync word, sampling rate, channel mode, frame length), frame count, bitrate. No open-source LDAC decoder exists | Report only |
+| LHDC V5 | Frame headers only (media payload header frame count, sequence numbers), bitrate. No open-source decoder exists | Report only |
+| aptX Adaptive | Its own RTP header (sample count timestamp, latency mode) and the codec packet header only. No open-source decoder exists | Report only |
+
+`a2dpwb_decode --le-audio` does the same for an LE Audio capture (LC3 over CIS).
 
 For every stream it also reports RTP sequence gaps, how fast the RTP timestamp advances, the bitrate, and how many ACL packets the Bluetooth controller reported as completed. The last line is `RESULT: OK` or `RESULT: PROBLEMS FOUND` (exit code 0 or 1).
 
@@ -469,8 +487,7 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 
 `--remote-sink auto` finds the receiver on the local network, streams to its Bluetooth adapter unless `-d` names another device, and prints the receiver's statistics every 5 seconds and at the end: bitrate, lost and late packets (RTP sequence numbers), jitter and gaps, dropouts and skips of a modelled playout buffer, stream / decode errors and the RSSI at the receiver (relative to its golden receive range: 0 = fine, negative = too weak). Without `--test-tone` it sends the system audio. `--remote-sink <host[:port]>` names the receiver instead of searching for it.
 
-{: .note }
-With **Settings > Developer mode**, Diagnostics has a **Peer Receiver Test** tab. In this version it is a preview: it saves the receiver address, but it does not stream yet. Use the command line above.
+The same test runs in the window: with **Settings > Developer mode** on, open **Developer > Peer Receiver Test**. Leave **Receiver** empty to find it on the local network (or enter its address), **Connect** connects to its statistics; choose the codec, its settings, the source (**Test tone** or **System audio**) and, if needed, the L2CAP MTU and playout buffer the receiver offers, then **Start**. It checks each step and shows what this PC sent beside what the receiver counted. Quit nothing first: the window uses the running A2DPWB.
 
 Both sides count the packets of a stream from its first packet, so the packets sent and received can be compared: they should be equal. Bluetooth retransmits lost radio packets inside the controllers, and A2DPWB does not give up on a packet while the link is up, so a poor radio link shows as gaps, jitter and dropouts at the receiver rather than as lost packets; when the link cannot keep up, packets are dropped before sending on the sending side. The number of retransmissions is not available to either side.
 

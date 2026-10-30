@@ -31,9 +31,4 @@ Made or found a tool that works with A2DPWB? Tell us in an [issue](https://githu
 
 ## For tool authors
 
-Tools talk to the core over the same per-user named pipe as the A2DPWB window; the protocol is described in [Core and IPC](architecture#core-and-ipc). Things to keep in mind:
-
-- **Feature check**: the core's `welcome` lists optional features in `features` (for example `"rfcomm"`). Older cores leave the field out, so check it before using a feature.
-- **Unknown requests**: a request the core cannot read gets an `ipc.bad_request` error. Cores before 2.0.2-beta.10 close the connection instead.
-- **Rename in 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)): the pipe becomes `\\.\pipe\bcfw-<SID>`. The core keeps listening on `\\.\pipe\a2dpwb-<SID>` as well, with the same protocol, for at least 6 months after 3.0.0; its removal is announced in the release notes first. Try `bcfw-<SID>` first and fall back to `a2dpwb-<SID>`. Use the pipe, not the mutex, to check whether the core is running: the mutex name changes without a transition.
-- The protocol and the core may still change during the 2.0.2 betas.
+Tools talk to the core over the same per-user named pipe as the A2DPWB window. The protocol, the methods meant for tools, the RFCOMM passthrough and the compatibility rules (feature check, the pipe's rename in 3.0.0) are on **[Integration (IPC)](integration)**. The protocol and the core may still change during the 2.0.2 betas.
