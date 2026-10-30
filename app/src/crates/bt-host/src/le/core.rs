@@ -2,7 +2,7 @@
 //! stack init / deinit of the LE part, LE scan (extended scan fallback),
 //! connect with RPA / identity merge, SM LE Secure Connections Just Works
 //! bonding (a bond the device lost is deleted and pairing repeated once),
-//! bonds in <bond_dir>\le_audio_bonds.tlv, GATT discovery (included /
+//! bonds in le_audio_bonds.tlv (LeConfig::bonds_file), GATT discovery (included /
 //! secondary services too), PACS / ASCS reads, refusing a stream without
 //! ISO buffers ("adapter does not support LE Audio (no ISO buffers)"), the
 //! BAP stream, and the module dispatch.
@@ -1694,8 +1694,14 @@ impl LeCore {
             return;
         }
         tracing::info!("LE Audio (experimental): initializing (SM, GATT client / server, ISO)");
-        let dir: PathBuf = self.config.as_ref().and_then(|c| c.bond_dir.clone()).unwrap_or_else(std::env::temp_dir);
-        let path = dir.join("le_audio_bonds.tlv");
+        let path: PathBuf = self
+            .config
+            .as_ref()
+            .and_then(|c| c.bonds_file.clone())
+            .unwrap_or_else(|| std::env::temp_dir().join("le_audio_bonds.tlv"));
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
         stack.le_init(&path.to_string_lossy());
         tracing::info!("LE Audio: bonds in {}", path.display());
 

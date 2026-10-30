@@ -1,7 +1,7 @@
-//! The window process' own log: `<config dir>\logs\bluecaster-ui.YYYY-MM-DD.log`
-//! next to the core's (local timestamps as the core's). The core removes
-//! the old ones with its own (7 days, developer mode: 1 to 365), daily and
-//! when the setting changes; this process only stops at 365 files.
+//! The window process' own log: `<config dir>\logs\<YYYY-MM-DD>\ui.log`
+//! next to the core's core.log (local dates and timestamps as the core's).
+//! The core removes the old day folders (7 days, developer mode: 1 to 365),
+//! daily and when the setting changes; this process only stops at 365.
 //! It holds what the core cannot see: the pages loading, errors in the
 //! frontend, the connection to the core, and whether a window that was
 //! shown actually has its page drawn (a blank or hung webview is the
@@ -16,40 +16,32 @@
 //! reports in `logs\crash\` (win_sys::crash).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager, WebviewWindow};
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-const FILE_PREFIX: &str = "bluecaster-ui";
+/// The settings folder's layout, shared with the core (bluecaster_core::paths,
+/// compiled here as well: this process does not link the core's crate)
+#[path = "../../../crates/core/src/paths.rs"]
+#[allow(dead_code)]
+mod paths;
+
 /// The core prunes by the retention setting; this is only a ceiling (the
 /// setting's maximum), so a longer retention set while this process runs
 /// is not cut short by it
-const KEEP_FILES: usize = 365;
+const KEEP_DAYS: usize = 365;
 /// A frontend message is cut to this many characters
 const MAX_MESSAGE: usize = 2000;
 /// A shown window's page is probed this long after the show...
 const PROBE_DELAY: Duration = Duration::from_secs(3);
 /// ...and must answer within this time
 const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
-
-/// The settings folder, as bluecaster_core::paths::config_dir finds it
-fn config_dir() -> PathBuf {
-    match std::env::var_os("BLUECASTER_CONFIG_DIR").filter(|v| !v.is_empty()) {
-        Some(d) => PathBuf::from(d),
-        None => match std::env::var_os("APPDATA") {
-            Some(a) => PathBuf::from(a).join("BlueCaster"),
-            None => PathBuf::from("."),
-        },
-    }
-}
 
 /// Local wall-clock timestamps, "2026-10-21 23:11:18.502" (as the core's)
 #[derive(Clone, Copy)]
@@ -79,18 +71,14 @@ impl FormatTime for LocalTimer {
 /// main: the local time offset is read here, before other threads start.
 pub fn init() -> Option<WorkerGuard> {
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
-    let dir = config_dir().join("logs");
-    let appender = std::fs::create_dir_all(&dir).ok().and_then(|()| {
-        RollingFileAppender::builder()
-            .rotation(Rotation::DAILY)
-            .filename_prefix(FILE_PREFIX)
-            .filename_suffix("log")
-            .max_log_files(KEEP_FILES)
-            .build(&dir)
-            .ok()
-    })?;
-    let (writer, guard) = tracing_appender::non_blocking(appender);
-    let verbose = verbose_level(&dir).max(always_verbose(&config_dir()));
+    // Renames the folder of 2.0.x if the core has not yet
+    let config = paths::config_dir();
+    std::fs::create_dir_all(paths::log_dir(&config)).ok()?;
+    // The day folder is made at the first line (the core may not have made
+    // today's yet)
+    let file = paths::DayLogFile::new(&config, paths::LogFile::Ui, offset, || KEEP_DAYS);
+    let (writer, guard) = tracing_appender::non_blocking(file);
+    let verbose = verbose_level(&config).max(always_verbose(&config));
     let base = std::env::var("BLUECASTER_LOG").ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| "info".into());
     let directives = match verbose {
         Some(l) => format!("{base},bluecaster={l},frontend={l},win_sys={l}"),
@@ -100,11 +88,14 @@ pub fn init() -> Option<WorkerGuard> {
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     let layer = tracing_subscriber::fmt::layer().with_writer(writer).with_ansi(false).with_timer(LocalTimer { offset });
     let _ = tracing_subscriber::registry().with(filter).with(layer).try_init();
+    if let Some(note) = paths::take_folder_note() {
+        tracing::info!("{note}");
+    }
     if let Some(l) = verbose {
         tracing::info!("verbose logging ({l}) as the core's");
     }
     let about = format!("bluecaster-ui {}", env!("CARGO_PKG_VERSION"));
-    win_sys::crash::install(&dir.join("crash"), "bluecaster-ui", &about);
+    win_sys::crash::install(&paths::crash_dir(&config), "bluecaster-ui", &about);
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let reason = format!("panic in thread {}: {info}", std::thread::current().name().unwrap_or("unnamed"));
@@ -120,8 +111,8 @@ pub fn init() -> Option<WorkerGuard> {
 
 /// The level of the core's verbose logging while it is on ("debug",
 /// "trace"): its `verbose.json` in the logs folder
-fn verbose_level(dir: &std::path::Path) -> Option<&'static str> {
-    let text = std::fs::read_to_string(dir.join("verbose.json")).ok()?;
+fn verbose_level(config: &std::path::Path) -> Option<&'static str> {
+    let text = std::fs::read_to_string(paths::verbose_file(config)).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as u64;
     if v.get("until_ms")?.as_u64()? <= now {
@@ -137,7 +128,7 @@ fn verbose_level(dir: &std::path::Path) -> Option<&'static str> {
 /// Developer mode's verbose logging that stays on (settings.json
 /// `dev_log.always_verbose`, only while `debug_mode` is on)
 fn always_verbose(config: &std::path::Path) -> Option<&'static str> {
-    let text = std::fs::read_to_string(config.join("settings.json")).ok()?;
+    let text = std::fs::read_to_string(paths::settings_file(config)).ok()?;
     always_verbose_of(&serde_json::from_str(&text).ok()?)
 }
 

@@ -363,7 +363,7 @@ struct ProfilesFile {
 }
 
 pub fn path(dir: &Path) -> PathBuf {
-    dir.join("profiles.json")
+    crate::paths::profiles_file(dir)
 }
 
 /// Gives every profile a name of its own: v1 named profiles "<device>

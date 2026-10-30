@@ -11,8 +11,9 @@ use bt_host::media::{MEDIA_PAYLOAD_LIMIT_DEFAULT, clamp_media_payload_limit};
 /// settings.json's format: 1 is v1's (which wrote no schema_version), 2 is
 /// v2's, 3 has LE Audio on by default, 4 remembers each device's volume by
 /// default, 5 has one Auto-select for every device, 6 one Windows Volume
-/// Sync, media keys and remember volume for every device (see migrate.rs)
-pub const SCHEMA_VERSION: u32 = 6;
+/// Sync, media keys and remember volume for every device, 7 the folder's
+/// sub folders (3.0.0; see migrate.rs)
+pub const SCHEMA_VERSION: u32 = 7;
 /// The first schema_version v2 wrote: a lower one is v1's folder
 pub const FIRST_V2_SCHEMA: u32 = 2;
 
@@ -299,7 +300,7 @@ impl Settings {
     }
 
     pub fn path(dir: &Path) -> PathBuf {
-        dir.join("settings.json")
+        crate::paths::settings_file(dir)
     }
 
     /// Missing or unreadable: defaults (a broken file is kept as .bad)

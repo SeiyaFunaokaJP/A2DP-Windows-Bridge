@@ -3,10 +3,10 @@
 //!
 //! The helper writes its JSON result to a file we name (an elevated process
 //! started with ShellExecuteEx gives no stdout). The "previous driver"
-//! record of an assignment is kept in the settings folder, per adapter, for
-//! the restore.
+//! record of an assignment is kept in the settings folder's
+//! `adapters\driver\`, per adapter, for the restore (and the uninstaller).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ipc::{ErrorInfo, Msg};
@@ -28,18 +28,21 @@ fn helper() -> PathBuf {
 
 /// File of the assignment record of an adapter
 fn record_path(state: &CoreState, instance_id: &str) -> PathBuf {
-    let safe: String = instance_id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
-    state.config_dir().join("driver").join(format!("{safe}.json"))
+    bluecaster_core::paths::driver_record_file(&state.config_dir(), instance_id)
 }
 
-fn run(args: &[&str]) -> Result<(u32, Value), ErrorInfo> {
+fn run(config: &Path, args: &[&str]) -> Result<(u32, Value), ErrorInfo> {
     let out = std::env::temp_dir().join(format!("bluecaster-driver-{}.json", std::process::id()));
     let _ = std::fs::remove_file(&out);
     let mut all: Vec<&str> = args.to_vec();
     let out_s = out.to_string_lossy().into_owned();
     all.extend(["--out", &out_s]);
-    // The elevated run's log next to the core's
-    let log = bluecaster_core::paths::log_dir(&bluecaster_core::paths::config_dir()).join("bluecaster-driver.log");
+    // The elevated run's log next to the core's (the helper appends to it,
+    // in a folder that must exist)
+    let log = bluecaster_core::paths::driver_log_file(config, &bluecaster_core::paths::today());
+    if let Some(dir) = log.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
     let log_s = log.to_string_lossy().into_owned();
     all.extend(["--log", &log_s]);
     if crate::logging::verbose_now().is_some() {
@@ -62,7 +65,7 @@ fn run(args: &[&str]) -> Result<(u32, Value), ErrorInfo> {
 pub fn assign(state: &Arc<CoreState>, instance_id: &str) -> Result<Value, ErrorInfo> {
     // The stack must let go of the adapter (it may be ours already)
     state.service.release_adapter();
-    let (code, result) = run(&["assign", instance_id])?;
+    let (code, result) = run(&state.config_dir(), &["assign", instance_id])?;
     if code != 0 {
         state.refresh_adapters();
         // Some environments refuse DiInstallDevice with the inbox winusb.inf;
@@ -99,7 +102,7 @@ pub fn restore(state: &Arc<CoreState>, instance_id: &str) -> Result<Value, Error
     if let Some(p) = previous.as_deref() {
         args.extend(["--previous", p]);
     }
-    let (code, _) = run(&args)?;
+    let (code, _) = run(&state.config_dir(), &args)?;
     state.refresh_adapters();
     match code {
         0 => {

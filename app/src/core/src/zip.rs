@@ -73,6 +73,12 @@ impl ZipWriter {
         self.entries.len()
     }
 
+    /// The entries' names, in the order added
+    #[cfg(test)]
+    pub fn names(&self) -> Vec<String> {
+        self.entries.iter().map(|e| String::from_utf8_lossy(&e.name).into_owned()).collect()
+    }
+
     /// The archive's bytes
     pub fn finish(mut self) -> Vec<u8> {
         let start = self.out.len() as u32;

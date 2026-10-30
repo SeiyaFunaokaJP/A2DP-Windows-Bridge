@@ -1,6 +1,7 @@
 //! The first start of v2 on a settings folder that v1 used: before v2 reads
 //! or writes anything, the folder is copied as it is to `backup-v1\` (once),
-//! then v1's files are brought to v2's schema.
+//! then v1's files are brought to v2's schema. (Since 3.0.0 the copy is
+//! made at `backup\v1\`.)
 //!
 //! - settings.json gets `schema_version` (v1 wrote none; v2 reads a missing
 //!   one as 1). Keys v2 does not know stay, so going back to v1 still works.
@@ -42,29 +43,61 @@
 //! The per-device overrides of media keys and remember volume
 //! (`device_options`) are dropped: the global values count.
 //!
+//! Schema 7 (3.0.0): the folder of 2.0.x (renamed from `%APPDATA%\A2DPWB`
+//! by [`crate::paths::config_dir`]) gets its sub folders ([`relayout`]):
+//! first its small files are copied once to `backup\v2\` (so that 2.0.x can
+//! be installed again with its pairings), then each file moves to its place
+//! in [`crate::paths`] (only where nothing is yet: a move cut short goes on
+//! at the next start), `backup-v1\` becomes `backup\v1\`, the daily log
+//! files go into a folder per day, and the leftovers of interrupted writes
+//! go. A v1 folder gets the v1 step and then this one, in one start.
+//!
 //! At every start, the profiles are folded into one per device
 //! ([`profiles::consolidate`]: the Codecs screen keeps one); the
 //! first time that changes anything, profiles.json is copied as it was to
-//! `profiles-before-codecs.json`. A profile that chose dual channel for
+//! `backup\profiles-before-codecs.json`. A profile that chose dual channel for
 //! plain SBC gets joint stereo (2.0.2, issue #86: dual channel is SBC XQ's).
 
 use std::path::Path;
 
 use serde_json::Value;
 
+use crate::paths;
 use crate::profiles;
 use crate::settings::{FIRST_V2_SCHEMA, SCHEMA_VERSION, Settings};
 
-/// The copy of the folder as v1 left it
-pub const BACKUP_DIR: &str = "backup-v1";
-/// Where the copy is assembled; renamed to BACKUP_DIR when complete
-const BACKUP_TMP: &str = "backup-v1.tmp";
-/// Not copied: the backups themselves and v2's own logs
-const NOT_COPIED: [&str; 3] = [BACKUP_DIR, BACKUP_TMP, "logs"];
-/// v1's files that mean "v1 used this folder" even without settings.json
-const V1_FILES: [&str; 3] = ["profiles.json", "devices.txt", "link_keys.txt"];
-/// profiles.json as it was before profiles were first folded into one per device
-pub const PROFILES_BACKUP: &str = "profiles-before-codecs.json";
+/// The first schema with the folder's sub folders
+const LAYOUT_SCHEMA: u32 = 7;
+
+/// The folder before schema 7 (v1 and 2.0.x): every file at the top level.
+/// Only the migration knows these places.
+mod old {
+    /// The copy of the folder as v1 left it (2.0.x)
+    pub const BACKUP_V1: &str = "backup-v1";
+    /// Where 2.0.x assembled it
+    pub const BACKUP_V1_TMP: &str = "backup-v1.tmp";
+    /// profiles.json before the first fold (2.0.x)
+    pub const PROFILES_BACKUP: &str = "profiles-before-codecs.json";
+    pub const DEVICES: &str = "devices.txt";
+    pub const LE_DEVICES: &str = "le_audio_devices.txt";
+    pub const DEVICE_CODECS: &str = "device_codecs.json";
+    pub const ADAPTER_CAPS: &str = "adapter_caps.json";
+    pub const LINK_KEYS: &str = "link_keys.txt";
+    pub const LE_BONDS: &str = "le_audio_bonds.tlv";
+    /// CSIP sets (bt-host's csip module, in the folder of the LE bonds)
+    pub const LE_CSIP: &str = "le_audio_csip.txt";
+    pub const DRIVER_RECORDS: &str = "driver";
+    /// v1's files that mean "v1 used this folder" even without settings.json
+    pub const V1_FILES: [&str; 3] = ["profiles.json", DEVICES, LINK_KEYS];
+    /// The daily logs: `<prefix>core.YYYY-MM-DD.log`; 2.0.x wrote a2dpwb-
+    /// (compat), builds of the rename before schema 7 bluecaster-
+    pub const LOG_PREFIXES: [&str; 2] = ["a2dpwb-", "bluecaster-"];
+}
+
+/// Where the copy of a v1 folder is assembled; renamed when complete
+fn backup_v1_tmp(dir: &Path) -> std::path::PathBuf {
+    paths::backup_dir(dir).join("v1.tmp")
+}
 
 const BACKUP_README: &str = "\
 This folder is a copy of the BlueCaster settings folder as A2DP Windows Bridge v1
@@ -95,6 +128,8 @@ pub struct Report {
     pub schema_written: bool,
     /// Profiles folded into another one of the same device
     pub profiles_folded: usize,
+    /// Schema 7's sub folders were made by this call
+    pub relaid_out: bool,
 }
 
 /// schema_version of the settings file: None without a readable file, 1 for
@@ -105,53 +140,53 @@ fn schema_of(dir: &Path) -> Option<u32> {
     Some(v.get("schema_version").and_then(Value::as_u64).map_or(1, |n| n.min(u32::MAX as u64) as u32))
 }
 
-/// Copies `from` into `to` (created), recursively, except the top-level
-/// entries named in NOT_COPIED
-fn copy_tree(from: &Path, to: &Path, top: bool) -> std::io::Result<u64> {
-    std::fs::create_dir_all(to)?;
-    let mut bytes = 0;
-    for entry in std::fs::read_dir(from)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if top && NOT_COPIED.iter().any(|n| name.eq_ignore_ascii_case(n)) {
-            continue;
-        }
-        let ty = entry.file_type()?;
-        let dest = to.join(&name);
-        if ty.is_dir() {
-            bytes += copy_tree(&entry.path(), &dest, false)?;
-        } else if ty.is_file() {
-            bytes += std::fs::copy(entry.path(), &dest)?;
-        }
-        // Links are left out: the folder has none of its own
-    }
-    Ok(bytes)
+/// A v1 backup exists (2.0.x's place or this one's)
+fn has_backup_v1(dir: &Path) -> bool {
+    paths::backup_v1_dir(dir).exists() || dir.join(old::BACKUP_V1).exists()
 }
 
-/// Makes `backup-v1\` from the folder's current content. The copy is
-/// assembled under another name first, so an interrupted copy is never taken
-/// for a complete one (it is redone at the next start).
-fn backup(dir: &Path) -> std::io::Result<u64> {
-    let tmp = dir.join(BACKUP_TMP);
+/// Copies the entries of `dir` that `keep` takes to `to`, assembled as
+/// `tmp` first, so an interrupted copy is never taken for a complete one
+/// (it is redone at the next start)
+fn backup_to(
+    dir: &Path,
+    to: &Path,
+    tmp: &Path,
+    readme: &str,
+    keep: &dyn Fn(&std::ffi::OsStr) -> bool,
+) -> std::io::Result<u64> {
     if tmp.exists() {
         tracing::debug!("migrate: removing an interrupted backup {}", tmp.display());
-        std::fs::remove_dir_all(&tmp)?;
+        std::fs::remove_dir_all(tmp)?;
     }
-    let result = copy_tree(dir, &tmp, true).and_then(|bytes| {
-        std::fs::write(tmp.join("README.txt"), BACKUP_README)?;
-        std::fs::rename(&tmp, dir.join(BACKUP_DIR))?;
+    let result = paths::copy_dir(dir, tmp, keep).and_then(|bytes| {
+        std::fs::write(tmp.join("README.txt"), readme)?;
+        std::fs::rename(tmp, to)?;
         Ok(bytes)
     });
     if result.is_err() {
-        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::remove_dir_all(tmp);
     }
     result
+}
+
+/// Makes `backup\v1\` from the folder's current content, without the
+/// backups and the logs
+fn backup(dir: &Path) -> std::io::Result<u64> {
+    std::fs::create_dir_all(paths::backup_dir(dir))?;
+    let skip = |n: &std::ffi::OsStr| {
+        [old::BACKUP_V1, old::BACKUP_V1_TMP, "backup", "logs"].iter().any(|s| n.eq_ignore_ascii_case(s))
+    };
+    backup_to(dir, &paths::backup_v1_dir(dir), &backup_v1_tmp(dir), BACKUP_README, &|n| !skip(n))
 }
 
 /// Brings a settings folder from v1 to v2 (see the module documentation).
 /// Never fails: problems are logged, and a failed backup leaves v1's files
 /// unchanged so that the next start tries again.
 pub fn prepare(dir: &Path) -> Report {
+    if let Some(note) = paths::take_folder_note() {
+        tracing::info!("{note}");
+    }
     let mut report = prepare_settings(dir);
     // After v1's files were backed up as they were
     crate::paths::move_loose_firmware(dir);
@@ -176,9 +211,10 @@ fn consolidate_profiles(dir: &Path) -> usize {
         }
         return 0;
     }
-    let backup = dir.join(PROFILES_BACKUP);
+    let backup = paths::profiles_backup_file(dir);
     if !backup.exists()
-        && let Err(e) = std::fs::copy(profiles::path(dir), &backup)
+        && let Err(e) =
+            std::fs::create_dir_all(paths::backup_dir(dir)).and_then(|()| std::fs::copy(profiles::path(dir), &backup))
     {
         tracing::error!("profiles: cannot copy them to {}: {e}; not folded", backup.display());
         return 0;
@@ -202,7 +238,7 @@ fn consolidate_profiles(dir: &Path) -> usize {
 
 fn prepare_settings(dir: &Path) -> Report {
     let schema_before = schema_of(dir);
-    let v1_files = V1_FILES.iter().any(|f| dir.join(f).is_file());
+    let v1_files = old::V1_FILES.iter().any(|f| dir.join(f).is_file());
     let from_v1 = match schema_before {
         Some(n) => n < FIRST_V2_SCHEMA,
         // A settings.json that does not parse is v1's too: Settings::load
@@ -222,16 +258,18 @@ fn prepare_settings(dir: &Path) -> Report {
         return report;
     }
 
-    tracing::debug!("migrate: backup {} exists {}", BACKUP_DIR, dir.join(BACKUP_DIR).exists());
-    if !dir.join(BACKUP_DIR).exists() {
+    tracing::debug!("migrate: v1 backup exists {}", has_backup_v1(dir));
+    if !has_backup_v1(dir) {
+        let to = paths::backup_v1_dir(dir);
         match backup(dir) {
             Ok(bytes) => {
-                tracing::info!("settings from v1: copied to {} ({bytes} bytes)", dir.join(BACKUP_DIR).display());
+                tracing::info!("settings from v1: copied to {} ({bytes} bytes)", to.display());
                 report.backed_up = true;
             }
             Err(e) => {
                 tracing::error!(
-                    "settings from v1: cannot copy them to {BACKUP_DIR}: {e}; v1's files are left as they are"
+                    "settings from v1: cannot copy them to {}: {e}; v1's files are left as they are",
+                    to.display()
                 );
                 return report;
             }
@@ -272,6 +310,10 @@ fn prepare_settings(dir: &Path) -> Report {
                 return report;
             }
         }
+    }
+    // Then schema 7's sub folders, before the schema is written
+    if !relayout(dir, &mut report) {
+        return report;
     }
     if schema_before.is_some() {
         match settings.save(dir) {
@@ -333,6 +375,10 @@ fn upgrade_v2(dir: &Path, report: &mut Report) {
             tracing::info!("settings: the per-device media keys and remember volume give way to the global ones");
         }
     }
+    // 7: the sub folders; the schema is written only once they are done
+    if report.schema_before.is_some_and(|n| n < LAYOUT_SCHEMA) && !relayout(dir, report) {
+        return;
+    }
     match settings.save(dir) {
         Ok(()) => report.schema_written = true,
         Err(e) => tracing::error!("settings: cannot save {}: {e}", Settings::path(dir).display()),
@@ -342,6 +388,144 @@ fn upgrade_v2(dir: &Path, report: &mut Report) {
         report.schema_before,
         report.schema_written
     );
+}
+
+const BACKUP_V2_README: &str = "\
+This folder is a copy of the small files of the BlueCaster settings folder as
+version 2.0.x left them (settings, profiles, known devices, pairings, adapter
+records). Version 3.0.0 made it once, before it moved the files into sub
+folders.
+
+To go back to 2.0.x: uninstall 3.0.0, copy the files of this folder into
+%APPDATA%\\A2DPWB (create it), then install 2.0.x.
+
+Nothing reads this folder; it can be deleted once 3.0.0 works for you.
+";
+
+/// The files and folders at the top of a 2.0.x folder that go to
+/// `backup\v2\` (no logs, no firmware, no backups)
+const V2_SMALL: [&str; 10] = [
+    "settings.json",
+    "profiles.json",
+    old::DEVICES,
+    old::LE_DEVICES,
+    old::DEVICE_CODECS,
+    old::ADAPTER_CAPS,
+    old::LINK_KEYS,
+    old::LE_BONDS,
+    old::LE_CSIP,
+    old::DRIVER_RECORDS,
+];
+
+/// Moves `from` to `to` unless `to` exists or `from` does not; whether it
+/// moved
+fn move_if_free(from: &Path, to: &Path) -> bool {
+    if !from.exists() || to.exists() {
+        return false;
+    }
+    if let Some(parent) = to.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match std::fs::rename(from, to) {
+        Ok(()) => {
+            tracing::info!("settings folder: {} moved to {}", from.display(), to.display());
+            true
+        }
+        Err(e) => {
+            tracing::warn!("settings folder: cannot move {} to {}: {e}", from.display(), to.display());
+            false
+        }
+    }
+}
+
+/// `a2dpwb-core.2026-10-27.log` -> ("core", "2026-10-27")
+fn flat_log(name: &str) -> Option<(&str, &str)> {
+    let rest = old::LOG_PREFIXES.iter().find_map(|p| name.strip_prefix(p))?;
+    let rest = rest.strip_suffix(".log")?;
+    let (kind, day) = rest.split_once('.')?;
+    (matches!(kind, "core" | "ui") && paths::is_day_name(day)).then_some((kind, day))
+}
+
+/// A flat log file's place in its day folder: `core.log`, or, when the
+/// logger of this start has written that file already, `core.old.log`
+fn day_place(dir: &Path, day: &str, kind: &str) -> std::path::PathBuf {
+    let target = paths::day_log_dir(dir, day).join(format!("{kind}.log"));
+    if target.exists() { paths::day_log_dir(dir, day).join(format!("{kind}.old.log")) } else { target }
+}
+
+/// Schema 7's sub folders (see the module documentation). False when the
+/// backup of the 2.0.x files could not be made: nothing moved, the next
+/// start tries again.
+pub fn relayout(dir: &Path, report: &mut Report) -> bool {
+    // backup\v1\ from 2.0.x's place first: it is not copied below
+    let _ = std::fs::create_dir_all(paths::backup_dir(dir));
+    move_if_free(&dir.join(old::BACKUP_V1), &paths::backup_v1_dir(dir));
+    let _ = std::fs::remove_dir_all(dir.join(old::BACKUP_V1_TMP));
+
+    let small = |n: &std::ffi::OsStr| V2_SMALL.iter().any(|s| n.eq_ignore_ascii_case(s));
+    let any_small = V2_SMALL.iter().any(|f| dir.join(f).exists());
+    let v2 = paths::backup_v2_dir(dir);
+    if any_small && !v2.exists() {
+        match backup_to(dir, &v2, &paths::backup_dir(dir).join("v2.tmp"), BACKUP_V2_README, &small) {
+            Ok(bytes) => tracing::info!("settings of 2.0.x: copied to {} ({bytes} bytes)", v2.display()),
+            Err(e) => {
+                tracing::error!("settings of 2.0.x: cannot copy them to {}: {e}; nothing moved", v2.display());
+                return false;
+            }
+        }
+    }
+
+    let mut moved = 0;
+    let mut mv = |from: std::path::PathBuf, to: std::path::PathBuf| moved += usize::from(move_if_free(&from, &to));
+    mv(dir.join(old::DEVICES), paths::devices_file(dir));
+    mv(dir.join(old::LE_DEVICES), paths::le_devices_file(dir));
+    mv(dir.join(old::DEVICE_CODECS), paths::device_codecs_file(dir));
+    mv(dir.join(old::LINK_KEYS), paths::link_keys_file(dir));
+    mv(dir.join(old::LE_BONDS), paths::le_bonds_file(dir));
+    mv(dir.join(old::LE_CSIP), paths::pairing_dir(dir).join(old::LE_CSIP));
+    mv(dir.join(old::ADAPTER_CAPS), paths::adapter_caps_file(dir));
+    mv(dir.join(old::PROFILES_BACKUP), paths::profiles_backup_file(dir));
+    let records = dir.join(old::DRIVER_RECORDS);
+    if let Ok(entries) = std::fs::read_dir(&records) {
+        for e in entries.flatten() {
+            mv(e.path(), paths::driver_records_dir(dir).join(e.file_name()));
+        }
+    }
+
+    // The daily log files into their day folders
+    let logs = paths::log_dir(dir);
+    let today = paths::today();
+    if let Ok(entries) = std::fs::read_dir(&logs) {
+        for e in entries.flatten().filter(|e| e.path().is_file()) {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let driver = |suffix: &str| old::LOG_PREFIXES.iter().any(|p| name == format!("{p}driver{suffix}"));
+            if let Some((kind, day)) = flat_log(&name) {
+                mv(e.path(), day_place(dir, day, kind));
+            } else if driver(".log") {
+                mv(e.path(), day_place(dir, &today, "driver"));
+            } else if driver(".log.old") {
+                mv(e.path(), paths::day_log_dir(dir, &today).join("driver.log.old"));
+            } else if name.starts_with("recorder-") && name.ends_with(".tmp") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    paths::prune_day_dirs(&logs, Settings::load(dir).log().keep_days.max(1) as usize);
+
+    // Leftovers: interrupted atomic writes, loose firmware, an empty driver\
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten().filter(|e| e.path().is_file()) {
+            let name = e.file_name().to_string_lossy().to_ascii_lowercase();
+            if name.ends_with(".json.tmp") || name.ends_with(".txt.tmp") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    paths::move_loose_firmware(dir);
+    let _ = std::fs::remove_dir(&records);
+    tracing::info!("settings folder: schema 7's sub folders, {moved} file(s) moved");
+    report.relaid_out = true;
+    true
 }
 
 #[cfg(test)]
@@ -393,18 +577,19 @@ mod tests {
                 profiles_seeded: 1,
                 profiles_renamed: 0,
                 schema_written: true,
-                profiles_folded: 0
+                profiles_folded: 0,
+                relaid_out: true,
             }
         );
         // The backup has v1's files as they were, without v2's logs
-        let b = dir.join(BACKUP_DIR);
+        let b = paths::backup_v1_dir(dir);
         assert_eq!(std::fs::read_to_string(b.join("settings.json")).unwrap(), V1_SETTINGS);
         assert_eq!(std::fs::read_to_string(b.join("profiles.json")).unwrap(), V1_PROFILES);
         assert!(b.join("link_keys.txt").is_file());
         assert_eq!(std::fs::read(b.join("firmware").join("rtl8761bu_fw.bin")).unwrap(), [1, 2, 3]);
         assert!(b.join("README.txt").is_file());
         assert!(!b.join("logs").exists());
-        assert!(!dir.join(BACKUP_TMP).exists());
+        assert!(!backup_v1_tmp(dir).exists());
 
         // settings.json: v2's schema, unknown keys kept, the old setting moved
         let s = read_json(&Settings::path(dir));
@@ -419,11 +604,11 @@ mod tests {
         let p = profiles::load(dir);
         assert_eq!(p[0].max_media_payload, Some(1500));
         assert_eq!(p[1].max_media_payload, Some(800));
-        // link keys untouched
-        assert!(std::fs::read_to_string(dir.join("link_keys.txt")).unwrap().starts_with("AA:BB"));
+        // link keys unchanged, in their new place
+        assert!(std::fs::read_to_string(paths::link_keys_file(dir)).unwrap().starts_with("AA:BB"));
 
         // Second start: nothing to do, the backup stays as it was
-        std::fs::write(dir.join("link_keys.txt"), "changed by v2\n").unwrap();
+        std::fs::write(paths::link_keys_file(dir), "changed by v2\n").unwrap();
         let r = prepare(dir);
         assert_eq!(r, Report { schema_before: Some(SCHEMA_VERSION), ..Report::default() });
         assert!(std::fs::read_to_string(b.join("link_keys.txt")).unwrap().starts_with("AA:BB"));
@@ -440,8 +625,8 @@ mod tests {
         )
         .unwrap();
         let r = prepare(dir);
-        assert_eq!(r, Report { schema_before: Some(2), schema_written: true, ..Report::default() });
-        assert!(!dir.join(BACKUP_DIR).exists());
+        assert_eq!(r, Report { schema_before: Some(2), schema_written: true, relaid_out: true, ..Report::default() });
+        assert!(!paths::backup_v1_dir(dir).exists());
         let s = read_json(&Settings::path(dir));
         assert_eq!(s["schema_version"], SCHEMA_VERSION);
         assert_eq!(s["le_audio_experimental"], true);
@@ -467,7 +652,7 @@ mod tests {
         )
         .unwrap();
         let r = prepare(dir);
-        assert_eq!(r, Report { schema_before: Some(3), schema_written: true, ..Report::default() });
+        assert_eq!(r, Report { schema_before: Some(3), schema_written: true, relaid_out: true, ..Report::default() });
         let s = Settings::load(dir);
         assert_eq!(s.schema_version, SCHEMA_VERSION);
         assert!(s.remember_volume);
@@ -561,12 +746,12 @@ mod tests {
         // v1 ran again in between and wrote settings.json without the schema
         let t = TempDir::new("again");
         let dir = &t.0;
-        std::fs::create_dir_all(dir.join(BACKUP_DIR)).unwrap();
-        std::fs::write(dir.join(BACKUP_DIR).join("settings.json"), "first").unwrap();
+        std::fs::create_dir_all(paths::backup_v1_dir(dir)).unwrap();
+        std::fs::write(paths::backup_v1_dir(dir).join("settings.json"), "first").unwrap();
         std::fs::write(Settings::path(dir), r#"{"language":"de"}"#).unwrap();
         let r = prepare(dir);
         assert!(r.from_v1 && !r.backed_up && r.schema_written);
-        assert_eq!(std::fs::read_to_string(dir.join(BACKUP_DIR).join("settings.json")).unwrap(), "first");
+        assert_eq!(std::fs::read_to_string(paths::backup_v1_dir(dir).join("settings.json")).unwrap(), "first");
         assert_eq!(read_json(&Settings::path(dir))["schema_version"], SCHEMA_VERSION);
     }
 
@@ -588,9 +773,216 @@ mod tests {
         let names: Vec<&str> = f["profiles"].as_array().unwrap().iter().map(|p| p["name"].as_str().unwrap()).collect();
         assert_eq!(names, ["WH LDAC", "WH LDAC (2)", "WH LDAC (3)"]);
         assert_eq!(f["profiles"][1]["quality"], "mq");
-        assert_eq!(std::fs::read_to_string(dir.join(BACKUP_DIR).join("profiles.json")).unwrap(), text);
+        assert_eq!(std::fs::read_to_string(paths::backup_v1_dir(dir).join("profiles.json")).unwrap(), text);
         // last_profile still names the first one
         assert_eq!(read_json(&Settings::path(dir))["last_profile"], "WH LDAC");
+    }
+
+    fn tree(dir: &Path) -> Vec<String> {
+        fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let rel = e.path().strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
+                if e.path().is_dir() {
+                    out.push(format!("{rel}/"));
+                    walk(base, &e.path(), out);
+                } else {
+                    out.push(rel);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(dir, dir, &mut out);
+        out.sort();
+        out
+    }
+
+    /// A folder as 2.0.2 (beta.x) left it
+    fn beta_folder(dir: &Path) {
+        let w = |rel: &str, text: &str| {
+            let p = dir.join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, text).unwrap();
+        };
+        w("settings.json", r#"{"schema_version":6,"language":"ja"}"#);
+        w("profiles.json", r#"{"profiles":[{"name":"WH","device_address":"00:A2:D0:00:00:02","codec":"ldac"}]}"#);
+        w("devices.txt", "00:A2:D0:00:00:02|WH\n");
+        w("le_audio_devices.txt", "00:A2:D0:00:00:12|Buds\n");
+        w("device_codecs.json", "{}");
+        w("adapter_caps.json", "{}");
+        w("link_keys.txt", "keys\n");
+        w("le_audio_bonds.tlv", "bonds");
+        w("le_audio_csip.txt", "sets");
+        w("driver/USB_VID_0BDA_PID_A729_1.json", "{}");
+        w("firmware/rtl8761bu_fw.bin", "fw");
+        w("rtl8761bu_config.bin", "loose fw");
+        w("settings.json.tmp", "half");
+        w("profiles-before-codecs.json", "before");
+        w("backup-v1/settings.json", "v1");
+        w("logs/a2dpwb-core.2000-01-01.log", "core 1");
+        w("logs/a2dpwb-ui.2000-01-01.log", "ui 1");
+        w("logs/a2dpwb-core.2000-01-02.log", "core 2");
+        w("logs/a2dpwb-driver.log", "driver");
+        w("logs/recorder-20261027_120000.tmp", "rec");
+        w("logs/verbose.json", "{}");
+        w("logs/hci/hci-20261027_120000-x.pklg", "pklg");
+        w("logs/crash/bluecaster-core-20261027-120000-000.txt", "crash");
+        w("logs/bundles/bluecaster-diag-20261027_120000.zip", "zip");
+    }
+
+    #[test]
+    fn a_beta_folder_gets_the_sub_folders() {
+        let t = TempDir::new("schema7");
+        let dir = &t.0;
+        beta_folder(dir);
+        let r = prepare(dir);
+        assert_eq!(r, Report { schema_before: Some(6), schema_written: true, relaid_out: true, ..Report::default() });
+        assert_eq!(Settings::load(dir).schema_version, 7);
+        let today = paths::today();
+        let mut want: Vec<String> = [
+            "adapters/",
+            "adapters/adapter_caps.json",
+            "adapters/driver/",
+            "adapters/driver/USB_VID_0BDA_PID_A729_1.json",
+            "backup/",
+            "backup/profiles-before-codecs.json",
+            "backup/v1/",
+            "backup/v1/settings.json",
+            "backup/v2/",
+            "backup/v2/README.txt",
+            "backup/v2/adapter_caps.json",
+            "backup/v2/device_codecs.json",
+            "backup/v2/devices.txt",
+            "backup/v2/driver/",
+            "backup/v2/driver/USB_VID_0BDA_PID_A729_1.json",
+            "backup/v2/le_audio_bonds.tlv",
+            "backup/v2/le_audio_csip.txt",
+            "backup/v2/le_audio_devices.txt",
+            "backup/v2/link_keys.txt",
+            "backup/v2/profiles.json",
+            "backup/v2/settings.json",
+            "devices/",
+            "devices/device_codecs.json",
+            "devices/devices.txt",
+            "devices/le_audio_devices.txt",
+            "firmware/",
+            "firmware/rtl8761bu_config.bin",
+            "firmware/rtl8761bu_fw.bin",
+            "logs/",
+            "logs/2000-01-01/",
+            "logs/2000-01-01/core.log",
+            "logs/2000-01-01/ui.log",
+            "logs/2000-01-02/",
+            "logs/2000-01-02/core.log",
+            "logs/bundles/",
+            "logs/bundles/bluecaster-diag-20261027_120000.zip",
+            "logs/crash/",
+            "logs/crash/bluecaster-core-20261027-120000-000.txt",
+            "logs/hci/",
+            "logs/hci/hci-20261027_120000-x.pklg",
+            "logs/verbose.json",
+            "pairing/",
+            "pairing/le_audio_bonds.tlv",
+            "pairing/le_audio_csip.txt",
+            "pairing/link_keys.txt",
+            "profiles.json",
+            "settings.json",
+        ]
+        .map(String::from)
+        .into();
+        // The driver helper's log has no date: today's
+        want.push(format!("logs/{today}/"));
+        want.push(format!("logs/{today}/driver.log"));
+        want.sort();
+        assert_eq!(tree(dir), want);
+        assert_eq!(std::fs::read_to_string(paths::core_log_file(dir, "2000-01-02")).unwrap(), "core 2");
+        assert_eq!(std::fs::read_to_string(paths::link_keys_file(dir)).unwrap(), "keys\n");
+        // backup\v2 has the 2.0.x files as they were
+        assert_eq!(
+            std::fs::read_to_string(paths::backup_v2_dir(dir).join("settings.json")).unwrap(),
+            r#"{"schema_version":6,"language":"ja"}"#
+        );
+        // The devices are read from their new place
+        assert_eq!(crate::devices::load(dir)[0].name, "WH");
+
+        // (d) Again: nothing changes
+        let before = tree(dir);
+        assert_eq!(prepare(dir), Report { schema_before: Some(7), ..Report::default() });
+        let mut again = Report::default();
+        assert!(relayout(dir, &mut again));
+        assert_eq!(tree(dir), before);
+    }
+
+    #[test]
+    fn a_move_cut_short_goes_on() {
+        let t = TempDir::new("half");
+        let dir = &t.0;
+        beta_folder(dir);
+        // An earlier start took the backup and moved some files, then stopped
+        std::fs::create_dir_all(paths::backup_v2_dir(dir)).unwrap();
+        std::fs::write(paths::backup_v2_dir(dir).join("settings.json"), "taken before").unwrap();
+        std::fs::create_dir_all(paths::devices_dir(dir)).unwrap();
+        std::fs::rename(dir.join("devices.txt"), paths::devices_file(dir)).unwrap();
+        std::fs::create_dir_all(paths::pairing_dir(dir)).unwrap();
+        std::fs::rename(dir.join("link_keys.txt"), paths::link_keys_file(dir)).unwrap();
+        // ...and today's logger wrote core.log already
+        let today = paths::today();
+        std::fs::create_dir_all(paths::day_log_dir(dir, &today)).unwrap();
+        std::fs::write(paths::driver_log_file(dir, &today), "new driver").unwrap();
+        let r = prepare(dir);
+        assert!(r.relaid_out && r.schema_written);
+        // The backup is not taken again
+        assert_eq!(std::fs::read_to_string(paths::backup_v2_dir(dir).join("settings.json")).unwrap(), "taken before");
+        assert!(paths::le_devices_file(dir).is_file() && paths::le_bonds_file(dir).is_file());
+        assert_eq!(std::fs::read_to_string(paths::link_keys_file(dir)).unwrap(), "keys\n");
+        // The old driver log next to the new one
+        let day = paths::day_log_dir(dir, &today);
+        assert_eq!(std::fs::read_to_string(day.join("driver.log")).unwrap(), "new driver");
+        assert_eq!(std::fs::read_to_string(day.join("driver.old.log")).unwrap(), "driver");
+        let top: Vec<String> = tree(dir)
+            .into_iter()
+            .filter(|n| !n.contains('/') || n.matches('/').count() == 1 && n.ends_with('/'))
+            .collect();
+        assert_eq!(
+            top,
+            ["adapters/", "backup/", "devices/", "firmware/", "logs/", "pairing/", "profiles.json", "settings.json"]
+        );
+    }
+
+    #[test]
+    fn a_v1_folder_goes_to_schema_7_in_one_start() {
+        let t = TempDir::new("v1to7");
+        let dir = &t.0;
+        std::fs::write(Settings::path(dir), V1_SETTINGS).unwrap();
+        std::fs::write(profiles::path(dir), V1_PROFILES).unwrap();
+        std::fs::write(dir.join("devices.txt"), "AA:BB:CC:DD:EE:FF|Phones\n").unwrap();
+        std::fs::write(dir.join("link_keys.txt"), "keys\n").unwrap();
+        std::fs::write(dir.join("debug.log"), "v1's log").unwrap();
+        let r = prepare(dir);
+        assert!(r.from_v1 && r.backed_up && r.relaid_out && r.schema_written, "{r:?}");
+        assert_eq!(Settings::load(dir).schema_version, 7);
+        // Both backups: v1's files as they were, then v2's
+        let v1 = paths::backup_v1_dir(dir);
+        assert_eq!(std::fs::read_to_string(v1.join("settings.json")).unwrap(), V1_SETTINGS);
+        assert!(v1.join("link_keys.txt").is_file() && v1.join("debug.log").is_file());
+        let v2 = paths::backup_v2_dir(dir);
+        assert!(v2.join("profiles.json").is_file() && v2.join("link_keys.txt").is_file());
+        assert!(!v2.join("debug.log").exists());
+        assert_eq!(std::fs::read_to_string(paths::link_keys_file(dir)).unwrap(), "keys\n");
+        assert_eq!(crate::devices::load(dir)[0].name, "Phones");
+        assert!(!dir.join("devices.txt").exists() && !dir.join("backup-v1").exists());
+        assert!(!paths::backup_dir(dir).join("v1.tmp").exists() && !paths::backup_dir(dir).join("v2.tmp").exists());
+    }
+
+    #[test]
+    fn a_new_folder_is_made_in_the_new_layout() {
+        let t = TempDir::new("fresh");
+        let dir = &t.0;
+        assert_eq!(prepare(dir), Report::default());
+        assert!(tree(dir).is_empty(), "{:?}", tree(dir));
+        crate::devices::save_codecs(dir, &Default::default()).unwrap();
+        Settings::default().save(dir).unwrap();
+        assert_eq!(tree(dir), ["devices/", "devices/device_codecs.json", "settings.json"]);
+        assert_eq!(prepare(dir), Report { schema_before: Some(7), ..Report::default() });
     }
 
     #[test]
@@ -598,7 +990,7 @@ mod tests {
         let t = TempDir::new("new");
         let r = prepare(&t.0);
         assert_eq!(r, Report::default());
-        assert!(!t.0.join(BACKUP_DIR).exists());
+        assert!(!paths::backup_v1_dir(&t.0).exists());
         assert!(!Settings::path(&t.0).exists());
     }
 
@@ -607,8 +999,9 @@ mod tests {
         let t = TempDir::new("keys");
         std::fs::write(t.0.join("link_keys.txt"), "x\n").unwrap();
         let r = prepare(&t.0);
-        assert!(r.from_v1 && r.backed_up && !r.schema_written);
-        assert!(t.0.join(BACKUP_DIR).join("link_keys.txt").is_file());
+        assert!(r.from_v1 && r.backed_up && !r.schema_written && r.relaid_out);
+        assert!(paths::backup_v1_dir(&t.0).join("link_keys.txt").is_file());
+        assert!(paths::link_keys_file(&t.0).is_file());
         assert!(!Settings::path(&t.0).exists());
     }
 
@@ -640,7 +1033,7 @@ mod tests {
         std::fs::write(profiles::path(dir), text).unwrap();
         let r = prepare(dir);
         assert_eq!(r.profiles_folded, 2);
-        assert_eq!(std::fs::read_to_string(dir.join(PROFILES_BACKUP)).unwrap(), text);
+        assert_eq!(std::fs::read_to_string(paths::profiles_backup_file(dir)).unwrap(), text);
         let list = profiles::load(dir);
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "WH | LDAC");
@@ -650,7 +1043,7 @@ mod tests {
         let again = r#"{"profiles":[{"name":"A","device_address":"00:A2:D0:00:00:02"},{"name":"B","device_address":"00:A2:D0:00:00:02"}]}"#;
         std::fs::write(profiles::path(dir), again).unwrap();
         assert_eq!(prepare(dir).profiles_folded, 1);
-        assert_eq!(std::fs::read_to_string(dir.join(PROFILES_BACKUP)).unwrap(), text);
+        assert_eq!(std::fs::read_to_string(paths::profiles_backup_file(dir)).unwrap(), text);
     }
 
     #[test]
@@ -672,6 +1065,6 @@ mod tests {
         assert_eq!(moto["codec_settings"]["sbcxq"]["abr"], true);
         assert_eq!(saved["profiles"][1]["sbc_channel_mode"], "stereo");
         // No backup: nothing was folded
-        assert!(!dir.join(PROFILES_BACKUP).exists());
+        assert!(!paths::profiles_backup_file(dir).exists());
     }
 }

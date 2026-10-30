@@ -239,7 +239,8 @@ fn le_config(le_on: bool, cli: Option<&LeCliOptions>, opts: &ServiceOptions) -> 
     // player answers, nothing in Windows is read or controlled
     let dry_run = cli.is_some_and(|c| c.mcp_dry_run) || opts.hci_tcp.is_some();
     Some(LeConfig {
-        bond_dir: Some(opts.config_dir.clone()),
+        bonds_file: Some(crate::paths::le_bonds_file(&opts.config_dir)),
+        bond_dir: Some(crate::paths::pairing_dir(&opts.config_dir)),
         media: if dry_run { None } else { crate::le_media::windows_backend() },
         ccp_sim: cli.and_then(|c| c.ccp_sim.clone()),
         ccp_console: cli.is_some_and(|c| c.ccp_console),
@@ -374,7 +375,7 @@ impl Inner {
             None => TransportConfig::Usb(self.opts.usb.clone()),
         };
         let mut c = HostConfig::new(transport);
-        c.link_key_dir = Some(self.opts.config_dir.clone());
+        c.link_key_file = Some(crate::paths::link_keys_file(&self.opts.config_dir));
         c.firmware_dir = Some(crate::paths::firmware_dir(&self.opts.config_dir));
         c.capture = self.opts.capture.clone();
         crate::adapter::configure(&mut c, &s, &self.opts.config_dir);
@@ -1513,7 +1514,8 @@ mod tests {
         assert!(le_config(false, None, &opts).is_none());
         let cli = LeCliOptions { mcp_dry_run: true, ccp_sim: Some("1:incoming x".into()), ccp_console: true };
         let c = le_config(true, Some(&cli), &opts).unwrap();
-        assert_eq!(c.bond_dir.as_deref(), Some(std::path::Path::new("cfg")));
+        assert_eq!(c.bond_dir.as_deref(), Some(std::path::Path::new(r"cfg\pairing")));
+        assert_eq!(c.bonds_file.as_deref(), Some(std::path::Path::new(r"cfg\pairing\le_audio_bonds.tlv")));
         assert!(c.media.is_none());
         assert_eq!(c.ccp_sim.as_deref(), Some("1:incoming x"));
         assert!(c.ccp_console);

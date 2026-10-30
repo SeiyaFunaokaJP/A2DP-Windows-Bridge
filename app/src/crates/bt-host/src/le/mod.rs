@@ -89,8 +89,10 @@ impl fmt::Display for LeDeviceId {
 /// advertised.
 #[derive(Default)]
 pub struct LeConfig {
-    /// Folder of le_audio_bonds.tlv (LE bonds, GATT server CCC values) and
-    /// le_audio_csip.txt (CSIP sets); None: in memory only
+    /// The LE bonds and GATT server CCC values, le_audio_bonds.tlv (None: a
+    /// file in the temp folder)
+    pub bonds_file: Option<PathBuf>,
+    /// Folder of le_audio_csip.txt (CSIP sets); None: in memory only
     pub bond_dir: Option<PathBuf>,
     /// MCP: the Windows side of the media control server (core, win-sys).
     /// None: dry run (`--mcp-dry-run`, implied by `--hci-tcp`): a simulated

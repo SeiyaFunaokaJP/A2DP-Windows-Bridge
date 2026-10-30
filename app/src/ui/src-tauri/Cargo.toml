@@ -34,7 +34,7 @@ tauri-plugin-opener = "2"
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 tokio = { version = "1", features = ["net", "io-util", "time", "sync", "macros", "rt"] }
 windows-version = "0.1"
-# logging.rs: bluecaster-ui.YYYY-MM-DD.log next to the core's
+# logging.rs: logs/<YYYY-MM-DD>/ui.log next to the core's (crates/core/src/paths.rs, compiled in)
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender = "0.2"
