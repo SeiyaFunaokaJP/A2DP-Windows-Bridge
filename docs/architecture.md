@@ -214,7 +214,9 @@ length-prefixed JSON frames:
    `receiver.*`, `rfcomm.*` and `app.*`.
 
 Other programs use the same pipe; what they need is on
-[Integration (IPC)](integration).
+[Integration (IPC)](integration). Versions before 3.0.0 named the pipe
+`\\.\pipe\a2dpwb-<user SID>`; the core serves that name too, for at least 6
+months after 3.0.0.
 
 Errors are codes with parameters (for example `adapter.driver_missing`), not
 texts; the window translates them and offers the fix next to the message.
@@ -438,23 +440,32 @@ classic aptX, Opus and AAC (issue #86's order), below LHDC V5 and LDAC.
 
 Everything is kept in the settings folder, `%APPDATA%\BlueCaster` (or the
 folder named by the `BLUECASTER_CONFIG_DIR` environment variable), in the same
-formats as v1:
+formats as v1 and 2.0.x (which used `%APPDATA%\A2DPWB`; 3.0.0 renames that
+folder at its first start and sorts the files into the folders below):
 
-| File | Contents |
+| Path | Contents |
 |:-----|:---------|
 | `settings.json` | App settings, with a `schema_version`; unknown keys are kept |
 | `profiles.json` | Profiles |
-| `devices.txt`, `link_keys.txt` | Known devices and their link keys: headphones paired with v1 reconnect without pairing again |
-| `le_audio_devices.txt`, `le_audio_bonds.tlv`, `le_audio_csip.txt` | LE Audio (experimental): the LE Audio entries of the device list, LE bonds (with the GATT server's persistent CCC values) and coordinated sets |
-| `*.bin`, `*.hcd`, `ibt-*` | Firmware files |
-| `profiles-before-codecs.json` | `profiles.json` as it was before the Codecs screen folded several profiles of a device into one (written once) |
-| `hci_<date>_<time>.pklg` | HCI captures |
-| `logs\bluecaster-core.<date>.log`, `logs\bluecaster-ui.<date>.log`, `logs\bluecaster-driver.log` | The logs of the core and the window, one file per day (UTC), the last 7 kept, and of the driver helper; not masked |
-| `logs\hci\` | The HCI flight recorder's captures, written when a stream fails or a connection is lost (the newest 10) |
-| `logs\crash\` | Crash reports: a minidump and a text file per crash (the newest 5 per program) |
-| `logs\bundles\` | Diagnostic bundles (the newest 3) |
-| `driver\` | The previous driver of each adapter WinUSB was assigned to |
-| `backup-v1\` | A copy of the v1 settings, made once at the first v2 start |
+| `devices\devices.txt` | Known devices |
+| `devices\le_audio_devices.txt` | LE Audio (experimental): the LE Audio entries of the device list |
+| `devices\device_codecs.json` | The codecs each device reported |
+| `pairing\link_keys.txt` | Link keys: headphones paired with v1 or 2.0.x reconnect without pairing again |
+| `pairing\le_audio_bonds.tlv`, `pairing\le_audio_csip.txt` | LE Audio (experimental): LE bonds (with the GATT server's persistent CCC values) and coordinated sets |
+| `adapters\adapter_caps.json` | What each adapter reported |
+| `adapters\driver\<instance id>.json` | The previous driver of each adapter WinUSB was assigned to |
+| `firmware\` | Firmware files (`*.bin`, `*.hcd`, `ibt-*`) |
+| `logs\<YYYY-MM-DD>\core.log`, `ui.log`, `driver.log` | The logs of the core, the window and the driver helper, one folder per day (UTC); not masked |
+| `logs\hci\*.pklg` | HCI captures: the flight recorder's, written when a stream fails or a connection is lost (the newest 10), and the ones you start yourself (`hci_<date>_<time>.pklg`) |
+| `logs\crash\` | Crash reports: a minidump (`*.dmp`) and a text file per crash (the newest 5 per program) |
+| `logs\bundles\*.zip` | Diagnostic bundles (the newest 3) |
+| `backup\v1\` | A copy of the v1 settings, made once at the first v2 start |
+| `backup\v2\` | A copy of the 2.0.x settings and pairings, made once at the first 3.0.0 start |
+| `backup\profiles-before-codecs.json` | `profiles.json` as it was before the Codecs screen folded several profiles of a device into one (written once) |
+
+The program folder is `%LOCALAPPDATA%\BlueCaster\`: the three programs, the
+uninstaller and `licenses\` (`licenses\README.txt`, `licenses\bluecaster\LICENSE...`,
+`licenses\third-party\...`). The firmware download cache is `%TEMP%\bluecaster-cache`.
 
 ## Build System
 

@@ -1,5 +1,7 @@
 # BlueCaster
 
+**Formerly A2DP Windows Bridge (A2DPWB).** Version 3.0.0 renames the app; updating replaces the old version automatically and keeps your settings.
+
 Advanced Bluetooth Audio Transmitter for Windows, with the codecs Windows lacks: LDAC, aptX HD, aptX Low Latency, LHDC V5 and more, through a USB Bluetooth adapter it takes over in WinUSB mode — no kernel driver or test signing required.
 
 ![BlueCaster streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](docs/images/app_sample.png)
@@ -41,7 +43,7 @@ Windows 10 / 11 load only kernel drivers signed through Microsoft, which needs a
 
 ## Setup
 
-1. **Install**: run `BlueCaster-<version>-win64-setup.exe` (per user, no administrator rights), or extract the portable zip and run `bluecaster.exe`. Installing over v1 removes v1 and keeps its settings, pairings and firmware.
+1. **Install**: run `BlueCaster-<version>-win64-setup.exe` (per user, no administrator rights), or extract the portable zip and run `bluecaster.exe`. Installing over v1 or A2DP Windows Bridge 2.0.x removes it and keeps its settings, pairings and firmware.
 2. **Plug in the adapter** (or use the built-in one, see the warning below).
 3. **Follow the first-run setup**: choose the adapter, **Assign WinUSB** (Windows asks for administrator permission), add the firmware files for Realtek adapters, then press **Connect** next to your audio device: BlueCaster picks the best settings for it and connects.
 4. **Connect** from **Home**, or from the tray icon.

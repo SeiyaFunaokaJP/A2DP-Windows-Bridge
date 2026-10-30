@@ -30,13 +30,21 @@ BlueCaster はアダプターへの WinUSB ドライバーの割り当てを自�
 - **インストーラー版**（`BlueCaster-<バージョン>-win64-setup.exe`）：管理者権限なしで現在のユーザーにインストールします。スタートメニュー（**BlueCaster**）とアンインストーラーを追加し、Microsoft Edge WebView2 ランタイムがなければ一緒にインストールします（Windows 11 には標準で入っています）。更新はアプリの中から入れられます（**設定 > 更新 > 今すぐ更新**）
 - **ポータブル版**（`BlueCaster-<バージョン>-win64-portable.zip`）：任意の場所に展開して `bluecaster.exe` を実行します。3 つのプログラム（`bluecaster.exe`、`bluecaster-core.exe`、`bluecaster-driver.exe`）は同じフォルダーに置いたままにしてください。ポータブル版は更新を知らせるだけです。WebView2 ランタイムが入っている必要があります
 
-どちらも設定・プロファイル・リンクキー・ファームウェアを `%APPDATA%\BlueCaster` に保存するため、相互に切り替えられます。アンインストールすると、**ユーザーデータを削除する** をオフにしない限りこのフォルダーも削除されます（サイレントでのアンインストールでは残ります）。
+どちらも設定・プロファイル・リンクキー・ファームウェアを `%APPDATA%\BlueCaster` に保存するため、相互に切り替えられます。アンインストールすると、**ユーザーデータを削除する** をオフにしない限りこのフォルダーも削除されます（サイレントでのアンインストールでは残ります）。 プログラムは `%LOCALAPPDATA%\BlueCaster\` に入り、ライセンス文は `licenses\` フォルダーに置かれます。
 
 ### v1 からの乗り換え {#from-v1}
 
 v1 の上から v2 のインストーラーを実行してください。v1 が動いていれば終了を促し、v1 をアンインストールしてから、設定フォルダーはそのまま残します。プロファイル、ヘッドホンとのペアリング、ファームウェアのファイルは引き継がれ、ヘッドホンのペアリングし直しは要りません。（Zadig で）WinUSB を入れてあるアダプターはそのまま使えます。**Windows 起動時に開始** がオンだった場合は、v2 が起動するように変わります。
 
-v2 は初回起動時に、v1 の設定を `%APPDATA%\BlueCaster\backup-v1\` にコピーしてから読み込みます。
+v2 は初回起動時に、v1 の設定を `%APPDATA%\BlueCaster\backup\v1\` にコピーしてから読み込みます。
+
+### 2.0.x（A2DP Windows Bridge）からの乗り換え {#from-2x}
+
+BlueCaster 3.0.0 は A2DP Windows Bridge の新しい名前です。インストールされている 2.0.x の上から 3.0.0 のインストーラーを実行してください。セットアップが古いバージョンを自動でアンインストールし、設定はそのまま残ります。スタートメニューの項目と **Windows 起動時に開始** の項目は「BlueCaster」に変わります。
+
+3.0.0 は初回起動時に、フォルダー `%APPDATA%\A2DPWB` を `%APPDATA%\BlueCaster` に名前変更し、中のファイルをサブフォルダーに整理します（[設定とファイル](../architecture#settings-and-files)）。`backup\v2\` に 2.0.x の設定とペアリングのコピーがあるので、2.0.2 をインストールし直すときは、それらのファイルを `%APPDATA%\A2DPWB` にコピーして戻してください。
+
+ヘッドホンには、ペアリングし直すまで古い Bluetooth 名「A2DPWB」が表示され続けることがあります。
 
 ## 手順 1: 初回セットアップ {#first-run}
 
@@ -140,7 +148,7 @@ Realtek 以外のアダプターに Realtek チップや Custom を選ばない�
 ### 手動ダウンロード
 
 1. [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) からチップセット用のファームウェアと設定の `.bin` ファイルをダウンロード（例: `rtl8761bu_fw.bin` と `rtl8761bu_config.bin`）
-2. BlueCaster 設定フォルダー（`%APPDATA%\BlueCaster`。**設定 > 設定フォルダ** にも表示されます）に両ファイルを配置
+2. BlueCaster 設定フォルダー（`%APPDATA%\BlueCaster\firmware`。**設定 > 設定フォルダ** にも表示されます）に両ファイルを配置
 
 {: .note }
 これらのファームウェアファイルは linux-firmware プロジェクト経由で配布される Realtek 独自のバイナリです。本リポジトリには含まれていません。再配布条件については [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE) を参照してください。

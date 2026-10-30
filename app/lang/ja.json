@@ -703,7 +703,7 @@
   "error.driver_assign_failed": "Windows がこのアダプタへの WinUSB の割り当てを拒みました。代わりに Zadig で入れてください（セットアップガイドの「Zadig を使う場合」）。詳しくはログを見てください。",
   "error.driver_restore_unverified": "ドライバは変更しましたが、元のドライバには戻りませんでした。Zadig で設定したアダプタなら、デバイス マネージャーで Zadig のドライバ パッケージを削除してください。",
   "ui.v1_running.title": "別の BlueCaster が起動しています。先に終了してください",
-  "ui.v1_running.text": "BlueCaster を2つ（v1、または別の v2）同時に起動すると、Bluetooth アダプターを使えません。もう一方の BlueCaster のタスクトレイのアイコンを右クリックして「終了」を選んでください。",
+  "ui.v1_running.text": "BlueCaster を2つ（A2DPWB v1、または別のコピー）同時に起動すると、Bluetooth アダプターを使えません。もう一方の BlueCaster のタスクトレイのアイコンを右クリックして「終了」を選んでください。",
   "help.third_party": "このほか libldac（Apache-2.0）、libopenaptx（LGPL-2.1+、© 2017 Aurelien Jacobs、© 2018-2020 Pali Rohár）、Fraunhofer FDK AAC、Bluedroid SBC（Apache-2.0）、LHDC V5 エンコーダー（Apache-2.0、AOSP 由来。FFT は KISS FFT、BSD-3-Clause）、libopus（BSD-3-Clause）、liblc3（Apache-2.0）、Tauri、SolidJS ほかの Rust と JavaScript のライブラリを含みます。ライセンス全文はプログラムと同じ場所の「licenses」フォルダにあります。",
   "ui.settings.core_version": "コア %s",
   "dbgc.col_step": "手順",

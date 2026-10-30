@@ -30,13 +30,21 @@ Cada [versión](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/l
 - **Instalador** (`BlueCaster-<version>-win64-setup.exe`): instala para el usuario actual sin derechos de administrador, añade una entrada en el menú Inicio (**BlueCaster**) y un desinstalador, e instala Microsoft Edge WebView2 Runtime si falta (Windows 11 ya lo incluye). Las actualizaciones se instalan solas desde la aplicación (**Configuración > Actualizaciones > Actualizar ahora**)
 - **Portable** (`BlueCaster-<version>-win64-portable.zip`): extráigalo en cualquier carpeta y ejecute `bluecaster.exe`. Mantenga juntos los tres programas (`bluecaster.exe`, `bluecaster-core.exe`, `bluecaster-driver.exe`). La copia portable solo avisa de las actualizaciones; necesita WebView2 Runtime instalado
 
-Ambos guardan la configuración, los perfiles, las claves de enlace y el firmware en `%APPDATA%\BlueCaster`, así que puede cambiar de uno a otro. La desinstalación no elimina esa carpeta.
+Ambos guardan la configuración, los perfiles, las claves de enlace y el firmware en `%APPDATA%\BlueCaster`, así que puede cambiar de uno a otro. La desinstalación no elimina esa carpeta. Los programas están en `%LOCALAPPDATA%\BlueCaster\` y los textos de licencia, en la carpeta `licenses\`.
 
 ### Actualizar desde la v1 {#from-v1}
 
 Ejecute el instalador de la v2 sobre la v1. Si la v1 está en ejecución, le pide que la cierre; después desinstala la v1 y conserva la carpeta de configuración: los perfiles, el emparejamiento con los auriculares y los archivos de firmware se mantienen, y no hace falta volver a emparejar los auriculares. Un adaptador que ya tiene WinUSB (instalado con Zadig) lo conserva. Si **Iniciar con Windows** estaba activado, ahora inicia la v2.
 
-En su primer inicio, la v2 copia la configuración de la v1 en `%APPDATA%\BlueCaster\backup-v1\` antes de leerla.
+En su primer inicio, la v2 copia la configuración de la v1 en `%APPDATA%\BlueCaster\backup\v1\` antes de leerla.
+
+### Actualizar desde la 2.0.x (A2DP Windows Bridge) {#from-2x}
+
+BlueCaster 3.0.0 es el nuevo nombre de A2DP Windows Bridge. Ejecute el instalador de la 3.0.0 sobre la 2.0.x instalada: el instalador desinstala solo la versión anterior y conserva la configuración. La entrada del menú Inicio y la de **Iniciar con Windows** pasan a «BlueCaster».
+
+En el primer inicio, la 3.0.0 cambia el nombre de la carpeta `%APPDATA%\A2DPWB` a `%APPDATA%\BlueCaster` y ordena los archivos en subcarpetas (véase [Configuración y archivos](../architecture#settings-and-files)). `backup\v2\` contiene una copia de la configuración y los emparejamientos de la 2.0.x, para poder volver a instalar la 2.0.2: copie esos archivos de nuevo en `%APPDATA%\A2DPWB`.
+
+Los auriculares pueden seguir mostrando el antiguo nombre Bluetooth «A2DPWB» hasta que se vuelvan a emparejar.
 
 ## Paso 1: Configuración inicial {#first-run}
 
@@ -140,7 +148,7 @@ No elija un chip Realtek ni Custom para un adaptador que no sea Realtek: BlueCas
 ### Descarga manual
 
 1. Descargue los archivos `.bin` de firmware y de configuración de su chipset desde [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (p. ej., `rtl8761bu_fw.bin` y `rtl8761bu_config.bin`)
-2. Coloque ambos archivos en la carpeta de configuración de BlueCaster (`%APPDATA%\BlueCaster`, también en **Configuración > Carpeta de configuración**)
+2. Coloque ambos archivos en la carpeta de configuración de BlueCaster (`%APPDATA%\BlueCaster\firmware`, también en **Configuración > Carpeta de configuración**)
 
 {: .note }
 Estos archivos de firmware son binarios propietarios de Realtek distribuidos a través del proyecto linux-firmware. No se incluyen en este repositorio. Consulte [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE) para conocer las condiciones de redistribución.

@@ -379,7 +379,7 @@ aptX, aptX HD, aptX LL은 44.1 kHz와 48 kHz만 지원합니다(aptX Adaptive는
 1. 헤드폰에 연결합니다.
 2. **진단**을 열고 로그 필터에 `remote`를 입력합니다.
 
-같은 줄이 설정 폴더의 로그 파일(`%APPDATA%\BlueCaster\logs\bluecaster-core.<date>.log`)에도 기록되며, CLI 모드에서는 콘솔에 출력됩니다. 기능 줄에는 헤드폰이 제공하는 코덱이 정확히 표시됩니다.
+같은 줄이 설정 폴더의 로그 파일(`%APPDATA%\BlueCaster\logs\<YYYY-MM-DD>\core.log`)에도 기록되며, CLI 모드에서는 콘솔에 출력됩니다. 기능 줄에는 헤드폰이 제공하는 코덱이 정확히 표시됩니다.
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -401,14 +401,14 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 ## 미디어 스트림 검증 (bluecaster_decode) {#verify-stream}
 
-대부분의 헤드폰은 사용 중인 코덱을 표시하지 못합니다. **진단 > HCI 캡처 시작** / **HCI 캡처 중지**는 코덱 협상과 전송된 모든 미디어 패킷을 담은 HCI 패킷 로그(설정 폴더의 `hci_<date>_<time>.pklg`)를 기록합니다. LDAC 990 kbps에서는 시간당 약 0.5 GB씩 커지므로 필요한 만큼만 캡처하십시오. CLI 모드에서는 `--hci-capture <file.pklg>`가 실행 전체를 기록합니다.
+대부분의 헤드폰은 사용 중인 코덱을 표시하지 못합니다. **진단 > HCI 캡처 시작** / **HCI 캡처 중지**는 코덱 협상과 전송된 모든 미디어 패킷을 담은 HCI 패킷 로그(설정 폴더의 `logs\hci\hci_<date>_<time>.pklg`)를 기록합니다. LDAC 990 kbps에서는 시간당 약 0.5 GB씩 커지므로 필요한 만큼만 캡처하십시오. CLI 모드에서는 `--hci-capture <file.pklg>`가 실행 전체를 기록합니다.
 
 캡처는 연결 전이나 이미 스트리밍 중일 때 시작할 수 있습니다. 연결 중에 시작하면 BlueCaster가 기억해 둔 연결 설정 패킷(코덱 협상을 포함한 L2CAP 채널 설정과 AVDTP 시그널링)을 먼저 기록하므로, 파일을 분석할 수 있습니다. 진단 화면에는 기록 중과 중지 후에 파일 경로가 표시됩니다.
 
 캡처는 Wireshark에서 열거나, 개발자 도구 `bluecaster_decode`(소스에서 빌드, [빌드](../building) 참조)로 확인할 수 있습니다.
 
 ```
-bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
 이 도구는 AVDTP 시그널링(SET_CONFIGURATION / RECONFIGURE 및 헤드폰의 수락 여부)을 추적하고, BlueCaster가 보낸 미디어 패킷을 추출하여 협상된 구성과 대조합니다.

@@ -30,13 +30,21 @@ Chaque [version](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/
 - **Programme d'installation** (`BlueCaster-<version>-win64-setup.exe`) : installe pour l'utilisateur actuel sans droits administrateur, ajoute une entrée au menu Démarrer (**BlueCaster**) et un programme de désinstallation, et installe le runtime Microsoft Edge WebView2 s'il est absent (Windows 11 l'inclut). Les mises à jour s'installent toutes seules depuis l'application (**Paramètres > Mises à jour > Mettre à jour maintenant**)
 - **Portable** (`BlueCaster-<version>-win64-portable.zip`) : extrayez-le où vous voulez et lancez `bluecaster.exe`. Gardez les trois programmes (`bluecaster.exe`, `bluecaster-core.exe`, `bluecaster-driver.exe`) ensemble. La copie portable se contente de vous signaler les mises à jour ; elle nécessite que le runtime WebView2 soit installé
 
-Les deux conservent les paramètres, les profils, les clés de liaison et le firmware dans `%APPDATA%\BlueCaster`, vous pouvez donc passer de l'un à l'autre. La désinstallation laisse ce dossier en place.
+Les deux conservent les paramètres, les profils, les clés de liaison et le firmware dans `%APPDATA%\BlueCaster`, vous pouvez donc passer de l'un à l'autre. La désinstallation laisse ce dossier en place. Les programmes sont dans `%LOCALAPPDATA%\BlueCaster\`, les textes de licence dans le dossier `licenses\`.
 
 ### Mise à niveau depuis la v1 {#from-v1}
 
 Lancez le programme d'installation de la v2 par-dessus la v1. Il vous demande de fermer la v1 si elle est en cours d'exécution, puis désinstalle la v1 en conservant le dossier des paramètres : les profils, l'association avec votre casque et les fichiers de firmware sont repris, et il n'est pas nécessaire d'associer à nouveau le casque. Un adaptateur qui a déjà WinUSB (installé avec Zadig) le conserve. Si **Démarrer avec Windows** était activé, c'est désormais la v2 qui démarre.
 
-À son premier démarrage, la v2 copie les paramètres de la v1 dans `%APPDATA%\BlueCaster\backup-v1\` avant de les lire.
+À son premier démarrage, la v2 copie les paramètres de la v1 dans `%APPDATA%\BlueCaster\backup\v1\` avant de les lire.
+
+### Mise à jour depuis la 2.0.x (A2DP Windows Bridge) {#from-2x}
+
+BlueCaster 3.0.0 est le nouveau nom d'A2DP Windows Bridge. Lancez le programme d'installation de la 3.0.0 par-dessus la 2.0.x installée : il désinstalle lui-même l'ancienne version et conserve vos paramètres. L'entrée du menu Démarrer et celle de **Démarrer avec Windows** passent à « BlueCaster ».
+
+Au premier démarrage, la 3.0.0 renomme le dossier `%APPDATA%\A2DPWB` en `%APPDATA%\BlueCaster` et range ses fichiers dans des sous-dossiers (voir [Paramètres et fichiers](../architecture#settings-and-files)). `backup\v2\` contient une copie des paramètres et appairages de la 2.0.x, pour pouvoir réinstaller la 2.0.2 : recopiez ces fichiers dans `%APPDATA%\A2DPWB`.
+
+Le casque peut continuer à afficher l'ancien nom Bluetooth « A2DPWB » jusqu'à un nouvel appairage.
 
 ## Étape 1 : configuration au premier lancement {#first-run}
 
@@ -74,7 +82,7 @@ Un pilote WinUSB installé avec [Zadig](https://zadig.akeo.ie/) fonctionne tout 
 
 ### À la main dans le Gestionnaire de périphériques {#device-manager}
 
-Si l'adaptateur n'apparaît pas dans la liste d'BlueCaster, si un bouton de l'écran **Adaptateur** échoue ou si votre adaptateur se comporte autrement que les autres de son type, le Gestionnaire de périphériques de Windows (clic droit sur **Démarrer** > **Gestionnaire de périphériques**) fait la même chose à la main. Les deux demandent des droits d'administrateur. Les noms des menus peuvent varier légèrement selon la version de Windows.
+Si l'adaptateur n'apparaît pas dans la liste de BlueCaster, si un bouton de l'écran **Adaptateur** échoue ou si votre adaptateur se comporte autrement que les autres de son type, le Gestionnaire de périphériques de Windows (clic droit sur **Démarrer** > **Gestionnaire de périphériques**) fait la même chose à la main. Les deux demandent des droits d'administrateur. Les noms des menus peuvent varier légèrement selon la version de Windows.
 
 **Remplacer par le pilote WinUSB**
 
@@ -118,7 +126,7 @@ Les adaptateurs Bluetooth USB à puce Realtek (p. ex. TP-Link UB500, dongles RTL
 
 L'écran **Adaptateur** (et l'étape **Pilote et firmware** de la configuration) indique l'état du firmware de l'adaptateur : **Firmware OK**, **Aucun fichier firmware requis**, ou **Firmware introuvable** avec les noms des fichiers requis. Le bouton **Ouvrir la page de téléchargement** ouvre la page [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) dans votre navigateur, puis **Ouvrir le dossier de configuration** ouvre le dossier de destination. Téléchargez les fichiers `.bin` nécessaires et placez-les dans le dossier de configuration.
 
-Pour les puces de la liste **Puce Bluetooth**, **Télécharger le firmware** s'en charge : après confirmation, BlueCaster télécharge les fichiers depuis linux-firmware (kernel.org), vérifie chacun avec le SHA-256 attendu et l'enregistre dans le dossier de configuration. Une puce pour laquelle linux-firmware n'a pas de fichier config reçoit un `_config.bin` vide (la puce utilise alors ses propres réglages). Les fichiers ne font pas partie d'BlueCaster ; ils ne sont téléchargés que si vous le demandez.
+Pour les puces de la liste **Puce Bluetooth**, **Télécharger le firmware** s'en charge : après confirmation, BlueCaster télécharge les fichiers depuis linux-firmware (kernel.org), vérifie chacun avec le SHA-256 attendu et l'enregistre dans le dossier de configuration. Une puce pour laquelle linux-firmware n'a pas de fichier config reçoit un `_config.bin` vide (la puce utilise alors ses propres réglages). Les fichiers ne font pas partie de BlueCaster ; ils ne sont téléchargés que si vous le demandez.
 
 BlueCaster détecte la puce de l'adaptateur et indique quels fichiers de firmware sont nécessaires.
 
@@ -130,7 +138,7 @@ La liste **Puce Bluetooth** de l'écran **Adaptateur** détermine si BlueCaster 
 
 | Choix | Signification |
 |:-------|:--------|
-| **Auto** (par défaut) | Déterminé à partir de l'adaptateur détecté à chaque démarrage d'BlueCaster. Un adaptateur Realtek connu reçoit sa puce ; tout autre adaptateur ne reçoit aucune initialisation Realtek |
+| **Auto** (par défaut) | Déterminé à partir de l'adaptateur détecté à chaque démarrage de BlueCaster. Un adaptateur Realtek connu reçoit sa puce ; tout autre adaptateur ne reçoit aucune initialisation Realtek |
 | **Pas Realtek** | Ne jamais effectuer l'initialisation Realtek. À utiliser pour les adaptateurs Intel, Broadcom, CSR et autres si Auto ne reconnaît pas le vôtre |
 | **RTL8761BU**, **RTL8822CU**, ... | Cette puce Realtek. Nécessaire pour un adaptateur à puce Realtek qu'Auto ne reconnaît pas (un produit OEM avec son propre VID:PID). La ligne d'état indique si ses fichiers `.bin` sont présents dans le dossier de configuration |
 | **Custom** | Utilise `custom_fw.bin` et `custom_config.bin` du dossier de configuration |
@@ -140,7 +148,7 @@ Ne choisissez pas une puce Realtek ni Custom pour un adaptateur non Realtek : Bl
 ### Téléchargement manuel
 
 1. Téléchargez les fichiers `.bin` de firmware et de configuration de votre puce depuis [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (p. ex. `rtl8761bu_fw.bin` et `rtl8761bu_config.bin`)
-2. Placez les deux fichiers dans le dossier de configuration d'BlueCaster (`%APPDATA%\BlueCaster`, également accessible via **Paramètres > Dossier des paramètres**)
+2. Placez les deux fichiers dans le dossier de configuration de BlueCaster (`%APPDATA%\BlueCaster\firmware`, également accessible via **Paramètres > Dossier des paramètres**)
 
 {: .note }
 Ces fichiers de firmware sont des binaires propriétaires de Realtek distribués via le projet linux-firmware. Ils ne sont pas inclus dans ce dépôt. Voir [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE) pour les conditions de redistribution.

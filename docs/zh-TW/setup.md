@@ -30,13 +30,21 @@ BlueCaster 會自行為介面卡指派 WinUSB 驅動程式，不再需要 [Zadig
 - **安裝程式**（`BlueCaster-<version>-win64-setup.exe`）：不需系統管理員權限即可為目前使用者安裝，會新增「開始」功能表項目（**BlueCaster**）與解除安裝程式，並在缺少 Microsoft Edge WebView2 Runtime 時一併安裝（Windows 11 已內建）。更新可從應用程式內自行安裝（**設定 > 更新 > 立即更新**）
 - **免安裝版**（`BlueCaster-<version>-win64-portable.zip`）：解壓縮到任意位置後執行 `bluecaster.exe`。請將三個程式（`bluecaster.exe`、`bluecaster-core.exe`、`bluecaster-driver.exe`）放在一起。免安裝版只會通知有更新；需要已安裝 WebView2 Runtime
 
-兩者都將設定、設定檔、連結金鑰與韌體儲存在 `%APPDATA%\BlueCaster`，因此可以互相切換。解除安裝時會保留該資料夾。
+兩者都將設定、設定檔、連結金鑰與韌體儲存在 `%APPDATA%\BlueCaster`，因此可以互相切換。解除安裝時會保留該資料夾。 程式位於 `%LOCALAPPDATA%\BlueCaster\`，授權文字在其中的 `licenses\` 資料夾。
 
 ### 從 v1 升級 {#from-v1}
 
 直接在 v1 上執行 v2 安裝程式即可。若 v1 正在執行，安裝程式會要求您將其關閉，接著解除安裝 v1 並保留設定資料夾：設定檔、與耳機的配對以及韌體檔案都會沿用，耳機不需要重新配對。已（透過 Zadig）安裝 WinUSB 的介面卡會維持原狀。若先前開啟了 **隨 Windows 啟動**，現在會改為啟動 v2。
 
-v2 首次啟動時，會先將 v1 的設定複製到 `%APPDATA%\BlueCaster\backup-v1\`，再讀取這些設定。
+v2 首次啟動時，會先將 v1 的設定複製到 `%APPDATA%\BlueCaster\backup\v1\`，再讀取這些設定。
+
+### 從 2.0.x（A2DP Windows Bridge）升級 {#from-2x}
+
+BlueCaster 3.0.0 是 A2DP Windows Bridge 的新名稱。直接在已安裝的 2.0.x 上執行 3.0.0 的安裝程式即可：安裝程式會自動解除安裝舊版本，並保留設定。「開始」功能表項目與**隨 Windows 啟動**項目會改為「BlueCaster」。
+
+3.0.0 第一次啟動時，會將資料夾 `%APPDATA%\A2DPWB` 重新命名為 `%APPDATA%\BlueCaster`，並把其中的檔案整理到子資料夾中（見[設定與檔案](../architecture#settings-and-files)）。`backup\v2\` 保存了 2.0.x 設定與配對的副本，以便重新安裝 2.0.2：把這些檔案複製回 `%APPDATA%\A2DPWB` 即可。
+
+耳機在重新配對之前，可能仍顯示舊的藍牙名稱「A2DPWB」。
 
 ## 步驟 1：首次執行設定 {#first-run}
 
@@ -140,7 +148,7 @@ BlueCaster 會偵測介面卡的晶片組，並顯示需要哪些韌體檔案。
 ### 手動下載
 
 1. 從 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 下載適用於您晶片組的韌體與設定 `.bin` 檔案（例如 `rtl8761bu_fw.bin` 與 `rtl8761bu_config.bin`）
-2. 將兩個檔案放到 BlueCaster 設定資料夾（`%APPDATA%\BlueCaster`，也可從 **設定 > 設定資料夾** 開啟）
+2. 將兩個檔案放到 BlueCaster 設定資料夾（`%APPDATA%\BlueCaster\firmware`，也可從 **設定 > 設定資料夾** 開啟）
 
 {: .note }
 這些韌體檔案是透過 linux-firmware 專案發佈的 Realtek 專有二進位檔，並未包含在本儲存庫中。再散布條款請參閱 [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE)。

@@ -29,6 +29,7 @@ The core (`bluecaster-core.exe`) runs while BlueCaster runs, with or without its
 
 - `<user SID>` is the logged-on user's SID string (`S-1-5-21-...`), for example from `whoami /user`. Each user has their own core and pipe; the pipe's DACL admits only that user, and remote clients are refused.
 - The pipe is in byte mode. Several clients can be connected at once (the BlueCaster window is one of them); each gets the same state and events.
+- Up to 2.0.x the pipe was named `\\.\pipe\a2dpwb-<user SID>`. BlueCaster 3.0.0 serves **both** names, and keeps serving the old one for at least 6 months after 3.0.0. A client should try `bluecaster-<user SID>` first and fall back to the old name. The protocol version stays 1.
 - If the pipe does not exist, the core is not running. Use the pipe, not the core's mutex, to check for it.
 - Development builds started with `BLUECASTER_INSTANCE=<name>` listen on `\\.\pipe\bluecaster-<SID>-<name>` instead, so that they run beside the installed one.
 

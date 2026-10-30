@@ -703,7 +703,7 @@
   "error.driver_assign_failed": "Windows 拒绝为此适配器分配 WinUSB。请改用 Zadig 安装（参见设置指南中的“改用 Zadig”）；详情请查看日志。",
   "error.driver_restore_unverified": "驱动程序已更改，但适配器未恢复为之前的驱动程序。如果它是用 Zadig 设置的，请在设备管理器中删除 Zadig 的驱动程序包。",
   "ui.v1_running.title": "另一个 BlueCaster 正在运行，请先退出它",
-  "ui.v1_running.text": "两个 BlueCaster（v1 或另一个 v2）不能同时使用蓝牙适配器。请右键单击另一个 BlueCaster 的托盘图标并选择“退出”。",
+  "ui.v1_running.text": "两个 BlueCaster（A2DPWB v1 或另一个副本）不能同时使用蓝牙适配器。请右键单击另一个 BlueCaster 的托盘图标并选择“退出”。",
   "help.third_party": "还包含 libldac (Apache-2.0)、libopenaptx (LGPL-2.1+, © 2017 Aurelien Jacobs, © 2018-2020 Pali Rohár)、Fraunhofer FDK AAC、Bluedroid SBC (Apache-2.0)、LHDC V5 编码器（Apache-2.0，源自 AOSP；FFT 来自 KISS FFT, BSD-3-Clause）、libopus (BSD-3-Clause)、liblc3 (Apache-2.0)、Tauri、SolidJS 以及其他 Rust 和 JavaScript 库。许可证文本位于程序所在位置的 \"licenses\" 文件夹中。",
   "ui.settings.core_version": "核心 %s",
   "dbgc.col_step": "步骤",

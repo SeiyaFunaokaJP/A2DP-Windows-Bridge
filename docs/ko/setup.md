@@ -30,13 +30,21 @@ BlueCaster가 어댑터에 WinUSB 드라이버를 직접 할당합니다. 이제
 - **설치 프로그램** (`BlueCaster-<version>-win64-setup.exe`): 관리자 권한 없이 현재 사용자용으로 설치하며, 시작 메뉴 항목(**BlueCaster**)과 제거 프로그램을 추가하고, Microsoft Edge WebView2 Runtime이 없으면 함께 설치합니다(Windows 11에는 포함되어 있음). 업데이트는 앱에서 스스로 설치됩니다(**설정 > 업데이트 > 지금 업데이트**)
 - **포터블** (`BlueCaster-<version>-win64-portable.zip`): 원하는 위치에 압축을 풀고 `bluecaster.exe`를 실행합니다. 세 프로그램(`bluecaster.exe`, `bluecaster-core.exe`, `bluecaster-driver.exe`)은 같은 위치에 함께 두십시오. 포터블 버전은 업데이트를 알려 주기만 하며, WebView2 Runtime이 설치되어 있어야 합니다
 
-두 형식 모두 설정, 프로필, 링크 키, 펌웨어를 `%APPDATA%\BlueCaster`에 저장하므로 서로 전환해서 사용할 수 있습니다. 제거해도 이 폴더는 남아 있습니다.
+두 형식 모두 설정, 프로필, 링크 키, 펌웨어를 `%APPDATA%\BlueCaster`에 저장하므로 서로 전환해서 사용할 수 있습니다. 제거해도 이 폴더는 남아 있습니다. 프로그램은 `%LOCALAPPDATA%\BlueCaster\`에 설치되며, 라이선스 문서는 `licenses\` 폴더에 있습니다.
 
 ### v1에서 업그레이드 {#from-v1}
 
 v1 위에 v2 설치 프로그램을 실행합니다. v1이 실행 중이면 종료하라는 안내가 표시되고, 그다음 v1을 제거하면서 설정 폴더는 유지합니다. 프로필, 헤드폰과의 페어링, 펌웨어 파일이 그대로 이어지므로 헤드폰을 다시 페어링할 필요가 없습니다. 이미 (Zadig로) WinUSB가 설치된 어댑터는 그대로 WinUSB를 유지합니다. **Windows 시작 시 실행**이 켜져 있었다면 이제 v2가 시작됩니다.
 
-v2는 처음 시작할 때 v1 설정을 읽기 전에 `%APPDATA%\BlueCaster\backup-v1\`에 복사해 둡니다.
+v2는 처음 시작할 때 v1 설정을 읽기 전에 `%APPDATA%\BlueCaster\backup\v1\`에 복사해 둡니다.
+
+### 2.0.x(A2DP Windows Bridge)에서 업그레이드 {#from-2x}
+
+BlueCaster 3.0.0은 A2DP Windows Bridge의 새 이름입니다. 설치된 2.0.x 위에 3.0.0 설치 프로그램을 실행하십시오. 설치 프로그램이 이전 버전을 자동으로 제거하며 설정은 그대로 유지됩니다. 시작 메뉴 항목과 **Windows 시작 시 실행** 항목은 "BlueCaster"로 바뀝니다.
+
+3.0.0은 처음 시작할 때 폴더 `%APPDATA%\A2DPWB`의 이름을 `%APPDATA%\BlueCaster`로 바꾸고 그 안의 파일을 하위 폴더로 정리합니다([설정과 파일](../architecture#settings-and-files) 참조). `backup\v2\`에 2.0.x 설정과 페어링의 사본이 있으므로, 2.0.2를 다시 설치하려면 그 파일들을 `%APPDATA%\A2DPWB`로 다시 복사하십시오.
+
+헤드폰에는 다시 페어링할 때까지 이전 Bluetooth 이름 "A2DPWB"가 계속 표시될 수 있습니다.
 
 ## 1단계: 첫 실행 설정 {#first-run}
 
@@ -140,7 +148,7 @@ Realtek이 아닌 어댑터에는 Realtek 칩이나 Custom을 선택하지 마�
 ### 수동 다운로드
 
 1. [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt)에서 칩셋에 맞는 펌웨어 및 config `.bin` 파일을 다운로드합니다 (예: `rtl8761bu_fw.bin`과 `rtl8761bu_config.bin`)
-2. 두 파일을 BlueCaster 설정 폴더(`%APPDATA%\BlueCaster`, **설정 > 설정 폴더**에서도 열 수 있음)에 넣습니다
+2. 두 파일을 BlueCaster 설정 폴더(`%APPDATA%\BlueCaster\firmware`, **설정 > 설정 폴더**에서도 열 수 있음)에 넣습니다
 
 {: .note }
 이 펌웨어 파일은 linux-firmware 프로젝트를 통해 배포되는 Realtek 독점 바이너리이며, 이 저장소에는 포함되어 있지 않습니다. 재배포 조건은 [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE)를 참조하십시오.
