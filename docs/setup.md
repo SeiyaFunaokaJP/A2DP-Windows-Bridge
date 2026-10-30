@@ -26,16 +26,24 @@ BlueCaster assigns the WinUSB driver to the adapter itself. [Zadig](https://zadi
 
 Each [release](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/latest) comes in two forms with the same files:
 
-- **Installer** (`BlueCaster-<version>-win64-setup.exe`): installs for the current user without administrator rights, adds a Start menu entry (**BlueCaster**) and an uninstaller, and installs the Microsoft Edge WebView2 Runtime if it is missing (Windows 11 includes it). Updates install themselves from the app (**Settings > Updates > Update now**)
+- **Installer** (`BlueCaster-<version>-win64-setup.exe`): installs for the current user without administrator rights, adds a Start menu entry (**BlueCaster**) and an uninstaller, and installs the Microsoft Edge WebView2 Runtime if it is missing (Windows 11 includes it). Updates install themselves from the app (**Settings > Updates > Update now**). The programs go to `%LOCALAPPDATA%\BlueCaster\` (the three programs, the uninstaller and a `licenses\` folder with the license texts)
 - **Portable** (`BlueCaster-<version>-win64-portable.zip`): extract anywhere and run `bluecaster.exe`. Keep the three programs (`bluecaster.exe`, `bluecaster-core.exe`, `bluecaster-driver.exe`) together. The portable copy only tells you about updates; it needs the WebView2 Runtime installed
 
 Both keep settings, profiles, link keys and firmware in `%APPDATA%\BlueCaster`, so you can switch between them. Uninstalling deletes that folder unless you turn **Delete user data** off (a silent uninstall keeps it).
 
 ### Upgrading from v1 {#from-v1}
 
-Run the v2 installer over v1. Its **Ready** page says which earlier versions it uninstalls first (v1, or 2.0.0 to 2.0.2-beta.5). It asks you to close v1 if it is running, then uninstalls v1 and keeps the settings folder: profiles, the pairing with your headphones and the firmware files carry over, and the headphones do not need to be paired again. An adapter that already has WinUSB (from Zadig) keeps it. If **Start with Windows** was on, it now starts v2.
+Run the installer over v1. Its **Ready** page says which earlier versions it uninstalls first (v1, or any 2.0.x). It asks you to close v1 if it is running, then uninstalls v1 and keeps the settings folder: profiles, the pairing with your headphones and the firmware files carry over, and the headphones do not need to be paired again. An adapter that already has WinUSB (from Zadig) keeps it. If **Start with Windows** was on, it now starts v2.
 
-At its first start v2 copies the v1 settings to `%APPDATA%\BlueCaster\backup-v1\` before it reads them.
+At its first start v2 copies the v1 settings to `%APPDATA%\BlueCaster\backup\v1\` before it reads them.
+
+### Upgrading from 2.0.x (A2DP Windows Bridge) {#from-2x}
+
+BlueCaster 3.0.0 is the new name of A2DP Windows Bridge. Run the 3.0.0 installer over the installed 2.0.x: the setup uninstalls the old version by itself and keeps your settings. The Start menu entry and the **Start with Windows** entry move to "BlueCaster".
+
+At its first start 3.0.0 renames the folder `%APPDATA%\A2DPWB` to `%APPDATA%\BlueCaster` and sorts its files into subfolders (see [Settings and Files](architecture#settings-and-files)). `backup\v2\` holds a copy of the 2.0.x settings and pairings, so that 2.0.2 can be installed again: copy those files back to `%APPDATA%\A2DPWB`.
+
+The headphones may keep showing the old Bluetooth name "A2DPWB" until you pair them again.
 
 ## Step 1: First-Run Setup {#first-run}
 
@@ -139,7 +147,7 @@ Do not choose a Realtek chip or Custom for a non-Realtek adapter: BlueCaster wou
 ### Manual Download
 
 1. Download the firmware and config `.bin` files for your chipset from [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (e.g., `rtl8761bu_fw.bin` and `rtl8761bu_config.bin`)
-2. Place both files in the BlueCaster config folder (`%APPDATA%\BlueCaster`, also under **Settings > Settings folder**)
+2. Place both files in the `firmware` folder of the BlueCaster config folder (`%APPDATA%\BlueCaster\firmware`; the config folder is also under **Settings > Settings folder**)
 
 {: .note }
 These firmware files are proprietary Realtek binaries distributed via the linux-firmware project. They are not included in this repository. See [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE) for redistribution terms.

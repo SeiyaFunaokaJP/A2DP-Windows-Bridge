@@ -380,7 +380,7 @@ aptX、aptX HD 和 aptX LL 只支持 44.1 kHz 和 48 kHz（aptX Adaptive 为 48 
 1. 连接耳机。
 2. 打开**诊断**，在日志筛选框中输入 `remote`。
 
-相同的内容也会写入配置文件夹中的日志文件（`%APPDATA%\BlueCaster\logs\bluecaster-core.<date>.log`）；在 CLI 模式下则输出到控制台。功能发现相关的日志行会准确显示耳机列出了哪些编解码器：
+相同的内容也会写入配置文件夹中的日志文件（`%APPDATA%\BlueCaster\logs\<YYYY-MM-DD>\core.log`）；在 CLI 模式下则输出到控制台。功能发现相关的日志行会准确显示耳机列出了哪些编解码器：
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -402,14 +402,14 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 ## 验证媒体流（bluecaster_decode） {#verify-stream}
 
-大多数耳机无法显示正在使用的编解码器。**诊断 > 开始 HCI 捕获** / **停止 HCI 捕获**会记录一份 HCI 数据包日志（配置文件夹中的 `hci_<date>_<time>.pklg`），包含编解码器协商和发送的每个媒体数据包。在 LDAC 990 kbps 下，它每小时大约增长 0.5 GB，因此请只在需要时进行捕获。在 CLI 模式下，`--hci-capture <file.pklg>` 会记录整个运行过程。
+大多数耳机无法显示正在使用的编解码器。**诊断 > 开始 HCI 捕获** / **停止 HCI 捕获**会记录一份 HCI 数据包日志（配置文件夹中的 `logs\hci\hci_<date>_<time>.pklg`），包含编解码器协商和发送的每个媒体数据包。在 LDAC 990 kbps 下，它每小时大约增长 0.5 GB，因此请只在需要时进行捕获。在 CLI 模式下，`--hci-capture <file.pklg>` 会记录整个运行过程。
 
 可以在连接前开始捕获，也可以在串流过程中开始。如果在连接期间开始捕获，BlueCaster 会先写入它记住的连接建立数据包（L2CAP 信道建立和 AVDTP 信令，包括编解码器协商），因此该文件仍然可以分析。“诊断”会在记录期间和停止后显示文件路径。
 
 可以用 Wireshark 打开捕获文件，或使用开发者工具 `bluecaster_decode`（需从源代码构建，请参阅[构建](../building)）进行检查：
 
 ```
-bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
 该工具会跟踪 AVDTP 信令（SET_CONFIGURATION / RECONFIGURE 以及耳机是否接受），提取 BlueCaster 发送的媒体数据包，并对照协商的配置进行检查：

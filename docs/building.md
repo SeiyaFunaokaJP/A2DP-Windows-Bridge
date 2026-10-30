@@ -164,7 +164,7 @@ The C libraries are git submodules; Rust crates and the UI's npm packages are fe
 | fdk-aac | git submodule | v2.0.3-158-gd8e6b1a | FDK AAC License |
 | LHDC V5 encoder | git submodule | as pinned | Apache-2.0 |
 | libopus | git submodule | v1.5.2 | BSD-3-Clause |
-| Tauri, SolidJS, Rust crates | Cargo / pnpm | `Cargo.lock`, `pnpm-lock.yaml` | MIT / Apache-2.0 and others (`licenses/rust-crates.txt` in the release) |
+| Tauri, SolidJS, Rust crates | Cargo / pnpm | `Cargo.lock`, `pnpm-lock.yaml` | MIT / Apache-2.0 and others (`licenses/third-party/rust-crates.txt` in the release) |
 
 {: .warning }
 Because BTstack is linked in, any BlueCaster you build may only be used and redistributed for personal, non-commercial purposes, even though the BlueCaster source code itself is dual-licensed under Apache-2.0 or MIT.

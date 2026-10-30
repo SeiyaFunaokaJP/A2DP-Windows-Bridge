@@ -30,13 +30,21 @@ BlueCaster 会自行为适配器分配 WinUSB 驱动程序，不再需要 [Zadig
 - **安装程序**（`BlueCaster-<version>-win64-setup.exe`）：无需管理员权限即可为当前用户安装，添加“开始”菜单项（**BlueCaster**）和卸载程序；如果缺少 Microsoft Edge WebView2 Runtime，还会一并安装（Windows 11 已自带）。更新可在应用内自动安装（**设置 > 更新 > 立即更新**）
 - **便携版**（`BlueCaster-<version>-win64-portable.zip`）：解压到任意位置，运行 `bluecaster.exe` 即可。请将三个程序（`bluecaster.exe`、`bluecaster-core.exe`、`bluecaster-driver.exe`）放在一起。便携版只会提示有可用更新；它需要已安装 WebView2 Runtime
 
-两者都将设置、配置文件、链接密钥和固件保存在 `%APPDATA%\BlueCaster` 中，因此可以在两者之间切换。卸载时该文件夹会保留。
+两者都将设置、配置文件、链接密钥和固件保存在 `%APPDATA%\BlueCaster` 中，因此可以在两者之间切换。卸载时该文件夹会保留。 程序位于 `%LOCALAPPDATA%\BlueCaster\`，许可证文本在其中的 `licenses\` 文件夹。
 
 ### 从 v1 升级 {#from-v1}
 
 直接在 v1 上运行 v2 的安装程序即可。如果 v1 正在运行，安装程序会请你关闭它，然后卸载 v1 并保留设置文件夹：配置文件、与耳机的配对以及固件文件都会沿用，耳机无需重新配对。已通过 Zadig 设置为 WinUSB 的适配器会保持 WinUSB。如果之前开启了**随 Windows 启动**，现在启动的将是 v2。
 
-v2 首次启动时，会先将 v1 的设置复制到 `%APPDATA%\BlueCaster\backup-v1\`，然后再读取。
+v2 首次启动时，会先将 v1 的设置复制到 `%APPDATA%\BlueCaster\backup\v1\`，然后再读取。
+
+### 从 2.0.x（A2DP Windows Bridge）升级 {#from-2x}
+
+BlueCaster 3.0.0 是 A2DP Windows Bridge 的新名称。直接在已安装的 2.0.x 上运行 3.0.0 的安装程序即可：安装程序会自动卸载旧版本，并保留设置。“开始”菜单项和**随 Windows 启动**项会改为“BlueCaster”。
+
+3.0.0 首次启动时，会将文件夹 `%APPDATA%\A2DPWB` 重命名为 `%APPDATA%\BlueCaster`，并把其中的文件整理到子文件夹中（见[设置与文件](../architecture#settings-and-files)）。`backup\v2\` 保存了 2.0.x 设置和配对的副本，以便重新安装 2.0.2：把这些文件复制回 `%APPDATA%\A2DPWB` 即可。
+
+耳机在重新配对之前，可能仍显示旧的蓝牙名称“A2DPWB”。
 
 ## 第 1 步：首次运行设置 {#first-run}
 
@@ -140,7 +148,7 @@ BlueCaster 会检测适配器的芯片组，并显示需要哪些固件文件。
 ### 手动下载
 
 1. 从 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 下载与芯片组对应的固件和配置 `.bin` 文件（如 `rtl8761bu_fw.bin` 和 `rtl8761bu_config.bin`）
-2. 将这两个文件放入 BlueCaster 配置文件夹（`%APPDATA%\BlueCaster`，也可在**设置 > 设置文件夹**中找到）
+2. 将这两个文件放入 BlueCaster 配置文件夹（`%APPDATA%\BlueCaster\firmware`，也可在**设置 > 设置文件夹**中找到）
 
 {: .note }
 这些固件文件是通过 linux-firmware 项目分发的 Realtek 专有二进制文件，未包含在本仓库中。再分发条款请参阅 [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE)。

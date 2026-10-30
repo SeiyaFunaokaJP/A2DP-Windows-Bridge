@@ -404,7 +404,7 @@ aptX, aptX HD and aptX LL support only 44.1 kHz and 48 kHz (aptX Adaptive 48 kHz
 1. Connect to the headphones.
 2. Open **Diagnostics** and type `remote` into the log filter.
 
-The same lines are in the log files in the config folder (`%APPDATA%\BlueCaster\logs\bluecaster-core.<date>.log`; not masked, so check them before attaching one to a report); in CLI mode they are printed to the console. The capability lines show exactly which codecs the headphones list:
+The same lines are in the log files in the config folder (`%APPDATA%\BlueCaster\logs\<YYYY-MM-DD>\core.log`; not masked, so check them before attaching one to a report); in CLI mode they are printed to the console. The capability lines show exactly which codecs the headphones list:
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -426,14 +426,14 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 ## Verifying the Media Stream (bluecaster_decode) {#verify-stream}
 
-Most headphones cannot show which codec is in use. **Diagnostics > Start HCI Capture** / **Stop HCI Capture** records an HCI packet log (`hci_<date>_<time>.pklg` in the config folder) with the codec negotiation and every media packet sent. At LDAC 990 kbps it grows by roughly 0.5 GB per hour, so capture only as long as you need. In CLI mode, `--hci-capture <file.pklg>` records the whole run.
+Most headphones cannot show which codec is in use. **Diagnostics > Start HCI Capture** / **Stop HCI Capture** records an HCI packet log (`logs\hci\hci_<date>_<time>.pklg` in the config folder) with the codec negotiation and every media packet sent. At LDAC 990 kbps it grows by roughly 0.5 GB per hour, so capture only as long as you need. In CLI mode, `--hci-capture <file.pklg>` records the whole run.
 
 You can start a capture before connecting or while already streaming. If it starts during a connection, BlueCaster first writes the connection setup packets it remembered (L2CAP channel setup and AVDTP signaling, including the codec negotiation), so the file can still be analysed. Diagnostics shows the file path while it records and after it stops.
 
 Open the capture in Wireshark, or check it with the `bluecaster_decode` developer tool (built from source, see [Building](building)):
 
 ```
-bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
 The tool follows the AVDTP signaling (SET_CONFIGURATION / RECONFIGURE and whether the headphones accepted it), extracts the media packets BlueCaster sent and checks them against the negotiated configuration:

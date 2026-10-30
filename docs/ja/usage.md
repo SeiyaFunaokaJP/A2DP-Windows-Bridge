@@ -393,7 +393,7 @@ aptX・aptX HD・aptX LL が対応するのは 44.1 kHz と 48 kHz のみです�
 1. ヘッドホンに接続します。
 2. **診断** を開き、ログの絞り込みに `remote` と入力します。
 
-同じ行は設定フォルダーのログファイル（`%APPDATA%\BlueCaster\logs\bluecaster-core.<日付>.log`）にもあり、CLI モードではコンソールに表示されます。以下の行で、ヘッドホンが通知しているコーデックを正確に確認できます。
+同じ行は設定フォルダーのログファイル（`%APPDATA%\BlueCaster\logs\<YYYY-MM-DD>\core.log`）にもあり、CLI モードではコンソールに表示されます。以下の行で、ヘッドホンが通知しているコーデックを正確に確認できます。
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -415,14 +415,14 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 ## 送信ストリームの検証（bluecaster_decode） {#verify-stream}
 
-多くのヘッドホンは、使用中のコーデックを表示できません。**診断 > HCI キャプチャを開始** / **HCI キャプチャを停止** で、HCI パケットログ（設定フォルダーの `hci_<日付>_<時刻>.pklg`）を記録できます。コーデックの交渉内容と送信したすべてのメディアパケットが記録されます。LDAC 990 kbps では 1 時間あたり約 0.5 GB 増えるため、必要な間だけ記録してください。CLI モードでは `--hci-capture <file.pklg>` で実行全体を記録します。
+多くのヘッドホンは、使用中のコーデックを表示できません。**診断 > HCI キャプチャを開始** / **HCI キャプチャを停止** で、HCI パケットログ（設定フォルダーの `logs\hci\hci_<日付>_<時刻>.pklg`）を記録できます。コーデックの交渉内容と送信したすべてのメディアパケットが記録されます。LDAC 990 kbps では 1 時間あたり約 0.5 GB 増えるため、必要な間だけ記録してください。CLI モードでは `--hci-capture <file.pklg>` で実行全体を記録します。
 
 キャプチャは接続前でもストリーミング中でも開始できます。接続中に開始した場合は、BlueCaster が記憶していた接続確立時のパケット（L2CAP チャネルの確立と、コーデック交渉を含む AVDTP シグナリング）を先に書き込むので、途中からでも解析できます。記録中と停止後は、診断にファイルのパスが表示されます。
 
 キャプチャは Wireshark で開けるほか、開発者向けツール `bluecaster_decode`（ソースからビルド。[ビルド](../building)を参照）で検証できます。
 
 ```
-bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
 このツールは AVDTP シグナリング（SET_CONFIGURATION / RECONFIGURE と、ヘッドホンがそれを受け入れたか）を追跡し、BlueCaster が送信したメディアパケットを取り出して、交渉した設定と照合します。

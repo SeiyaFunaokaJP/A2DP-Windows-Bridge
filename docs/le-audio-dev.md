@@ -44,10 +44,11 @@ for reference (`git show b819893:app/src/le_audio/<file>`).
 | `tools/emu/emu_le_audio_sink.py`, `tools/emu/le_audio/` | Bumble LE Audio sink(s); `le_audio/<profile>.py` = the sink side of each profile |
 | `tools/emu/le_audio_tests/` | `run_test.py --le-audio` cases and checks, one file per profile (`core.py`, `privacy.py`, `csip.py`, `vcp.py`, `mcp.py`, `ccp.py`, `tmap_gmap.py`) |
 
-Files in the config folder (the same as v1): `le_audio_bonds.tlv` (LE bonds
-and the GATT server's persistent CCC values), `le_audio_csip.txt`
-(coordinated sets), `le_audio_devices.txt` (LE Audio entries of the device
-list).
+Files in the config folder (the formats are the same as v1; the paths are
+in [Settings and Files](architecture#settings-and-files)):
+`pairing\le_audio_bonds.tlv` (LE bonds and the GATT server's persistent CCC
+values), `pairing\le_audio_csip.txt` (coordinated sets),
+`devices\le_audio_devices.txt` (LE Audio entries of the device list).
 
 ## Threads - the one rule that matters
 

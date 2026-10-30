@@ -380,7 +380,7 @@ aptX, aptX HD y aptX LL solo admiten 44.1 kHz y 48 kHz (aptX Adaptive 48 kHz, o 
 1. Conéctese a los auriculares.
 2. Abra **Diagnóstico** y escriba `remote` en el filtro del registro.
 
-Las mismas líneas están en los archivos de registro de la carpeta de configuración (`%APPDATA%\BlueCaster\logs\bluecaster-core.<date>.log`); en modo CLI se muestran en la consola. Las líneas de capacidades muestran exactamente qué códecs ofrecen los auriculares:
+Las mismas líneas están en los archivos de registro de la carpeta de configuración (`%APPDATA%\BlueCaster\logs\<YYYY-MM-DD>\core.log`); en modo CLI se muestran en la consola. Las líneas de capacidades muestran exactamente qué códecs ofrecen los auriculares:
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -402,14 +402,14 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 ## Verificar el flujo multimedia (bluecaster_decode) {#verify-stream}
 
-La mayoría de los auriculares no pueden mostrar qué códec se está usando. **Diagnóstico > Iniciar captura HCI** / **Detener captura HCI** graba un registro de paquetes HCI (`hci_<date>_<time>.pklg` en la carpeta de configuración) con la negociación del códec y todos los paquetes multimedia enviados. Con LDAC a 990 kbps crece aproximadamente 0.5 GB por hora, así que capture solo el tiempo que necesite. En modo CLI, `--hci-capture <file.pklg>` graba toda la ejecución.
+La mayoría de los auriculares no pueden mostrar qué códec se está usando. **Diagnóstico > Iniciar captura HCI** / **Detener captura HCI** graba un registro de paquetes HCI (`logs\hci\hci_<date>_<time>.pklg` en la carpeta de configuración) con la negociación del códec y todos los paquetes multimedia enviados. Con LDAC a 990 kbps crece aproximadamente 0.5 GB por hora, así que capture solo el tiempo que necesite. En modo CLI, `--hci-capture <file.pklg>` graba toda la ejecución.
 
 Puede iniciar una captura antes de conectar o durante la transmisión. Si se inicia durante una conexión, BlueCaster escribe primero los paquetes de establecimiento de la conexión que ha recordado (establecimiento del canal L2CAP y señalización AVDTP, incluida la negociación del códec), para que el archivo pueda analizarse igualmente. Diagnóstico muestra la ruta del archivo mientras graba y después de detenerla.
 
 Abra la captura en Wireshark o compruébela con la herramienta para desarrolladores `bluecaster_decode` (se compila desde el código fuente; consulte [Compilación](../building)):
 
 ```
-bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
 La herramienta sigue la señalización AVDTP (SET_CONFIGURATION / RECONFIGURE y si los auriculares la aceptaron), extrae los paquetes multimedia que envió BlueCaster y los comprueba frente a la configuración negociada:

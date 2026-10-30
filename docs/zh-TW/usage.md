@@ -380,7 +380,7 @@ aptX、aptX HD 與 aptX LL 只支援 44.1 kHz 與 48 kHz（aptX Adaptive 為 48 
 1. 連線到耳機。
 2. 開啟 **診斷**，在記錄篩選欄位中輸入 `remote`。
 
-相同的記錄行也會寫入設定資料夾中的記錄檔（`%APPDATA%\BlueCaster\logs\bluecaster-core.<date>.log`）；在 CLI 模式下則會輸出到主控台。功能相關的記錄行會確切列出耳機提供的轉碼器：
+相同的記錄行也會寫入設定資料夾中的記錄檔（`%APPDATA%\BlueCaster\logs\<YYYY-MM-DD>\core.log`）；在 CLI 模式下則會輸出到主控台。功能相關的記錄行會確切列出耳機提供的轉碼器：
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -402,14 +402,14 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 ## 驗證媒體串流 (bluecaster_decode) {#verify-stream}
 
-大多數耳機無法顯示正在使用的轉碼器。**診斷 > 開始 HCI 擷取** / **停止 HCI 擷取** 會錄製 HCI 封包記錄（設定資料夾中的 `hci_<date>_<time>.pklg`），包含轉碼器協商與傳送的每個媒體封包。以 LDAC 990 kbps 時每小時約增加 0.5 GB，因此請只擷取所需的時間。在 CLI 模式下，`--hci-capture <file.pklg>` 會錄製整個執行期間。
+大多數耳機無法顯示正在使用的轉碼器。**診斷 > 開始 HCI 擷取** / **停止 HCI 擷取** 會錄製 HCI 封包記錄（設定資料夾中的 `logs\hci\hci_<date>_<time>.pklg`），包含轉碼器協商與傳送的每個媒體封包。以 LDAC 990 kbps 時每小時約增加 0.5 GB，因此請只擷取所需的時間。在 CLI 模式下，`--hci-capture <file.pklg>` 會錄製整個執行期間。
 
 您可以在連線前或串流期間開始擷取。若在連線期間開始，BlueCaster 會先寫入它記住的連線建立封包（L2CAP 通道建立與 AVDTP 訊號，包含轉碼器協商），因此檔案仍可分析。錄製期間與停止後，「診斷」都會顯示檔案路徑。
 
 可在 Wireshark 中開啟擷取檔，或使用 `bluecaster_decode` 開發者工具檢查（需從原始碼建置，請參閱 [建置](../building)）：
 
 ```
-bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
 此工具會追蹤 AVDTP 訊號（SET_CONFIGURATION / RECONFIGURE 以及耳機是否接受），擷取 BlueCaster 傳送的媒體封包，並依協商的設定進行檢查：

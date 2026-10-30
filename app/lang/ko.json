@@ -703,7 +703,7 @@
   "error.driver_assign_failed": "Windows가 이 어댑터에 WinUSB 할당을 거부했습니다. 대신 Zadig로 설치하십시오(설정 가이드의 \"Zadig 사용하기\" 참조). 자세한 내용은 로그를 확인하십시오.",
   "error.driver_restore_unverified": "드라이버를 변경했지만 어댑터가 이전 드라이버로 돌아오지 않았습니다. Zadig로 설정한 경우 장치 관리자에서 Zadig의 드라이버 패키지를 제거하십시오.",
   "ui.v1_running.title": "다른 BlueCaster가 실행 중입니다. 먼저 종료하세요",
-  "ui.v1_running.text": "BlueCaster 두 개(v1 또는 다른 v2)는 블루투스 어댑터를 동시에 사용할 수 없습니다. 다른 BlueCaster의 트레이 아이콘을 마우스 오른쪽 버튼으로 클릭하고 [종료]를 선택하세요.",
+  "ui.v1_running.text": "BlueCaster 두 개(A2DPWB v1 또는 다른 복사본)는 블루투스 어댑터를 동시에 사용할 수 없습니다. 다른 BlueCaster의 트레이 아이콘을 마우스 오른쪽 버튼으로 클릭하고 [종료]를 선택하세요.",
   "help.third_party": "또한 libldac(Apache-2.0), libopenaptx(LGPL-2.1+, © 2017 Aurelien Jacobs, © 2018-2020 Pali Rohár), Fraunhofer FDK AAC, Bluedroid SBC(Apache-2.0), LHDC V5 인코더(Apache-2.0, AOSP 기반, FFT는 KISS FFT, BSD-3-Clause), libopus(BSD-3-Clause), liblc3(Apache-2.0), Tauri, SolidJS 및 기타 Rust와 JavaScript 라이브러리가 포함되어 있습니다. 라이선스 전문은 프로그램과 같은 위치의 \"licenses\" 폴더에 있습니다.",
   "ui.settings.core_version": "코어 %s",
   "dbgc.col_step": "단계",

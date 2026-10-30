@@ -380,7 +380,7 @@ aptX, aptX HD und aptX LL unterstützen nur 44,1 kHz und 48 kHz (aptX Adaptive 4
 1. Verbinden Sie sich mit den Kopfhörern.
 2. Öffnen Sie **Diagnose** und geben Sie `remote` in den Protokollfilter ein.
 
-Dieselben Zeilen stehen in den Protokolldateien im Konfigurationsordner (`%APPDATA%\BlueCaster\logs\bluecaster-core.<date>.log`); im CLI-Modus werden sie auf der Konsole ausgegeben. Die Fähigkeitszeilen zeigen genau, welche Codecs die Kopfhörer aufführen:
+Dieselben Zeilen stehen in den Protokolldateien im Konfigurationsordner (`%APPDATA%\BlueCaster\logs\<YYYY-MM-DD>\core.log`); im CLI-Modus werden sie auf der Konsole ausgegeben. Die Fähigkeitszeilen zeigen genau, welche Codecs die Kopfhörer aufführen:
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -402,14 +402,14 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 ## Den Medienstream prüfen (bluecaster_decode) {#verify-stream}
 
-Die meisten Kopfhörer können nicht anzeigen, welcher Codec verwendet wird. **Diagnose > HCI-Aufzeichnung starten** / **HCI-Aufzeichnung beenden** zeichnet ein HCI-Paketprotokoll (`hci_<date>_<time>.pklg` im Konfigurationsordner) mit der Codec-Aushandlung und jedem gesendeten Medienpaket auf. Bei LDAC mit 990 kbps wächst es um etwa 0,5 GB pro Stunde; zeichnen Sie daher nur so lange auf wie nötig. Im CLI-Modus zeichnet `--hci-capture <file.pklg>` den gesamten Lauf auf.
+Die meisten Kopfhörer können nicht anzeigen, welcher Codec verwendet wird. **Diagnose > HCI-Aufzeichnung starten** / **HCI-Aufzeichnung beenden** zeichnet ein HCI-Paketprotokoll (`logs\hci\hci_<date>_<time>.pklg` im Konfigurationsordner) mit der Codec-Aushandlung und jedem gesendeten Medienpaket auf. Bei LDAC mit 990 kbps wächst es um etwa 0,5 GB pro Stunde; zeichnen Sie daher nur so lange auf wie nötig. Im CLI-Modus zeichnet `--hci-capture <file.pklg>` den gesamten Lauf auf.
 
 Sie können eine Aufzeichnung vor dem Verbinden oder während des laufenden Streamings starten. Beginnt sie während einer Verbindung, schreibt BlueCaster zuerst die gemerkten Pakete des Verbindungsaufbaus (L2CAP-Kanalaufbau und AVDTP-Signalisierung, einschließlich der Codec-Aushandlung), sodass die Datei trotzdem ausgewertet werden kann. Die Diagnose zeigt den Dateipfad während der Aufzeichnung und nach dem Beenden an.
 
 Öffnen Sie die Aufzeichnung in Wireshark oder prüfen Sie sie mit dem Entwicklerwerkzeug `bluecaster_decode` (aus dem Quellcode gebaut, siehe [Bauen](../building)):
 
 ```
-bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
 Das Werkzeug verfolgt die AVDTP-Signalisierung (SET_CONFIGURATION / RECONFIGURE und ob die Kopfhörer sie akzeptiert haben), extrahiert die von BlueCaster gesendeten Medienpakete und prüft sie gegen die ausgehandelte Konfiguration:

@@ -703,7 +703,7 @@
   "error.driver_assign_failed": "Windows rechazó asignar WinUSB a este adaptador. Instálelo con Zadig (consulte «Usar Zadig en su lugar» en la guía de configuración); los detalles están en el registro.",
   "error.driver_restore_unverified": "Se cambió el controlador, pero el adaptador no volvió a su controlador anterior. Si se configuró con Zadig, elimine el paquete de controlador de Zadig en el Administrador de dispositivos.",
   "ui.v1_running.title": "Hay otro BlueCaster en ejecución: ciérrelo primero",
-  "ui.v1_running.text": "Dos BlueCaster (v1, u otro v2) no pueden usar el adaptador Bluetooth a la vez. Haga clic derecho en el icono del otro BlueCaster en la bandeja y elija Salir.",
+  "ui.v1_running.text": "Dos copias de BlueCaster (A2DPWB v1, u otra copia) no pueden usar el adaptador Bluetooth a la vez. Haga clic derecho en el icono del otro BlueCaster en la bandeja y elija Salir.",
   "help.third_party": "También incluye libldac (Apache-2.0), libopenaptx (LGPL-2.1+, © 2017 Aurelien Jacobs, © 2018-2020 Pali Rohár), Fraunhofer FDK AAC, Bluedroid SBC (Apache-2.0), el codificador LHDC V5 (Apache-2.0, derivado de AOSP; FFT de KISS FFT, BSD-3-Clause), libopus (BSD-3-Clause), liblc3 (Apache-2.0), Tauri, SolidJS y otras bibliotecas de Rust y JavaScript. Los textos de las licencias están en la carpeta \"licenses\" junto al programa.",
   "ui.settings.core_version": "núcleo %s",
   "dbgc.col_step": "Paso",

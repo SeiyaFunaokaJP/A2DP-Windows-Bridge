@@ -88,7 +88,7 @@ Avec **Paramètres > Mode développeur**, l'écran **Développeur** comporte un 
 | Notifications | **Notifier lorsqu'un appareil se connecte** (l'appareil, sa batterie, le codec et ses paramètres ; activé par défaut), **Prévenir quand la batterie est faible** : **Sous 20%** (par défaut), **Sous 10%**, **Sous 5%** ou **Jamais**, une fois par connexion (de nouveau seulement après que la batterie est remontée 5 points au-dessus) |
 | Mises à jour | **Rechercher des mises à jour**, **Rechercher les mises à jour au démarrage**, **Inclure les préversions dans les mises à jour** (propose aussi les versions bêta), **Mettre à jour maintenant** (voir [Mises à jour](#updates)) |
 | Avancé | **Mode développeur** (ajoute l'écran **Développeur** avec la **Taille max. des paquets média** de chaque appareil et le test avec récepteur pair, et plus de détails au journal ; aucun redémarrage nécessaire), **Dossier des paramètres** avec **Ouvrir le dossier de configuration**, **Lancer la configuration** |
-| À propos d'BlueCaster | Version, licence, licences tierces, **Quitter BlueCaster** |
+| À propos de BlueCaster | Version, licence, licences tierces, **Quitter BlueCaster** |
 
 ### Configuration au premier lancement
 
@@ -380,7 +380,7 @@ aptX, aptX HD et aptX LL ne prennent en charge que 44,1 kHz et 48 kHz (aptX Adap
 1. Connectez-vous au casque.
 2. Ouvrez **Diagnostic** et tapez `remote` dans le filtre du journal.
 
-Les mêmes lignes figurent dans les fichiers journaux du dossier de configuration (`%APPDATA%\BlueCaster\logs\bluecaster-core.<date>.log`) ; en mode CLI, elles sont affichées dans la console. Les lignes de capacités montrent exactement quels codecs le casque propose :
+Les mêmes lignes figurent dans les fichiers journaux du dossier de configuration (`%APPDATA%\BlueCaster\logs\<YYYY-MM-DD>\core.log`) ; en mode CLI, elles sont affichées dans la console. Les lignes de capacités montrent exactement quels codecs le casque propose :
 
 ```
 remote supports aptX (SEID ..., [...])
@@ -402,14 +402,14 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 ## Vérifier le flux média (bluecaster_decode) {#verify-stream}
 
-La plupart des casques ne peuvent pas indiquer quel codec est utilisé. **Diagnostic > Démarrer la capture HCI** / **Arrêter la capture HCI** enregistre un journal de paquets HCI (`hci_<date>_<time>.pklg` dans le dossier de configuration) contenant la négociation du codec et chaque paquet média envoyé. En LDAC 990 kbps, il grossit d'environ 0,5 Go par heure : ne capturez donc que le temps nécessaire. En mode CLI, `--hci-capture <file.pklg>` enregistre toute l'exécution.
+La plupart des casques ne peuvent pas indiquer quel codec est utilisé. **Diagnostic > Démarrer la capture HCI** / **Arrêter la capture HCI** enregistre un journal de paquets HCI (`logs\hci\hci_<date>_<time>.pklg` dans le dossier de configuration) contenant la négociation du codec et chaque paquet média envoyé. En LDAC 990 kbps, il grossit d'environ 0,5 Go par heure : ne capturez donc que le temps nécessaire. En mode CLI, `--hci-capture <file.pklg>` enregistre toute l'exécution.
 
 Vous pouvez démarrer une capture avant la connexion ou pendant une diffusion en cours. Si elle démarre pendant une connexion, BlueCaster écrit d'abord les paquets d'établissement de connexion qu'il a mémorisés (établissement des canaux L2CAP et signalisation AVDTP, y compris la négociation du codec), afin que le fichier reste analysable. Diagnostic affiche le chemin du fichier pendant l'enregistrement et après son arrêt.
 
 Ouvrez la capture dans Wireshark, ou vérifiez-la avec l'outil de développement `bluecaster_decode` (compilé depuis les sources, voir [Compilation](../building)) :
 
 ```
-bluecaster_decode "%APPDATA%\BlueCaster\hci_20260925_120000.pklg" -o C:\temp\check
+bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check
 ```
 
 L'outil suit la signalisation AVDTP (SET_CONFIGURATION / RECONFIGURE et son acceptation par le casque), extrait les paquets média envoyés par BlueCaster et les vérifie par rapport à la configuration négociée :
@@ -496,7 +496,7 @@ BlueCaster consulte les GitHub Releases au plus une fois par jour (**Paramètres
 
 ### La fenêtre indique que le cœur ne fonctionne pas
 
-La fenêtre a besoin de `bluecaster-core.exe` à côté d'elle et le démarre toute seule. « Le cœur d'BlueCaster n'est pas en cours d'exécution » signifie qu'il n'a pas pu être démarré : réinstallez BlueCaster (ou extrayez de nouveau le zip portable). « Le cœur est d'une autre version » signifie que les deux programmes proviennent de versions différentes : installez la même version des deux (la dernière version publiée le fait).
+La fenêtre a besoin de `bluecaster-core.exe` à côté d'elle et le démarre toute seule. « Le cœur de BlueCaster n'est pas en cours d'exécution » signifie qu'il n'a pas pu être démarré : réinstallez BlueCaster (ou extrayez de nouveau le zip portable). « Le cœur est d'une autre version » signifie que les deux programmes proviennent de versions différentes : installez la même version des deux (la dernière version publiée le fait).
 
 ### L'attribution ou la restauration du pilote échoue
 
@@ -512,7 +512,7 @@ Pour éviter qu'un adaptateur ne reste bloqué, BlueCaster réinitialise ses pip
 
 ### Problèmes d'association après une mise à jour
 
-BlueCaster s'associe en SSP (Just Works) avec **General Bonding**, et les clés de liaison sont enregistrées pour que le casque puisse se reconnecter sans nouvelle association (la v2 lit les clés de liaison de la v1). Si vous avez associé le casque avec une ancienne version d'BlueCaster et qu'il ne se connecte plus, supprimez l'association BlueCaster sur le casque (voir le manuel du casque pour effacer la liste d'association) et associez-le de nouveau.
+BlueCaster s'associe en SSP (Just Works) avec **General Bonding**, et les clés de liaison sont enregistrées pour que le casque puisse se reconnecter sans nouvelle association (la v2 lit les clés de liaison de la v1). Si vous avez associé le casque avec une ancienne version de BlueCaster et qu'il ne se connecte plus, supprimez l'association BlueCaster sur le casque (voir le manuel du casque pour effacer la liste d'association) et associez-le de nouveau.
 
 ### Délais de connexion dépassés
 
