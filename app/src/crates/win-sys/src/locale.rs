@@ -22,11 +22,21 @@ pub fn preferred_ui_languages() -> Vec<String> {
     buf.split(|&c| c == 0).filter(|s| !s.is_empty()).map(String::from_utf16_lossy).collect()
 }
 
+/// The app's own key under HKEY_CURRENT_USER (the installer's
+/// SetupLanguage)
+pub const REGISTRY_KEY: &str = r"Software\BlueCaster";
+/// The key A2DPWB 2.0.x's installer wrote SetupLanguage to; still read
+/// when [`REGISTRY_KEY`] has none (an install before 3.0.0). Can be removed
+/// 6–12 months after 3.0.0.
+pub const OLD_REGISTRY_KEY: &str = r"Software\A2DPWB";
+
 /// The language chosen in the installer (installer/BlueCaster.iss writes the
-/// app's code, "ja" or "zh-TW", to HKCU\Software\A2DPWB, value
-/// SetupLanguage); None without one
+/// app's code, "ja" or "zh-TW", to HKCU\Software\BlueCaster, value
+/// SetupLanguage; before 3.0.0 to HKCU\Software\A2DPWB); None without one
 pub fn setup_language() -> Option<String> {
-    crate::autostart::get_in(r"Software\A2DPWB", "SetupLanguage").ok().flatten().filter(|l| !l.trim().is_empty())
+    [REGISTRY_KEY, OLD_REGISTRY_KEY]
+        .into_iter()
+        .find_map(|key| crate::autostart::get_in(key, "SetupLanguage").ok().flatten().filter(|l| !l.trim().is_empty()))
 }
 
 #[cfg(test)]

@@ -297,7 +297,9 @@ async fn run(app: AppHandle, ipc: Arc<Ipc>) {
     }
 }
 
-/// Opens the pipe, starting the core when it does not exist
+/// Opens the pipe, starting the core when it does not exist. Only the new
+/// name: a 2.0.x core that still runs (only the old name) is not connected
+/// to; the core started here asks it to exit and takes over (resident.rs).
 async fn connect(app: &AppHandle, ipc: &Ipc, name: &str) -> NamedPipeClient {
     let mut spawned: Option<Instant> = None;
     // The last start failed (its reason is the status already)

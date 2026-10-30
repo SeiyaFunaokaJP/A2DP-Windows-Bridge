@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod adapter;
+pub mod compat;
 pub mod devices;
 mod health;
 mod le_media;

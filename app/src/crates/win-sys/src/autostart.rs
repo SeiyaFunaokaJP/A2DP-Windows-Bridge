@@ -1,7 +1,8 @@
 //! Starting with Windows: the value under
-//! HKCU\Software\Microsoft\Windows\CurrentVersion\Run, as v1
-//! system_integration.cpp writes it (value name "BlueCaster", REG_SZ with the
-//! quoted program path and its arguments).
+//! HKCU\Software\Microsoft\Windows\CurrentVersion\Run, in the format v1
+//! system_integration.cpp writes it (REG_SZ with the quoted program path and
+//! its arguments). Value name "BlueCaster" since 3.0.0; v1 and 2.0.x used
+//! "A2DPWB" ([`OLD_VALUE_NAME`]), which the core takes over at start.
 //!
 //! Also holds the small registry helpers the driver module uses.
 
@@ -17,9 +18,13 @@ use windows::core::{HSTRING, PCWSTR};
 
 /// The Run key, under HKEY_CURRENT_USER
 pub const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-/// The value name v1 uses; v2 keeps it so that installing v2 over v1
-/// replaces the entry instead of starting both
+/// The value name of the core's entry (3.0.0 on)
 pub const VALUE_NAME: &str = "BlueCaster";
+/// The value name v1 (A2DPWB.exe) and 2.0.x (a2dpwb-core.exe) used. The core
+/// moves an entry of its own (or of v1) under it to [`VALUE_NAME`] at start
+/// and leaves any other program's alone. Can be removed 6–12 months after
+/// 3.0.0.
+pub const OLD_VALUE_NAME: &str = "A2DPWB";
 
 /// The command line registered under `value_name`, or None if there is none
 pub fn get(value_name: &str) -> windows::core::Result<Option<String>> {

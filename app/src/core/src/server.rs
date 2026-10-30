@@ -1,4 +1,6 @@
-//! The IPC server: the user's Named Pipe, one task per UI connection.
+//! The IPC server: the user's Named Pipe, one task per UI connection. The
+//! same server under the pipe's 2.0.x name too (third-party clients written
+//! for A2DPWB; see ipc::old_pipe_name).
 //!
 //! A connection says Hello, gets Welcome and a Snapshot, then the events of
 //! every state change; requests run concurrently and their responses go out
@@ -17,15 +19,48 @@ use crate::state::CoreState;
 
 const HELLO_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Accepts connections until the process ends. Err if another core of this
-/// user owns the pipe.
-pub async fn serve(state: Arc<CoreState>, name: String) -> std::io::Result<()> {
-    let mut server = win_sys::pipe::create_server(&name, true)?;
+/// While the old name cannot be had (a 2.0.x core that did not exit owns
+/// it): tries again this often
+const OLD_NAME_RETRY: Duration = Duration::from_secs(5);
+
+/// Accepts connections on `name` and `old_name` (same DACL, protocol and
+/// handler) until the process ends. Err if another core of this user owns
+/// `name`; the old name is served once it is free.
+pub async fn serve(state: Arc<CoreState>, name: String, old_name: String) -> std::io::Result<()> {
+    let server = win_sys::pipe::create_server(&name, true)?;
     tracing::info!("IPC: listening on {name}");
+    tokio::spawn(serve_old(state.clone(), old_name));
+    accept(state, &name, server).await
+}
+
+/// The 2.0.x name: not served while a 2.0.x core still owns it, tried again
+/// until it is free; a failure there does not end the core
+async fn serve_old(state: Arc<CoreState>, name: String) {
+    let mut told = false;
+    loop {
+        match win_sys::pipe::create_server(&name, true) {
+            Ok(server) => {
+                tracing::info!("IPC: listening on {name} too (the 2.0.x name)");
+                told = false;
+                if let Err(e) = accept(state.clone(), &name, server).await {
+                    tracing::warn!("IPC: {name}: {e}");
+                }
+            }
+            Err(e) if !told => {
+                tracing::warn!("IPC: cannot serve {name} (a 2.0.x core may still run): {e}");
+                told = true;
+            }
+            Err(_) => {}
+        }
+        tokio::time::sleep(OLD_NAME_RETRY).await;
+    }
+}
+
+async fn accept(state: Arc<CoreState>, name: &str, mut server: NamedPipeServer) -> std::io::Result<()> {
     loop {
         server.connect().await?;
         let client = server;
-        server = win_sys::pipe::create_server(&name, false)?;
+        server = win_sys::pipe::create_server(name, false)?;
         let state = state.clone();
         tokio::spawn(async move {
             if let Err(e) = session(state, client).await {
@@ -238,6 +273,53 @@ fn set_subscribed(count: &AtomicUsize, current: &mut bool, wanted: bool) -> bool
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The core answers under both names (test names, not the user's pipe)
+    #[test]
+    fn serves_the_new_and_the_old_name() {
+        use tokio::net::windows::named_pipe::ClientOptions;
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("bluecaster-server-names-{pid}"));
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let options = bluecaster_core::ServiceOptions {
+            config_dir: dir.clone(),
+            hci_tcp: None,
+            capture: bt_host::HciCapture::new(),
+            afh: None,
+            usb: Default::default(),
+        };
+        let state = CoreState::new(
+            Arc::new(bluecaster_core::Service::new(options, tx)),
+            Box::new(|_| {}),
+            Box::new(|| {}),
+            Box::new(|_| {}),
+        );
+        let name = format!(r"\\.\pipe\bluecaster-test-server-{pid}");
+        let old_name = format!(r"\\.\pipe\a2dpwb-test-server-{pid}");
+        let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().unwrap();
+        rt.block_on(async {
+            tokio::spawn(serve(state, name.clone(), old_name.clone()));
+            for n in [&name, &old_name] {
+                let started = std::time::Instant::now();
+                let pipe = loop {
+                    match ClientOptions::new().open(n) {
+                        Ok(p) => break p,
+                        Err(e) if started.elapsed() > Duration::from_secs(5) => panic!("{n}: {e}"),
+                        Err(_) => tokio::time::sleep(Duration::from_millis(20)).await,
+                    }
+                };
+                let (mut rd, mut wr) = tokio::io::split(pipe);
+                let hello = ClientMessage::Hello { protocol: PROTOCOL_VERSION, client: "test".into() };
+                write_frame(&mut wr, &hello).await.unwrap();
+                let welcome: serde_json::Value = read_frame(&mut rd).await.unwrap().unwrap();
+                assert_eq!(welcome["type"], "welcome", "{n}: {welcome}");
+            }
+            // A second core cannot have the new name
+            assert!(win_sys::pipe::create_server(&name, true).is_err());
+        });
+        rt.shutdown_background();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn subscriptions_count_once_per_connection() {

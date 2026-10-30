@@ -831,12 +831,71 @@ enum AutostartFix {
     Remove,
 }
 
-/// The Run value at start, from `current` and start_with_windows
-/// (`enabled`). v1's (its A2DPWB.exe; v2 registers only the core) is taken
-/// over as by an update when `replaces_v1`: pointed at v2, or removed when
-/// v2's setting is off, so that v1 does not start at logon. Otherwise it is
-/// written only when on and missing, empty, or naming an bluecaster-core.exe
-/// that does not `exist` any more. Any other program is not ours to replace.
+/// The core's program name before 3.0.0 (2.0.x), in an old Run value
+const OLD_CORE_EXE: &str = "a2dpwb-core.exe";
+
+/// The Run value's program is named `name` (any folder, any case)
+fn runs(command: Option<&str>, name: &str) -> bool {
+    command
+        .and_then(win_sys::autostart::program_of)
+        .and_then(|p| p.file_name().map(|n| n.eq_ignore_ascii_case(name)))
+        .unwrap_or(false)
+}
+
+/// What the start does with the Run values: ours ([`VALUE_NAME`]) and the
+/// one of v1 and 2.0.x ([`OLD_VALUE_NAME`])
+///
+/// [`VALUE_NAME`]: win_sys::autostart::VALUE_NAME
+/// [`OLD_VALUE_NAME`]: win_sys::autostart::OLD_VALUE_NAME
+#[derive(Debug, PartialEq, Eq)]
+struct AutostartPlan {
+    ours: AutostartFix,
+    /// Delete the old value (it named a core, or v1, and is taken over)
+    remove_old: bool,
+}
+
+/// The Run values at start. `old`, under v1's and 2.0.x's value name, is
+/// taken over when it names a core (2.0.x's a2dpwb-core.exe or a
+/// bluecaster-core.exe, any folder) or v1 (A2DPWB.exe), and `replaces_v1`
+/// (not a development instance): ours is written when on (unless it names
+/// another copy of the core that exists), and the old one is deleted. An
+/// old value naming any other program is left alone. Ours: see
+/// [`autostart_fix`].
+fn autostart_plan(
+    ours: Option<&str>,
+    old: Option<&str>,
+    enabled: bool,
+    replaces_v1: bool,
+    exists: impl Fn(&std::path::Path) -> bool,
+) -> AutostartPlan {
+    let fix = autostart_fix(ours, enabled, replaces_v1, &exists);
+    let takes_old = replaces_v1
+        && [bluecaster_core::compat::V1_EXE, OLD_CORE_EXE, "bluecaster-core.exe"].iter().any(|n| runs(old, n));
+    if !takes_old {
+        return AutostartPlan { ours: fix, remove_old: false };
+    }
+    if !enabled {
+        return AutostartPlan { ours: fix, remove_old: true };
+    }
+    // On: ours names this core afterwards, or another copy that exists
+    let ours_is_core = runs(ours, "bluecaster-core.exe");
+    match fix {
+        AutostartFix::Keep if ours_is_core => AutostartPlan { ours: AutostartFix::Keep, remove_old: true },
+        // Another program under our name: neither is ours to change
+        AutostartFix::Keep if ours.is_some_and(|c| !c.trim().is_empty()) => {
+            AutostartPlan { ours: AutostartFix::Keep, remove_old: false }
+        }
+        _ => AutostartPlan { ours: AutostartFix::Write, remove_old: true },
+    }
+}
+
+/// Our Run value at start, from `current` and start_with_windows
+/// (`enabled`). One naming v1 (its A2DPWB.exe; v2 registers only the core)
+/// is taken over as by an update when `replaces_v1`: pointed at this core,
+/// or removed when the setting is off, so that v1 does not start at logon.
+/// Otherwise it is written only when on and missing, empty, or naming a
+/// bluecaster-core.exe that does not `exist` any more. Any other program is
+/// not ours to replace.
 fn autostart_fix(
     current: Option<&str>,
     enabled: bool,
@@ -845,7 +904,7 @@ fn autostart_fix(
 ) -> AutostartFix {
     let program = current.and_then(win_sys::autostart::program_of);
     let named = |name: &str| program.as_ref().and_then(|p| p.file_name()).is_some_and(|n| n.eq_ignore_ascii_case(name));
-    if replaces_v1 && named("A2DPWB.exe") {
+    if replaces_v1 && named(bluecaster_core::compat::V1_EXE) {
         return if enabled { AutostartFix::Write } else { AutostartFix::Remove };
     }
     if !enabled {
@@ -1523,28 +1582,40 @@ impl CoreState {
         (self.quit)();
     }
 
-    /// Start with Windows: at start v1's Run value is taken over (when
-    /// `replaces_v1`), and v2's is written when it is missing or names a
-    /// copy of the core that is gone (the program moved). One naming another
-    /// copy of v2 that exists (the installed copy while a test build runs)
-    /// is left alone; the settings toggle still writes it. See autostart_fix.
+    /// Start with Windows: at start the Run value of v1 and 2.0.x
+    /// ("A2DPWB") is taken over when it names v1 or a core (when
+    /// `replaces_v1`), and ours ("BlueCaster") is written when it is missing
+    /// or names a copy of the core that is gone (the program moved). One
+    /// naming another copy of the core that exists (the installed copy while
+    /// a test build runs) is left alone; the settings toggle still writes
+    /// it. See autostart_plan.
     pub fn refresh_autostart(&self, replaces_v1: bool) {
+        use win_sys::autostart::{OLD_VALUE_NAME, VALUE_NAME, get};
         let s = self.service.settings();
-        let current = match win_sys::autostart::get(win_sys::autostart::VALUE_NAME) {
-            Ok(c) => c,
-            Err(e) => {
+        let (current, old) = match (get(VALUE_NAME), get(OLD_VALUE_NAME)) {
+            (Ok(c), Ok(o)) => (c, o),
+            (Err(e), _) | (_, Err(e)) => {
                 tracing::warn!("cannot read the start with Windows entry: {e}");
                 return;
             }
         };
-        let fix = autostart_fix(current.as_deref(), s.start_with_windows, replaces_v1, |p| p.exists());
-        if fix == AutostartFix::Keep {
-            tracing::debug!("start with Windows entry kept: {}", current.unwrap_or_default());
-            return;
+        let plan =
+            autostart_plan(current.as_deref(), old.as_deref(), s.start_with_windows, replaces_v1, |p| p.exists());
+        if plan.ours == AutostartFix::Keep {
+            tracing::debug!("start with Windows entry kept: {}", current.as_deref().unwrap_or_default());
+        } else {
+            tracing::info!("start with Windows entry {:?}: was {}", plan.ours, current.as_deref().unwrap_or_default());
+            if let Err(e) = apply_autostart(plan.ours == AutostartFix::Write, s.start_minimized) {
+                tracing::warn!("cannot refresh the start with Windows entry: {e}");
+                // The old entry still starts the program: keep it
+                return;
+            }
         }
-        tracing::info!("start with Windows entry {fix:?}: was {}", current.unwrap_or_default());
-        if let Err(e) = apply_autostart(fix == AutostartFix::Write, s.start_minimized) {
-            tracing::warn!("cannot refresh the start with Windows entry: {e}");
+        if plan.remove_old {
+            tracing::info!("old start with Windows entry {OLD_VALUE_NAME} removed: was {}", old.unwrap_or_default());
+            if let Err(e) = win_sys::autostart::remove(OLD_VALUE_NAME) {
+                tracing::warn!("cannot remove the old start with Windows entry {OLD_VALUE_NAME}: {e}");
+            }
         }
     }
 
@@ -2849,13 +2920,52 @@ mod tests {
         assert_eq!(fix(Some(v1), true), Write);
         assert_eq!(fix(Some(v1), false), Remove);
         assert_eq!(fix(Some(r#""E:\gone\A2DPWB.exe""#), true), Write);
-        assert_eq!(fix(Some(r"E:\v1\bluecaster.EXE --minimized"), false), Remove);
+        assert_eq!(fix(Some(r"E:\v1\a2dpwb.EXE --minimized"), false), Remove);
         // ... but not by a development instance
         assert_eq!(autostart_fix(Some(v1), true, false, present), Keep);
         assert_eq!(autostart_fix(Some(v1), false, false, present), Keep);
         // Any other program: kept
         assert_eq!(fix(Some(r"C:\Tools\other.exe /x"), true), Keep);
         assert_eq!(fix(Some(r"C:\Tools\other.exe /x"), false), Keep);
+    }
+
+    #[test]
+    fn autostart_takes_over_the_old_value_of_a_core_or_v1() {
+        use AutostartFix::{Keep, Remove, Write};
+        let installed = r#""C:\Program Files\BlueCaster\bluecaster-core.exe" --background"#;
+        let present = |p: &std::path::Path| p.to_str() == Some(r"C:\Program Files\BlueCaster\bluecaster-core.exe");
+        let plan = |ours, old, enabled| autostart_plan(ours, old, enabled, true, present);
+        let p = |ours, remove_old| AutostartPlan { ours, remove_old };
+        let old_core = r#""C:\Users\u\AppData\Local\Programs\A2DP Windows Bridge\a2dpwb-core.exe" --background"#;
+        // 2.0.x's entry: ours written, the old one removed
+        assert_eq!(plan(None, Some(old_core), true), p(Write, true));
+        assert_eq!(plan(Some(""), Some(r"D:\x\A2DPWB-Core.EXE"), true), p(Write, true));
+        // ... also over a gone copy of ours
+        assert_eq!(plan(Some(r#""D:\gone\bluecaster-core.exe""#), Some(old_core), true), p(Write, true));
+        // ... ours already names an existing core: kept, the old one removed
+        assert_eq!(plan(Some(installed), Some(old_core), true), p(Keep, true));
+        // An old value naming a bluecaster-core.exe (any folder)
+        assert_eq!(plan(None, Some(r#""E:\bc\bluecaster-core.exe""#), true), p(Write, true));
+        // Off: the old one removed, ours as the setting says
+        assert_eq!(plan(None, Some(old_core), false), p(Keep, true));
+        assert_eq!(plan(Some(installed), Some(old_core), false), p(Keep, true));
+        // v1 under the old name: taken over as before the rename
+        let v1 = r#""C:\A2DP-Windows-Bridge\build\dist\A2DPWB.exe" --minimized"#;
+        assert_eq!(plan(None, Some(v1), true), p(Write, true));
+        assert_eq!(plan(None, Some(v1), false), p(Keep, true));
+        assert_eq!(plan(Some(v1), None, false), p(Remove, false));
+        // Any other program under the old name: never removed
+        assert_eq!(plan(None, Some(r"C:\Tools\other.exe /x"), true), p(Write, false));
+        assert_eq!(plan(None, Some(r"C:\Tools\other.exe /x"), false), p(Keep, false));
+        assert_eq!(plan(Some(installed), Some(r"C:\Tools\a2dpwb-core.exe.bak"), true), p(Keep, false));
+        // Another program under our name: neither touched
+        assert_eq!(plan(Some(r"C:\Tools\other.exe"), Some(old_core), true), p(Keep, false));
+        // No old value
+        assert_eq!(plan(Some(installed), None, true), p(Keep, false));
+        assert_eq!(plan(None, None, true), p(Write, false));
+        // A development instance leaves the old value alone
+        assert_eq!(autostart_plan(None, Some(old_core), true, false, present), p(Write, false));
+        assert_eq!(autostart_plan(None, Some(v1), false, false, present), p(Keep, false));
     }
 
     #[test]

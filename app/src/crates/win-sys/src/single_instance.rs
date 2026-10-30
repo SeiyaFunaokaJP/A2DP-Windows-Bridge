@@ -13,7 +13,8 @@ use windows::Win32::System::Threading::{CreateMutexW, OpenMutexW, SYNCHRONIZATIO
 use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowTextW, PostMessageW, WM_COMMAND};
 use windows::core::{BOOL, HSTRING};
 
-/// The mutex v1 holds while its GUI runs
+/// The mutex v1 holds while its GUI runs (also listed in bluecaster_core::compat;
+/// keep while v1 users may still update: 6–12 months after 3.0.0)
 pub const V1_MUTEX_NAME: &str = "A2DPWB_SingleInstance";
 
 /// v1's main window title starts with this ("A2DPWB v1.1.1", wx_main_frame.cpp)
