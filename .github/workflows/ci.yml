@@ -1,5 +1,5 @@
 # BlueCaster: checks on every pull request and push, the emulator end-to-end
-# test on pushes to develop-v2.x and main, nightly and on demand.
+# test on pushes to develop-v2.x, develop-v3.x and main, nightly and on demand.
 name: ci
 
 on:
@@ -16,7 +16,7 @@ on:
       - "tools/check_lang.py"
       - ".github/workflows/ci.yml"
   push:
-    branches: [develop-v2.x, main]
+    branches: [develop-v2.x, develop-v3.x, main]
     paths:
       - "app/**"
       - "Cargo.toml"

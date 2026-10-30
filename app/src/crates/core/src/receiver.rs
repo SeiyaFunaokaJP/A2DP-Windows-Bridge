@@ -42,6 +42,8 @@ const RECEIVE_TIMEOUT: Duration = Duration::from_secs(5);
 const READ_POLL: Duration = Duration::from_millis(200);
 /// A line longer than this is not the receiver talking
 const MAX_LINE: usize = 1 << 20;
+// "A2DPWB" here and "a2dpwb_sink" in the sink's announce are protocol values
+// kept for compatibility with older sinks/receivers; do not rename them.
 const DISCOVER_REQUEST: &[u8] = br#"{"type":"discover","version":1,"tool":"A2DPWB"}"#;
 
 /// A receiver: from a discovery reply or the hello line of a connection

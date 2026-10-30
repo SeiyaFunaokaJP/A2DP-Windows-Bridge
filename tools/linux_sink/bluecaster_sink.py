@@ -1209,6 +1209,8 @@ class Sink:
             self.server.hello = self.hello_line()
 
     def announcement(self):
+        # 'a2dpwb_sink' is a protocol value kept for compatibility with receivers
+        # (receiver.rs checks it): it is not the script's name any more
         return {'type': 'announce', 'version': VERSION, 'tool': 'a2dpwb_sink',
                 'host': socket.gethostname(), 'port': self.args.port,
                 'bt_address': self.address, 'bt_name': self.device.name if self.device else '',
@@ -1483,6 +1485,14 @@ def main():
     parser.add_argument('--no-discoverable', action='store_true',
                         help='connectable but not discoverable (BlueCaster must know the address)')
     args = parser.parse_args()
+    # the key file used to be a2dpwb_sink_keys.json: keep existing pairings
+    if args.keys == parser.get_default('keys') and not os.path.exists(args.keys):
+        old_keys = os.path.join(os.path.dirname(args.keys), 'a2dpwb_sink_keys.json')
+        if os.path.exists(old_keys):
+            try:
+                os.rename(old_keys, args.keys)
+            except OSError:
+                args.keys = old_keys
     if not 2 <= args.sbc_max_bitpool <= 250:
         parser.error('--sbc-max-bitpool must be 2-250')
     if not 48 <= args.mtu <= 65535:
