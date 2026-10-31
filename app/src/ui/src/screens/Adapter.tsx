@@ -298,7 +298,7 @@ function ChipSection(props: { files: FirmwareFile[]; onChanged: () => Promise<vo
       auto: t("firmware.chip_auto", detected() ?? t("firmware.chip_auto_none")),
       nonRealtek: t("firmware.chip_non_realtek"),
     });
-  const hint = () => (isAutoChip(settings()) && detected() ? t("firmware.auto_selected") : t("firmware.select_chip"));
+  const hint = () => (isAutoChip(settings()) && detected() ? undefined : t("firmware.select_chip"));
   const choose = async (key: string) => {
     const o = choice().options.find((x) => x.key === key);
     if (!o || (o.pid === settings().bt_chip_pid && o.stem === settings().bt_chip_fw_stem)) return;

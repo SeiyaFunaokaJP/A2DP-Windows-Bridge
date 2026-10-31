@@ -76,6 +76,7 @@ unsafe extern "C" {
 
     // ---- shim.c: state queries, HCI commands ----
     pub fn bluecaster_acl_state(addr: *const u8, con_handle: *mut u16) -> c_int;
+    pub fn bluecaster_cmd_create_connection_cancel(addr: *const u8) -> u8;
     pub fn bluecaster_avdtp_state_for_addr(addr: *const u8, avdtp_cid: *mut u16) -> c_int;
     pub fn bluecaster_avdtp_state_for_cid(avdtp_cid: u16) -> c_int;
     pub fn bluecaster_cmd_set_afh_classification(map: *const u8) -> u8;

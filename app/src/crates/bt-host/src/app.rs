@@ -140,6 +140,26 @@ pub(crate) struct HostApp {
     read_rssi_next: bool,
 }
 
+/// Why the signaling connection failed. Page timeout, or a device that never
+/// took the connection: no answer. Connection / L2CAP RTX timeout, a
+/// connection BTstack gave up on, or an SDP query cut off: the link came up
+/// and then carried nothing.
+fn signaling_failure(status: u8) -> ConnectFailure {
+    match status {
+        ERROR_CODE_PAGE_TIMEOUT | ERROR_CODE_CONNECTION_ACCEPT_TIMEOUT_EXCEEDED => ConnectFailure::NoAnswer,
+        L2CAP_CONNECTION_RESPONSE_RESULT_REFUSED_SECURITY
+        | L2CAP_CONNECTION_PIN_OR_LINK_KEY_MISSING
+        | ERROR_CODE_AUTHENTICATION_FAILURE
+        | ERROR_CODE_PIN_OR_KEY_MISSING => ConnectFailure::AuthFailed,
+        ERROR_CODE_CONNECTION_TIMEOUT
+        | L2CAP_CONNECTION_RESPONSE_RESULT_RTX_TIMEOUT
+        | L2CAP_CONNECTION_BASEBAND_DISCONNECT
+        | SDP_QUERY_INCOMPLETE
+        | ERROR_CODE_UNSPECIFIED_ERROR => ConnectFailure::LinkLost,
+        _ => ConnectFailure::Other,
+    }
+}
+
 impl HostApp {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -423,15 +443,23 @@ impl HostApp {
             // Not open yet (SDP query / waiting for L2CAP): the disconnect
             // emits a failed CONNECTION_ESTABLISHED and frees the connection
             // at once, but a pending outgoing L2CAP channel would be
-            // orphaned: drop the ACL too if it is up (never one still
-            // paging: no valid handle yet)
+            // orphaned: drop the ACL too if it is up. A page still running
+            // has no valid handle: it is cancelled, or the next connection
+            // waits behind its SDP query until the page times out
             AvdtpState::Pending => {
                 stack.a2dp_disconnect(self.a2dp_cid);
-                if let Some(addr) = self.remote_addr
-                    && let AclState::Open(handle) = stack.acl_state(&addr)
-                {
-                    tracing::debug!("abort: dropping ACL handle 0x{handle:04X} of the pending connection");
-                    stack.disconnect(handle);
+                if let Some(addr) = self.remote_addr {
+                    match stack.acl_state(&addr) {
+                        AclState::Open(handle) => {
+                            tracing::debug!("abort: dropping ACL handle 0x{handle:04X} of the pending connection");
+                            stack.disconnect(handle);
+                        }
+                        AclState::Paging => {
+                            tracing::info!("cancelling the page of {}", addr_str(&addr));
+                            stack.cmd_create_connection_cancel(&addr);
+                        }
+                        _ => {}
+                    }
                 }
                 false
             }
@@ -928,6 +956,7 @@ impl HostApp {
                         s.acl_requests.retain(|&a| a != addr);
                         s.acl_links.retain(|&(_, a, _)| a != addr);
                         s.acl_links.push((handle & 0x0FFF, addr, by_device));
+                        s.last_link_up = Some((addr, Instant::now()));
                         if target {
                             s.target_acl_down_reason = 0;
                             s.target_acl_handle = Some(handle & 0x0FFF);
@@ -1245,21 +1274,7 @@ impl HostApp {
                 self.a2dp_cid = cid;
                 if status != ERROR_CODE_SUCCESS {
                     tracing::warn!("signaling connection failed (0x{status:02x})");
-                    // Page timeout: no answer. Connection / L2CAP RTX timeout
-                    // or a connection BTstack gave up on: the link came up and
-                    // then carried nothing.
-                    let failure = match status {
-                        ERROR_CODE_PAGE_TIMEOUT => ConnectFailure::NoAnswer,
-                        L2CAP_CONNECTION_RESPONSE_RESULT_REFUSED_SECURITY
-                        | L2CAP_CONNECTION_PIN_OR_LINK_KEY_MISSING
-                        | ERROR_CODE_AUTHENTICATION_FAILURE
-                        | ERROR_CODE_PIN_OR_KEY_MISSING => ConnectFailure::AuthFailed,
-                        ERROR_CODE_CONNECTION_TIMEOUT
-                        | L2CAP_CONNECTION_RESPONSE_RESULT_RTX_TIMEOUT
-                        | L2CAP_CONNECTION_BASEBAND_DISCONNECT
-                        | ERROR_CODE_UNSPECIFIED_ERROR => ConnectFailure::LinkLost,
-                        _ => ConnectFailure::Other,
-                    };
+                    let failure = signaling_failure(status);
                     tracing::debug!(
                         "signaling connection failed: cid 0x{cid:04X}, status 0x{status:02X} ({}) -> {failure:?}",
                         hci_error_string(status)
@@ -2097,7 +2112,17 @@ fn find_bcm_hcd(dir: &Path, adapters: &[(u16, u16)]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::remove_alias;
+    use super::{ConnectFailure, remove_alias, signaling_failure};
+
+    #[test]
+    fn a_device_that_never_answered_is_not_told_to_pair() {
+        // The ACL page ran out, and an SDP query cut off by a lost link
+        assert_eq!(signaling_failure(0x04), ConnectFailure::NoAnswer);
+        assert_eq!(signaling_failure(0x10), ConnectFailure::NoAnswer);
+        assert_eq!(signaling_failure(0x81), ConnectFailure::LinkLost);
+        assert_eq!(signaling_failure(0x05), ConnectFailure::AuthFailed);
+        assert_eq!(signaling_failure(0x66), ConnectFailure::AuthFailed);
+    }
 
     #[test]
     fn firmware_alias_is_removed() {

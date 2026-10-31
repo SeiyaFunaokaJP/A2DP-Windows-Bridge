@@ -111,7 +111,7 @@ BlueCaster nimmt das Audio über WASAPI auf und bietet drei Modi:
 | **Virtuelles Gerät** | Nimmt von einem ausgewählten virtuellen Audiogerät auf (z. B. VB-CABLE, VoiceMeeter) | Bestimmte Apps an Bluetooth leiten, während anderes Audio auf den Lautsprechern bleibt |
 | **Anwendung** | Nimmt nur auf, was eine App wiedergibt, nach deren eigener Verarbeitung (Windows 11 / Windows 10 2004+) | Eine einzelne App senden oder die Ausgabe einer systemweiten Effekt-App (Equalizer, Klangverbesserer) |
 
-Im Modus **Virtuelles Gerät** kann BlueCaster das Windows-Standardwiedergabegerät auf das ausgewählte virtuelle Gerät umstellen (**Standardgerät automatisch wechseln**) und nimmt dann dessen Loopback-Ausgabe auf. Apps, die auf dem virtuellen Gerät ausgeben, werden über Bluetooth gestreamt. Endet das Streaming, wird das vorherige Standardgerät wiederhergestellt.
+Im Modus **Virtuelles Gerät** kann BlueCaster das Windows-Standardwiedergabegerät auf das ausgewählte virtuelle Gerät umstellen (**Bei Verbindung als Windows-Standardausgabe festlegen**) und nimmt dann dessen Loopback-Ausgabe auf. Apps, die auf dem virtuellen Gerät ausgeben, werden über Bluetooth gestreamt. Endet das Streaming, wird das vorherige Standardgerät wiederhergestellt.
 
 System-Loopback nimmt dem Standardwiedergabegerät das Audio nicht weg: Es wird dort und zusätzlich über Bluetooth wiedergegeben. Siehe [Aufnahmemodi](usage#capture-modes).
 

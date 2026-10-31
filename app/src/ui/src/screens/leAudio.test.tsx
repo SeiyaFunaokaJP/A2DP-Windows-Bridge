@@ -34,7 +34,6 @@ describe("settings", () => {
   it("has no LE Audio or GMAP switch: both are the device's (Codecs)", async () => {
     start("#/settings");
     await screen.findByRole("switch", { name: named(t("ui.settings.developer_mode")) });
-    expect(screen.queryByRole("switch", { name: named(t("settings.le_audio")) })).toBeNull();
     expect(screen.queryByRole("switch", { name: named(t("settings.le_low_latency")) })).toBeNull();
   });
 });

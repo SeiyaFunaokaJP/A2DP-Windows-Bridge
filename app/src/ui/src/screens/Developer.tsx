@@ -115,7 +115,6 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
       >
         <Toggle
           label={t("ui.dev.rtp_marker")}
-          hint={t("ui.dev.rtp_marker_hint")}
           checked={props.value.rtp_marker}
           onChange={(v) => set({ rtp_marker: v })}
         />

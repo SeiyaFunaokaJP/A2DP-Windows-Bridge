@@ -75,6 +75,8 @@ pub struct State {
     /// The ACL links up now (handle, device, opened by the device itself
     /// and not streamed on yet)
     pub acl_links: Vec<(u16, [u8; 6], bool)>,
+    /// The device and time of the last ACL link that came up
+    pub last_link_up: Option<([u8; 6], Instant)>,
     /// ACL handle of the A2DP signaling channel
     pub a2dp_con_handle: Option<u16>,
     pub remote_caps: RemoteCaps,
@@ -96,6 +98,17 @@ pub struct State {
 }
 
 impl State {
+    /// How long the ACL link to `addr` has been up, if it is
+    pub fn acl_link_age(&self, addr: &[u8; 6]) -> Option<Duration> {
+        self.acl_link_to(addr)?;
+        self.last_link_up.filter(|(a, _)| a == addr).map(|(_, at)| at.elapsed())
+    }
+
+    /// The handle of the ACL link up to `addr`
+    pub fn acl_link_to(&self, addr: &[u8; 6]) -> Option<u16> {
+        self.acl_links.iter().find(|(_, a, _)| a == addr).map(|&(h, _, _)| h)
+    }
+
     /// An inquiry result: a device answers many times during an inquiry
     /// (with RSSI / EIR every time it is heard), so a known one is updated
     /// in place. Its RSSI follows silently; true when the list changed in a
@@ -194,6 +207,22 @@ mod tests {
 
     fn dev(addr: u8, name: &str, cod: u32, rssi: i8) -> DiscoveredDevice {
         DiscoveredDevice { addr: [0, 0, 0, 0, 0, addr], name: name.into(), class_of_device: cod, rssi }
+    }
+
+    #[test]
+    fn a_link_the_device_opened_is_found_by_its_address() {
+        let mut s = State::default();
+        let (a, b) = ([0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 2]);
+        s.acl_links.push((4, a, true));
+        assert_eq!(s.acl_link_to(&a), Some(4));
+        assert_eq!(s.acl_link_to(&b), None);
+        // Its age: of a link still up, of the device it belongs to
+        assert_eq!(s.acl_link_age(&a), None);
+        s.last_link_up = Some((a, Instant::now()));
+        assert!(s.acl_link_age(&a).is_some());
+        assert_eq!(s.acl_link_age(&b), None);
+        s.acl_links.clear();
+        assert_eq!(s.acl_link_age(&a), None);
     }
 
     #[test]

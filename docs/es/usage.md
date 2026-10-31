@@ -43,11 +43,12 @@ El códec de cada dispositivo de audio guardado, una sección por dispositivo (n
 - **Usar otro códec compatible si este no está disponible** (activado de forma predeterminada, para todos los dispositivos; consulte [El códec seleccionado no está disponible](#codec-fallback))
 - **...** en una tarjeta abre los ajustes de ese códec; **Aceptar** elige el códec con ellos. Cada códec conserva sus propios ajustes: si elige otro códec y vuelve, se recuperan. Solo se ofrece lo que ese códec admite:
   - **Calidad**: LDAC HQ (990 kbps) / SQ (660 kbps) / MQ (330 kbps); LHDC V5 Alta (1000 kbps) / Media-alta (900 kbps) / Estándar (500 kbps) / Móvil (400 kbps), los cuatro niveles que ofrece Android; aptX Adaptive Alta / Estándar / Móvil / Baja latencia (consulte [aptX Adaptive](#aptx-adaptive)); AAC también tiene niveles de calidad, los demás códecs aptX una tasa de bits fija. SBC y SBC XQ muestran la tasa de bits que resulta de su bitpool y de la configuración de tramas
+  - **Estructura de las tramas** (SBC y SBC XQ): bloques, subbandas, asignación de bits y modo de canal. Auto mantiene 16 bloques, 8 subbandas, Loudness y Joint stereo (SBC XQ: canal dual). Un valor que el dispositivo no acepta vuelve a Auto al conectar
   - **ABR (tasa de bits adaptativa)**: para LDAC, LHDC V5, aptX Adaptive, SBC y SBC XQ (consulte [ABR](#abr)); **VBR** para AAC
   - **Frecuencia de muestreo**: Automático es 48 kHz, o la mejor que anuncie el dispositivo si no tiene 48 kHz (96 kHz añade latencia y problemas de compatibilidad sin una mejora audible, y Windows mezcla a 48 kHz); elija 96 kHz aquí para usarlo
   - **Profundidad de bits**: 16 o 24 bits para LDAC y LHDC V5 (Automático: 24 bits); 16 bits para los demás
 
-Los valores predeterminados dan el mejor sonido; la mayoría de los dispositivos no necesitan más que **Automático**. Un dispositivo LE Audio (experimental) tiene una tarjeta, LC3, y **Baja latencia para auriculares gaming (GMAP, experimental)** (consulte [LE Audio](#le-audio)).
+Los valores predeterminados dan el mejor sonido; la mayoría de los dispositivos no necesitan más que **Automático**. Un dispositivo LE Audio (experimental) tiene una tarjeta, LC3, y **Baja latencia para dispositivos de audio gaming (experimental)** (consulte [LE Audio](#le-audio)).
 
 Por debajo, BlueCaster guarda un perfil por dispositivo en `profiles.json`, llamado allí «*dispositivo* | *códec*»; la ventana y el menú de la bandeja muestran el nombre del dispositivo. Las versiones anteriores permitían crear varios perfiles para un mismo dispositivo: en el primer inicio de una versión con la pantalla Códecs se conserva el último usado (si no, el primero) y los demás se integran en él, manteniendo sus ajustes de códec (calidad, frecuencia de muestreo, profundidad de bits, ABR, configuración SBC) para sus códecs. No se conservan sus nombres, orígenes de captura ni tamaños de paquete; el `profiles.json` tal como estaba se guarda una vez como `profiles-before-codecs.json` en la carpeta de configuración.
 
@@ -56,9 +57,9 @@ Por debajo, BlueCaster guarda un perfil por dispositivo en `profiles.json`, llam
 Los auriculares y altavoces a los que BlueCaster puede transmitir, cada uno con sus propios ajustes: **Buscar dispositivos** busca dispositivos cercanos con el adaptador USB (unos 10 segundos; ponga los auriculares en modo de emparejamiento). Los dispositivos con los que BlueCaster ya se ha emparejado llevan la etiqueta **Emparejado**. Si la búsqueda no los encuentra, escriba la dirección en **Manual:** y haga clic en **Usar**; las direcciones escritas o pegadas se formatean mientras escribe (`aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` y `AA BB CC DD EE FF` se convierten todas en `AA:BB:CC:DD:EE:FF`). Un dispositivo guardado se puede renombrar o eliminar, y tiene:
 
 - **Origen de salida**: Loopback del sistema (el predeterminado de un dispositivo nuevo), Dispositivo virtual o Aplicación (consulte [Modos de captura](#capture-modes)). A su lado, el formato en que Windows mezcla el dispositivo capturado (frecuencia de muestreo y profundidad de bits, de solo lectura), en ámbar cuando los ajustes de códec del dispositivo piden otro, con una línea debajo que indica cuál (sigue transmitiendo, convertido); debajo, lo que hace el origen
-- **Cambiar automáticamente la salida predeterminada de Windows**, con un dispositivo virtual
+- **Usar como salida predeterminada de Windows mientras hay conexión**, con un dispositivo virtual
 
-**Todos los dispositivos de audio**, encima de la lista, tiene los interruptores que se aplican a todos los dispositivos: **Sincronizar volumen de Windows** (consulte [Volumen](#volume)), **Control de reproducción con los botones del dispositivo de audio** y **Recordar el último volumen del dispositivo de audio Bluetooth**. El **Tamaño máx. de paquete multimedia** de cada dispositivo está en la pantalla **Desarrollador** (consulte [Tamaño máximo del paquete multimedia](#max-packet)).
+**Todos los dispositivos de audio**, encima de la lista, tiene los interruptores que se aplican a todos los dispositivos: **Sincronizar volumen de Windows** (consulte [Volumen](#volume)), **Controlar la reproducción con los botones del dispositivo de audio** y **Recordar el volumen de cada dispositivo de audio**. El **Tamaño máx. de paquete multimedia** de cada dispositivo está en la pantalla **Desarrollador** (consulte [Tamaño máximo del paquete multimedia](#max-packet)).
 
 ### Diagnóstico
 
@@ -76,7 +77,7 @@ Con **Configuración > Modo de desarrollador**, la pantalla **Desarrollador** ti
 - Los adaptadores Bluetooth USB detectados con su chip, **Controlador** y **Firmware**; la lista se actualiza sola al conectar o desconectar un adaptador. Un adaptador que BlueCaster no puede usar (MediaTek, Qualcomm) conserva su controlador: sus botones de WinUSB y de firmware están desactivados
 - **Reemplazar por el controlador WinUSB** / **Restaurar el controlador original** (consulte [Instalación](setup#winusb)); Windows solicita permiso de administrador cada vez
 - **Chip Bluetooth** para el firmware, con **Descargar firmware**, **Abrir página de descarga** y **Abrir carpeta de configuración** (consulte [Firmware](setup#firmware))
-- **AFH**: Automático, Desactivado o Manual, con los canales Wi-Fi al lado: los que Automático evita ahora y ninguno con Desactivado (ambos de solo lectura), los que escriba con Manual (consulte [Calidad del enlace y AFH](#link-quality))
+- **Evitar canales Wi-Fi**: Automático, Desactivado o Manual, con los canales Wi-Fi al lado: los que Automático evita ahora y ninguno con Desactivado (ambos de solo lectura), los que escriba con Manual (consulte [Calidad del enlace y AFH](#link-quality))
 - **Pila Bluetooth**: detenida (se inicia con la primera búsqueda o conexión), iniciando, lista o error, y **Reiniciar Bluetooth**
 
 ### Configuración
@@ -211,7 +212,7 @@ BlueCaster admite tres modos de captura de audio. Cada uno graba un punto distin
 
 El Loopback del sistema copia el audio; no se lo quita al dispositivo de salida predeterminado. El audio sigue sonando en ese dispositivo (altavoces, un televisor HDMI, ...) además de en los auriculares Bluetooth. Para oírlo solo en los auriculares, use el modo Dispositivo virtual con un dispositivo que no reproduzca en ningún sitio, como VB-CABLE.
 
-En el modo Dispositivo virtual, **Cambiar dispositivo predeterminado** convierte el dispositivo seleccionado en la salida predeterminada de Windows durante la transmisión, de modo que las aplicaciones reproducen en él sin cambiar la configuración de Windows. Al detener la transmisión, BlueCaster vuelve al dispositivo predeterminado anterior.
+En el modo Dispositivo virtual, **Usar como salida predeterminada de Windows mientras hay conexión** convierte el dispositivo seleccionado en la salida predeterminada de Windows durante la transmisión, de modo que las aplicaciones reproducen en él sin cambiar la configuración de Windows. Al detener la transmisión, BlueCaster vuelve al dispositivo predeterminado anterior.
 
 - La lista **Dispositivo de audio** muestra solo los dispositivos que BlueCaster detecta como dispositivos de audio virtuales. Si no hay ninguno, la pantalla **Dispositivos de audio** ofrece **Descargar VB-Cable**.
 - El dispositivo de comunicación predeterminado (el que usan las aplicaciones de llamadas) no se cambia.
@@ -235,14 +236,14 @@ Durante la transmisión, Inicio y el panel desplegable de la bandeja muestran un
 **Sincronizar volumen de Windows** (en **Dispositivos de audio**, para todos los dispositivos; activado de forma predeterminada) hace que un volumen de Windows y el volumen de los auriculares sean uno solo durante la transmisión. El volumen de Windows sincronizado es el del dispositivo que captura BlueCaster: el dispositivo de salida predeterminado en los modos Loopback del sistema y Aplicación, el dispositivo seleccionado en el modo Dispositivo virtual. Desactivado, el volumen de Windows y el de los auriculares son independientes.
 
 - Los botones y gestos de volumen de los auriculares, y el control deslizante **Volumen**, mueven el volumen de Windows sincronizado, y su control deslizante en la configuración de Sonido mueve el volumen de los auriculares.
-- Las teclas de volumen y el control flotante de volumen de Windows siempre actúan sobre el dispositivo de salida predeterminado, así que solo cambian el volumen de los auriculares cuando el dispositivo de salida predeterminado es el sincronizado (siempre, salvo en el modo Dispositivo virtual sin **Cambiar dispositivo predeterminado**).
+- Las teclas de volumen y el control flotante de volumen de Windows siempre actúan sobre el dispositivo de salida predeterminado, así que solo cambian el volumen de los auriculares cuando el dispositivo de salida predeterminado es el sincronizado (siempre, salvo en el modo Dispositivo virtual sin **Usar como salida predeterminada de Windows mientras hay conexión**).
 - Al iniciar la transmisión, el volumen de Windows pasa a ser el de los auriculares; al detenerla, el dispositivo recupera el volumen que tenía antes.
 - El audio se captura antes de aplicar el volumen de Windows, por lo que se reduce una sola vez, en los auriculares. Si el volumen sincronizado también cambia el audio capturado, el volumen se aplica dos veces: en ese caso desactive la sincronización (consulte [Aplicaciones de efectos para todo el sistema](#effects-apps)).
 - El silencio no se sincroniza: silenciar el dispositivo de salida deja el PC en silencio, pero no silencia los auriculares.
 
 Las versiones anteriores permitían que un dispositivo siguiera el volumen de otro dispositivo de salida (en modo de desarrollador); esa opción ya no se usa.
 
-**Recordar el último volumen del dispositivo de audio Bluetooth** (en **Dispositivos de audio**, para todos los dispositivos; activado de forma predeterminada) guarda el volumen propio de cada dispositivo de audio y lo vuelve a aplicar en cuanto se conecta, antes de enviar audio, así que el volumen de un dispositivo no pasa a otro. Desactívelo si quiere que cada dispositivo empiece con su propio último volumen, que puede ser mucho más alto que el usado la última vez con BlueCaster (p. ej., después de usarlo con un teléfono).
+**Recordar el volumen de cada dispositivo de audio** (en **Dispositivos de audio**, para todos los dispositivos; activado de forma predeterminada) guarda el volumen propio de cada dispositivo de audio y lo vuelve a aplicar en cuanto se conecta, antes de enviar audio, así que el volumen de un dispositivo no pasa a otro. Desactívelo si quiere que cada dispositivo empiece con su propio último volumen, que puede ser mucho más alto que el usado la última vez con BlueCaster (p. ej., después de usarlo con un teléfono).
 
 ### Botones de los auriculares {#headphone-buttons}
 
@@ -252,7 +253,7 @@ Los controles de reproducir/pausar, pista siguiente y pista anterior de los auri
 - BlueCaster indica a los auriculares si se está reproduciendo audio (según haya o no audio que capturar), para que los auriculares que se pausan al quitárselos envíen el comando correcto.
 - Avance rápido / retroceso (mantener pulsado un botón) no tienen tecla multimedia en Windows y se ignoran.
 - Los gestos de volumen cambian el volumen propio de los auriculares; con **Sincronizar volumen de Windows**, el volumen de Windows sincronizado los sigue (consulte [Volumen](#volume)).
-- Desactívelo para un dispositivo con **Dispositivos de audio > Los botones del dispositivo de audio controlan la reproducción**, p. ej. si otro programa ya reacciona a las teclas multimedia y estas actúan dos veces.
+- Desactívelo para un dispositivo con **Dispositivos de audio > Controlar la reproducción con los botones del dispositivo de audio**, p. ej. si otro programa ya reacciona a las teclas multimedia y estas actúan dos veces.
 
 Esto requiere AVRCP en los auriculares, que casi todos tienen. Sin él, la transmisión funciona como siempre, solo que sin los botones.
 
@@ -371,6 +372,8 @@ capability discovery complete (LDAC=false ... , 1 of 6 audio sink SEP(s) in use)
 
 y el error indica que hay extremos en uso por otro dispositivo. Desconecte los auriculares del teléfono / PC (o desactive la conexión doble en la aplicación de los auriculares) y vuelva a conectar. Un PC cuyo Bluetooth integrado siga emparejado con los auriculares también cuenta como otro dispositivo.
 
+Los auriculares Sony como los WH-1000XM4 no ofrecen LDAC mientras **Conectar a 2 dispositivos simultáneamente** (multipunto) está activado: desactívelo en la aplicación Sony Sound Connect y vuelva a conectar. Algunos modelos, como los WH-1000XM6, admiten LDAC junto con multipunto.
+
 ### Frecuencia de muestreo
 
 aptX, aptX HD y aptX LL solo admiten 44.1 kHz y 48 kHz (aptX Adaptive 48 kHz, o 96 kHz si se elige y los auriculares lo anuncian). BlueCaster elige una de las frecuencias que anuncian los auriculares (en Automático 48 kHz, si no 44.1 kHz) y deja que WASAPI remuestree la captura. No es necesario cambiar la configuración de Sonido de Windows para aptX.
@@ -479,7 +482,7 @@ Cómo usarlo:
 
 1. Ponga los auriculares en modo de emparejamiento y busque dispositivos en **Dispositivos de audio**. Los dispositivos LE Audio llevan la etiqueta **LE Audio**, un par de auriculares **Conjunto LE Audio** (elija cualquiera de los dos: BlueCaster encuentra el otro). Unos auriculares que también admiten A2DP aparecen dos veces, una por tipo.
 2. En **Códecs**, elija la tarjeta LC3 de la entrada LE Audio. No se elige códec ni calidad (BlueCaster elige la mejor configuración LC3 que aceptan los auriculares) y solo están disponibles las capturas Loopback del sistema y Dispositivo virtual.
-3. Debajo, **Baja latencia para auriculares gaming (GMAP, experimental)** está activada por defecto: con los auriculares que admiten el rol de juego de GMAP usa tramas LC3 más cortas; los demás auriculares reciben la configuración multimedia en ambos casos.
+3. Debajo, **Baja latencia para dispositivos de audio gaming (experimental)** está activada por defecto: con los auriculares que admiten el rol de juego de GMAP usa tramas LC3 más cortas; los demás auriculares reciben la configuración multimedia en ambos casos.
 
 No hay ningún interruptor de LE Audio en Configuración. Si el lado LE llegara a perturbar un adaptador, `"le_audio_experimental": false` en `settings.json` (**Configuración > Carpeta de configuración**) lo desactiva por completo.
 

@@ -629,6 +629,26 @@ impl BtHost {
     /// within [`RFCOMM_OPEN_DEADLINE`]. `sink` receives the channel's data
     /// and its close, on the BTstack thread.
     pub fn rfcomm_open(&self, addr: [u8; 6], uuid: [u8; 16], sink: RfcommSink) -> Result<RfcommOpened, RfcommError> {
+        self.rfcomm_open_service(addr, rfcomm::Service::Uuid(uuid), sink)
+    }
+
+    /// [`BtHost::rfcomm_open`] of a server channel of `addr`, for a service
+    /// its SDP does not list
+    pub fn rfcomm_open_channel(
+        &self,
+        addr: [u8; 6],
+        channel: u8,
+        sink: RfcommSink,
+    ) -> Result<RfcommOpened, RfcommError> {
+        self.rfcomm_open_service(addr, rfcomm::Service::Channel(channel), sink)
+    }
+
+    fn rfcomm_open_service(
+        &self,
+        addr: [u8; 6],
+        service: rfcomm::Service,
+        sink: RfcommSink,
+    ) -> Result<RfcommOpened, RfcommError> {
         let (tx, rx) = mpsc::sync_channel(1);
         self.post(move |app, s| {
             // Only to the device being streamed to, once connected (not
@@ -638,7 +658,7 @@ impl BtHost {
                 let _ = tx.send(Err(RfcommError::NotConnected));
                 return;
             }
-            app.rfcomm.open(s, addr, uuid, sink, tx)
+            app.rfcomm.open(s, addr, service, sink, tx)
         });
         match rx.recv_timeout(RFCOMM_OPEN_TIMEOUT) {
             Ok(r) => r,
@@ -881,7 +901,9 @@ impl BtHost {
             s.remote_caps = Default::default();
             s.disconnect_occurred = false;
             s.last_connect_failure = None;
-            s.target_acl_handle = None;
+            // The link the device opened itself (turned on) is up already:
+            // no Connection Complete names it
+            s.target_acl_handle = s.acl_link_to(&addr);
             s.target_acl_down_reason = 0;
             s.target_auth_status = None;
             // A fresh user-initiated operation: clear a cancel left by an
@@ -1348,6 +1370,11 @@ impl BtHost {
     /// (resets), whichever it is
     pub fn link_came_up(&self) -> Option<[u8; 6]> {
         self.shared.update(|s| std::mem::take(&mut s.acl_up_from))
+    }
+
+    /// How long the ACL link to `addr` has been up, if it is
+    pub fn link_age(&self, addr: [u8; 6]) -> Option<Duration> {
+        self.shared.lock().acl_link_age(&addr)
     }
 
     /// The device opened an ACL link to the PC itself (turned on, it

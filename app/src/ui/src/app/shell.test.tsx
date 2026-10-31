@@ -475,7 +475,7 @@ describe("helpers", () => {
     // Why another codec is used is on the codec's line (issue #86)
     expect(statusText({ state: "streaming", message: msg("status.connected_fallback", "Opus", "aptX") })).toBe("Connected");
     expect(statusText({ state: "streaming", message: msg("status.connected_fallback_in_use", "LDAC", "AAC") })).toBe("Connected");
-    expect(statusText({ state: "connecting", message: msg("status.initializing_btstack") })).toBe("Initializing BTstack...");
+    expect(statusText({ state: "connecting", message: msg("status.initializing_btstack") })).toBe("Starting Bluetooth...");
     expect(statusText({ state: "error", message: msg("error.connect_no_answer") })).toBe("Error");
     expect(statusText({ state: "idle", message: msg("") })).toBe("Disconnected");
     // Streaming reads "Connected" everywhere (issue #86); the other states keep their words

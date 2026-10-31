@@ -46,7 +46,7 @@ describe("connection flow", () => {
     const f = new FlowTracker();
     const lines = [
       "stream: device AC:80:0A:12:34:56 codec Ldac quality Hq",
-      "state Connecting: Initializing BTstack...",
+      "state Connecting: Starting Bluetooth...",
       "controller: company 0x005D (Realtek), HCI version 10",
       "HCI ready after 412 ms",
       "connecting to AC:80:0A:12:34:56",

@@ -74,11 +74,9 @@ describe("the Codecs screen", () => {
     // Just the switches (issue #86), Auto-select's with what turning it off
     // allows (round 8); no experimental codecs switch, no "Auto's order"
     // button, nor a way back to the default order while it is the default
-    expect(autoSwitch()).toHaveAccessibleDescription(t("ui.codecs.auto_select_hint"));
     expect(main().queryByRole("button", { name: t("ui.codecs.order_reset") })).toBeNull();
     expect(main().queryAllByRole("checkbox")).toHaveLength(0);
     expect(hideSwitch()).toBeChecked();
-    expect(hideSwitch()).toHaveAccessibleDescription(t("ui.profile.codecs_hide_hint"));
     // A line between the device and its codecs
     expect(wh.querySelector(".device-codecs-head")).not.toBeNull();
   });
