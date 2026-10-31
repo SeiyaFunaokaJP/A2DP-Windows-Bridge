@@ -351,7 +351,7 @@ def sheet() -> Image.Image:
     height = 70 + row_h * len(CONCEPTS) + pad
     img = Image.new("RGBA", (width, height), (236, 239, 245, 255))
     d = ImageDraw.Draw(img)
-    d.text((24, 20), "BlueCaster アイコン案   256 / 48 / 32 / 16 px (16 は 4 倍拡大も)", fill=(30, 30, 40), font=f_big)
+    d.text((24, 20), "BlueCaster アイコン案   256 / 48 / 32 / 16 px", fill=(30, 30, 40), font=f_big)
 
     for i, (key, title, fn) in enumerate(CONCEPTS):
         y0 = 70 + i * row_h
