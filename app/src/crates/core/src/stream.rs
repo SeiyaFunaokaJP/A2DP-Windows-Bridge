@@ -567,12 +567,121 @@ impl ActiveSource {
         })
     }
 
-    fn stop(self) {
+    fn stop(&mut self) {
         match self {
-            ActiveSource::Capture(mut d) => d.detach(),
-            ActiveSource::App(mut a) => a.detach(),
+            ActiveSource::Capture(d) => d.detach(),
+            ActiveSource::App(a) => a.detach(),
         }
     }
+}
+
+/// Opens a source at the stream's rate, not started yet: a device's capture,
+/// or None for an application ([`start_source`] attaches to it). The error is
+/// what ends the session.
+fn open_source(request: &SourceRequest, rate: u32) -> Result<Option<(DeviceSource, Capture)>, Msg> {
+    let source = match request {
+        SourceRequest::TestTone => Source::TestTone,
+        SourceRequest::SystemLoopback => Source::SystemLoopback,
+        SourceRequest::VirtualDevice { id, .. } => {
+            if id.is_empty() {
+                return Err(Msg::new("error.no_virtual_device_selected"));
+            }
+            Source::RenderDevice { id: id.clone() }
+        }
+        SourceRequest::Application { exe } => {
+            let build = audio_capture::windows_build();
+            if build < audio_capture::APP_CAPTURE_MIN_BUILD {
+                return Err(Msg::with("error.app_capture_unsupported", &[&build]));
+            }
+            if exe.is_empty() {
+                return Err(Msg::new("error.no_app_selected"));
+            }
+            return Ok(None);
+        }
+    };
+    let options = CaptureOptions { preferred_rate: Some(rate), fill_silence: *request != SourceRequest::TestTone };
+    match Capture::open(&source, &options) {
+        Ok(c) => Ok(Some((DeviceSource { source, options, running: None, failed: false }, c))),
+        Err(e) => {
+            tracing::error!("audio capture: {e}");
+            let key = if matches!(request, SourceRequest::VirtualDevice { .. }) {
+                "error.virtual_capture_init"
+            } else {
+                "error.wasapi_init"
+            };
+            Err(Msg::new(key))
+        }
+    }
+}
+
+/// What the source [`open_source`] opened delivers. Application capture:
+/// float stereo at the requested rate, known before the app runs.
+fn source_format(opened: &Option<(DeviceSource, Capture)>, rate: u32) -> Format {
+    opened
+        .as_ref()
+        .map_or(Format { sample_rate: rate, channels: 2, sample_format: SampleFormat::F32 }, |(_, c)| c.format())
+}
+
+/// Starts what [`open_source`] opened, into the running pipeline
+fn start_source(
+    opened: Option<(DeviceSource, Capture)>,
+    request: &SourceRequest,
+    rate: u32,
+    input: &SharedInput,
+) -> Option<ActiveSource> {
+    match (opened, request) {
+        (Some((mut device, capture)), _) => match capture.start(Box::new(input.clone())) {
+            Ok(r) => {
+                device.running = Some(r);
+                Some(ActiveSource::Capture(device))
+            }
+            Err(e) => {
+                tracing::error!("audio capture start: {e}");
+                None
+            }
+        },
+        (None, SourceRequest::Application { exe }) => {
+            let mut app =
+                AppSource { exe: exe.clone(), sample_rate: rate, running: None, process_id: 0, failed_pid: 0 };
+            if !app.attach(input) {
+                // Not running yet is fine: the capture attaches once it is up
+                tracing::info!("{exe} is not running yet, waiting for it");
+            }
+            Some(ActiveSource::App(app))
+        }
+        _ => None,
+    }
+}
+
+/// The capture's format changed under a running stream: a new encoder and
+/// pipeline take over, with the same stream settings. Without a pipeline
+/// (between reconnects) the next one is started with the new format. The
+/// error is what ends the session.
+fn restart_pipeline(
+    pipeline: &mut Option<Pipeline>,
+    kind: CodecKind,
+    encoder_config: &EncoderConfig,
+    format: Format,
+    channels: u32,
+    input: &SharedInput,
+    host: &BtHost,
+) -> Result<(), Msg> {
+    let Some(p) = pipeline.take() else { return Ok(()) };
+    let Some(sink) = p.stop() else { return Err(Msg::new("error.encode_thread")) };
+    let encoder = match codec::create(kind, encoder_config) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::error!("encoder: {e}");
+            host.return_media_sink(sink);
+            return Err(Msg::new("error.encoder_init"));
+        }
+    };
+    let (p, new_input) = start_pipeline(encoder, format, channels, encoder_config.mtu, sink, host);
+    if let Ok(mut i) = input.0.lock() {
+        *i = new_input;
+    }
+    *pipeline = Some(p);
+    Ok(())
 }
 
 /// Restores the default output device when the session ends (virtual
@@ -580,6 +689,21 @@ impl ActiveSource {
 pub(crate) struct DefaultDeviceGuard(pub(crate) Option<String>);
 
 impl DefaultDeviceGuard {
+    /// Follows the session's source: its device becomes the default output
+    /// when it asks for that, keeping the device to restore; any other source
+    /// plays through the device from before, restored now. Before the source
+    /// opens: System Loopback captures whatever is the default.
+    fn follow(&mut self, source: &SourceRequest) {
+        match source {
+            SourceRequest::VirtualDevice { id, name, auto_switch: true } if !id.is_empty() => {
+                let restore = self.0.take();
+                *self = DefaultDeviceGuard::switch_to(id, name);
+                self.0 = restore.or(self.0.take());
+            }
+            _ => *self = DefaultDeviceGuard(None),
+        }
+    }
+
     /// Makes `id` the default output device. The device before is restored
     /// at the end even when the switch failed: Windows may have switched
     /// one role (Console, Multimedia) before the other failed.
@@ -1158,7 +1282,6 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
 
     // ---- audio source ----
     inner.notify(StreamState::Connecting, Msg::new("status.initializing_audio"));
-    let test_tone = req.source == SourceRequest::TestTone;
     // The rate on Auto (the profile's 0, Auto-select too): 48 kHz, each
     // codec's picker below going to the best the device lists without it
     // (44.1 kHz, say). Not the highest it lists nor the Windows mix rate
@@ -1201,60 +1324,15 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let mut default_guard = DefaultDeviceGuard(None);
     // Restored while the headphones are off: switched again when they are back
     let mut switch_default_again = false;
-    let options = CaptureOptions { preferred_rate: Some(preferred), fill_silence: !test_tone };
-    let (source, opened): (Option<Source>, Option<Capture>) = match &req.source {
-        SourceRequest::TestTone => (Some(Source::TestTone), None),
-        SourceRequest::SystemLoopback => (Some(Source::SystemLoopback), None),
-        SourceRequest::VirtualDevice { id, name, auto_switch } => {
-            if id.is_empty() {
-                host.disconnect();
-                return inner.notify(StreamState::Error, Msg::new("error.no_virtual_device_selected"));
-            }
-            if *auto_switch {
-                default_guard = DefaultDeviceGuard::switch_to(id, name);
-            }
-            (Some(Source::RenderDevice { id: id.clone() }), None)
-        }
-        SourceRequest::Application { exe } => {
-            let build = audio_capture::windows_build();
-            let msg = if build < audio_capture::APP_CAPTURE_MIN_BUILD {
-                Some(Msg::with("error.app_capture_unsupported", &[&build]))
-            } else if exe.is_empty() {
-                Some(Msg::new("error.no_app_selected"))
-            } else {
-                None
-            };
-            if let Some(m) = msg {
-                host.disconnect();
-                return inner.notify(StreamState::Error, m);
-            }
-            (None, None)
+    default_guard.follow(&req.source);
+    let opened = match open_source(&req.source, preferred) {
+        Ok(o) => o,
+        Err(m) => {
+            host.disconnect();
+            return inner.notify(StreamState::Error, m);
         }
     };
-    let _ = opened;
-    let capture = match &source {
-        Some(s) => match Capture::open(s, &options) {
-            Ok(c) => Some(c),
-            Err(e) => {
-                tracing::error!("audio capture: {e}");
-                host.disconnect();
-                let key = if matches!(req.source, SourceRequest::VirtualDevice { .. }) {
-                    "error.virtual_capture_init"
-                } else {
-                    "error.wasapi_init"
-                };
-                return inner.notify(StreamState::Error, Msg::new(key));
-            }
-        },
-        None => None,
-    };
-    // Application capture: float stereo at the requested rate, known before
-    // the app runs
-    let format = capture.as_ref().map(|c| c.format()).unwrap_or(Format {
-        sample_rate: preferred,
-        channels: 2,
-        sample_format: SampleFormat::F32,
-    });
+    let format = source_format(&opened, preferred);
     let channels = (format.channels as u32).min(2);
     tracing::info!(
         "capture: {} Hz, {} channel(s), {:?} -> {channels} channel(s)",
@@ -1413,26 +1491,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     };
     let (pipeline, input) = start_pipeline(encoder, format, channels, mtu, sink, &host);
     let input = SharedInput(Arc::new(Mutex::new(input)));
-    let active = match (capture, source, &req.source) {
-        (Some(c), Some(source), _) => match c.start(Box::new(input.clone())) {
-            Ok(r) => Some(ActiveSource::Capture(DeviceSource { source, options, running: Some(r), failed: false })),
-            Err(e) => {
-                tracing::error!("audio capture start: {e}");
-                None
-            }
-        },
-        (None, _, SourceRequest::Application { exe }) => {
-            let mut app =
-                AppSource { exe: exe.clone(), sample_rate: preferred, running: None, process_id: 0, failed_pid: 0 };
-            if !app.attach(&input) {
-                // Not running yet is fine: the capture attaches once it is up
-                tracing::info!("{exe} is not running yet, waiting for it");
-            }
-            Some(ActiveSource::App(app))
-        }
-        _ => None,
-    };
-    let Some(mut active) = active else {
+    let Some(mut active) = start_source(opened, &req.source, preferred, &input) else {
         if let Some(s) = pipeline.stop() {
             host.return_media_sink(s);
         }
@@ -1443,8 +1502,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     inner.stream_info(info.clone());
 
     // Headphone volume and a Windows volume act as one (volume_sync.rs)
-    let mut volume = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &req.source)
-        .map(crate::volume_sync::VolumeSyncer::new);
+    let mut volume_choice = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &req.source);
+    let mut volume = volume_choice.clone().map(crate::volume_sync::VolumeSyncer::new);
 
     // A reconnect builds the configuration anew from what the device lists
     // then (v1 read its capabilities again)
@@ -1465,6 +1524,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
 
     // ---- streaming ----
     let mut pipeline = Some(pipeline);
+    // What the session captures: the request's until another source is chosen
+    let mut current_source = req.source.clone();
     let mut app_ticks = 0u32;
     // What the capture delivers now: a device opened again may come back
     // with other channels or samples (the rate is the stream's, converted
@@ -1483,6 +1544,57 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             v.tick(true, &*host);
         }
         inner.remember_volume(&addr, host.remote_volume());
+
+        // Another source chosen: only the capture changes, the encoder (at
+        // the same rate) and the link go on. A source that cannot start ends
+        // the session as it would at its start.
+        if let Some(next) = inner.take_source_change() {
+            tracing::info!("audio source: {current_source} -> {next}");
+            // Stopped first: a driver's endpoints may not capture side by side
+            active.stop();
+            default_guard.follow(&next);
+            let opened = match open_source(&next, format.sample_rate) {
+                Ok(o) => o,
+                Err(m) => {
+                    inner.notify(StreamState::Error, m);
+                    lost_for_good = true;
+                    break;
+                }
+            };
+            let new_format = source_format(&opened, format.sample_rate);
+            if new_format != input_format {
+                tracing::debug!("audio source: format {input_format:?} -> {new_format:?}, starting the pipeline anew");
+                input_format = new_format;
+                info.source_channels = new_format.channels as u32;
+                info.source_bits = (new_format.sample_format.bytes_per_sample() * 8) as u32;
+                let renewed =
+                    restart_pipeline(&mut pipeline, kind, &encoder_config, input_format, channels, &input, &host);
+                if let Err(m) = renewed {
+                    inner.notify(StreamState::Error, m);
+                    lost_for_good = true;
+                    break;
+                }
+            }
+            let Some(started) = start_source(opened, &next, format.sample_rate, &input) else {
+                inner.notify(StreamState::Error, Msg::new("error.audio_capture_start"));
+                lost_for_good = true;
+                break;
+            };
+            active = started;
+            reopen_ticks = 0;
+            let choice = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &next);
+            if choice != volume_choice {
+                if let Some(mut v) = volume.take() {
+                    v.stop();
+                }
+                volume = choice.clone().map(crate::volume_sync::VolumeSyncer::new);
+                volume_choice = choice;
+            }
+            info.source = next.info();
+            info.source.waiting = active.waiting();
+            inner.stream_info(info.clone());
+            current_source = next;
+        }
 
         // Application capture follows the app: it may quit and start again
         if let ActiveSource::App(app) = &mut active {
@@ -1525,30 +1637,19 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                         input_format = new_format;
                         info.source_channels = new_format.channels as u32;
                         info.source_bits = (new_format.sample_format.bytes_per_sample() * 8) as u32;
-                        // Without a pipeline (between reconnects) the next
-                        // one is started with the new format
-                        if let Some(p) = pipeline.take() {
-                            let Some(sink) = p.stop() else {
-                                inner.notify(StreamState::Error, Msg::new("error.encode_thread"));
-                                lost_for_good = true;
-                                break;
-                            };
-                            let encoder = match codec::create(kind, &encoder_config) {
-                                Ok(e) => e,
-                                Err(e) => {
-                                    tracing::error!("encoder: {e}");
-                                    host.return_media_sink(sink);
-                                    inner.notify(StreamState::Error, Msg::new("error.encoder_init"));
-                                    lost_for_good = true;
-                                    break;
-                                }
-                            };
-                            let (p, new_input) =
-                                start_pipeline(encoder, input_format, channels, encoder_config.mtu, sink, &host);
-                            if let Ok(mut i) = input.0.lock() {
-                                *i = new_input;
-                            }
-                            pipeline = Some(p);
+                        let renewed = restart_pipeline(
+                            &mut pipeline,
+                            kind,
+                            &encoder_config,
+                            input_format,
+                            channels,
+                            &input,
+                            &host,
+                        );
+                        if let Err(m) = renewed {
+                            inner.notify(StreamState::Error, m);
+                            lost_for_good = true;
+                            break;
                         }
                         inner.stream_info(info.clone());
                     }
@@ -1833,7 +1934,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             pipeline = Some(p);
             inner.stream_info(info.clone());
         }
-        if switch_default_again && let SourceRequest::VirtualDevice { id, name, .. } = &req.source {
+        if switch_default_again && let SourceRequest::VirtualDevice { id, name, .. } = &current_source {
             default_guard = DefaultDeviceGuard::switch_to(id, name);
             switch_default_again = false;
         }
