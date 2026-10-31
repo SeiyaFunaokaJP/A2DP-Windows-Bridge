@@ -140,6 +140,26 @@ pub(crate) struct HostApp {
     read_rssi_next: bool,
 }
 
+/// Why the signaling connection failed. Page timeout, or a device that never
+/// took the connection: no answer. Connection / L2CAP RTX timeout, a
+/// connection BTstack gave up on, or an SDP query cut off: the link came up
+/// and then carried nothing.
+fn signaling_failure(status: u8) -> ConnectFailure {
+    match status {
+        ERROR_CODE_PAGE_TIMEOUT | ERROR_CODE_CONNECTION_ACCEPT_TIMEOUT_EXCEEDED => ConnectFailure::NoAnswer,
+        L2CAP_CONNECTION_RESPONSE_RESULT_REFUSED_SECURITY
+        | L2CAP_CONNECTION_PIN_OR_LINK_KEY_MISSING
+        | ERROR_CODE_AUTHENTICATION_FAILURE
+        | ERROR_CODE_PIN_OR_KEY_MISSING => ConnectFailure::AuthFailed,
+        ERROR_CODE_CONNECTION_TIMEOUT
+        | L2CAP_CONNECTION_RESPONSE_RESULT_RTX_TIMEOUT
+        | L2CAP_CONNECTION_BASEBAND_DISCONNECT
+        | SDP_QUERY_INCOMPLETE
+        | ERROR_CODE_UNSPECIFIED_ERROR => ConnectFailure::LinkLost,
+        _ => ConnectFailure::Other,
+    }
+}
+
 impl HostApp {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -1245,21 +1265,7 @@ impl HostApp {
                 self.a2dp_cid = cid;
                 if status != ERROR_CODE_SUCCESS {
                     tracing::warn!("signaling connection failed (0x{status:02x})");
-                    // Page timeout: no answer. Connection / L2CAP RTX timeout
-                    // or a connection BTstack gave up on: the link came up and
-                    // then carried nothing.
-                    let failure = match status {
-                        ERROR_CODE_PAGE_TIMEOUT => ConnectFailure::NoAnswer,
-                        L2CAP_CONNECTION_RESPONSE_RESULT_REFUSED_SECURITY
-                        | L2CAP_CONNECTION_PIN_OR_LINK_KEY_MISSING
-                        | ERROR_CODE_AUTHENTICATION_FAILURE
-                        | ERROR_CODE_PIN_OR_KEY_MISSING => ConnectFailure::AuthFailed,
-                        ERROR_CODE_CONNECTION_TIMEOUT
-                        | L2CAP_CONNECTION_RESPONSE_RESULT_RTX_TIMEOUT
-                        | L2CAP_CONNECTION_BASEBAND_DISCONNECT
-                        | ERROR_CODE_UNSPECIFIED_ERROR => ConnectFailure::LinkLost,
-                        _ => ConnectFailure::Other,
-                    };
+                    let failure = signaling_failure(status);
                     tracing::debug!(
                         "signaling connection failed: cid 0x{cid:04X}, status 0x{status:02X} ({}) -> {failure:?}",
                         hci_error_string(status)
@@ -2097,7 +2103,17 @@ fn find_bcm_hcd(dir: &Path, adapters: &[(u16, u16)]) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::remove_alias;
+    use super::{ConnectFailure, remove_alias, signaling_failure};
+
+    #[test]
+    fn a_device_that_never_answered_is_not_told_to_pair() {
+        // The ACL page ran out, and an SDP query cut off by a lost link
+        assert_eq!(signaling_failure(0x04), ConnectFailure::NoAnswer);
+        assert_eq!(signaling_failure(0x10), ConnectFailure::NoAnswer);
+        assert_eq!(signaling_failure(0x81), ConnectFailure::LinkLost);
+        assert_eq!(signaling_failure(0x05), ConnectFailure::AuthFailed);
+        assert_eq!(signaling_failure(0x66), ConnectFailure::AuthFailed);
+    }
 
     #[test]
     fn firmware_alias_is_removed() {

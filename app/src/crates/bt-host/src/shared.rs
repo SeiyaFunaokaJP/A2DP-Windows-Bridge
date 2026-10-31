@@ -96,6 +96,11 @@ pub struct State {
 }
 
 impl State {
+    /// The handle of the ACL link up to `addr`
+    pub fn acl_link_to(&self, addr: &[u8; 6]) -> Option<u16> {
+        self.acl_links.iter().find(|(_, a, _)| a == addr).map(|&(h, _, _)| h)
+    }
+
     /// An inquiry result: a device answers many times during an inquiry
     /// (with RSSI / EIR every time it is heard), so a known one is updated
     /// in place. Its RSSI follows silently; true when the list changed in a
@@ -194,6 +199,15 @@ mod tests {
 
     fn dev(addr: u8, name: &str, cod: u32, rssi: i8) -> DiscoveredDevice {
         DiscoveredDevice { addr: [0, 0, 0, 0, 0, addr], name: name.into(), class_of_device: cod, rssi }
+    }
+
+    #[test]
+    fn a_link_the_device_opened_is_found_by_its_address() {
+        let mut s = State::default();
+        let (a, b) = ([0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 2]);
+        s.acl_links.push((4, a, true));
+        assert_eq!(s.acl_link_to(&a), Some(4));
+        assert_eq!(s.acl_link_to(&b), None);
     }
 
     #[test]
