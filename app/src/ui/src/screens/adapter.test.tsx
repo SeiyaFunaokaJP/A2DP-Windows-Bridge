@@ -26,7 +26,7 @@ afterEach(() => {
 describe("AFH", () => {
   it("has its mode and channels in the heading: Auto and Off read only, Manual typed (issue #86)", async () => {
     const { calls, mock } = start();
-    const section = (await screen.findByRole("heading", { level: 2, name: "AFH" })).closest("section")!;
+    const section = (await screen.findByRole("heading", { level: 2, name: "Avoid Wi-Fi channels" })).closest("section")!;
     const head = section.querySelector(".section-head") as HTMLElement;
     const box = within(head).getByRole("textbox", { name: "Wi-Fi ch" }) as HTMLInputElement;
     // One set of controls only
@@ -72,7 +72,7 @@ describe("Adapter firmware", () => {
       settings: { bt_chip_pid: number; bt_chip_fw_stem: string };
     };
     expect(saved.settings).toMatchObject({ bt_chip_pid: 0xfffe, bt_chip_fw_stem: "" });
-    expect(await screen.findByText(/Realtek initialization is skipped/)).toBeInTheDocument();
+    expect(await screen.findByText(/No Realtek files needed\./)).toBeInTheDocument();
     // The core checks the firmware for the new chip: none needed now
     expect(await screen.findByText("No Realtek files needed")).toBeInTheDocument();
     // The folder is scanned again after the change
@@ -137,7 +137,7 @@ describe("Adapter firmware", () => {
     // What is known; why the rest is missing on hover
     expect(within(intelCard).getByText("8087:0033")).toHaveAttribute(
       "title",
-      expect.stringContaining("once Windows' Bluetooth or BlueCaster has used this adapter"),
+      "Shown once this adapter has been used.",
     );
     expect(within(rtl).getByText("00:1A:7D:DA:71:13 | 2357:0604 | v5.1")).not.toHaveAttribute("title");
   });
@@ -171,7 +171,7 @@ describe("Adapter firmware", () => {
     expect(adapterIds({ address: "00:E0:4C:23:99:87", vid: 0x0bda, pid: 0xa729, bt_version: null })).toBe(
       "00:E0:4C:23:99:87 | 0BDA:A729",
     );
-    expect(adapterIdsHint({ address: "00:E0:4C:23:99:87", bt_version: null })).toMatch(/Bluetooth version show once/);
+    expect(adapterIdsHint({ address: "00:E0:4C:23:99:87", bt_version: null })).toMatch(/Shown once this adapter has been used/);
     expect(adapterIdsHint({ address: "00:E0:4C:23:99:87", bt_version: "5.1" })).toBeUndefined();
     // The driver in two names only, whatever the manufacturer
     expect(driverText("bluetooth").text).toBe("Original driver");

@@ -30,7 +30,9 @@ Usage: bluecaster-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
 
   -d <address>          Bluetooth address of the headphones / receiver
                         (default: the first audio device paired with Windows)
-  -l                    list the Bluetooth devices paired with Windows and exit
+  --device-name <name>  its name, with -d (as a saved device's: Huawei earbuds
+                        are told by it)
+  -l                  list the Bluetooth devices paired with Windows and exit
   -u <adapter>          USB Bluetooth adapter to use when several have WinUSB:
                         instance ID (USB\\VID_0BDA&PID_8771\\...), device path
                         (\\\\?\\usb#vid_0bda&pid_8771#...) or VID:PID (0bda:8771)
@@ -90,6 +92,7 @@ Development / testing:
 
 struct Args {
     device: Option<String>,
+    device_name: String,
     /// -l: list the Windows-paired devices and exit
     list: bool,
     /// -u: the adapter, as given and as parsed
@@ -165,6 +168,7 @@ impl LeArgs {
 fn parse(args: &[String]) -> Result<Args, String> {
     let mut a = Args {
         device: None,
+        device_name: String::new(),
         list: false,
         usb: None,
         codec: None,
@@ -199,6 +203,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
         match arg.as_str() {
             "--cli" => {}
             "-d" => a.device = Some(value(&mut it, "-d")?),
+            "--device-name" => a.device_name = value(&mut it, "--device-name")?,
             "-l" => a.list = true,
             "-u" => {
                 let u = value(&mut it, "-u")?;
@@ -440,7 +445,7 @@ pub fn run(args: &[String]) -> i32 {
         }
         code
     };
-    let mut device_name = String::new();
+    let mut device_name = a.device_name.clone();
     let device = match device_arg.as_deref() {
         Some(d) => match parse_device_address(d) {
             Some(addr) => addr,

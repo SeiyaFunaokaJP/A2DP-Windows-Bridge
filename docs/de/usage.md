@@ -43,11 +43,12 @@ Der Codec jedes gespeicherten Audiogeräts, ein Abschnitt pro Gerät (Name, Mark
 - **Einen anderen unterstützten Codec verwenden, wenn dieser nicht verfügbar ist** (standardmäßig aktiviert, für alle Geräte; siehe [Ausdrücklich gewählter Codec wird nicht angeboten](#codec-fallback))
 - **...** auf einer Karte öffnet die Einstellungen dieses Codecs; **OK** wählt den Codec mit diesen. Jeder Codec behält seine eigenen Einstellungen: Wählen Sie einen anderen Codec und kehren Sie zurück, sind sie wieder da. Angeboten wird nur, was dieser Codec beherrscht:
   - **Qualität**: LDAC HQ (990 kbps) / SQ (660 kbps) / MQ (330 kbps); LHDC V5 Hoch (1000 kbps) / Mittel-hoch (900 kbps) / Standard (500 kbps) / Mobil (400 kbps), die vier Stufen, die Android anbietet; aptX Adaptive Hoch / Standard / Mobil / Niedrige Latenz (siehe [aptX Adaptive](#aptx-adaptive)); AAC hat ebenfalls Qualitätsstufen, die übrigen aptX-Codecs eine feste Bitrate. SBC und SBC XQ zeigen die Bitrate, die sich aus ihrem Bitpool und ihrer Frame-Einstellung ergibt
+  - **Frame-Aufbau** (SBC und SBC XQ): Blöcke, Subbänder, Bitzuteilung und Kanalmodus. Auto behält 16 Blöcke, 8 Subbänder, Loudness und Joint Stereo (SBC XQ: Dual Channel). Ein Wert, den das Audiogerät nicht annimmt, fällt beim Verbinden auf Auto zurück
   - **ABR (adaptive Bitrate)**: für LDAC, LHDC V5, aptX Adaptive, SBC und SBC XQ (siehe [ABR](#abr)); **VBR** für AAC
   - **Abtastrate**: Automatisch ist 48 kHz, oder die beste Rate, die das Gerät meldet, wenn es kein 48 kHz hat (96 kHz bringt mehr Latenz und Kompatibilitätsprobleme ohne hörbaren Gewinn, und Windows mischt mit 48 kHz); wählen Sie 96 kHz hier, um es zu nutzen
   - **Bittiefe**: 16 oder 24 Bit für LDAC und LHDC V5 (Automatisch: 24 Bit); 16 Bit für die übrigen
 
-Die Standardwerte liefern den besten Klang; die meisten Geräte brauchen nichts außer **Automatisch**. Ein LE-Audio-Gerät (experimentell) hat eine Karte, LC3, sowie **Niedrige Latenz für Gaming-Headsets (GMAP, experimentell)** (siehe [LE Audio](#le-audio)).
+Die Standardwerte liefern den besten Klang; die meisten Geräte brauchen nichts außer **Automatisch**. Ein LE-Audio-Gerät (experimentell) hat eine Karte, LC3, sowie **Niedrige Latenz für Gaming-Audiogeräte (experimentell)** (siehe [LE Audio](#le-audio)).
 
 Intern führt BlueCaster ein Profil pro Gerät in `profiles.json`, dort „*Gerät* | *Codec*“ benannt; das Fenster und das Menü des Infobereichs zeigen den Namen des Geräts. Frühere Versionen erlaubten mehrere Profile für ein Gerät: Beim ersten Start einer Version mit der Codecs-Seite bleibt das zuletzt verwendete (sonst das erste) erhalten und die übrigen werden darin zusammengeführt, wobei ihre Codec-Einstellungen (Qualität, Abtastrate, Bittiefe, ABR, SBC-Einstellung) für ihre Codecs übernommen werden. Ihre eigenen Namen, Ausgabequellen und Paketgrößen bleiben nicht erhalten; die `profiles.json` im bisherigen Zustand wird einmalig als `profiles-before-codecs.json` im Einstellungsordner gesichert.
 
@@ -56,9 +57,9 @@ Intern führt BlueCaster ein Profil pro Gerät in `profiles.json`, dort „*Ger�
 Die Kopfhörer und Lautsprecher, an die BlueCaster streamen kann, jeweils mit eigenen Einstellungen: **Geräte suchen** findet Geräte in der Nähe mit dem USB-Adapter (etwa 10 Sekunden; versetzen Sie die Kopfhörer in den Kopplungsmodus). Geräte, mit denen BlueCaster schon einmal gekoppelt war, sind als **Gekoppelt** markiert. Findet die Suche die Kopfhörer nicht, geben Sie die Adresse unter **Manuell:** ein und klicken Sie auf **Verwenden**; eingegebene oder eingefügte Adressen werden bei der Eingabe formatiert (`aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` und `AA BB CC DD EE FF` werden alle zu `AA:BB:CC:DD:EE:FF`). Ein gespeichertes Gerät lässt sich umbenennen oder entfernen und hat:
 
 - **Ausgabequelle**: System-Loopback (Standard für ein neues Gerät), Virtuelles Gerät oder Anwendung (siehe [Aufnahmemodi](#capture-modes)). Daneben das Format, in dem Windows das aufgenommene Gerät mischt (Abtastrate und Bittiefe, schreibgeschützt), in Bernstein, wenn die Codec-Einstellungen des Geräts ein anderes verlangen, mit einer Zeile darunter, welches (es streamt trotzdem, umgerechnet); darunter, was die Quelle tut
-- **Windows-Standardausgabegerät automatisch wechseln**, mit einem virtuellen Gerät
+- **Bei Verbindung als Windows-Standardausgabe festlegen**, mit einem virtuellen Gerät
 
-**Alle Audiogeräte** über der Liste enthält die Schalter, die für jedes Gerät gelten: **Windows-Lautstärke-Sync** (siehe [Lautstärke](#volume)), **Wiedergabesteuerung über die Tasten des Audiogeräts** und **Letzte Lautstärke des Bluetooth-Audiogeräts merken**. Die **Max. Mediapaketgröße** jedes Geräts befindet sich auf der Seite **Entwickler** (siehe [Max. Mediapaketgröße](#max-packet)).
+**Alle Audiogeräte** über der Liste enthält die Schalter, die für jedes Gerät gelten: **Windows-Lautstärke-Sync** (siehe [Lautstärke](#volume)), **Wiedergabe über die Tasten des Audiogeräts steuern** und **Lautstärke jedes Audiogeräts merken**. Die **Max. Mediapaketgröße** jedes Geräts befindet sich auf der Seite **Entwickler** (siehe [Max. Mediapaketgröße](#max-packet)).
 
 ### Diagnose
 
@@ -76,7 +77,7 @@ Mit **Einstellungen > Entwicklermodus** hat die Seite **Entwickler** eine Regist
 - Die erkannten USB-Bluetooth-Adapter mit ihrem Chip, **Treiber** und **Firmware**; die Liste aktualisiert sich selbst, wenn ein Adapter ein- oder ausgesteckt wird. Ein Adapter, den BlueCaster nicht verwenden kann (MediaTek, Qualcomm), behält seinen Treiber: seine Schaltflächen für WinUSB und Firmware sind deaktiviert
 - **Durch WinUSB-Treiber ersetzen** / **Originaltreiber wiederherstellen** (siehe [Einrichtung](setup#winusb)); Windows fragt jedes Mal nach Administratorrechten
 - **Bluetooth-Chip** für die Firmware, mit **Firmware herunterladen**, **Downloadseite öffnen** und **Konfigurationsordner öffnen** (siehe [Firmware](setup#firmware))
-- **AFH**: Automatisch, Aus oder Manuell, mit den Wi-Fi-Kanälen daneben: die, die Automatisch gerade meidet, und nichts bei Aus (beide schreibgeschützt), die eingegebenen bei Manuell (siehe [Verbindungsqualität und AFH](#link-quality))
+- **Wi-Fi-Kanäle meiden**: Automatisch, Aus oder Manuell, mit den Wi-Fi-Kanälen daneben: die, die Automatisch gerade meidet, und nichts bei Aus (beide schreibgeschützt), die eingegebenen bei Manuell (siehe [Verbindungsqualität und AFH](#link-quality))
 - **Bluetooth-Stack**: angehalten (startet mit der ersten Suche oder Verbindung), wird gestartet, bereit oder Fehler, sowie **Bluetooth neu starten**
 
 ### Einstellungen
@@ -211,7 +212,7 @@ BlueCaster unterstützt drei Aufnahmemodi. Jeder nimmt an einer anderen Stelle d
 
 System-Loopback kopiert das Audio; es nimmt es dem Standardausgabegerät nicht weg. Das Audio wird weiterhin auf diesem Gerät (Lautsprecher, ein HDMI-Fernseher, ...) und zusätzlich auf den Bluetooth-Kopfhörern wiedergegeben. Um es nur auf den Kopfhörern zu hören, verwenden Sie den Modus Virtuelles Gerät mit einem Gerät, das nirgends wiedergibt, etwa VB-CABLE.
 
-Im Modus Virtuelles Gerät macht **Standardgerät automatisch wechseln** das ausgewählte Gerät während des Streamings zur Windows-Standardausgabe, sodass Apps darauf wiedergeben, ohne dass Sie Windows-Einstellungen ändern müssen. Endet das Streaming, wechselt BlueCaster zurück zum vorherigen Standardgerät.
+Im Modus Virtuelles Gerät macht **Bei Verbindung als Windows-Standardausgabe festlegen** das ausgewählte Gerät während des Streamings zur Windows-Standardausgabe, sodass Apps darauf wiedergeben, ohne dass Sie Windows-Einstellungen ändern müssen. Endet das Streaming, wechselt BlueCaster zurück zum vorherigen Standardgerät.
 
 - Die Liste **Audiogerät** zeigt nur die Geräte, die BlueCaster als virtuelle Audiogeräte erkennt. Gibt es keines, bietet die Seite **Audiogeräte** **VB-Cable herunterladen** an.
 - Das Standardkommunikationsgerät (von Telefonie-Apps verwendet) wird nicht geändert.
@@ -235,14 +236,14 @@ Während des Streamings zeigen die Seite Start und das Flyout im Infobereich ein
 **Windows-Lautstärke-Sync** (unter **Audiogeräte**, für jedes Gerät; standardmäßig an) macht während des Streamings eine Windows-Lautstärke und die Kopfhörerlautstärke zu einer einzigen Lautstärke. Synchronisiert wird die Windows-Lautstärke des Geräts, von dem BlueCaster aufnimmt: in den Modi System-Loopback und Anwendung das Standardausgabegerät, im Modus Virtuelles Gerät das ausgewählte Gerät. Ist es aus, sind Windows-Lautstärke und Kopfhörerlautstärke getrennt.
 
 - Die Lautstärketasten und -gesten der Kopfhörer sowie der Regler **Lautstärke** verändern die synchronisierte Windows-Lautstärke, und deren Regler in den Soundeinstellungen verändert die Kopfhörerlautstärke.
-- Die Lautstärketasten und das Lautstärke-Flyout von Windows wirken immer auf das Standardausgabegerät; sie ändern die Kopfhörerlautstärke also nur, wenn das Standardausgabegerät das synchronisierte ist (immer, außer im Modus Virtuelles Gerät ohne **Standardgerät automatisch wechseln**).
+- Die Lautstärketasten und das Lautstärke-Flyout von Windows wirken immer auf das Standardausgabegerät; sie ändern die Kopfhörerlautstärke also nur, wenn das Standardausgabegerät das synchronisierte ist (immer, außer im Modus Virtuelles Gerät ohne **Bei Verbindung als Windows-Standardausgabe festlegen**).
 - Beim Start des Streamings übernimmt die Windows-Lautstärke die Kopfhörerlautstärke; beim Ende des Streamings erhält das Gerät die Lautstärke zurück, die es vorher hatte.
 - Das Audio wird aufgenommen, bevor die Windows-Lautstärke angewendet wird, sodass es nur einmal abgesenkt wird, nämlich an den Kopfhörern. Verändert die synchronisierte Lautstärke auch das aufgenommene Audio, wirkt die Lautstärke doppelt: Schalten Sie die Synchronisierung dann aus (siehe [Systemweite Effekt-Apps](#effects-apps)).
 - Stummschalten wird nicht synchronisiert: Das Stummschalten des Ausgabegeräts hält den PC stumm, schaltet aber die Kopfhörer nicht stumm.
 
 In früheren Versionen konnte ein Gerät der Lautstärke eines anderen Ausgabegeräts folgen (im Entwicklermodus); diese Auswahl wird nicht mehr verwendet.
 
-**Letzte Lautstärke des Bluetooth-Audiogeräts merken** (unter **Audiogeräte**, für jedes Gerät; standardmäßig an) speichert die eigene Lautstärke jedes Audiogeräts und stellt sie gleich beim Verbinden wieder ein, bevor Audio gesendet wird, sodass die Lautstärke eines Geräts nicht auf ein anderes übergeht. Schalten Sie es aus, damit jedes Gerät mit seiner eigenen zuletzt verwendeten Lautstärke startet, die viel lauter sein kann als die zuletzt mit BlueCaster verwendete (z. B. nach der Nutzung mit einem Smartphone).
+**Lautstärke jedes Audiogeräts merken** (unter **Audiogeräte**, für jedes Gerät; standardmäßig an) speichert die eigene Lautstärke jedes Audiogeräts und stellt sie gleich beim Verbinden wieder ein, bevor Audio gesendet wird, sodass die Lautstärke eines Geräts nicht auf ein anderes übergeht. Schalten Sie es aus, damit jedes Gerät mit seiner eigenen zuletzt verwendeten Lautstärke startet, die viel lauter sein kann als die zuletzt mit BlueCaster verwendete (z. B. nach der Nutzung mit einem Smartphone).
 
 ### Kopfhörertasten {#headphone-buttons}
 
@@ -371,6 +372,8 @@ capability discovery complete (LDAC=false ... , 1 of 6 audio sink SEP(s) in use)
 
 und der Fehler besagt, dass Endpunkte von einem anderen Gerät genutzt werden. Trennen Sie die Kopfhörer vom Smartphone / PC (oder schalten Sie die Mehrfachverbindung in der App der Kopfhörer aus) und verbinden Sie erneut. Ein PC, dessen integriertes Bluetooth noch mit den Kopfhörern gekoppelt ist, zählt ebenfalls als anderes Gerät.
 
+Sony-Kopfhörer wie der WH-1000XM4 bieten kein LDAC an, solange **Gleichzeitig mit 2 Geräten verbinden** (Multipoint) eingeschaltet ist: In der App Sony Sound Connect ausschalten und erneut verbinden. Einige Modelle, etwa der WH-1000XM6, unterstützen LDAC zusammen mit Multipoint.
+
 ### Abtastrate
 
 aptX, aptX HD und aptX LL unterstützen nur 44,1 kHz und 48 kHz (aptX Adaptive 48 kHz, oder 96 kHz, wenn gewählt und von den Kopfhörern gemeldet). BlueCaster wählt eine der Raten, die die Kopfhörer melden (bei Automatisch 48 kHz, sonst 44,1 kHz), und lässt WASAPI die Aufnahme umrechnen. Für aptX müssen Sie die Windows-Soundeinstellungen nicht ändern.
@@ -479,7 +482,7 @@ So geht es:
 
 1. Die Kopfhörer in den Kopplungsmodus versetzen und unter **Audiogeräte** nach Geräten suchen. LE-Audio-Geräte tragen die Markierung **LE Audio**, ein Ohrhörerpaar **LE-Audio-Set** (einen der beiden wählen: BlueCaster findet den anderen). Kopfhörer, die auch A2DP können, erscheinen zweimal, einmal je Art.
 2. Unter **Codecs** die LC3-Karte des LE-Audio-Eintrags wählen. Codec und Qualität sind nicht wählbar (BlueCaster wählt die beste LC3-Konfiguration, die die Kopfhörer annehmen), und nur die Aufnahme System-Loopback und virtuelles Gerät ist möglich.
-3. Darunter ist **Niedrige Latenz für Gaming-Headsets (GMAP, experimentell)** standardmäßig an: Mit Headsets, die die Spiele-Rolle von GMAP unterstützen, werden kürzere LC3-Frames verwendet; andere Headsets erhalten in beiden Fällen die Medienkonfiguration.
+3. Darunter ist **Niedrige Latenz für Gaming-Audiogeräte (experimentell)** standardmäßig an: Mit Headsets, die die Spiele-Rolle von GMAP unterstützen, werden kürzere LC3-Frames verwendet; andere Headsets erhalten in beiden Fällen die Medienkonfiguration.
 
 In den Einstellungen gibt es keinen LE-Audio-Schalter. Wenn die LE-Seite einmal einen Adapter stört, schaltet `"le_audio_experimental": false` in der `settings.json` (**Einstellungen > Einstellungsordner**) sie ganz ab.
 

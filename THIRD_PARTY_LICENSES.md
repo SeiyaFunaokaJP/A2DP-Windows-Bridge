@@ -32,6 +32,7 @@ repository. The Rust crates are pinned in `Cargo.lock`, the JavaScript packages 
 | LHDC-V5-Encoder (C port of the AOSP LHDC V5 encoder) | commit `3f9d198` | Apache-2.0; `src/lhdcv5_fft.c` BSD-3-Clause | The Android Open Source Project; Mark Borgerding (KISS FFT) | LHDC V5 audio encoding, §8 | `bluecaster-core.exe` |
 | libopus | 1.5.2 (tag `v1.5.2`, commit `ddbe483`) | BSD-3-Clause | Xiph.Org, Skype Limited, Octasic, Jean-Marc Valin, Timothy B. Terriberry, CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Mozilla, Amazon | Opus audio encoding (decoding in `bluecaster_decode`, §14), §16 | `bluecaster-core.exe` |
 | aptx-adaptive (AKS-Logic/aptx-adaptive-linux, vendored) | upstream commit `25099004b2d3` (2026-10-22), crate 0.1.0 | MIT | Prateek Mittal (AKS-Logic) | aptX Adaptive encoding (experimental), §19 | `bluecaster-core.exe` |
+| HFreebuds (protocol description, packet cutting and test vectors) | commit `dab1f7e` | MIT | N2K02 | Huawei earbuds' sound quality mode (`app/src/crates/core/src/huawei.rs`), §20 | `bluecaster-core.exe` |
 | Rust crates (Tauri 2.12, tokio, serde, windows, nusb, wasapi, tray-icon, ...) | `Cargo.lock` | Apache-2.0, MIT and other permissive licenses; MPL-2.0 for a few (§9) | their authors | Everything written in Rust that is not BlueCaster's own | all three programs |
 | SolidJS (`solid-js`) | 1.9.17 | MIT | Ryan Carniato | UI library of the window | `bluecaster.exe` |
 | `@tauri-apps/api` | 2.12.4 | Apache-2.0 OR MIT | Tauri Apps Contributors | JavaScript side of Tauri | `bluecaster.exe` |
@@ -891,6 +892,40 @@ on-air captures (`LEGAL.md`, copied next to the crate). It contains no Qualcomm
 code, SDK or binary. aptX and aptX Adaptive are trademarks of Qualcomm. The
 codec may be covered by patents in some jurisdictions; as upstream's notice
 says, users are responsible for whether its use is lawful where they are.
+
+---
+
+## 20. HFreebuds (Huawei earbuds protocol)
+
+- **Source**: <https://github.com/N2K02/HFreebuds>
+- **Version**: commit `dab1f7e`
+- **Path in project**: `app/src/crates/core/src/huawei.rs`: `Packets` is HFreebuds'
+  `FrameReader` ported to Rust, the rest is written in Rust from its description of the
+  protocol; the test vectors are those of its `ProtocolTest`. `QUALITY_READ_CAPTURED` is
+  the request the earbuds' official app sends, as HuaweiPods recorded it: a fixed message
+  of the earbuds' protocol, no code of that project
+- **License**: MIT
+- **Copyright**: Copyright (c) 2026 N2K02
+
+```text
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ---
 

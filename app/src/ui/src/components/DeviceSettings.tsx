@@ -164,7 +164,7 @@ export function DeviceSettings(props: { device: Device }) {
         </Show>
         <Show when={noVirtual()}>
           <div class="inline">
-            <span class="hint">{t("capture.no_virtual_device")}</span>
+            <span class="hint">{t("capture.virtual_supported")}</span>
             <Button icon="open" onClick={() => core.transport.openUrl(LINKS.vbCable)}>
               {t("vbcable.download")}
             </Button>
@@ -181,7 +181,6 @@ export function DeviceSettings(props: { device: Device }) {
       <Show when={f.capture_mode === "virtual"}>
         <Toggle
           label={t("capture.auto_switch")}
-          hint={t("tooltip.auto_switch")}
           checked={f.auto_switch_device}
           onChange={(v) => void apply({ auto_switch_device: v })}
         />
