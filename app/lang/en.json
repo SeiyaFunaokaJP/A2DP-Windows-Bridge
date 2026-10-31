@@ -348,7 +348,7 @@
   "capture.app_refresh": "Refresh",
   "capture.app_not_playing": "%s (not playing now)",
   "capture.app_hint": "If an app is missing, start playback in it and click Refresh.",
-  "capture.hint_loopback": "Sends everything the Windows default output plays. It keeps playing there too.",
+  "capture.hint_loopback": "Sends everything the Windows default output plays. It keeps playing there too; mute it in Windows to hear only the headphones.",
   "capture.hint_virtual": "Records what apps play into the selected device.",
   "capture.hint_app": "Sends only what the selected app plays. It keeps playing on its own output too.",
   "tooltip.quality": "Higher quality uses more bandwidth.",

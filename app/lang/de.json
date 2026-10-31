@@ -348,7 +348,7 @@
   "capture.app_refresh": "Aktualisieren",
   "capture.app_not_playing": "%s (spielt gerade nicht ab)",
   "capture.app_hint": "Fehlt eine App, darin die Wiedergabe starten und auf Aktualisieren klicken.",
-  "capture.hint_loopback": "Sendet alles, was das Windows-Standardausgabegerät wiedergibt. Die Wiedergabe dort läuft weiter.",
+  "capture.hint_loopback": "Sendet alles, was das Windows-Standardausgabegerät wiedergibt. Die Wiedergabe dort läuft weiter; schalten Sie das Gerät in Windows stumm, um nur die Kopfhörer zu hören.",
   "capture.hint_virtual": "Nimmt auf, was Apps auf dem ausgewählten Gerät wiedergeben.",
   "capture.hint_app": "Sendet nur, was die ausgewählte App wiedergibt. Sie spielt weiterhin auf ihrem eigenen Ausgabegerät ab.",
   "tooltip.quality": "Höhere Qualität benötigt mehr Bandbreite.",

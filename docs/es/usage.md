@@ -210,7 +210,7 @@ A2DPWB admite tres modos de captura de audio. Cada uno graba un punto distinto d
 
 **Dispositivos de audio** muestra la misma explicación en **Origen de salida**. Un dispositivo nuevo captura con Loopback del sistema, que funciona sin instalar nada más; elija allí Dispositivo virtual o Aplicación para él.
 
-El Loopback del sistema copia el audio; no se lo quita al dispositivo de salida predeterminado. El audio sigue sonando en ese dispositivo (altavoces, un televisor HDMI, ...) además de en los auriculares Bluetooth. Para oírlo solo en los auriculares, use el modo Dispositivo virtual con un dispositivo que no reproduzca en ningún sitio, como VB-CABLE.
+El Loopback del sistema copia el audio; no se lo quita al dispositivo de salida predeterminado. El audio sigue sonando en ese dispositivo (altavoces, un televisor HDMI, ...) además de en los auriculares Bluetooth. Para oírlo solo en los auriculares, silencie ese dispositivo (su volumen maestro): esto no afecta a lo que captura A2DPWB. También sirve el modo Dispositivo virtual con un dispositivo que no reproduzca en ningún sitio, como VB-CABLE.
 
 En el modo Dispositivo virtual, **Usar como salida predeterminada de Windows mientras hay conexión** convierte el dispositivo seleccionado en la salida predeterminada de Windows durante la transmisión, de modo que las aplicaciones reproducen en él sin cambiar la configuración de Windows. Al detener la transmisión, A2DPWB vuelve al dispositivo predeterminado anterior.
 

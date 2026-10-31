@@ -348,7 +348,7 @@
   "capture.app_refresh": "Actualizar",
   "capture.app_not_playing": "%s (no reproduce ahora)",
   "capture.app_hint": "Si falta una aplicación, inicie la reproducción en ella y haga clic en Actualizar.",
-  "capture.hint_loopback": "Envía todo lo que reproduce la salida predeterminada de Windows. También sigue sonando allí.",
+  "capture.hint_loopback": "Envía todo lo que reproduce la salida predeterminada de Windows. También sigue sonando allí; siléncielo en Windows para oír solo los auriculares.",
   "capture.hint_virtual": "Graba lo que las aplicaciones reproducen en el dispositivo seleccionado.",
   "capture.hint_app": "Envía solo lo que reproduce la aplicación seleccionada. También sigue sonando en su propia salida.",
   "tooltip.quality": "Una calidad mayor usa más ancho de banda.",

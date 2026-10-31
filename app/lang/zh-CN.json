@@ -348,7 +348,7 @@
   "capture.app_refresh": "刷新",
   "capture.app_not_playing": "%s（当前未播放）",
   "capture.app_hint": "如果找不到应用，请在其中开始播放，然后单击“刷新”。",
-  "capture.hint_loopback": "发送 Windows 默认输出设备播放的全部内容。该设备上也会继续播放。",
+  "capture.hint_loopback": "发送 Windows 默认输出设备播放的全部内容。该设备上也会继续播放。如果只想在耳机上听到，请在 Windows 中将其静音。",
   "capture.hint_virtual": "录制应用播放到所选设备的内容。",
   "capture.hint_app": "仅发送所选应用播放的内容。该应用自己的输出上也会继续播放。",
   "tooltip.quality": "音质越高，占用带宽越多。",

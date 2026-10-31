@@ -233,7 +233,7 @@ A2DPWB supports three audio capture modes. Each records a different point in the
 
 **Audio Devices** shows the same explanation under **Output Source**. A new device captures System Loopback, which works with nothing else installed; choose Virtual Device or Application for it there.
 
-System Loopback copies the audio; it does not take it away from the default output device. The audio keeps playing on that device (speakers, an HDMI TV, ...) as well as on the Bluetooth headphones. To hear it only on the headphones, use Virtual Device mode with a device that does not play anywhere, such as VB-CABLE.
+System Loopback copies the audio; it does not take it away from the default output device. The audio keeps playing on that device (speakers, an HDMI TV, ...) as well as on the Bluetooth headphones. To hear it only on the headphones, mute that device (its master volume): this does not affect what A2DPWB captures. Virtual Device mode with a device that does not play anywhere, such as VB-CABLE, also works.
 
 In Virtual Device mode, **Set as Windows default output while connected** makes the selected device the Windows default output while streaming, so apps play to it without changing Windows settings. When streaming stops, A2DPWB switches back to the previous default device.
 

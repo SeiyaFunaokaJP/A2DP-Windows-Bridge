@@ -210,7 +210,7 @@ A2DPWB propose trois modes de capture audio. Chacun enregistre à un endroit dif
 
 **Périphériques audio** affiche la même explication sous **Source de sortie**. Un nouvel appareil capture en Bouclage système, qui fonctionne sans rien installer d'autre ; choisissez-y Périphérique virtuel ou Application pour lui.
 
-Le bouclage système copie l'audio ; il ne le retire pas du périphérique de sortie par défaut. Le son continue d'être joué sur ce périphérique (haut-parleurs, téléviseur HDMI, ...) en plus du casque Bluetooth. Pour ne l'entendre que dans le casque, utilisez le mode Périphérique virtuel avec un périphérique qui ne joue le son nulle part, comme VB-CABLE.
+Le bouclage système copie l'audio ; il ne le retire pas du périphérique de sortie par défaut. Le son continue d'être joué sur ce périphérique (haut-parleurs, téléviseur HDMI, ...) en plus du casque Bluetooth. Pour ne l'entendre que dans le casque, coupez le son de ce périphérique (son volume principal) : cela ne change rien à ce que capture A2DPWB. Le mode Périphérique virtuel avec un périphérique qui ne joue le son nulle part, comme VB-CABLE, convient aussi.
 
 En mode Périphérique virtuel, **Définir comme sortie par défaut de Windows pendant la connexion** fait du périphérique choisi la sortie par défaut de Windows pendant la diffusion, si bien que les applications jouent vers lui sans modifier les paramètres de Windows. À l'arrêt de la diffusion, A2DPWB rétablit le périphérique par défaut précédent.
 
