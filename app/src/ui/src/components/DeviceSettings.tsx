@@ -181,7 +181,6 @@ export function DeviceSettings(props: { device: Device }) {
       <Show when={f.capture_mode === "virtual"}>
         <Toggle
           label={t("capture.auto_switch")}
-          hint={t("tooltip.auto_switch")}
           checked={f.auto_switch_device}
           onChange={(v) => void apply({ auto_switch_device: v })}
         />

@@ -149,7 +149,7 @@ export function VolumeControl(props: { off?: boolean }) {
     }
   };
   return (
-    <div class="volume" classList={{ disabled: disabled() }} title={t("tooltip.volume")}>
+    <div class="volume" classList={{ disabled: disabled() }}>
       <button
         type="button"
         class="volume-mute"

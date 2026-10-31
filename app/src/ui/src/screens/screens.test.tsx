@@ -90,7 +90,7 @@ describe("Home", () => {
       return b!;
     });
     expect(battery.getAttribute("aria-label")).toMatch(/^Battery unknown/);
-    expect(battery.getAttribute("title")).toMatch(/Another device \(such as a phone\)/);
+    expect(battery.getAttribute("title")).toMatch(/Disconnect them from other devices/);
     expect(battery).not.toHaveTextContent("%");
   });
 
@@ -229,11 +229,11 @@ describe("Home", () => {
   it("asks to exit the other A2DPWB (v1, or another v2) while it runs", async () => {
     start("#/home");
     await homeCard("WH-1000XM5");
-    expect(screen.queryByText("Another A2DP Windows Bridge is running — exit it first")).toBeNull();
+    expect(screen.queryByText("Another A2DP Windows Bridge is running")).toBeNull();
     mock!.setV1Running(true);
-    expect(await screen.findByText("Another A2DP Windows Bridge is running — exit it first")).toBeInTheDocument();
+    expect(await screen.findByText("Another A2DP Windows Bridge is running")).toBeInTheDocument();
     mock!.setV1Running(false);
-    await waitFor(() => expect(screen.queryByText("Another A2DP Windows Bridge is running — exit it first")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Another A2DP Windows Bridge is running")).toBeNull());
   });
 
   it("shows the cause of an error and a fix", async () => {
@@ -288,7 +288,7 @@ describe("every screen renders", () => {
     const { calls } = start("#/home", { scenario: "fresh" });
     expect(await screen.findByRole("heading", { level: 1, name: "Set up A2DP Windows Bridge" })).toBeInTheDocument();
     mock!.setV1Running(true);
-    expect(await screen.findByText("Another A2DP Windows Bridge is running — exit it first")).toBeInTheDocument();
+    expect(await screen.findByText("Another A2DP Windows Bridge is running")).toBeInTheDocument();
     // The setup waits while the other one holds the adapter
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
     mock!.setV1Running(false);
@@ -297,7 +297,7 @@ describe("every screen renders", () => {
     // Step 2: one explanation and one button, which switches the driver and
     // downloads the firmware (issue #86)
     const setUp = await screen.findByRole("button", { name: "Set up this adapter" });
-    expect(screen.getByText(/Windows then stops using this adapter/)).toBeInTheDocument();
+    expect(screen.getByText(/Windows stops using this adapter/)).toBeInTheDocument();
     expect(screen.getByText("rtl8761bu_fw.bin, rtl8761bu_config.bin")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Replace with WinUSB driver" })).toBeNull();
     // Another A2DPWB started meanwhile: no driver change until it exits

@@ -98,7 +98,6 @@ export function Settings() {
       <Section title={t("ui.settings.notifications")}>
         <Toggle
           label={t("ui.settings.notify_connected")}
-          hint={t("ui.settings.notify_connected_hint")}
           checked={s().notify_connected}
           onChange={(v) => set({ notify_connected: v })}
         />
@@ -214,7 +213,6 @@ export function Settings() {
         <div class="row">
           <span class="row-text">
             <span class="row-label">{t("ui.setup.title")}</span>
-            <span class="hint">{t("ui.settings.run_setup_hint")}</span>
           </span>
           <Button icon="play" onClick={() => app.setSetupActive(true)}>
             {t("ui.settings.run_setup")}
@@ -226,7 +224,6 @@ export function Settings() {
         <Button kind="danger" icon="power" onClick={() => setQuitting(true)}>
           {t("ui.settings.quit")}
         </Button>
-        <span class="hint">{t("ui.settings.quit_hint")}</span>
       </div>
       <Dialog
         open={quitting()}

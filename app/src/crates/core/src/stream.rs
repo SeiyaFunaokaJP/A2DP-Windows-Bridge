@@ -1128,9 +1128,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             host.disconnect();
             let msg = match why {
                 None => Msg::new("error.no_compatible_codec"),
-                Some((codec, Unavailable::SepInUse { in_use, total })) => {
-                    Msg::with("error.codec_sep_in_use", &[&codec.name(), &in_use, &total])
-                }
+                Some((codec, Unavailable::SepInUse { .. })) => Msg::with("error.codec_sep_in_use", &[&codec.name()]),
                 Some((codec, Unavailable::AdaptiveOnly)) => Msg::with("error.codec_adaptive_only", &[&codec.name()]),
                 Some((codec, Unavailable::NotSupported)) => Msg::with("error.codec_not_supported", &[&codec.name()]),
                 Some((codec, Unavailable::Experimental)) => Msg::with("error.codec_experimental_off", &[&codec.name()]),

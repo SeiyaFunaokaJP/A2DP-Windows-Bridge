@@ -194,7 +194,7 @@ describe("codec details", () => {
     expect(c.querySelector(".bitpool-track")).toHaveAttribute("aria-label", "Device 2–53, Configured 2–53, ABR 19–53, In use 53");
     expect(c.querySelector(".bitpool.live")).not.toBeNull();
     expect(c.querySelector(".bitpool-range.abr")).not.toBeNull();
-    expect(c).toHaveTextContent("Under ABR the bitpool drops by 2");
+    expect(c).toHaveTextContent("ABR lowers it when the send queue backs up");
     // A new stream info moves it
     setBp(41);
     expect(c).toHaveTextContent("Bitpool41 (ABR 19–53)");
