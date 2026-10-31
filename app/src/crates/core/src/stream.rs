@@ -1059,6 +1059,30 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     };
     // However the session ends, the next one starts on a new stack
     let _streamed = StreamedMark(inner, req.device);
+    // Huawei earbuds that do not list LDAC: asked for, not for Auto, as the
+    // mode stays set on them and trades connection stability for it
+    if req.codec == Some(CodecKind::Ldac)
+        && !remote.has(CodecKind::Ldac)
+        && remote.audio_sinks_in_use == 0
+        && crate::huawei::is_huawei(&req.device_name)
+        && !stopped()
+    {
+        inner.notify(StreamState::Connecting, Msg::new("status.huawei_ldac"));
+        if crate::huawei::ask_for_ldac(&host, req.device) {
+            host.disconnect();
+            for _ in 0..10 {
+                if !stopped() {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            }
+            inner.notify(StreamState::Connecting, Msg::new("status.connecting_device"));
+            remote = match connect(&host) {
+                Ok(caps) => caps,
+                Err(_) if stopped() => return inner.notify(StreamState::Idle, Msg::new("status.ready")),
+                Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
+            };
+        }
+    }
     inner.record_codecs(&addr, KnownCodecs::of(&remote));
     tracing::info!("device connected, choosing the codec");
     tracing::debug!(

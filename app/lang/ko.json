@@ -82,6 +82,7 @@
   "error.btstack_no_answer": "Bluetooth 어댑터가 응답하지 않습니다. 어댑터를 뽑았다가 다시 꽂은 후 다시 시도하십시오.",
   "error.btstack_crash_stream": "Bluetooth 스택이 중단되었습니다. 응용 프로그램을 다시 시작하십시오.",
   "status.connecting_retry": "연결에 실패하여 다시 시도하는 중(%d/%d)...",
+  "status.huawei_ldac": "이어버드에 LDAC 사용을 요청하는 중...",
   "error.connect_no_answer": "장치가 응답하지 않았습니다. 장치가 켜져 있고 연결 가능한 상태(새 장치는 페어링 모드)이며 범위 내에 있는지 확인하십시오.",
   "error.connect_link_lost": "연결은 되었지만 데이터가 전달되지 않았습니다. 무선 환경 문제일 수 있습니다. 다시 시도하거나 어댑터와 장치의 위치를 바꿔 보십시오.",
   "error.connect_refused": "장치가 응답한 후 스스로 연결을 종료했습니다. 지금은 연결을 받지 않는 상태입니다(예: 전원이 꺼지는 중, 충전 중, 다른 장치에 연결됨). 장치를 확인한 후 다시 시도하십시오.",

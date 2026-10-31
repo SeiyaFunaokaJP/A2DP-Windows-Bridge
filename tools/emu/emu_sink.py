@@ -43,8 +43,10 @@ from bumble.avdtp import (
 )
 from bumble.controller import Controller
 from bumble.device import Device
+from bumble.core import UUID
 from bumble.host import Host
 from bumble.link import LocalLink
+from bumble.rfcomm import Server, make_service_sdp_records
 from bumble.snoop import Snooper
 from bumble.transport import open_transport
 from bumble.transport.common import AsyncPipeSink
@@ -322,6 +324,56 @@ def sink_codec_capabilities(sbc_dual=True, sbc_max_bitpool=53, aptxad_r2=False, 
     ]
 
 
+def huawei_packet(command, params):
+    """A packet of the earbuds' protocol (app/src/crates/core/src/huawei.rs)."""
+    body = struct.pack('>H', command) + b''.join(bytes([k, len(v)]) + v for k, v in params)
+    packet = b'\x5A' + struct.pack('>H', len(body) + 1) + b'\0' + body
+    crc = 0
+    for b in packet:
+        crc ^= b << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021 if crc & 0x8000 else crc << 1) & 0xFFFF
+    return packet + struct.pack('>H', crc)
+
+
+class HuaweiEarbuds:
+    """The control service of Huawei earbuds: LDAC is listed from the
+    connection after a "sound quality first" write, also when the read
+    reported the mode on already (set from a phone, as issue #30's FreeBuds).
+    drop: the earbuds end the link at the write. silent: nothing answered."""
+
+    def __init__(self, device, mode_on, drop, silent):
+        self.device, self.mode, self.drop, self.silent = device, int(mode_on), drop, silent
+        self.ldac = False
+        self.connection = None
+        device.on('connection', self.on_connection)
+        channel = Server(device).listen(self.on_dlc)
+        device.sdp_service_records[0x00010002] = make_service_sdp_records(
+            0x00010002, channel, UUID.from_16_bits(0x1101))
+
+    def on_connection(self, connection):
+        self.connection = connection
+
+    def on_dlc(self, dlc):
+        log.info('Huawei control channel open')
+        dlc.sink = lambda data: self.on_data(dlc, data)
+
+    def on_data(self, dlc, data):
+        command, params = struct.unpack('>H', data[4:6])[0], data[6:-2]
+        log.info('Huawei control: %04X %s', command, params.hex())
+        if self.silent:
+            return
+        if command == 0x2BA3:
+            dlc.write(huawei_packet(command, [(2, bytes([self.mode]))]))
+        elif command == 0x2B2F:
+            dlc.write(huawei_packet(command, [(1, b'\x01')]))
+        elif command == 0x2BA2:
+            self.mode = params[2]
+            self.ldac = self.mode == 1
+            if self.drop:
+                asyncio.ensure_future(self.connection.disconnect())
+
+
 def refuse_dual_channel(sink):
     """The SBC endpoint lists dual channel but rejects a SET_CONFIGURATION
     with it, as some headsets do (SBC XQ then has to fall back to SBC)."""
@@ -366,6 +418,9 @@ async def main(args):
     device.sdp_service_records = {
         0x00010001: make_audio_sink_service_sdp_records(0x00010001)
     }
+    huawei = None
+    if args.huawei:
+        huawei = HuaweiEarbuds(device, args.huawei == 'on', args.huawei_drop, args.huawei_silent)
     await device.power_on()
     await device.set_discoverable(True)
     await device.set_connectable(True)
@@ -381,7 +436,7 @@ async def main(args):
             ))
         for name, capabilities in zip(CODEC_NAMES, sink_codec_capabilities(not args.sbc_no_dual, args.sbc_max_bitpool,
                                                                          args.aptxad_r2, args.aptxad_rates)):
-            if args.codecs and name not in args.codecs:
+            if args.codecs and name not in args.codecs and not (name == 'ldac' and huawei and huawei.ldac):
                 continue
             # BTstack 1.8.1 keeps at most 10 discovered SEPs (a2dp.c
             # AVDTP_MAX_SEP_NUM) and overflows its array beyond that: aptX
@@ -439,5 +494,11 @@ if __name__ == '__main__':
     parser.add_argument('--aptxad-rates', type=lambda x: int(x, 0),
                         help='aptX Adaptive rate byte to list instead (e.g. 0xD1: an EarFun Air Pro 4+, '
                              '96 kHz by its 0x80 bit only; 0x51: a Bose QC Ultra, no 96 kHz; issue #86)')
+    parser.add_argument('--huawei', choices=['off', 'on'],
+                        help='serve the control channel of Huawei earbuds, their sound quality first mode as given')
+    parser.add_argument('--huawei-drop', action='store_true',
+                        help='end the link when sound quality first is written')
+    parser.add_argument('--huawei-silent', action='store_true',
+                        help='the control channel answers nothing (earbuds without the mode)')
     bumble.logging.setup_basic_logging(parser.parse_known_args()[0].log_level)
     asyncio.run(main(parser.parse_args()))

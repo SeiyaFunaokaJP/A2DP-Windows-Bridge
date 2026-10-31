@@ -82,6 +82,7 @@
   "error.btstack_no_answer": "Bluetooth 适配器无响应。请拔下后重新插入，然后重试。",
   "error.btstack_crash_stream": "Bluetooth 堆栈崩溃。请重新启动应用程序。",
   "status.connecting_retry": "连接失败，正在重试（%d/%d）...",
+  "status.huawei_ldac": "正在请求耳机启用 LDAC...",
   "error.connect_no_answer": "设备无应答。请确认设备已开启、可连接（新设备需处于配对模式）且在范围内。",
   "error.connect_link_lost": "连接已建立但没有传输任何数据，可能是无线环境的问题。请重试，或调整适配器和设备的位置。",
   "error.connect_refused": "设备已应答，但随后主动断开了连接。设备当前不接受连接（例如正在关机、充电或已连接到其他设备）。请检查设备后重试。",

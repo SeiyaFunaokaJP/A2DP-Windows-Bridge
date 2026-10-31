@@ -114,6 +114,8 @@ CONFIG_PATTERN = {  # a2dpwb_decode's "Configuration :" line
 # header, packet sizes and frame types)
 NO_DECODER = {'ldac', 'ldac-96k', 'ldac-48k', 'lhdcv5', 'aptxad', 'aptxad-r2', 'aptxad-r2-96k'}
 APTXAD_SINK = ['--codecs', 'sbc', 'aac', 'aptx', 'aptxad']
+HUAWEI_SINK = ['--codecs', 'sbc', 'aac']
+HUAWEI_NAME = ['--device-name', 'HUAWEI FreeBuds Pro 4']
 # Further cases: name -> (A2DPWB -c, emu_sink.py arguments, the codec expected,
 # more A2DPWB arguments)
 NEGOTIATION = {
@@ -194,6 +196,17 @@ NEGOTIATION = {
     # 18 free sink SEPs, LDAC the 14th: BTstack 1.8.1 overflowed its 10-entry
     # SEP discovery array (crash); none may be dropped either
     'many-seps-ldac': ('ldac', ['--extra-seps', '8'], 'ldac', []),
+    # Huawei earbuds that list LDAC once told "sound quality first" on their
+    # control channel (issue #30): LDAC chosen connects again and gets it,
+    # with the mode off or on already, or when they end the link at the
+    # write; earbuds without the mode, or another name, are left alone (a
+    # write would give them LDAC here)
+    'huawei-ldac': ('ldac', HUAWEI_SINK + ['--huawei', 'off'], 'ldac', HUAWEI_NAME),
+    'huawei-ldac-mode-on': ('ldac', HUAWEI_SINK + ['--huawei', 'on'], 'ldac', HUAWEI_NAME),
+    'huawei-ldac-drop': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-drop'], 'ldac', HUAWEI_NAME),
+    'huawei-no-mode': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-silent'], 'aac',
+                       HUAWEI_NAME + ['--fallback']),
+    'huawei-other-name': ('ldac', HUAWEI_SINK + ['--huawei', 'off'], 'aac', ['--fallback']),
 }
 TONES = ((1000.0, 0.5), (1500.0, 0.5))  # (frequency, amplitude) per channel, as --test-tone
 LATE_SDU_FAILURE = 'reached the controller after their SDU interval began'  # LE Audio cases run once more

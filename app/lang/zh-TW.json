@@ -82,6 +82,7 @@
   "error.btstack_no_answer": "藍牙介面卡沒有回應。請拔下後重新插入，然後再試一次。",
   "error.btstack_crash_stream": "藍牙堆疊當機。請重新啟動應用程式。",
   "status.connecting_retry": "連線失敗，正在重試 (%d/%d)...",
+  "status.huawei_ldac": "正在要求耳機啟用 LDAC...",
   "error.connect_no_answer": "裝置沒有回應。請確認裝置已開啟、可供連線 (新裝置需處於配對模式) 且在範圍內。",
   "error.connect_link_lost": "連線已建立，但之後沒有傳輸任何資料，可能是無線電環境不佳。請再試一次，或調整介面卡與裝置的位置。",
   "error.connect_refused": "裝置有回應，但隨後自行結束連線。裝置目前不接受連線 (例如正在關機、充電或已連線到其他裝置)。請檢查裝置後再試一次。",
