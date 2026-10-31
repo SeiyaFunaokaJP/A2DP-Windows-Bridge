@@ -348,6 +348,7 @@
   "capture.volume_sync_hint": "The audio device's volume and the Windows volume move together.",
   "capture.volume_sync_missing": "%s (not connected)",
   "capture.no_virtual_device": "No virtual audio device found",
+  "capture.virtual_supported": "Virtual sound devices, like VB-Cable (not installed), are also supported as Output Source",
   "capture.no_app_playing": "No app is playing audio",
   "capture.device_format": "Output source format: %u Hz / %u-bit",
   "capture.app": "Application",

@@ -87,7 +87,6 @@
 }
 .codec-info .codec-picker select,
 .fly-title .codec-picker select {
-  min-height: 1.75rem;
   font-size: var(--fs-14);
   font-weight: 600;
   text-overflow: ellipsis;

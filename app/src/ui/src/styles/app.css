@@ -1218,9 +1218,9 @@ option {
   gap: var(--s2);
   min-width: 0;
 }
-/* Too narrow for "Battery 80% | Connected" (two devices side by side): the
-   state on its own line, without a "|" left at the end of the first */
-@container (max-width: 13.5rem) {
+/* Too narrow for "80% | Connected" (two devices side by side): the state on
+   its own line, without a "|" left at the end of the first */
+@container (max-width: 11rem) {
   .device-state {
     flex-direction: column;
     align-items: flex-start;
@@ -1483,8 +1483,23 @@ option {
   min-width: 0;
   max-width: 100%;
 }
-.codec-badge.idle {
-  color: var(--text-3);
+/* On a device's card the chooser and the details end on one line (issue #86) */
+.device-card .codec-info,
+.fly-title .codec-info {
+  align-self: stretch;
+  align-items: stretch;
+}
+.device-card .codec-name,
+.fly-title .codec-name {
+  display: flex;
+}
+.device-card .codec-picker,
+.fly-title .codec-picker {
+  flex: 1;
+}
+.device-card .codec-line .codec-badge,
+.fly-title .codec-line .codec-badge {
+  flex: 1;
 }
 
 .quality {
@@ -2903,9 +2918,8 @@ html.win-flyout body {
   min-width: 0;
   font-size: var(--fs-12);
 }
-/* The chooser is the title */
-.fly-title .select select {
-  min-height: 2.25rem;
+/* The chooser is the title, as tall as every other control (issue #86) */
+.fly-title .device-switcher select {
   font-size: var(--fs-16);
   font-weight: 600;
 }

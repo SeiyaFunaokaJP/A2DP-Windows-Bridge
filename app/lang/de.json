@@ -348,6 +348,7 @@
   "capture.volume_sync_hint": "Die Lautstärke des Audiogeräts und die Windows-Lautstärke folgen einander.",
   "capture.volume_sync_missing": "%s (nicht verbunden)",
   "capture.no_virtual_device": "Kein virtuelles Audiogerät gefunden",
+  "capture.virtual_supported": "Virtuelle Soundgeräte wie VB-Cable (nicht installiert) werden ebenfalls als Ausgabequelle unterstützt",
   "capture.no_app_playing": "Keine App gibt Audio wieder",
   "capture.device_format": "Format der Ausgabequelle: %u Hz / %u Bit",
   "capture.app": "Anwendung",

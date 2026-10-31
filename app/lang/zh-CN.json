@@ -348,6 +348,7 @@
   "capture.volume_sync_hint": "音频设备与 Windows 音量相互同步。",
   "capture.volume_sync_missing": "%s（未连接）",
   "capture.no_virtual_device": "未找到虚拟音频设备",
+  "capture.virtual_supported": "也支持将虚拟声音设备（如 VB-Cable，未安装）用作输出源",
   "capture.no_app_playing": "没有正在播放音频的应用",
   "capture.device_format": "输出源格式：%u Hz / %u 位",
   "capture.app": "应用程序",

@@ -348,6 +348,7 @@
   "capture.volume_sync_hint": "El volumen del dispositivo de audio y el de Windows se mueven juntos.",
   "capture.volume_sync_missing": "%s (no conectado)",
   "capture.no_virtual_device": "No se encontró ningún dispositivo de audio virtual",
+  "capture.virtual_supported": "Los dispositivos de sonido virtuales, como VB-Cable (no instalado), también son compatibles como origen de salida",
   "capture.no_app_playing": "Ninguna aplicación está reproduciendo audio",
   "capture.device_format": "Formato de la fuente de salida: %u Hz / %u bits",
   "capture.app": "Aplicación",

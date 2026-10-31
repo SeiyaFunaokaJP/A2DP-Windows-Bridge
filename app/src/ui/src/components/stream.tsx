@@ -199,7 +199,8 @@ export function codecName(info: StreamInfo): string {
 export const showsBattery = (s: StreamStatus) => s.battery !== null || s.battery_refused;
 
 /** The battery level: a small battery that fills and changes colour with it,
- *  and the number; null is "unknown", with the reason on hover */
+ *  and the number, without the word beside the symbol (issue #86); null is
+ *  "unknown", with the reason on hover */
 export function BatteryLevel(props: { percent: number | null; class?: string }) {
   const level = () => Math.max(0, Math.min(100, props.percent ?? 0));
   const known = () => props.percent !== null;
@@ -219,7 +220,7 @@ export function BatteryLevel(props: { percent: number | null; class?: string }) 
         <rect x="19.5" y="3.5" width="2" height="5" rx="1" fill="currentColor" opacity="0.7" />
         <rect x="2" y="2" width={(15 * level()) / 100} height="8" rx="1.5" fill="currentColor" />
       </svg>
-      <span class="num">{text()}</span>
+      <span class="num">{known() ? `${level()}%` : "?"}</span>
     </span>
   );
 }
@@ -315,7 +316,7 @@ export function CodecBadge(props: { compact?: boolean; aside?: JSX.Element; pick
     return left > 0;
   });
   return (
-    <Show when={info()} fallback={<span class="codec-badge idle">{t("ui.codec.none")}</span>}>
+    <Show when={info()}>
       {(i) => (
         <div class="codec-info">
           <span class="codec-name" title={fallbackHelp() || undefined}>
