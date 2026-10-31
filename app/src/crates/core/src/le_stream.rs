@@ -32,6 +32,7 @@ use pipeline::le::{LePipeline, LePipelineConfig};
 use pipeline::{BufferPreset, CaptureInput};
 
 use crate::messages::Msg;
+use crate::mute_output::OutputMute;
 use crate::service::Inner;
 use crate::stream::{
     DefaultDeviceGuard, DiscontinuityLog, SourceRequest, StreamInfo, StreamRequest, StreamState, VolumeSync,
@@ -370,6 +371,9 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let sync_volume = req.source != SourceRequest::TestTone && req.volume_sync != VolumeSync::Off;
     let mut volume = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &req.source)
         .map(crate::volume_sync::VolumeSyncer::new);
+    let mutes_output = req.mutes_output(&req.source);
+    let mut output_mute = OutputMute::new();
+    output_mute.tick(mutes_output);
 
     let mut lost_for_good = false;
     let mut discontinuities = DiscontinuityLog::default();
@@ -381,6 +385,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         if let Some(v) = volume.as_mut() {
             v.tick(sync_volume, &crate::volume_sync::LeHeadphones(&host));
         }
+        output_mute.tick(mutes_output);
         discontinuities.tick(audio.as_ref().map_or(0, LeAudioPath::discontinuities));
         if !host.le_stream_lost() {
             continue;
@@ -407,6 +412,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                 default_guard = DefaultDeviceGuard(None);
                 switch_default_again = true;
             }
+            output_mute.tick(false);
             if !wait_for_device(inner, &host, req.device) {
                 lost_for_good = true;
                 break;
@@ -481,6 +487,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     if let Some(mut v) = volume.take() {
         v.stop();
     }
+    drop(output_mute);
     drop(default_guard);
     inner.set_le_stream(None);
     if !lost_for_good {

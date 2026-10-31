@@ -1104,8 +1104,10 @@ impl Service {
         // The running session leaves Windows' default output switched when
         // this one switches it to the same device (issue #203)
         stream::expect_default_switch(req.source.default_switch());
+        crate::mute_output::expect_session(req.mutes_output(&req.source));
         self.stop_session();
         stream::expect_default_switch(None);
+        crate::mute_output::expect_session(false);
         // Saved in the profile, so in `req` too: left over from a session
         // that ended before it took it
         self.inner.take_source_change();
@@ -1129,6 +1131,7 @@ impl Service {
                     inner.notify(StreamState::Error, Msg::new("error.btstack_crash_stream"));
                 }
                 stream::restore_unclaimed_default();
+                crate::mute_output::unmute_unclaimed();
                 inner.running.store(false, Ordering::Release);
             })
             .expect("spawning the session thread");
@@ -1371,6 +1374,19 @@ mod tests {
         };
         let (tx, _rx) = std::sync::mpsc::channel();
         Service::new(opts, tx)
+    }
+
+    #[test]
+    fn only_system_loopback_mutes_the_output() {
+        let req = StreamRequest { mute_output: true, ..request() };
+        let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: false };
+        let app = SourceRequest::Application { exe: "a.exe".into() };
+        assert!(req.mutes_output(&SourceRequest::SystemLoopback));
+        for other in [virt, app, SourceRequest::TestTone] {
+            assert!(!req.mutes_output(&other), "{other}");
+        }
+        let off = StreamRequest { mute_output: false, ..req };
+        assert!(!off.mutes_output(&SourceRequest::SystemLoopback));
     }
 
     fn request() -> StreamRequest {

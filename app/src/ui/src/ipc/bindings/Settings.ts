@@ -39,6 +39,12 @@ remember_volume: boolean,
  */
 volume_sync: boolean, 
 /**
+ * System Loopback mutes the default output device while streaming (on
+ * by default), so only the audio device plays. A change starts the
+ * profile in use again.
+ */
+mute_output: boolean, 
+/**
  * Developer mode: receiver test, HCI capture, debug details
  */
 developer_mode: boolean, 
