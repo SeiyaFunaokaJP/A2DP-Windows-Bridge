@@ -35,6 +35,11 @@ sbc: SbcDeviceCaps | null,
  */
 codec_caps: Array<CodecDeviceCaps>, 
 /**
+ * Codec keys the device may offer only once chosen, whatever `codecs`
+ * says: the UI keeps them choosable (issue #30)
+ */
+codecs_on_request: Array<string>, 
+/**
  * An LE Audio entry (experimental; le_audio_devices.txt and the LE
  * scan). A dual-mode device has two entries with the same address, a
  * classic one and an LE Audio one: address and this flag identify an

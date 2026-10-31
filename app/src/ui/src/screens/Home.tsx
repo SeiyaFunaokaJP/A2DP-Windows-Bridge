@@ -30,7 +30,7 @@ import {
 import { t } from "../i18n";
 import { IpcError, type AdapterInfo, type Snapshot, type StreamState } from "../ipc/types";
 import { CARD_ORDER, cardOrder, codecSpec } from "../lib/codecs";
-import { audioEntries, entryBase, entryByKey, entryOf, knownCodecs, type AudioEntry } from "../lib/profile";
+import { audioEntries, codecsOnRequest, entryBase, entryByKey, entryOf, knownCodecs, type AudioEntry } from "../lib/profile";
 import { chooseCodec, codecShown, pickedCodec, settle, settling, streamingCodec } from "./Codecs";
 
 /** Adapters whose firmware files are missing from the settings folder or
@@ -313,7 +313,9 @@ export function CodecPicker(props: { entry: AudioEntry }) {
   const value = () => streamingCodec(snap(), e()) ?? picked() ?? (codec() === "auto" ? null : codec());
   // A quick choice: what the device supports, never the codecs Codecs hides
   const choices = () => {
-    const ids: string[] = order().filter((id) => codecShown(id, picked(), knownCodecs(snap().devices, e().address), true));
+    const known = knownCodecs(snap().devices, e().address);
+    const onRequest = codecsOnRequest(snap().devices, e().address);
+    const ids: string[] = order().filter((id) => codecShown(id, picked(), known, true, onRequest));
     const v = value();
     return v && !ids.includes(v) ? [v, ...ids] : ids;
   };
