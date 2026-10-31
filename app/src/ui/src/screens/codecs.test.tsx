@@ -946,11 +946,12 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     const all = await screen.findByRole("region", { name: t("ui.devices.all_title") });
     const named = (key: string) => ({ name: (n: string) => n.startsWith(t(key)) });
     // Not in a device's own settings
-    for (const key of ["capture.volume_sync", "settings.media_keys", "settings.remember_volume"]) {
+    for (const key of ["capture.volume_sync", "capture.mute_output", "settings.media_keys", "settings.remember_volume"]) {
       expect(within(entry).queryByRole("switch", named(key))).toBeNull();
     }
     expect(within(entry).queryByLabelText(t("capture.volume_sync"))).toBeNull();
     // Switches, on by default
+    expect(within(all).getByRole("switch", named("capture.mute_output"))).toBeChecked();
     const sync = within(all).getByRole("switch", named("capture.volume_sync"));
     const keys = within(all).getByRole("switch", named("settings.media_keys"));
     expect(sync).toBeChecked();

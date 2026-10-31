@@ -24,7 +24,7 @@ export function Devices() {
 }
 
 /** The settings shared by every audio device (Settings, saved at once; a
- *  Volume Sync change starts the profile in use again in the core) */
+ *  Volume Sync or output mute change starts the profile in use again in the core) */
 function AllDevices() {
   const app = useApp();
   const s = () => app.core.state.snap!.settings;
@@ -38,6 +38,12 @@ function AllDevices() {
         hint={t("capture.volume_sync_hint")}
         checked={s().volume_sync}
         onChange={(v) => void saveSettings(app, { volume_sync: v })}
+      />
+      <Toggle
+        label={t("capture.mute_output")}
+        hint={t("capture.mute_output_hint")}
+        checked={s().mute_output}
+        onChange={(v) => void saveSettings(app, { mute_output: v })}
       />
       <Toggle
         label={t("settings.media_keys")}

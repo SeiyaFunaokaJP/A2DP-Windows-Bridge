@@ -140,6 +140,9 @@ pub struct Settings {
     /// another device, set in developer mode); off for every stream
     #[serde(default = "default_true")]
     pub volume_sync: bool,
+    /// System Loopback mutes the default output device while streaming
+    #[serde(default = "default_true")]
+    pub mute_output: bool,
 
     pub debug_mode: bool,
     /// Developer mode: overrides of the codec and media path (in force only
@@ -280,6 +283,7 @@ impl Default for Settings {
             saved_volumes: BTreeMap::new(),
             device_options: None,
             volume_sync: true,
+            mute_output: true,
             debug_mode: false,
             dev_overrides: codec::dev::DevOverrides::default(),
             dev_log: DevLog::default(),

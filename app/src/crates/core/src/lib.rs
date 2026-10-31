@@ -30,6 +30,7 @@ pub use stream::{
 };
 pub mod diag;
 pub mod firmware;
+pub mod mute_output;
 pub mod receiver;
 pub mod update;
 pub mod volume_sync;

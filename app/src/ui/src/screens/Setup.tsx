@@ -417,6 +417,8 @@ function StepDevice(props: {
   const stream = () => snap().stream;
   // The device being connected: its button spins
   const [connecting, setConnecting] = createSignal<string | null>(null);
+  // Done when the connect in flight has started the stream
+  let connected: Promise<void> = Promise.resolve();
   // The device connected here: shown above the list, no longer in it, and
   // the scan ends (issue #86)
   const added = () => props.added;
@@ -424,9 +426,12 @@ function StepDevice(props: {
 
   // One click: the device is saved, gets its "<name> | Auto" profile (the
   // best codec it has) and is connected with it
-  const connect = async (address: string, name: string) => {
+  const connect = (address: string, name: string) => {
     if (connecting() || snap().v1_running) return;
     setConnecting(address);
+    connected = start(address, name);
+  };
+  const start = async (address: string, name: string) => {
     try {
       const profile = await saveWithProfile(app, address, name, false);
       if (!profile) return;
@@ -452,6 +457,8 @@ function StepDevice(props: {
   const disconnect = async () => {
     setStopping(true);
     try {
+      // The button shows before the stream starts: stop that one too
+      await connected;
       if (running()) await app.run(() => app.core.request("stream.stop"));
       props.onAdded(null);
     } finally {
@@ -489,7 +496,7 @@ function StepDevice(props: {
         address=""
         classicOnly
         onPick={() => {}}
-        onConnect={(a, n) => void connect(a, n)}
+        onConnect={connect}
         connecting={connecting()}
         connectDisabled={snap().v1_running}
         hidden={added() ?? undefined}

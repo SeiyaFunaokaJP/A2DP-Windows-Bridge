@@ -330,6 +330,17 @@ describe("setup device step", () => {
     expect(screen.queryByRole("button", { name: "Disconnect" })).toBeNull();
   });
 
+  it("Disconnect before the stream has started stops it too", async () => {
+    const { calls } = await toDeviceStep({ scenario: "normal" });
+    const row = (await screen.findByText("Galaxy Buds2 Pro")).closest(".device-row") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Connect" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "stream.stop")).toBe(true));
+    expect(calls.findIndex((c) => c.method === "stream.start")).toBeLessThan(
+      calls.findIndex((c) => c.method === "stream.stop"),
+    );
+  });
+
   it("a device with a profile connects with that one", async () => {
     const { calls, core } = await toDeviceStep();
     const before = core.state.snap!.profiles.length;

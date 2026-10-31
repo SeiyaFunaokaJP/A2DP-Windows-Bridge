@@ -166,6 +166,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     remember_volume: true,
     auto_reconnect: true,
     volume_sync: true,
+    mute_output: true,
     developer_mode: false,
     dev_overrides: {
       rtp_marker: false,

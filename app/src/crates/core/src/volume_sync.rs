@@ -9,7 +9,8 @@
 //!
 //! Only the level is synced, not mute: muting the output device is how the PC
 //! is kept silent while the headphones play (loopback capture is not affected
-//! by the endpoint's mute), so mute is never read nor written here.
+//! by the endpoint's mute), so mute is never read nor written here
+//! (mute_output.rs mutes it for the session).
 //!
 //! The Windows side is [`EndpointVolume`](audio_capture::EndpointVolume),
 //! which is `!Send` and bound to one device: a [`VolumeSyncer`] lives on the
@@ -82,6 +83,14 @@ pub trait Endpoint {
     fn restores(&self) -> bool {
         true
     }
+    /// Whether the device is muted; None if it cannot be read
+    fn muted(&self) -> Option<bool> {
+        None
+    }
+    /// Sets the device's mute; false if it failed
+    fn set_muted(&self, _muted: bool) -> bool {
+        false
+    }
 }
 
 /// Opens [`Endpoint`]s and tells which device is the default output
@@ -108,6 +117,14 @@ impl Endpoint for audio_capture::EndpointVolume {
 
     fn set_volume(&self, scalar: f32) -> bool {
         audio_capture::EndpointVolume::set_volume(self, scalar).is_ok()
+    }
+
+    fn muted(&self) -> Option<bool> {
+        audio_capture::EndpointVolume::muted(self).ok()
+    }
+
+    fn set_muted(&self, muted: bool) -> bool {
+        audio_capture::EndpointVolume::set_muted(self, muted).is_ok()
     }
 }
 

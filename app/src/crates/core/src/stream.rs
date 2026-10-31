@@ -14,6 +14,7 @@ use pipeline::{BufferPreset, CaptureInput, InputFormat, Pipeline, PipelineConfig
 
 use crate::health::{CaptureReading, StreamHealth};
 use crate::messages::Msg;
+use crate::mute_output::OutputMute;
 use crate::service::Inner;
 
 /// What to stream (from a profile, or the command line)
@@ -51,6 +52,9 @@ pub struct StreamRequest {
     pub bit_depth: Option<u8>,
     pub source: SourceRequest,
     pub volume_sync: VolumeSync,
+    /// System Loopback mutes the default output device while streaming
+    /// (settings `mute_output`)
+    pub mute_output: bool,
     pub max_media_payload: u16,
     /// LE Audio (experimental) instead of A2DP: the le_stream session
     /// streams to `device` and these extra devices. None: A2DP.
@@ -68,6 +72,12 @@ impl StreamRequest {
             _ => 0,
         };
         codec::sbc::SbcParams { min_bitpool, ..self.sbc }
+    }
+
+    /// Whether a session capturing `source` mutes the default output device.
+    /// Not Application capture: other apps may play there on purpose.
+    pub fn mutes_output(&self, source: &SourceRequest) -> bool {
+        self.mute_output && *source == SourceRequest::SystemLoopback
     }
 }
 
@@ -1516,6 +1526,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // Headphone volume and a Windows volume act as one (volume_sync.rs)
     let mut volume_choice = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &req.source);
     let mut volume = volume_choice.clone().map(crate::volume_sync::VolumeSyncer::new);
+    let mut output_mute = OutputMute::new();
+    output_mute.tick(req.mutes_output(&req.source));
 
     // A reconnect builds the configuration anew from what the device lists
     // then (v1 read its capabilities again)
@@ -1555,6 +1567,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         if let Some(v) = volume.as_mut() {
             v.tick(true, &*host);
         }
+        output_mute.tick(req.mutes_output(&current_source));
         inner.remember_volume(&addr, host.remote_volume());
 
         // Another source chosen: only the capture changes, the encoder (at
@@ -1712,6 +1725,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                     default_guard = DefaultDeviceGuard(None);
                     switch_default_again = true;
                 }
+                output_mute.tick(false);
                 if !wait_for_device(inner, &host, req.device, &mut pipeline) {
                     lost_for_good = true;
                     break;
@@ -1988,6 +2002,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     host.stop_stream();
     host.disconnect();
     host.set_restore_volume(None);
+    drop(output_mute);
     drop(default_guard);
     if !lost_for_good {
         inner.notify(StreamState::Idle, Msg::new("status.ready"));

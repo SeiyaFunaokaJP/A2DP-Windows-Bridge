@@ -1382,11 +1382,12 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
     let _ = writeln!(out, "Language     : {}, theme {}", s.language, s.theme);
     let _ = writeln!(
         out,
-        "Settings     : media keys {}, remember volume {}, reconnect {}, volume sync {}, auto-select {}, AFH {}, updates {}{}",
+        "Settings     : media keys {}, remember volume {}, reconnect {}, volume sync {}, mute output {}, auto-select {}, AFH {}, updates {}{}",
         on_off(s.media_keys),
         on_off(s.remember_volume),
         on_off(s.auto_reconnect),
         on_off(s.volume_sync),
+        on_off(s.mute_output),
         on_off(s.auto_codec),
         s.afh,
         on_off(s.check_updates_on_startup),

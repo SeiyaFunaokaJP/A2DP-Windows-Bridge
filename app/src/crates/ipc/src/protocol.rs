@@ -633,6 +633,11 @@ pub struct Settings {
     /// again.
     #[serde(default = "yes")]
     pub volume_sync: bool,
+    /// System Loopback mutes the default output device while streaming (on
+    /// by default), so only the audio device plays. A change starts the
+    /// profile in use again.
+    #[serde(default = "yes")]
+    pub mute_output: bool,
     /// Developer mode: receiver test, HCI capture, debug details
     pub developer_mode: bool,
     /// Developer mode: overrides of the codec and media path, in force

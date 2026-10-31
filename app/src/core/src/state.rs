@@ -295,6 +295,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         remember_volume: s.remember_volume,
         auto_reconnect: s.auto_reconnect,
         volume_sync: s.volume_sync,
+        mute_output: s.mute_output,
         developer_mode: s.debug_mode,
         dev_overrides: DevOverrides {
             rtp_marker: s.dev_overrides.rtp_marker,
@@ -342,6 +343,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.remember_volume = s.remember_volume;
     c.auto_reconnect = s.auto_reconnect;
     c.volume_sync = s.volume_sync;
+    c.mute_output = s.mute_output;
     c.debug_mode = s.developer_mode;
     c.dev_overrides = codec::dev::DevOverrides {
         rtp_marker: s.dev_overrides.rtp_marker,
@@ -1476,6 +1478,7 @@ impl CoreState {
             .map_err(|_| err("profile.invalid_address", "error.invalid_address"))?;
         req.experimental_codecs = settings.experimental_codecs;
         req.volume_sync = effective_volume_sync(settings.volume_sync, req.volume_sync);
+        req.mute_output = settings.mute_output;
         self.set_active_profile(Some(name.to_string()));
         self.begin_stream(req, Some(name.to_string()));
         Ok(())
@@ -1486,6 +1489,7 @@ impl CoreState {
         let settings = self.service.settings();
         let mut req = custom_request(c, settings.legacy_max_media_payload())?;
         req.experimental_codecs = settings.experimental_codecs;
+        req.mute_output = settings.mute_output;
         tracing::info!("custom stream to {}: codec {}, source {}", c.device, c.codec, req.source);
         self.begin_stream(req, None);
         Ok(())
@@ -2018,15 +2022,15 @@ impl CoreState {
                     let chip = chip_changed(&base, &merged);
                     let le_toggled = base.le_audio_experimental != merged.le_audio_experimental;
                     let auto_toggled = base.auto_codec != merged.auto_codec;
-                    let sync_toggled = base.volume_sync != merged.volume_sync;
+                    let sync_toggled = base.volume_sync != merged.volume_sync || base.mute_output != merged.mute_output;
                     me.save_settings(merged)?;
                     if chip {
                         me.reload_adapter();
                     }
                     // Auto-select on / off: a profile in use whose codec it
                     // changes starts again (as a profile save does); Windows
-                    // Volume Sync on / off: the profile in use starts again
-                    // (as when it was the profile's own setting)
+                    // Volume Sync or the output mute on / off: the profile in
+                    // use starts again (as when it was the profile's own setting)
                     if auto_toggled || sync_toggled {
                         let (_, s) = me.snapshot();
                         let list = profiles::load(&me.config_dir());
@@ -2037,9 +2041,10 @@ impl CoreState {
                         };
                         if let Some(p) = in_use.filter(restart) {
                             tracing::info!(
-                                "Auto-select {}, volume sync {}: profile {} starts again",
+                                "Auto-select {}, volume sync {}, output mute {}: profile {} starts again",
                                 if settings.auto_codec { "on" } else { "off" },
                                 if settings.volume_sync { "on" } else { "off" },
+                                if settings.mute_output { "on" } else { "off" },
                                 a2dpwb_core::diag::quoted(&p.name)
                             );
                             me.restart_profile(&p.name.clone())?;
@@ -3087,6 +3092,11 @@ mod tests {
         let merged = merge_settings(&base, &off);
         assert!(!merged.le_audio_experimental && merged.le_audio_low_latency);
         assert_eq!(to_ipc_settings(&merged), off);
+
+        // The output mute under System Loopback: on by default
+        assert!(to_ipc_settings(&base).mute_output);
+        let no_mute = Settings { mute_output: false, ..off.clone() };
+        assert!(!merge_settings(&base, &no_mute).mute_output);
 
         // Windows Volume Sync for every device: on by default
         assert!(to_ipc_settings(&base).volume_sync);
