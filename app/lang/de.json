@@ -82,6 +82,7 @@
   "error.btstack_no_answer": "Der Bluetooth-Adapter reagiert nicht. Adapter abziehen, wieder einstecken und erneut versuchen.",
   "error.btstack_crash_stream": "Der Bluetooth-Stack ist abgestürzt. Anwendung neu starten.",
   "status.connecting_retry": "Verbindung fehlgeschlagen, neuer Versuch (%d/%d)...",
+  "status.huawei_ldac": "Ohrhörer werden gebeten, LDAC anzubieten...",
   "error.connect_no_answer": "Das Gerät hat nicht geantwortet. Prüfen, ob es eingeschaltet, verbindungsbereit (bei neuen Geräten im Kopplungsmodus) und in Reichweite ist.",
   "error.connect_link_lost": "Die Verbindung kam zustande, übertrug dann aber nichts, was auf Funkprobleme hindeutet. Erneut versuchen oder die Position von Adapter und Gerät ändern.",
   "error.connect_refused": "Das Gerät hat geantwortet, die Verbindung dann aber selbst beendet. Es nimmt derzeit keine Verbindung an (z. B. weil es sich ausschaltet, lädt oder mit einem anderen Gerät verbunden ist). Gerät prüfen und erneut versuchen.",

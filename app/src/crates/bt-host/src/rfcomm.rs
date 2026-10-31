@@ -4,7 +4,8 @@
 //! never connects or pairs for them: without a link there is no channel.
 //!
 //! An open resolves the service UUID to its RFCOMM server channel with an
-//! SDP query, then opens the channel; one open runs at a time, the others
+//! SDP query, then opens the channel (or opens a server channel it is given,
+//! for a service that SDP does not list); one open runs at a time, the others
 //! wait. Data a channel receives goes to its [`RfcommSink`] on the BTstack
 //! thread; data to send is queued per channel and sent frame by frame as
 //! RFCOMM's credits allow.
@@ -100,6 +101,24 @@ impl RfcommReply {
     }
 }
 
+/// What an open connects to
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Service {
+    /// The service of this UUID, by the device's SDP
+    Uuid([u8; 16]),
+    /// This server channel
+    Channel(u8),
+}
+
+impl std::fmt::Display for Service {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Service::Uuid(uuid) => write!(f, "service {}", uuid_str(uuid)),
+            Service::Channel(channel) => write!(f, "server channel {channel}"),
+        }
+    }
+}
+
 enum Stage {
     /// Behind the open that runs
     Waiting,
@@ -112,7 +131,7 @@ enum Stage {
 struct Open {
     id: u32,
     addr: [u8; 6],
-    uuid: [u8; 16],
+    service: Service,
     sink: RfcommSink,
     /// None once answered before its end (deadline, A2DP connection gone):
     /// it then runs to its end and closes a channel that opens. Its
@@ -151,7 +170,7 @@ pub(crate) struct Rfcomm {
 }
 
 impl Rfcomm {
-    pub fn open(&mut self, stack: &Stack, addr: [u8; 6], uuid: [u8; 16], sink: RfcommSink, reply: OpenReply) {
+    pub fn open(&mut self, stack: &Stack, addr: [u8; 6], service: Service, sink: RfcommSink, reply: OpenReply) {
         if !matches!(stack.acl_state(&addr), AclState::Open(_)) {
             tracing::info!("RFCOMM: no link to {}, not opening", addr_str(&addr));
             let _ = reply.send(Err(RfcommError::NotConnected));
@@ -163,9 +182,9 @@ impl Rfcomm {
             return;
         }
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-        tracing::info!("RFCOMM: opening #{id} to {} for service {}", addr_str(&addr), uuid_str(&uuid));
+        tracing::info!("RFCOMM: opening #{id} to {} for {service}", addr_str(&addr));
         let deadline = Instant::now() + OPEN_DEADLINE;
-        self.opens.push_back(Open { id, addr, uuid, sink, reply: Some(reply), deadline, stage: Stage::Waiting });
+        self.opens.push_back(Open { id, addr, service, sink, reply: Some(reply), deadline, stage: Stage::Waiting });
         self.next(stack);
     }
 
@@ -177,12 +196,22 @@ impl Rfcomm {
                 break;
             }
             stack.rfcomm_init();
-            let status = stack.sdp_query_rfcomm(&open.addr, &open.uuid);
-            if status == ERROR_CODE_SUCCESS {
-                open.stage = Stage::Sdp(None);
-                break;
+            let started = match open.service {
+                Service::Uuid(uuid) => match stack.sdp_query_rfcomm(&open.addr, &uuid) {
+                    ERROR_CODE_SUCCESS => Ok(Stage::Sdp(None)),
+                    status => Err(status),
+                },
+                Service::Channel(channel) => stack.rfcomm_create_channel(&open.addr, channel).map(Stage::Connecting),
+            };
+            match started {
+                Ok(stage) => {
+                    open.stage = stage;
+                    break;
+                }
+                Err(status) => {
+                    self.end_first(stack, Err(RfcommError::Refused(status)));
+                }
             }
-            self.end_first(stack, Err(RfcommError::Refused(status)));
         }
         self.arm_timer(stack);
     }

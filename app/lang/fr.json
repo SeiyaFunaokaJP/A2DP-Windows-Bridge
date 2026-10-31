@@ -82,6 +82,7 @@
   "error.btstack_no_answer": "L'adaptateur Bluetooth ne répond pas. Débranchez-le, rebranchez-le, puis réessayez.",
   "error.btstack_crash_stream": "La pile Bluetooth a planté. Redémarrez l'application.",
   "status.connecting_retry": "Échec de la connexion, nouvelle tentative (%d/%d)...",
+  "status.huawei_ldac": "Demande d'activation du LDAC aux écouteurs...",
   "error.connect_no_answer": "L'appareil n'a pas répondu. Vérifiez qu'il est allumé, connectable (mode d'association pour un nouvel appareil) et à portée.",
   "error.connect_link_lost": "La connexion s'est établie mais n'a rien transmis, ce qui indique un problème radio. Réessayez, ou changez la position de l'adaptateur et de l'appareil.",
   "error.connect_refused": "L'appareil a répondu puis a lui-même mis fin à la connexion. Il n'accepte pas de connexion pour le moment (par exemple il s'éteint, se recharge ou est connecté à un autre appareil). Vérifiez l'appareil et réessayez.",
