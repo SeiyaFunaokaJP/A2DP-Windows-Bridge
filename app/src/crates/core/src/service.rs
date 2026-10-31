@@ -32,6 +32,8 @@ const RESUME_TICK: Duration = Duration::from_millis(200);
 const RESUME_WAIT_TICKS: u32 = 300;
 /// LE Audio (experimental): the LE scan after the classic one (v1)
 const LE_SCAN: Duration = Duration::from_secs(5);
+/// A link younger than this keeps the stack ([`Service::host_for_stream`])
+const FRESH_LINK: Duration = Duration::from_secs(60);
 /// A connection started during a scan waits this long for the scan to end
 /// (a name request being cancelled takes up to ~2 s)
 const SCAN_END_WAIT: Duration = Duration::from_secs(5);
@@ -578,8 +580,9 @@ impl Inner {
     /// by themselves. Kept when the device to stream connected to the PC by
     /// itself on it: the HCI Reset would drop that link, and headphones that
     /// just connected then refused the PC's page for 30 s to 2 min (issue
-    /// #86). A link left from the stream that just ended (a codec switch)
-    /// does not count.
+    /// #86). So is a link that came up moments ago ([`FRESH_LINK`]): a codec
+    /// chosen right after connecting. An older link left from the stream
+    /// that just ended does not count.
     pub fn host_for_stream(self: &Arc<Self>, device: [u8; 6]) -> Result<Arc<BtHost>, Msg> {
         let old = self.host.lock().unwrap_or_else(|e| e.into_inner()).clone();
         let streamed = self.streamed.swap(false, Ordering::AcqRel);
@@ -588,6 +591,8 @@ impl Inner {
             let own_link = h.take_link_from_device(device);
             if streamed && own_link {
                 tracing::info!("keeping BTstack: {} connected to the PC by itself on it", bt_host::addr_str(&device));
+            } else if streamed && link_is_fresh(h.link_age(device)) {
+                tracing::info!("keeping BTstack: the link to {} just came up", bt_host::addr_str(&device));
             } else if streamed {
                 tracing::info!("restarting BTstack: a stream ran on it before");
                 self.shutdown_host();
@@ -1291,9 +1296,22 @@ impl Drop for ScanningGuard<'_> {
     }
 }
 
+/// The link to the device came up moments ago: headphones that just
+/// connected may refuse the PC's page for a while once it is dropped
+fn link_is_fresh(age: Option<Duration>) -> bool {
+    age.is_some_and(|a| a < FRESH_LINK)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_link_that_just_came_up_keeps_the_stack() {
+        assert!(link_is_fresh(Some(Duration::from_secs(5))));
+        assert!(!link_is_fresh(Some(FRESH_LINK)));
+        assert!(!link_is_fresh(None));
+    }
 
     #[test]
     fn a_bluetooth_restart_reconnects_the_running_session() {

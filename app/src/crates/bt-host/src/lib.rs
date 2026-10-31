@@ -1372,6 +1372,11 @@ impl BtHost {
         self.shared.update(|s| std::mem::take(&mut s.acl_up_from))
     }
 
+    /// How long the ACL link to `addr` has been up, if it is
+    pub fn link_age(&self, addr: [u8; 6]) -> Option<Duration> {
+        self.shared.lock().acl_link_age(&addr)
+    }
+
     /// The device opened an ACL link to the PC itself (turned on, it
     /// connected to the PC), it is still up, and no stream ran on it yet.
     /// Not the link of a stream that just ended. Claims it: true once.

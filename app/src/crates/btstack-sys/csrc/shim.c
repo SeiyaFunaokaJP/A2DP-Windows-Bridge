@@ -652,6 +652,12 @@ uint8_t a2dpwb_cmd_read_local_version(void) {
     return hci_send_cmd(&hci_read_local_version_information);
 }
 
+uint8_t a2dpwb_cmd_create_connection_cancel(const uint8_t *addr) {
+    bd_addr_t a;
+    memcpy(a, addr, 6);
+    return hci_send_cmd(&hci_create_connection_cancel, a);
+}
+
 uint8_t a2dpwb_cmd_remote_name_request_cancel(const uint8_t *addr) {
     bd_addr_t a;
     memcpy(a, addr, 6);
