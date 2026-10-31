@@ -1,24 +1,31 @@
 //! Huawei / Honor earbuds list LDAC only in their "sound quality first" mode
 //! (issue #30), which their app sets over the earbuds' own protocol on the
 //! serial port service. A profile that asks for LDAC of such earbuds sets
-//! it the same way: they then offer LDAC on the next connection.
+//! it the same way: they then offer LDAC on the next connection. Earbuds that
+//! had the mode off get it back when no LDAC came of it.
 //!
-//! The protocol as HFreebuds documents it (N2K02, MIT,
-//! THIRD_PARTY_LICENSES.md). A packet is `5A | length (2 bytes, big endian)
+//! The protocol as HFreebuds documents it, and its way of cutting the bytes
+//! received into packets (N2K02, MIT, THIRD_PARTY_LICENSES.md). A packet is `5A | length (2 bytes, big endian)
 //! | 00 | command (2 bytes) | params | CRC-16/XMODEM of all before it`; the
 //! length counts from the `00` to the params, a param is `type | length |
 //! value`. A read lists the types wanted with empty values and is answered
 //! by the same command.
 
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use bt_host::{BtHost, RfcommEvent};
+use bt_host::{BtHost, RfcommError, RfcommEvent, RfcommOpened, RfcommSink};
 
 const SERIAL_PORT_UUID: &str = "1101";
+/// Where earbuds serve the protocol, for those whose SDP does not lead to it:
+/// the FreeBuds Pro 4 serve it on 1, the FreeBuds 5i on 16
+const SERIAL_PORT_CHANNELS: [u8; 2] = [1, 16];
 const QUALITY_WRITE: u16 = 0x2BA2;
 const QUALITY_READ: u16 = 0x2BA3;
 const DUAL_CONNECT_READ: u16 = 0x2B2F;
+const DUAL_CONNECT_LIST: u16 = 0x2B31;
+const LOW_LATENCY: u16 = 0x2B6C;
 /// The read as the official app sends it to the FreeBuds 5, for earbuds that
 /// do not answer the usual one
 const QUALITY_READ_CAPTURED: [u8; 10] = [0x5A, 0x00, 0x05, 0x00, 0x2B, 0xA3, 0x01, 0x01, 0xF7, 0x94];
@@ -72,6 +79,11 @@ impl Answer {
         self.params.iter().find(|(k, v)| *k == kind && v.len() == 1).map(|(_, v)| v[0])
     }
 
+    /// The first byte of a param
+    fn first(&self, kind: u8) -> Option<u8> {
+        self.params.iter().find(|(k, _)| *k == kind).and_then(|(_, v)| v.first().copied())
+    }
+
     /// A packet whose checksum was checked
     fn parse(frame: &[u8]) -> Option<Answer> {
         let command = u16::from_be_bytes([*frame.get(4)?, *frame.get(5)?]);
@@ -110,6 +122,10 @@ impl Packets {
                 Frame::Invalid => {
                     self.buf.remove(0);
                 }
+                Frame::BadChecksum(total) => {
+                    tracing::debug!("Huawei: checksum of a packet wrong: {:02X?}", &self.buf[..total]);
+                    self.buf.remove(0);
+                }
                 Frame::Incomplete => {
                     // A stray 5A may promise more than ever comes: on to a
                     // whole packet behind it, if one is there already
@@ -126,6 +142,8 @@ enum Frame {
     /// A packet of this many bytes
     Valid(usize),
     Invalid,
+    /// As long as its length says, with another checksum: this many bytes
+    BadChecksum(usize),
     Incomplete,
 }
 
@@ -141,7 +159,7 @@ fn frame_at(buf: &[u8]) -> Frame {
     }
     let Some(frame) = buf.get(..total) else { return Frame::Incomplete };
     let (body, crc) = frame.split_at(total - 2);
-    if crc16(body).to_be_bytes() == crc { Frame::Valid(total) } else { Frame::Invalid }
+    if crc16(body).to_be_bytes() == crc { Frame::Valid(total) } else { Frame::BadChecksum(total) }
 }
 
 /// What a read came to
@@ -158,53 +176,84 @@ struct Link<'a> {
     id: u32,
     events: mpsc::Receiver<RfcommEvent>,
     packets: Packets,
+    /// Packets received and not taken yet
+    answers: VecDeque<Answer>,
     closed: bool,
 }
 
 impl<'a> Link<'a> {
     fn open(host: &'a BtHost, addr: [u8; 6]) -> Option<Link<'a>> {
         let uuid = bt_host::parse_uuid(SERIAL_PORT_UUID)?;
-        let (tx, events) = mpsc::channel();
-        let sink = Box::new(move |_, event| tx.send(event).is_ok());
-        match host.rfcomm_open(addr, uuid, sink) {
-            Ok(o) => Some(Link { host, id: o.id, events, packets: Packets::default(), closed: false }),
-            Err(e) => {
-                tracing::info!("Huawei: no serial port channel ({e:?}), the sound quality mode stays as it is");
-                None
+        let mut opened = Link::connect(host, |sink| host.rfcomm_open(addr, uuid, sink));
+        for channel in SERIAL_PORT_CHANNELS {
+            if !matches!(opened, Err(RfcommError::ServiceNotFound | RfcommError::Refused(_))) {
+                break;
             }
+            opened = Link::connect(host, |sink| host.rfcomm_open_channel(addr, channel, sink));
         }
+        opened
+            .inspect_err(|e| {
+                tracing::info!("Huawei: no serial port channel ({e:?}), the sound quality mode stays as it is");
+            })
+            .ok()
+    }
+
+    fn connect(
+        host: &'a BtHost,
+        open: impl FnOnce(RfcommSink) -> Result<RfcommOpened, RfcommError>,
+    ) -> Result<Link<'a>, RfcommError> {
+        let (tx, events) = mpsc::channel();
+        let opened = open(Box::new(move |_, event| tx.send(event).is_ok()))?;
+        Ok(Link { host, id: opened.id, events, packets: Packets::default(), answers: VecDeque::new(), closed: false })
     }
 
     fn send(&self, data: Vec<u8>) -> bool {
         self.host.rfcomm_send(self.id, data).wait().is_ok()
     }
 
+    /// The next packet, until `deadline`: else `NoAnswer` or `Closed`
+    fn next(&mut self, deadline: Instant) -> Result<Answer, Read> {
+        loop {
+            if let Some(answer) = self.answers.pop_front() {
+                // The dual connection list names other devices: not for a
+                // log that users post
+                if answer.command == DUAL_CONNECT_LIST {
+                    tracing::debug!("Huawei: received {:04X}", answer.command);
+                } else {
+                    tracing::debug!("Huawei: received {:04X} {:02X?}", answer.command, answer.params);
+                }
+                return Ok(answer);
+            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            match self.events.recv_timeout(left) {
+                Ok(RfcommEvent::Data(data)) => self.answers.extend(self.packets.feed(&data)),
+                Ok(RfcommEvent::Closed(reason)) => {
+                    tracing::info!("Huawei: serial port closed ({reason:?})");
+                    self.closed = true;
+                    return Err(Read::Closed);
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => return Err(Read::NoAnswer),
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    self.closed = true;
+                    return Err(Read::Closed);
+                }
+            }
+        }
+    }
+
     /// The next packet of `command`'s param `kind`, until `timeout`
     fn wait_for(&mut self, command: u16, kind: u8, timeout: Duration) -> Read {
         let deadline = Instant::now() + timeout;
         loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            match self.events.recv_timeout(left) {
-                Ok(RfcommEvent::Data(data)) => {
-                    for answer in self.packets.feed(&data) {
-                        tracing::debug!("Huawei: received {:04X} {:02X?}", answer.command, answer.params);
-                        if answer.command == command
-                            && let Some(v) = answer.byte(kind)
-                        {
-                            return Read::Value(v);
-                        }
+            match self.next(deadline) {
+                Ok(answer) => {
+                    if answer.command == command
+                        && let Some(v) = answer.byte(kind)
+                    {
+                        return Read::Value(v);
                     }
                 }
-                Ok(RfcommEvent::Closed(reason)) => {
-                    tracing::info!("Huawei: serial port closed ({reason:?})");
-                    self.closed = true;
-                    return Read::Closed;
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => return Read::NoAnswer,
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    self.closed = true;
-                    return Read::Closed;
-                }
+                Err(end) => return end,
             }
         }
     }
@@ -224,6 +273,78 @@ impl<'a> Link<'a> {
             r => r,
         }
     }
+
+    /// Sets sound quality first to `value`. True when the earbuds took it,
+    /// also when they end the link for it.
+    fn write_quality(&mut self, value: u8) -> bool {
+        if !self.send(packet(QUALITY_WRITE, &[(1, &[value])])) {
+            tracing::info!("Huawei: the sound quality mode could not be sent");
+            return false;
+        }
+        match self.wait_for(QUALITY_READ, 2, WRITE_SETTLE) {
+            Read::Closed => return true,
+            Read::Value(_) | Read::NoAnswer => {}
+        }
+        match self.read_quality() {
+            Read::Value(v) if v != value => {
+                tracing::warn!("Huawei: the earbuds did not take sound quality first {value} (they report {v})");
+                false
+            }
+            _ => {
+                tracing::info!("Huawei: sound quality first set to {value}");
+                true
+            }
+        }
+    }
+
+    /// A read for the log: its value, or how it came out. None: the channel
+    /// closed.
+    fn read_for_log(&mut self, command: u16, ask: u8, kind: u8) -> Option<String> {
+        match self.read(packet(command, &[(ask, &[])]), command, kind) {
+            Read::Value(v) => Some(v.to_string()),
+            Read::NoAnswer => Some("not reported".into()),
+            Read::Closed => None,
+        }
+    }
+
+    /// The state of each device the earbuds know, for the log: above 0
+    /// connected, 9 playing. Not their addresses or names. None: the channel
+    /// closed.
+    fn dual_connect_states(&mut self) -> Option<String> {
+        if !self.send(packet(DUAL_CONNECT_LIST, &[(1, &[])])) {
+            self.closed = true;
+            return None;
+        }
+        let deadline = Instant::now() + ANSWER_TIMEOUT;
+        let mut count = None;
+        let mut states = BTreeMap::new();
+        while count.is_none_or(|c| states.len() < usize::from(c)) {
+            match self.next(deadline) {
+                Ok(answer) if answer.command == DUAL_CONNECT_LIST => {
+                    count = answer.byte(2).or(count);
+                    if let (Some(index), Some(state)) = (answer.byte(3), answer.first(5)) {
+                        states.insert(index, state);
+                    }
+                }
+                Ok(_) => {}
+                Err(Read::Closed) => return None,
+                Err(_) => break,
+            }
+        }
+        Some(format!("{:?}", states.values().collect::<Vec<_>>()))
+    }
+
+    /// What a report of no LDAC may come from. False: the channel closed.
+    fn log_state(&mut self, quality: u8) -> bool {
+        let Some(dual) = self.read_for_log(DUAL_CONNECT_READ, 1, 1) else { return false };
+        let Some(latency) = self.read_for_log(LOW_LATENCY, 2, 2) else { return false };
+        let Some(devices) = self.dual_connect_states() else { return false };
+        tracing::info!(
+            "Huawei: sound quality first is {quality}, dual connection {dual}, device states {devices}, \
+             low latency {latency}"
+        );
+        true
+    }
 }
 
 impl Drop for Link<'_> {
@@ -234,46 +355,32 @@ impl Drop for Link<'_> {
     }
 }
 
-/// Sets the connected earbuds to sound quality first. True when they have
-/// that mode and took the write: LDAC can then come with a new connection.
-/// The mode is written also when they report it on already, set from a
-/// phone: FreeBuds set so did not list LDAC to A2DPWB (issue #30). Nothing
-/// is written to earbuds that do not answer the read.
-pub fn ask_for_ldac(host: &BtHost, addr: [u8; 6]) -> bool {
-    let Some(mut link) = Link::open(host, addr) else { return false };
+/// Sets the connected earbuds to sound quality first. The mode they were in
+/// (0: off) when they have that mode and took the write: LDAC can then come
+/// with a new connection. The mode is written also when they report it on
+/// already, set from a phone: FreeBuds set so did not list LDAC to A2DPWB
+/// (issue #30). Nothing is written to earbuds that do not answer the read.
+pub fn ask_for_ldac(host: &BtHost, addr: [u8; 6]) -> Option<u8> {
+    let mut link = Link::open(host, addr)?;
     let before = match link.read_quality() {
         Read::Value(v) => v,
         Read::NoAnswer => {
             tracing::info!("Huawei: these earbuds report no sound quality mode");
-            return false;
+            return None;
         }
-        Read::Closed => return false,
+        Read::Closed => return None,
     };
-    // Only for the log: whether a report of no LDAC may come from it
-    let dual = match link.read(packet(DUAL_CONNECT_READ, &[(1, &[])]), DUAL_CONNECT_READ, 1) {
-        Read::Value(v) => format!("{v}"),
-        Read::NoAnswer => "not reported".into(),
-        Read::Closed => return false,
-    };
-    tracing::info!("Huawei: sound quality first is {before}, dual connection {dual}; setting sound quality first");
-    if !link.send(packet(QUALITY_WRITE, &[(1, &[1])])) {
-        tracing::info!("Huawei: the sound quality mode could not be sent");
-        return false;
+    if !link.log_state(before) {
+        return None;
     }
-    match link.wait_for(QUALITY_READ, 2, WRITE_SETTLE) {
-        Read::Closed => return true,
-        Read::Value(_) | Read::NoAnswer => {}
-    }
-    match link.read_quality() {
-        Read::Value(1) | Read::NoAnswer | Read::Closed => {
-            tracing::info!("Huawei: sound quality first set, connecting again");
-            true
-        }
-        Read::Value(v) => {
-            tracing::warn!("Huawei: the earbuds did not take sound quality first (they report {v})");
-            false
-        }
-    }
+    link.write_quality(1).then_some(before)
+}
+
+/// Sets the connected earbuds back to connection first, the mode that costs
+/// them neither battery nor stability. True when a new connection is due:
+/// the write may end the audio connection.
+pub fn set_connection_first(host: &BtHost, addr: [u8; 6]) -> bool {
+    Link::open(host, addr).is_some_and(|mut link| link.write_quality(0))
 }
 
 #[cfg(test)]
@@ -284,7 +391,7 @@ mod tests {
         (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
     }
 
-    // Packets captured from the official app (HFreebuds' ProtocolTest)
+    // The packets of HFreebuds' ProtocolTest
     #[test]
     fn packets_as_the_official_app_sends_them() {
         assert_eq!(packet(QUALITY_WRITE, &[(1, &[1])]), hex("5A0006002BA2010101B5EF"));
@@ -318,6 +425,16 @@ mod tests {
         let mut a = hex("5A0006002B10010101A956");
         a[9] ^= 1;
         assert!(Packets::default().feed(&a).is_empty());
+    }
+
+    #[test]
+    fn a_stray_5a_does_not_hide_a_packet() {
+        let a = hex("5A0006002B10010101A956");
+        let mut stray = vec![0x5A, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00];
+        stray.extend(&a);
+        let got = Packets::default().feed(&stray);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].byte(1), Some(1));
     }
 
     #[test]

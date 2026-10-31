@@ -340,16 +340,20 @@ class HuaweiEarbuds:
     """The control service of Huawei earbuds: LDAC is listed from the
     connection after a "sound quality first" write, also when the read
     reported the mode on already (set from a phone, as issue #30's FreeBuds).
-    drop: the earbuds end the link at the write. silent: nothing answered."""
+    drop: the earbuds end the link at the write. silent: nothing answered.
+    no_ldac: the write is taken, and LDAC is never listed. channel: the
+    protocol is served there, and SDP does not list it."""
 
-    def __init__(self, device, mode_on, drop, silent):
+    def __init__(self, device, mode_on, drop, silent, no_ldac, channel):
         self.device, self.mode, self.drop, self.silent = device, int(mode_on), drop, silent
+        self.no_ldac = no_ldac
         self.ldac = False
         self.connection = None
         device.on('connection', self.on_connection)
-        channel = Server(device).listen(self.on_dlc)
-        device.sdp_service_records[0x00010002] = make_service_sdp_records(
-            0x00010002, channel, UUID.from_16_bits(0x1101))
+        served = Server(device).listen(self.on_dlc, channel or 0)
+        if not channel:
+            device.sdp_service_records[0x00010002] = make_service_sdp_records(
+                0x00010002, served, UUID.from_16_bits(0x1101))
 
     def on_connection(self, connection):
         self.connection = connection
@@ -367,9 +371,17 @@ class HuaweiEarbuds:
             dlc.write(huawei_packet(command, [(2, bytes([self.mode]))]))
         elif command == 0x2B2F:
             dlc.write(huawei_packet(command, [(1, b'\x01')]))
+        elif command == 0x2B6C:
+            dlc.write(huawei_packet(command, [(2, b'\x00')]))
+        elif command == 0x2B31:
+            # The phone has a name and an address, which A2DPWB does not log
+            dlc.write(huawei_packet(command, [(2, b'\x02'), (3, b'\x00'), (4, b'\xAA' * 6), (5, b'\x09'),
+                                              (9, b'Emulated phone')]))
+            dlc.write(huawei_packet(command, [(2, b'\x02'), (3, b'\x01'), (4, b'\xBB' * 6), (5, b'\x01'),
+                                              (9, b'A2DPWB')]))
         elif command == 0x2BA2:
             self.mode = params[2]
-            self.ldac = self.mode == 1
+            self.ldac = self.mode == 1 and not self.no_ldac
             if self.drop:
                 asyncio.ensure_future(self.connection.disconnect())
 
@@ -420,7 +432,8 @@ async def main(args):
     }
     huawei = None
     if args.huawei:
-        huawei = HuaweiEarbuds(device, args.huawei == 'on', args.huawei_drop, args.huawei_silent)
+        huawei = HuaweiEarbuds(device, args.huawei == 'on', args.huawei_drop, args.huawei_silent,
+                               args.huawei_no_ldac, args.huawei_channel)
     await device.power_on()
     await device.set_discoverable(True)
     await device.set_connectable(True)
@@ -500,5 +513,9 @@ if __name__ == '__main__':
                         help='end the link when sound quality first is written')
     parser.add_argument('--huawei-silent', action='store_true',
                         help='the control channel answers nothing (earbuds without the mode)')
+    parser.add_argument('--huawei-no-ldac', action='store_true',
+                        help='sound quality first is taken, and LDAC is never listed')
+    parser.add_argument('--huawei-channel', type=int,
+                        help='serve the control channel on this RFCOMM channel, not listed in SDP')
     bumble.logging.setup_basic_logging(parser.parse_known_args()[0].log_level)
     asyncio.run(main(parser.parse_args()))

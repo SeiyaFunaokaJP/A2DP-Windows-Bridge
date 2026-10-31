@@ -114,7 +114,7 @@ CONFIG_PATTERN = {  # a2dpwb_decode's "Configuration :" line
 # header, packet sizes and frame types)
 NO_DECODER = {'ldac', 'ldac-96k', 'ldac-48k', 'lhdcv5', 'aptxad', 'aptxad-r2', 'aptxad-r2-96k'}
 APTXAD_SINK = ['--codecs', 'sbc', 'aac', 'aptx', 'aptxad']
-HUAWEI_SINK = ['--codecs', 'sbc', 'aac']
+HUAWEI_SINK = ['--codecs', 'sbc', 'aac', '--log-level', 'INFO']  # LOG_CHECKS read its log
 HUAWEI_NAME = ['--device-name', 'HUAWEI FreeBuds Pro 4']
 # Further cases: name -> (A2DPWB -c, emu_sink.py arguments, the codec expected,
 # more A2DPWB arguments)
@@ -207,6 +207,28 @@ NEGOTIATION = {
     'huawei-no-mode': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-silent'], 'aac',
                        HUAWEI_NAME + ['--fallback']),
     'huawei-other-name': ('ldac', HUAWEI_SINK + ['--huawei', 'off'], 'aac', ['--fallback']),
+    # The write taken and still no LDAC: AAC, the mode back off when it was off
+    'huawei-no-ldac': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-no-ldac'], 'aac',
+                       HUAWEI_NAME + ['--fallback']),
+    'huawei-no-ldac-drop': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-no-ldac', '--huawei-drop'], 'aac',
+                            HUAWEI_NAME + ['--fallback']),
+    'huawei-no-ldac-mode-on': ('ldac', HUAWEI_SINK + ['--huawei', 'on', '--huawei-no-ldac'], 'aac',
+                               HUAWEI_NAME + ['--fallback']),
+    # The serial port on a channel of its own, which SDP does not list
+    'huawei-channel-1': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-channel', '1'], 'ldac', HUAWEI_NAME),
+    'huawei-channel-16': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-channel', '16'], 'ldac', HUAWEI_NAME),
+}
+QUALITY_ON, QUALITY_OFF = 'Huawei control: 2BA2 010101', 'Huawei control: 2BA2 010100'
+# What these cases' logs must, and must not, have: name -> (log, text, whether
+# it is there)
+LOG_CHECKS = {
+    'huawei-ldac': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, False),
+                    ('a2dpwb.log', 'Emulated phone', False)],
+    'huawei-no-mode': [('sink.log', 'Huawei control: 2BA2', False)],
+    'huawei-other-name': [('sink.log', 'Huawei control', False)],
+    'huawei-no-ldac': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
+    'huawei-no-ldac-drop': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
+    'huawei-no-ldac-mode-on': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, False)],
 }
 TONES = ((1000.0, 0.5), (1500.0, 0.5))  # (frequency, amplitude) per channel, as --test-tone
 LATE_SDU_FAILURE = 'reached the controller after their SDU interval began'  # LE Audio cases run once more
@@ -403,6 +425,9 @@ def run_codec(args, codec, port):
     finally:
         sink.terminate()
         sink.wait(10)
+    for name, text, present in LOG_CHECKS.get(codec, []):
+        if (text in read_text(os.path.join(out, name))) != present:
+            failures.append(f'{name}: "{text}" {"missing" if present else "found"}')
 
     reports = {}
     for side, capture, extra in (('sent', src_capture, []), ('received', sink_capture, ['--received'])):

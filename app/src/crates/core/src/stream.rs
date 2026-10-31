@@ -1060,7 +1060,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // However the session ends, the next one starts on a new stack
     let _streamed = StreamedMark(inner, req.device);
     // Huawei earbuds that do not list LDAC: asked for, not for Auto, as the
-    // mode stays set on them and trades connection stability for it
+    // mode stays set on them and trades connection stability for it. No LDAC
+    // from it: earbuds that had it off get it back, and a connection after it.
     if req.codec == Some(CodecKind::Ldac)
         && !remote.has(CodecKind::Ldac)
         && remote.audio_sinks_in_use == 0
@@ -1068,15 +1069,26 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         && !stopped()
     {
         inner.notify(StreamState::Connecting, Msg::new("status.huawei_ldac"));
-        if crate::huawei::ask_for_ldac(&host, req.device) {
-            host.disconnect();
-            for _ in 0..10 {
-                if !stopped() {
-                    std::thread::sleep(Duration::from_millis(100));
+        if let Some(before) = crate::huawei::ask_for_ldac(&host, req.device) {
+            let connect_again = || {
+                host.disconnect();
+                for _ in 0..10 {
+                    if !stopped() {
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
                 }
+                inner.notify(StreamState::Connecting, Msg::new("status.connecting_device"));
+                connect(&host)
+            };
+            let mut result = connect_again();
+            if before == 0
+                && result.as_ref().is_ok_and(|caps| !caps.has(CodecKind::Ldac))
+                && !stopped()
+                && crate::huawei::set_connection_first(&host, req.device)
+            {
+                result = connect_again();
             }
-            inner.notify(StreamState::Connecting, Msg::new("status.connecting_device"));
-            remote = match connect(&host) {
+            remote = match result {
                 Ok(caps) => caps,
                 Err(_) if stopped() => return inner.notify(StreamState::Idle, Msg::new("status.ready")),
                 Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),

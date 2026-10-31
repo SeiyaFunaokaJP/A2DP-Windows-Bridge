@@ -629,6 +629,26 @@ impl BtHost {
     /// within [`RFCOMM_OPEN_DEADLINE`]. `sink` receives the channel's data
     /// and its close, on the BTstack thread.
     pub fn rfcomm_open(&self, addr: [u8; 6], uuid: [u8; 16], sink: RfcommSink) -> Result<RfcommOpened, RfcommError> {
+        self.rfcomm_open_service(addr, rfcomm::Service::Uuid(uuid), sink)
+    }
+
+    /// [`BtHost::rfcomm_open`] of a server channel of `addr`, for a service
+    /// its SDP does not list
+    pub fn rfcomm_open_channel(
+        &self,
+        addr: [u8; 6],
+        channel: u8,
+        sink: RfcommSink,
+    ) -> Result<RfcommOpened, RfcommError> {
+        self.rfcomm_open_service(addr, rfcomm::Service::Channel(channel), sink)
+    }
+
+    fn rfcomm_open_service(
+        &self,
+        addr: [u8; 6],
+        service: rfcomm::Service,
+        sink: RfcommSink,
+    ) -> Result<RfcommOpened, RfcommError> {
         let (tx, rx) = mpsc::sync_channel(1);
         self.post(move |app, s| {
             // Only to the device being streamed to, once connected (not
@@ -638,7 +658,7 @@ impl BtHost {
                 let _ = tx.send(Err(RfcommError::NotConnected));
                 return;
             }
-            app.rfcomm.open(s, addr, uuid, sink, tx)
+            app.rfcomm.open(s, addr, service, sink, tx)
         });
         match rx.recv_timeout(RFCOMM_OPEN_TIMEOUT) {
             Ok(r) => r,
