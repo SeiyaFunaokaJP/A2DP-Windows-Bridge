@@ -95,14 +95,33 @@ describe("Home", () => {
   });
 
   it("shows the link quality, not a codec card, the link latency nor the capture source (issue #86)", async () => {
-    start("#/home");
-    await homeCard("WH-1000XM5");
+    const { core } = start("#/home");
+    const wh = await homeCard("WH-1000XM5");
     const main = within(screen.getByRole("main"));
-    expect(await main.findByRole("region", { name: t("quality.title") })).toBeInTheDocument();
+    // Only while it streams: after that there is no link to rate
+    expect(main.queryByRole("region", { name: t("quality.title") })).toBeNull();
+    await core.request("stream.start", { profile: core.state.snap!.active_profile! });
+    const quality = await within(wh).findByRole("region", { name: t("quality.title") });
+    expect(quality).toBeInTheDocument();
     // The codec is on the device's card
     expect(main.queryByRole("region", { name: t("quality.codec") })).toBeNull();
     expect(main.queryByText("Link latency")).toBeNull();
     expect(main.queryByLabelText(t("capture.mode"))).toBeNull();
+    await core.request("stream.stop");
+    await waitFor(() => expect(main.queryByRole("region", { name: t("quality.title") })).toBeNull());
+  });
+
+  it("offers to add a device beside a lone card, not beside two (issue #86)", async () => {
+    const { core } = start("#/home");
+    await homeCard("WH-1000XM5");
+    const add = () => screen.queryByRole("button", { name: t("ui.home.add_device") });
+    expect(document.querySelectorAll(".home-device").length).toBeGreaterThan(1);
+    expect(add()).toBeNull();
+    const devices = core.state.snap!.devices.filter((d) => d.saved && !d.name.startsWith("WH-1000XM5"));
+    for (const d of devices) await core.request("device.forget", { address: d.address, le_audio: d.le_audio });
+    await waitFor(() => expect(document.querySelectorAll(".home-device")).toHaveLength(1));
+    fireEvent.click(add()!);
+    await waitFor(() => expect(location.hash).toBe("#/devices"));
   });
 
   it("switches to another device with its Connect (one device streams at a time)", async () => {

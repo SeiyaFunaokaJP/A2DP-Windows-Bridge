@@ -162,6 +162,7 @@
   "settings.include_prereleases": "アップデート確認にプレリリースを含める",
   "settings.media_keys": "オーディオデバイスのボタンで再生を操作",
   "settings.remember_volume": "オーディオデバイスごとの音量を記憶",
+  "settings.auto_reconnect": "自動で再接続する",
   "settings.le_low_latency": "ゲーミング向けオーディオデバイスの低遅延（実験的）",
   "advanced.max_packet": "最大メディアパケットサイズ（バイト）",
   "advanced.max_packet_recommended": "推奨値（%d）",

@@ -58,7 +58,7 @@ The headphones and speakers A2DPWB can stream to, each with its own settings: **
 - **Output Source**: System Loopback (a new device's default), Virtual Device or Application (see [Capture Modes](#capture-modes)). Beside it, the format Windows mixes the captured device in (sample rate and bit depth, read only), in amber when the device's codec settings ask for another one, with a line below saying which (it still streams, converted); below it, what the source does
 - **Set as Windows default output while connected**, with a virtual device
 
-**All audio devices**, above the list, has the switches that apply to every device: **Windows Volume Sync** (see [Volume](#volume)), **Control playback with the audio device's buttons** and **Remember each audio device's volume**. Each device's **Max media packet size** is on the **Developer** screen (see [Max Media Packet Size](#max-packet)).
+**All audio devices**, above the list, has the switches that apply to every device: **Windows Volume Sync** (see [Volume](#volume)), **Control playback with the audio device's buttons**, **Remember each audio device's volume** and **Reconnect automatically**. Each device's **Max media packet size** is on the **Developer** screen (see [Max Media Packet Size](#max-packet)).
 
 ### Diagnostics
 
@@ -560,3 +560,5 @@ A failed connection is tried again by itself (up to 3 attempts) when the link ca
 **The first connection** to a headphone needs pairing mode; later ones reconnect with the saved link key. If it fails although the headphones are in pairing mode, they may still be connected to a phone or another PC (also through LE Audio): disconnect them there, turn LE Audio off in the headphones' app if it has the option, put them into pairing mode and connect once more. The log then shows `signaling connection failed (0x66)` (refused for security: the headphones kept the key of an earlier pairing, for example with this PC's Windows Bluetooth) or `(0x67)` (refused for lack of resources: busy with another device).
 
 A lost connection is reconnected by itself (up to 10 attempts). When the PC goes to sleep while streaming, A2DPWB reconnects after it resumes; these attempts are not counted.
+
+Turn off **Audio Devices > Reconnect automatically** if you move the headphones between the PC and a phone by turning them off and on. A connection that is lost then stays disconnected and A2DPWB lets go of the Bluetooth adapter, so the headphones can connect to the phone. Connect them to the PC again with **Connect** on Home.

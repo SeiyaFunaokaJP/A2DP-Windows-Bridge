@@ -162,6 +162,7 @@
   "settings.include_prereleases": "檢查更新時包含搶先版",
   "settings.media_keys": "用音訊裝置的按鈕控制播放",
   "settings.remember_volume": "記住每個音訊裝置的音量",
+  "settings.auto_reconnect": "自動重新連線",
   "settings.le_low_latency": "遊戲音訊裝置低延遲（實驗性）",
   "advanced.max_packet": "媒體封包大小上限 (位元組)",
   "advanced.max_packet_recommended": "建議值 (%d)",

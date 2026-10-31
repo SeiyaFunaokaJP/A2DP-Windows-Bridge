@@ -869,6 +869,13 @@ enum LinkCheck {
     SleepThrough,
 }
 
+/// What connects again only with Reconnect automatically on: the device
+/// gone, by itself or through the PC's sleep. A stack that stopped working is
+/// recovered either way.
+fn needs_auto_reconnect(check: LinkCheck) -> bool {
+    matches!(check, LinkCheck::Reconnect | LinkCheck::SleepThrough | LinkCheck::Restart(RESUMED))
+}
+
 fn check_link(lost: bool, stalled: bool, stale: bool, suspending: bool) -> LinkCheck {
     if suspending {
         // A stack left from an earlier sleep is replaced after this one;
@@ -920,7 +927,12 @@ fn wait_for_device(inner: &Inner, host: &BtHost, device: [u8; 6], pipeline: &mut
     let t = Instant::now();
     let back = loop {
         inner.wait_tick(Duration::from_millis(200));
-        if inner.stop_requested() || inner.power.suspending() || inner.power.stale() || host.stalled() {
+        if inner.stop_requested()
+            || inner.power.suspending()
+            || inner.power.stale()
+            || host.stalled()
+            || !inner.auto_reconnect()
+        {
             break false;
         }
         match host.link_came_up() {
@@ -1669,6 +1681,21 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         // again on it
         let lost = host.check_disconnected();
         let check = check_link(lost, host.stalled(), inner.power.stale(), inner.power.suspending());
+        if needs_auto_reconnect(check) && !inner.auto_reconnect() {
+            tracing::info!("link check {check:?}: reconnecting is off, the session ends");
+            if check == LinkCheck::SleepThrough {
+                if let Some(p) = pipeline.take() {
+                    let _ = p.stop();
+                }
+                inner.shutdown_host_for_sleep();
+            }
+            // Not connected again by a Bluetooth restart either
+            inner.waiting_for_device();
+            inner.done_waiting_for_device(false);
+            inner.notify(StreamState::Idle, Msg::new("status.device_off"));
+            lost_for_good = true;
+            break;
+        }
         // Headphones turned back on: connecting to them is no failure
         let mut back_on = false;
         let mut restart_why = match check {
@@ -1964,6 +1991,10 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     drop(default_guard);
     if !lost_for_good {
         inner.notify(StreamState::Idle, Msg::new("status.ready"));
+    } else if !inner.auto_reconnect() {
+        // A stack left running would accept the headphones when they are
+        // turned on, which they may mean for a phone
+        inner.shutdown_host();
     }
 }
 
@@ -1991,6 +2022,15 @@ mod tests {
         assert!(!sbc_abr(&req("ldac", true), CodecKind::Sbc));
         assert!(!sbc_abr(&req("sbcxq", true), CodecKind::Sbc));
         assert!(!sbc_abr(&req("faststream", true), CodecKind::FastStream));
+    }
+
+    #[test]
+    fn only_a_stopped_adapter_recovers_with_reconnecting_off() {
+        assert!(needs_auto_reconnect(LinkCheck::Reconnect));
+        assert!(needs_auto_reconnect(LinkCheck::SleepThrough));
+        assert!(needs_auto_reconnect(LinkCheck::Restart(RESUMED)));
+        assert!(!needs_auto_reconnect(LinkCheck::Restart(ADAPTER_STOPPED)));
+        assert!(!needs_auto_reconnect(LinkCheck::Fine));
     }
 
     #[test]

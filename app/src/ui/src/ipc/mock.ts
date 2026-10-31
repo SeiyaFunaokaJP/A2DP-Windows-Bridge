@@ -162,6 +162,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     include_prereleases: false,
     media_keys: true,
     remember_volume: true,
+    auto_reconnect: true,
     volume_sync: true,
     developer_mode: false,
     dev_overrides: {

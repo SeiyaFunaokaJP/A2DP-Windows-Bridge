@@ -162,6 +162,7 @@
   "settings.include_prereleases": "Include Pre-releases in Update Checks",
   "settings.media_keys": "Control playback with the audio device's buttons",
   "settings.remember_volume": "Remember each audio device's volume",
+  "settings.auto_reconnect": "Reconnect automatically",
   "settings.le_low_latency": "Low latency for gaming audio devices (experimental)",
   "advanced.max_packet": "Max media packet size (bytes)",
   "advanced.max_packet_recommended": "Recommended (%d)",
