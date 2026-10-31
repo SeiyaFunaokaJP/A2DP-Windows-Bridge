@@ -168,8 +168,6 @@ function MainWindow() {
               >
                 <Icon name="navigation" />
               </button>
-              <img src="/app-icon.png" alt="" class="nav-logo" width="20" height="20" />
-              <span class="nav-title">{t("app.title")}</span>
             </div>
             <ul class="nav-list">
               <For each={NAV.filter((n) => n.name !== "developer" || core.state.snap?.settings.developer_mode)}>

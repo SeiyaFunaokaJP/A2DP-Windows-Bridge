@@ -123,6 +123,11 @@ pub struct Settings {
     /// for every device.
     #[serde(default = "default_true")]
     pub remember_volume: bool,
+    /// A session whose device went away connects it again by itself, and
+    /// takes it when it comes back. Off: the session ends and the adapter is
+    /// released, so headphones turned off can go to a phone instead.
+    #[serde(default = "default_true")]
+    pub auto_reconnect: bool,
     pub saved_volumes: BTreeMap<String, i32>,
     /// Before schema 6: per-device overrides of media_keys and
     /// remember_volume. Those are one setting for every device now (issue
@@ -271,6 +276,7 @@ impl Default for Settings {
             include_prereleases: default_prereleases(),
             media_keys: true,
             remember_volume: true,
+            auto_reconnect: true,
             saved_volumes: BTreeMap::new(),
             device_options: None,
             volume_sync: true,

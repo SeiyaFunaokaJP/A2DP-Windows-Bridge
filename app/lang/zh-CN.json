@@ -162,6 +162,7 @@
   "settings.include_prereleases": "检查更新时包括预发布版本",
   "settings.media_keys": "用音频设备的按钮控制播放",
   "settings.remember_volume": "记住每个音频设备的音量",
+  "settings.auto_reconnect": "自动重新连接",
   "settings.le_low_latency": "游戏音频设备低延迟（实验性）",
   "advanced.max_packet": "最大媒体数据包大小（字节）",
   "advanced.max_packet_recommended": "推荐（%d）",

@@ -619,6 +619,10 @@ pub struct Settings {
     pub media_keys: bool,
     /// Remember each device's volume (one switch for every device)
     pub remember_volume: bool,
+    /// Connect a device that went away again by itself (on by default).
+    /// Off: the session ends and the adapter is released.
+    #[serde(default = "yes")]
+    pub auto_reconnect: bool,
     /// Windows Volume Sync for every device (on by default): the audio
     /// device's volume and the captured device's Windows volume follow each
     /// other. Off: no stream syncs. A change starts the profile in use

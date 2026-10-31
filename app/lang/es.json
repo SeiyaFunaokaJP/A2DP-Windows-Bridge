@@ -162,6 +162,7 @@
   "settings.include_prereleases": "Incluir versiones preliminares al buscar actualizaciones",
   "settings.media_keys": "Controlar la reproducción con los botones del dispositivo de audio",
   "settings.remember_volume": "Recordar el volumen de cada dispositivo de audio",
+  "settings.auto_reconnect": "Reconectar automáticamente",
   "settings.le_low_latency": "Baja latencia para dispositivos de audio gaming (experimental)",
   "advanced.max_packet": "Tamaño máx. de paquete multimedia (bytes)",
   "advanced.max_packet_recommended": "Recomendado (%d)",

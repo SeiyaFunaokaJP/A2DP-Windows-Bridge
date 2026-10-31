@@ -293,6 +293,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         include_prereleases: s.include_prereleases,
         media_keys: s.media_keys,
         remember_volume: s.remember_volume,
+        auto_reconnect: s.auto_reconnect,
         volume_sync: s.volume_sync,
         developer_mode: s.debug_mode,
         dev_overrides: DevOverrides {
@@ -339,6 +340,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.include_prereleases = s.include_prereleases;
     c.media_keys = s.media_keys;
     c.remember_volume = s.remember_volume;
+    c.auto_reconnect = s.auto_reconnect;
     c.volume_sync = s.volume_sync;
     c.debug_mode = s.developer_mode;
     c.dev_overrides = codec::dev::DevOverrides {

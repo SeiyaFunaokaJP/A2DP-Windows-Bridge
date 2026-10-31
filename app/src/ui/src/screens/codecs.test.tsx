@@ -942,6 +942,7 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     expect(sync).toBeChecked();
     expect(keys).toBeChecked();
     expect(within(all).getByRole("switch", named("settings.remember_volume"))).toBeChecked();
+    expect(within(all).getByRole("switch", named("settings.auto_reconnect"))).toBeChecked();
     fireEvent.click(sync);
     await waitFor(() => expect(calls.some((c) => c.method === "settings.set")).toBe(true));
     const set = calls.find((c) => c.method === "settings.set")!.params as { settings: Record<string, unknown> };
