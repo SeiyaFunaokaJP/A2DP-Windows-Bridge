@@ -17,7 +17,6 @@ export function Devices() {
       <header class="page-head">
         <h1>{t("ui.nav.devices")}</h1>
       </header>
-      <p class="muted">{t("ui.devices.page_hint")}</p>
       <AllDevices />
       <DevicePicker manage address="" onPick={() => {}} settings={(d) => <DeviceSettings device={d} />} />
     </div>
@@ -42,7 +41,6 @@ function AllDevices() {
       />
       <Toggle
         label={t("settings.media_keys")}
-        hint={t("tooltip.media_keys")}
         checked={s().media_keys}
         onChange={(v) => void saveSettings(app, { media_keys: v })}
       />

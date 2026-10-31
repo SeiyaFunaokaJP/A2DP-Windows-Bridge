@@ -41,12 +41,13 @@ The codec of each saved audio device, one section per device (a dot that is gree
 - **Show only supported codecs** (on by default; turn it off to show both supported and unsupported codecs): the codecs a device did not offer are left out. Before a device's first connection, all of them are shown
 - **...** on a card opens that codec's settings; **OK** chooses the codec with them. Each codec keeps its own settings: choosing another codec and coming back brings them back. Only what that codec can do, and what the device listed at its last connection, is offered:
   - **Quality**: LDAC **High** / **Medium** / **Low** (990 / 660 / 330 kbps), LHDC V5 **High** / **Medium-High** / **Medium** / **Low** (1000 / 900 / 500 / 400 kbps, Android's four levels); aptX Adaptive **High** / **Low Latency** (see [aptX Adaptive](#aptx-adaptive)). AAC, Opus, Opus 05, SBC and SBC XQ have one, **High**, shown rather than chosen: the highest bit rate the device takes (ABR or VBR, where offered, still varies it; SBC and SBC XQ show the bit rate their bitpool and frame setup give). aptX, aptX HD, aptX LL and FastStream have a bit rate fixed by the codec. A quality saved by an earlier version that the codec no longer has (aptX Adaptive's Standard / Mobile, AAC's lower levels, ...) loads as High
+  - **Frame setup** (SBC and SBC XQ): blocks, subbands, bit allocation and channel mode. Auto keeps 16 blocks, 8 subbands, Loudness and Joint stereo (SBC XQ: dual channel). A value the device does not take falls back to Auto when connecting
   - **ABR (Adaptive Bit Rate)**: for LDAC, LHDC V5, aptX Adaptive, SBC and SBC XQ (see [ABR](#abr)); **VBR** for AAC
   - **Sample Rate**: Auto is 48 kHz, or the best rate the device lists if it has no 48 kHz (96 kHz adds latency and is less compatible, with no audible gain, and Windows mixes at 48 kHz); choose 96 kHz here to use it. Only the rates the device lists are offered (aptX Adaptive's 96 kHz only to a device that lists it, see [aptX Adaptive](#aptx-adaptive))
   - **Bit Depth**: 16 or 24 bit for LDAC and LHDC V5 (Auto: 24 bit), as far as the device lists them; 16 bit for the others
   - **Bitpool** (SBC, SBC XQ): one slider with two handles, the minimum and the maximum bitpool, within the range the device lists, which the dialog shows. The maximum is the bitpool used; the minimum is the lowest one used (the bottom of the range the connection is set up with, and how far ABR may go down). **Auto** sets both back: the maximum by quality, the minimum the device's and ABR's own. AAC's and LHDC V5's bit rates stay within the maximum the device lists
 
-The defaults give the best sound; most devices need nothing but **Auto**. An LE Audio device (experimental) has one card, LC3, and **Low latency for gaming headsets (GMAP, experimental)** (see [LE Audio](#le-audio)).
+The defaults give the best sound; most devices need nothing but **Auto**. An LE Audio device (experimental) has one card, LC3, and **Low latency for gaming audio devices (experimental)** (see [LE Audio](#le-audio)).
 
 Behind the scenes A2DPWB keeps one entry per device in `profiles.json` (its codec, each codec's settings and its codec order), named "*device* | *codec*" there; the window and the tray menu show the device's name. Earlier versions let you make several profiles for one device: the first start of a version with the Codecs screen keeps the one last used (otherwise the first) and folds the others into it, keeping their codec settings (quality, sample rate, bit depth, ABR, SBC setup) for their codecs. Their own names, output sources and packet sizes are not kept; `profiles.json` as it was is saved once as `profiles-before-codecs.json` in the settings folder. The 2.0.2 pre-releases' **Auto's order…** (one order for every device, in developer mode) is no longer used: each device has its own order now.
 
@@ -55,9 +56,9 @@ Behind the scenes A2DPWB keeps one entry per device in `profiles.json` (its code
 The headphones and speakers A2DPWB can stream to, each with its own settings: **Scan Devices** finds nearby devices with the USB adapter (30 seconds, listed as they answer; **Stop** ends it; put the headphones into pairing mode). Devices A2DPWB paired with before are tagged **Paired**. If the scan does not find them, enter the address under **Manual:** and click **Use**; typed or pasted addresses are formatted as you go (`aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` and `AA BB CC DD EE FF` all become `AA:BB:CC:DD:EE:FF`). A saved device can be renamed or removed, and has:
 
 - **Output Source**: System Loopback (a new device's default), Virtual Device or Application (see [Capture Modes](#capture-modes)). Beside it, the format Windows mixes the captured device in (sample rate and bit depth, read only), in amber when the device's codec settings ask for another one, with a line below saying which (it still streams, converted); below it, what the source does
-- **Auto Switch Windows Default Audio Output Device**, with a virtual device
+- **Set as Windows default output while connected**, with a virtual device
 
-**All audio devices**, above the list, has the switches that apply to every device: **Windows Volume Sync** (see [Volume](#volume)), **Audio Device Buttons Playback Control** and **Remember the Bluetooth Audio Device's Last Volume Level**. Each device's **Max media packet size** is on the **Developer** screen (see [Max Media Packet Size](#max-packet)).
+**All audio devices**, above the list, has the switches that apply to every device: **Windows Volume Sync** (see [Volume](#volume)), **Control playback with the audio device's buttons** and **Remember each audio device's volume**. Each device's **Max media packet size** is on the **Developer** screen (see [Max Media Packet Size](#max-packet)).
 
 ### Diagnostics
 
@@ -92,7 +93,7 @@ Shown while **Settings > Developer mode** is on; most users never need it. Three
 - The detected USB Bluetooth adapters with their chip, address, USB ID, Bluetooth version, **Driver** and **Firmware**; the list updates by itself when an adapter is plugged in or out. The driver is **Original driver** (the one Windows or the manufacturer installed; hover for its name) or **WinUSB driver** (the one A2DPWB uses). A Realtek adapter shows its address, from its USB serial number, even before it was used; for the others the address and Bluetooth version show once Windows' Bluetooth or A2DPWB has used the adapter (hover over the line for why). An adapter A2DPWB cannot use (MediaTek, Qualcomm) keeps its driver: its WinUSB and firmware buttons are disabled
 - **Replace with WinUSB driver** / **Restore original driver** (see [Setup](setup#winusb)); Windows asks for administrator permission each time
 - **Bluetooth Chip** for the firmware, with **Download Firmware**, **Open Download Page** and **Open Config Folder** (see [Firmware](setup#firmware))
-- **AFH**: Auto, Off or Manual, with the Wi-Fi channels beside it: the ones Auto avoids now and nothing for Off (both read only), the ones you type for Manual (see [Link Quality and AFH](#link-quality))
+- **Avoid Wi-Fi channels**: Auto, Off or Manual, with the Wi-Fi channels beside it: the ones Auto avoids now and nothing for Off (both read only), the ones you type for Manual (see [Link Quality and AFH](#link-quality))
 - **Bluetooth stack**: stopped (it starts with the first scan or connection), starting, ready or error, and **Restart Bluetooth**
 
 ### Settings
@@ -234,7 +235,7 @@ A2DPWB supports three audio capture modes. Each records a different point in the
 
 System Loopback copies the audio; it does not take it away from the default output device. The audio keeps playing on that device (speakers, an HDMI TV, ...) as well as on the Bluetooth headphones. To hear it only on the headphones, use Virtual Device mode with a device that does not play anywhere, such as VB-CABLE.
 
-In Virtual Device mode, **Auto-switch default device** makes the selected device the Windows default output while streaming, so apps play to it without changing Windows settings. When streaming stops, A2DPWB switches back to the previous default device.
+In Virtual Device mode, **Set as Windows default output while connected** makes the selected device the Windows default output while streaming, so apps play to it without changing Windows settings. When streaming stops, A2DPWB switches back to the previous default device.
 
 - The **Audio Device** list shows only the devices that A2DPWB detects as virtual audio devices. Without one, **Audio Devices** offers **Download VB-Cable**.
 - The default communication device (used by calling apps) is not changed.
@@ -258,14 +259,14 @@ While streaming, Home and the tray flyout show a **Volume** slider when the head
 **Windows Volume Sync** (on **Audio Devices**, for every device; on by default) makes a Windows volume and the headphones' volume one volume while streaming. The Windows volume synced is that of the device A2DPWB captures: the default output device in System Loopback and Application mode, the selected device in Virtual Device mode. Off, the Windows volume and the headphones' volume are separate.
 
 - The headphones' volume buttons and gestures, and the **Volume** slider, move the synced Windows volume, and its slider in Sound settings moves the headphones' volume.
-- The volume keys and the Windows volume flyout always act on the default output device, so they change the headphones' volume only when the default output device is the one synced (always, except in Virtual Device mode without **Auto-switch default device**).
+- The volume keys and the Windows volume flyout always act on the default output device, so they change the headphones' volume only when the default output device is the one synced (always, except in Virtual Device mode without **Set as Windows default output while connected**).
 - When streaming starts, the Windows volume takes over the headphones' volume; when streaming stops, the device gets back the volume it had before.
 - The audio is captured before the Windows volume is applied, so it is still lowered only once, on the headphones. If the synced volume also changes the captured audio, the volume applies twice: turn the sync off then (see [System-wide effects apps](#effects-apps)).
 - Mute is not synced: muting the output device keeps the PC silent and does not mute the headphones.
 
 Earlier versions let a device follow another output device's volume (in developer mode); that choice is no longer used.
 
-**Remember the Bluetooth Audio Device's Last Volume Level** (on **Audio Devices**, for every device; on by default) saves each audio device's own volume and sets it again as soon as it connects, before any audio is sent, so one device's volume does not carry over to another. Turn it off to let each device start at its own last volume, which may be much louder than the volume used last time with A2DPWB (e.g., after using it with a phone).
+**Remember each audio device's volume** (on **Audio Devices**, for every device; on by default) saves each audio device's own volume and sets it again as soon as it connects, before any audio is sent, so one device's volume does not carry over to another. Turn it off to let each device start at its own last volume, which may be much louder than the volume used last time with A2DPWB (e.g., after using it with a phone).
 
 ### Headphone buttons {#headphone-buttons}
 
@@ -275,7 +276,7 @@ The play/pause, next and previous track controls on the headphones (buttons or t
 - A2DPWB tells the headphones whether audio is playing (from whether there is audio to capture), so headphones that pause when taken off send the right command.
 - Fast forward / rewind (holding a button) have no Windows media key and are ignored.
 - Volume gestures change the headphones' own volume; with **Windows Volume Sync** the synced Windows volume follows (see [Volume](#volume)).
-- Turn this off with **Audio Devices > Audio Device Buttons Playback Control** (one switch for every device), e.g. if another program already reacts to the media keys twice.
+- Turn this off with **Audio Devices > Control playback with the audio device's buttons** (one switch for every device), e.g. if another program already reacts to the media keys twice.
 
 This needs AVRCP on the headphones, which nearly all have. Without it, streaming works as usual, just without the buttons.
 
@@ -395,6 +396,8 @@ capability discovery complete (LDAC=false ... , 1 of 6 audio sink SEP(s) in use)
 
 and the error says that endpoints are in use by another device. Disconnect the headphones from the phone / PC (or turn dual connection off in the headphones' app) and connect again. A PC whose built-in Bluetooth is still paired with the headphones counts as another device, too.
 
+Sony headphones such as the WH-1000XM4 do not offer LDAC while **Connect to 2 devices simultaneously** (multipoint) is on: turn it off in the Sony Sound Connect app, then connect again. Some models, such as the WH-1000XM6, support LDAC together with multipoint.
+
 ### Sample Rate
 
 aptX, aptX HD and aptX LL support only 44.1 kHz and 48 kHz (aptX Adaptive 48 kHz; 96 kHz when chosen, if the headphones list it). A2DPWB picks one of the rates the headphones advertise (on Auto 48 kHz, else 44.1 kHz) and lets WASAPI resample the capture. You do not need to change the Windows Sound settings for aptX.
@@ -506,7 +509,7 @@ How to use it:
 
 1. Put the headphones into pairing mode and scan for devices on **Audio Devices**. LE Audio devices are listed with an **LE Audio** tag, a pair of earbuds as **LE Audio set** (pick either one: A2DPWB finds the other). A headphone that also does A2DP is listed twice, once per kind.
 2. On **Codecs**, choose the LC3 card of the LE Audio entry. There is no codec or quality choice (A2DPWB picks the best LC3 configuration the headphones accept), and only System Loopback and Virtual Device capture are available.
-3. Under it, **Low latency for gaming headsets (GMAP, experimental)** is on by default: with headsets that support GMAP's game role it uses shorter LC3 frames; other headsets get the media configuration either way.
+3. Under it, **Low latency for gaming audio devices (experimental)** is on by default: with headsets that support GMAP's game role it uses shorter LC3 frames; other headsets get the media configuration either way.
 
 There is no LE Audio switch in Settings. If the LE side ever disturbs an adapter, `"le_audio_experimental": false` in `settings.json` (**Settings > Settings folder**) turns it off altogether.
 

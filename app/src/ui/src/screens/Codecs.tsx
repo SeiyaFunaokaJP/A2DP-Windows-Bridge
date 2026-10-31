@@ -237,7 +237,6 @@ export function Codecs() {
       <div class="codecs-options">
         <Toggle
           label={t("ui.codecs.auto_select")}
-          hint={t("ui.codecs.auto_select_hint")}
           checked={autoAll()}
           onChange={(v) => void saveSettings(app, { auto_codec: v })}
         />
@@ -245,7 +244,6 @@ export function Codecs() {
             WebView, under the key it always had) */}
         <Toggle
           label={t("ui.profile.codecs_hide")}
-          hint={t("ui.profile.codecs_hide_hint")}
           checked={hide()}
           onChange={setHide}
         />

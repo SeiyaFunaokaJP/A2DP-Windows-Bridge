@@ -111,7 +111,7 @@ A2DPWB captura el audio mediante WASAPI y ofrece tres modos:
 | **Dispositivo virtual** | Captura desde un dispositivo de audio virtual elegido por el usuario (p. ej., VB-CABLE, VoiceMeeter) | Enviar aplicaciones concretas a Bluetooth y mantener el resto del audio en los altavoces |
 | **Aplicación** | Captura solo lo que reproduce una aplicación, después de su propio procesamiento (Windows 11 / Windows 10 2004+) | Enviar una aplicación, o la salida de una aplicación de efectos para todo el sistema (ecualizador, mejora de sonido) |
 
-En el modo **Dispositivo virtual**, A2DPWB puede cambiar el dispositivo de reproducción predeterminado de Windows al dispositivo virtual seleccionado (**Cambiar dispositivo predeterminado**) y luego captura su salida de loopback. Las aplicaciones que reproducen en el dispositivo virtual se transmiten por Bluetooth. Al detener la transmisión, se restaura el dispositivo predeterminado anterior.
+En el modo **Dispositivo virtual**, A2DPWB puede cambiar el dispositivo de reproducción predeterminado de Windows al dispositivo virtual seleccionado (**Usar como salida predeterminada de Windows mientras hay conexión**) y luego captura su salida de loopback. Las aplicaciones que reproducen en el dispositivo virtual se transmiten por Bluetooth. Al detener la transmisión, se restaura el dispositivo predeterminado anterior.
 
 El Loopback del sistema no le quita el audio al dispositivo de reproducción predeterminado: se oye allí y también por Bluetooth. Consulte [Modos de captura](usage#capture-modes).
 
