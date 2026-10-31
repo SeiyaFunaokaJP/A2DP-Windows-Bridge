@@ -7,7 +7,7 @@ body:
       value: |
         Tried BlueCaster with your gear? I'd love to hear how it went! 🎧
         "It just works" reports are super helpful too, especially for the experimental codecs (aptX HD, aptX Low Latency, Opus).
-        Just check what you tried and leave the rest blank. If something is clearly broken, a [bug report](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) is a better fit.
+        Just check what you tried and leave the rest blank. If something is clearly broken, a [bug report](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/new?template=bug_report.yml) is a better fit.
 
   - type: input
     id: version

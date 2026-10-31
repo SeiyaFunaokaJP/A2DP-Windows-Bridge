@@ -319,7 +319,7 @@ BlueCaster 支援三種使用 [libopenaptx](https://github.com/pali/libopenaptx)
 ### aptX Adaptive {#aptx-adaptive}
 
 {: .note }
-**aptX Adaptive 已在 48 kHz 下以實際耳機確認：** 有使用者在 2.0.2-beta.6 上將它串流到 EarFun Air Pro 4+，沒有斷音或卡頓，與傳統 aptX 一樣穩定（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）。它也通過了單元測試、上游的位元完全一致測試套件，以及針對虛擬藍牙接收端的端對端測試（`tools/emu`，會檢查 RTP 標頭、封包大小與訊框類型；由於沒有開放的解碼器，不會解碼音訊）。上游回報在 Linux / PipeWire 上搭配 Bose QuietComfort Ultra（第 1 代）與 B&W Px7 S2e，以 48 kHz 的高與低延遲模式可正常運作。96 kHz（高 646 kbps、標準 340、行動 255）僅在其設定中選擇（或使用 `--rate 96000`）且耳機為列出 96 kHz 的 R2 接收端時使用，低延遲時一律不使用；96 kHz 現在也已以實際耳機確認（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）。「自動」（包括自動選擇）以 48 kHz 串流。[歡迎回報](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/11)。
+**aptX Adaptive 已在 48 kHz 下以實際耳機確認：** 有使用者在 2.0.2-beta.6 上將它串流到 EarFun Air Pro 4+，沒有斷音或卡頓，與傳統 aptX 一樣穩定（[#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)）。它也通過了單元測試、上游的位元完全一致測試套件，以及針對虛擬藍牙接收端的端對端測試（`tools/emu`，會檢查 RTP 標頭、封包大小與訊框類型；由於沒有開放的解碼器，不會解碼音訊）。上游回報在 Linux / PipeWire 上搭配 Bose QuietComfort Ultra（第 1 代）與 B&W Px7 S2e，以 48 kHz 的高與低延遲模式可正常運作。96 kHz（高 646 kbps、標準 340、行動 255）僅在其設定中選擇（或使用 `--rate 96000`）且耳機為列出 96 kHz 的 R2 接收端時使用，低延遲時一律不使用；96 kHz 現在也已以實際耳機確認（[#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)）。「自動」（包括自動選擇）以 48 kHz 串流。[歡迎回報](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/11)。
 
 編碼器為 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 以純 Rust 撰寫的 aptX Adaptive 編碼器（MIT）。上游說明它是無塵室（clean-room）重新實作，其數值表格由合法取得的 Qualcomm 出貨二進位檔與空中擷取資料重建而來；不含任何 Qualcomm 的程式碼、SDK 或二進位檔（請參閱 [授權](../licenses)）。
 

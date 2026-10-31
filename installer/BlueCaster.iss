@@ -108,7 +108,7 @@
 #define AppIdentifier "io.github.seiyafunaokajp.bluecaster"
 ; AppId without its braces (BlueCaster 3.0.0 and later; 2.0.x's is OldV2Guid)
 #define AppGuid "C7A109ED-F618-4214-8186-E4472C3BDD10"
-#define RepoUrl "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge"
+#define RepoUrl "https://github.com/SeiyaFunaokaJP/BlueCaster"
 
 [Setup]
 ; Never change AppId: it ties updates and the uninstaller to earlier installs.

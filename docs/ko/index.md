@@ -16,7 +16,7 @@ WinUSB 모드의 USB Bluetooth 어댑터를 사용하여 시스템 오디오를 
 ![BlueCaster streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](../images/app_sample.png)
 
 [시작하기](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[GitHub](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge){: .btn .fs-5 .mb-4 .mb-md-0 }
+[GitHub](https://github.com/SeiyaFunaokaJP/BlueCaster){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 
@@ -63,7 +63,7 @@ WinUSB 모드의 USB Bluetooth 어댑터를 사용하여 시스템 오디오를 
 **aptX HD와 aptX Low Latency는 실험적 기능입니다.** Android / PipeWire 구현을 따르며 인코딩/디코딩 왕복 테스트를 통과했지만, 실제 헤드폰에서는 아직 검증되지 않았습니다. 표의 지연 시간은 일반적인 수치이며 BlueCaster로 측정한 값이 아닙니다.
 
 {: .warning }
-**LHDC V5 정보.** Google이 Android 17(AOSP, Apache-2.0)에 추가한 LHDC V5 인코더의 C 포팅 버전을 사용합니다. 이 포팅 버전은 AOSP Rust 인코더와 비트 단위로 일치함을 확인했으며, A2DP 시그널링은 Android의 `a2dp_vendor_lhdcv5`를 따릅니다. 한 사용자가 v1.1.1-beta.1에서 실제 LHDC V5 헤드폰으로 1000 kbps / 192 kHz 작동을 확인했으며([#50](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/50)), v2도 같은 인코더를 사용합니다. 손실 압축 LHDC V5만 지원합니다. LHDC V2/V3(구형 헤드폰)와 무손실 "LHDC-RAW" 모드는 오픈 소스 인코더가 없습니다. 자동 모드에서 LHDC V5의 우선순위는 LDAC 및 aptX 계열보다 낮고 AAC / SBC보다 높습니다.
+**LHDC V5 정보.** Google이 Android 17(AOSP, Apache-2.0)에 추가한 LHDC V5 인코더의 C 포팅 버전을 사용합니다. 이 포팅 버전은 AOSP Rust 인코더와 비트 단위로 일치함을 확인했으며, A2DP 시그널링은 Android의 `a2dp_vendor_lhdcv5`를 따릅니다. 한 사용자가 v1.1.1-beta.1에서 실제 LHDC V5 헤드폰으로 1000 kbps / 192 kHz 작동을 확인했으며([#50](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/50)), v2도 같은 인코더를 사용합니다. 손실 압축 LHDC V5만 지원합니다. LHDC V2/V3(구형 헤드폰)와 무손실 "LHDC-RAW" 모드는 오픈 소스 인코더가 없습니다. 자동 모드에서 LHDC V5의 우선순위는 LDAC 및 aptX 계열보다 낮고 AAC / SBC보다 높습니다.
 
 {: .warning }
 **Opus는 실험적 기능입니다.** Android의 A2DP Opus 벤더 코덱(Android 13 이상, 벤더 ID 0x000000E0 Google)으로, 48 kHz, 20 ms 프레임이며 Android가 요청하는 대로 256 kbps 스테레오(표준 192, 모바일 128 kbps)로 libopus 1.5.2를 사용해 인코딩합니다. 가상 싱크를 상대로 한 엔드투엔드 테스트는 통과했지만, 실제 Opus 헤드폰에서는 아직 검증되지 않았습니다. 자동 모드에서 Opus의 우선순위는 LHDC V5보다 낮고 AAC / SBC보다 높습니다.
@@ -78,7 +78,7 @@ WinUSB 모드의 USB Bluetooth 어댑터를 사용하여 시스템 오디오를 
 **기본 aptX만 필요하십니까?** Windows 10의 기본 Bluetooth 스택은 이미 기본 aptX를 지원하므로(aptX HD, aptX LL, aptX Adaptive는 미지원) 이 경우 BlueCaster가 필요하지 않습니다. BlueCaster는 주로 LDAC, aptX HD, aptX Low Latency에 유용합니다.
 
 {: .note }
-**aptX Adaptive 정보.** [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux)의 MIT 라이선스 순수 Rust 인코더로 인코딩하며, 이 인코더의 테이블은 개발자들이 출시된 Qualcomm 바이너리와 무선 캡처로부터 재구성한 것입니다. 48 kHz 스테레오(44.1 kHz를 요청하면 48 kHz로 캡처), 24비트입니다. R1 싱크에서는 높음 427 kbps, 표준 364, 모바일 318, 저지연 265 kbps이며(R2 싱크는 별도의 표), 높음에서는 ABR을 사용합니다. 설정에서 96 kHz를 선택하고 헤드폰이 96 kHz를 알리는 R2 싱크이면 96 kHz(높음 646 kbps, 표준 340, 모바일 255)를 사용하며, 저지연에서는 사용하지 않고 그 밖의 경우에는 48 kHz입니다. 96 kHz도 실제 헤드폰으로 확인되었습니다([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)). 자동은 48 kHz입니다. 자동 선택은 LHDC V5, LDAC 다음으로 이를 고르며, **코덱** 화면에서 또는 `-c aptxad`로 직접 선택할 수도 있습니다. 한 사용자가 2.0.2-beta.6에서 EarFun Air Pro 4+로 48 kHz 동작을 확인했으며, 기본 aptX만큼 안정적이었습니다([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)). 업스트림은 Linux에서 Bose QuietComfort Ultra(1세대)와 B&W Px7 S2e로 동작한다고 보고합니다. [aptX 계열과 aptX Adaptive](usage#aptx-compatibility)를 참조하십시오.
+**aptX Adaptive 정보.** [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux)의 MIT 라이선스 순수 Rust 인코더로 인코딩하며, 이 인코더의 테이블은 개발자들이 출시된 Qualcomm 바이너리와 무선 캡처로부터 재구성한 것입니다. 48 kHz 스테레오(44.1 kHz를 요청하면 48 kHz로 캡처), 24비트입니다. R1 싱크에서는 높음 427 kbps, 표준 364, 모바일 318, 저지연 265 kbps이며(R2 싱크는 별도의 표), 높음에서는 ABR을 사용합니다. 설정에서 96 kHz를 선택하고 헤드폰이 96 kHz를 알리는 R2 싱크이면 96 kHz(높음 646 kbps, 표준 340, 모바일 255)를 사용하며, 저지연에서는 사용하지 않고 그 밖의 경우에는 48 kHz입니다. 96 kHz도 실제 헤드폰으로 확인되었습니다([#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)). 자동은 48 kHz입니다. 자동 선택은 LHDC V5, LDAC 다음으로 이를 고르며, **코덱** 화면에서 또는 `-c aptxad`로 직접 선택할 수도 있습니다. 한 사용자가 2.0.2-beta.6에서 EarFun Air Pro 4+로 48 kHz 동작을 확인했으며, 기본 aptX만큼 안정적이었습니다([#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)). 업스트림은 Linux에서 Bose QuietComfort Ultra(1세대)와 B&W Px7 S2e로 동작한다고 보고합니다. [aptX 계열과 aptX Adaptive](usage#aptx-compatibility)를 참조하십시오.
 
 ## 지원 플랫폼 {#platform-support}
 

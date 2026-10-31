@@ -52,7 +52,7 @@ $OutDir = [IO.Path]::GetFullPath($OutDir)
 $triple = @{ x64 = 'x86_64-pc-windows-msvc'; arm64 = 'aarch64-pc-windows-msvc' }[$Arch]
 $platform = @{ x64 = 'windows-x86_64'; arm64 = 'windows-aarch64' }[$Arch]
 $archName = @{ x64 = 'win64'; arm64 = 'arm64' }[$Arch]
-$releaseUrl = 'https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/download'
+$releaseUrl = 'https://github.com/SeiyaFunaokaJP/BlueCaster/releases/download'
 
 function Invoke-Checked([string]$what, [scriptblock]$cmd) {
     & $cmd
@@ -192,7 +192,7 @@ your option. This folder holds:
 
 Source code
 -----------
-Repository: https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge
+Repository: https://github.com/SeiyaFunaokaJP/BlueCaster
 Commit:     $commit
 $dirtyNote
 Pinned submodules (git submodule status: commit, path, description):
@@ -205,7 +205,7 @@ at the repository URL and commit above.
 It contains everything needed to rebuild and relink the programs (e.g. with
 a modified version of libopenaptx):
 
-    git clone --recursive https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge.git
+    git clone --recursive https://github.com/SeiyaFunaokaJP/BlueCaster.git
     git checkout $commit
     git submodule update --init --recursive
     pwsh installer/build-release.ps1

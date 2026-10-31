@@ -28,8 +28,8 @@ english_only: true
 ## Quick Build
 
 ```bash
-git clone --recursive https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge.git
-cd A2DP-Windows-Bridge
+git clone --recursive https://github.com/SeiyaFunaokaJP/BlueCaster.git
+cd BlueCaster
 pwsh ./build.ps1
 ```
 
@@ -57,7 +57,7 @@ git submodule update --init --recursive
 ## Project Structure
 
 ```
-A2DP-Windows-Bridge/
+BlueCaster/
 ├── app/
 │   ├── src/
 │   │   ├── core/           bluecaster-core.exe: resident core, tray, IPC server, --cli
@@ -169,4 +169,4 @@ The C libraries are git submodules; Rust crates and the UI's npm packages are fe
 {: .warning }
 Because BTstack is linked in, any BlueCaster you build may only be used and redistributed for personal, non-commercial purposes, even though the BlueCaster source code itself is dual-licensed under Apache-2.0 or MIT.
 
-See [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md) for full license details.
+See [THIRD_PARTY_LICENSES.md](https://github.com/SeiyaFunaokaJP/BlueCaster/blob/main/THIRD_PARTY_LICENSES.md) for full license details.

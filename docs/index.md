@@ -14,7 +14,7 @@ Streams system audio via **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, aptX Low
 ![BlueCaster streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](images/app_sample.png)
 
 [Get Started](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[GitHub](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge){: .btn .fs-5 .mb-4 .mb-md-0 }
+[GitHub](https://github.com/SeiyaFunaokaJP/BlueCaster){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 
@@ -61,7 +61,7 @@ Streams system audio via **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, aptX Low
 **aptX HD and aptX Low Latency are experimental.** They follow the Android / PipeWire implementations and pass encode/decode round-trip tests, but have not yet been verified with real headphones. Latency values in this table are typical figures, not measured with BlueCaster.
 
 {: .warning }
-**About LHDC V5.** It uses a C port of the LHDC V5 encoder that Google added to Android 17 (AOSP, Apache-2.0); the port was verified bit-exact against the AOSP Rust encoder, and the A2DP signaling follows Android's `a2dp_vendor_lhdcv5`. A user verified it with real LHDC V5 headphones at 1000 kbps / 192 kHz on v1.1.1-beta.1 ([#50](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/50)); v2 uses the same encoder. Only lossy LHDC V5 is supported: LHDC V2/V3 (older headphones) and the lossless "LHDC-RAW" mode have no open-source encoder. In Auto mode LHDC V5 ranks below LDAC and the aptX family and above AAC / SBC.
+**About LHDC V5.** It uses a C port of the LHDC V5 encoder that Google added to Android 17 (AOSP, Apache-2.0); the port was verified bit-exact against the AOSP Rust encoder, and the A2DP signaling follows Android's `a2dp_vendor_lhdcv5`. A user verified it with real LHDC V5 headphones at 1000 kbps / 192 kHz on v1.1.1-beta.1 ([#50](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/50)); v2 uses the same encoder. Only lossy LHDC V5 is supported: LHDC V2/V3 (older headphones) and the lossless "LHDC-RAW" mode have no open-source encoder. In Auto mode LHDC V5 ranks below LDAC and the aptX family and above AAC / SBC.
 
 {: .warning }
 **Opus is experimental.** It is Android's A2DP Opus vendor codec (Android 13+, vendor ID 0x000000E0 Google): 48 kHz, 20 ms frames, 256 kbps stereo as Android requests it (Standard 192, Mobile 128 kbps), encoded with libopus 1.5.2. It passes the end-to-end test against a virtual sink, but has not yet been verified with real Opus headphones. In Auto mode it ranks below LHDC V5 and above AAC / SBC.
@@ -76,7 +76,7 @@ Streams system audio via **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, aptX Low
 **Only need classic aptX?** Windows 10 already supports classic aptX in its built-in Bluetooth stack (not aptX HD, aptX LL or aptX Adaptive), so BlueCaster is not required for it. BlueCaster is mainly useful for LDAC, aptX HD and aptX Low Latency.
 
 {: .note }
-**About aptX Adaptive.** It is encoded with the MIT-licensed pure-Rust encoder of [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux), whose tables its authors reconstructed from shipped Qualcomm binaries and on-air captures. 48 kHz stereo (44.1 kHz requests are captured at 48 kHz), 24-bit: High 427 kbps or Low Latency 265 kbps (R2 sinks: 270), ABR in High. 96 kHz (High, 646 kbps) is used when you choose it in its settings, if the headphones are an R2 sink that lists 96 kHz, and never in Low Latency; Auto streams 48 kHz. Auto picks it after LHDC V5 and LDAC; or choose it on **Codecs** or with `-c aptxad`. A user confirmed it on an EarFun Air Pro 4+ at 48 kHz on 2.0.2-beta.6, as stable as classic aptX, and 96 kHz on real headphones since ([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)); upstream reports it working on Linux with Bose QuietComfort Ultra (gen 1) and B&W Px7 S2e. See [aptX Family and aptX Adaptive](usage#aptx-compatibility).
+**About aptX Adaptive.** It is encoded with the MIT-licensed pure-Rust encoder of [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux), whose tables its authors reconstructed from shipped Qualcomm binaries and on-air captures. 48 kHz stereo (44.1 kHz requests are captured at 48 kHz), 24-bit: High 427 kbps or Low Latency 265 kbps (R2 sinks: 270), ABR in High. 96 kHz (High, 646 kbps) is used when you choose it in its settings, if the headphones are an R2 sink that lists 96 kHz, and never in Low Latency; Auto streams 48 kHz. Auto picks it after LHDC V5 and LDAC; or choose it on **Codecs** or with `-c aptxad`. A user confirmed it on an EarFun Air Pro 4+ at 48 kHz on 2.0.2-beta.6, as stable as classic aptX, and 96 kHz on real headphones since ([#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)); upstream reports it working on Linux with Bose QuietComfort Ultra (gen 1) and B&W Px7 S2e. See [aptX Family and aptX Adaptive](usage#aptx-compatibility).
 
 ## Platform Support
 

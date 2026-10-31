@@ -16,7 +16,7 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LHDC V5、LDAC
 ![BlueCaster streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](../images/app_sample.png)
 
 [セットアップ](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[GitHub](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge){: .btn .fs-5 .mb-4 .mb-md-0 }
+[GitHub](https://github.com/SeiyaFunaokaJP/BlueCaster){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 
@@ -63,7 +63,7 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LHDC V5、LDAC
 **aptX HD・aptX Low Latency は実験的な対応です。** Android / PipeWire の実装に合わせ、エンコード→デコードの往復テストは通っていますが、実機のヘッドホンでの検証はまだです。表のレイテンシーは一般的な目安で、BlueCaster で測定した値ではありません。
 
 {: .warning }
-**LHDC V5 について。** Google が Android 17（AOSP、Apache-2.0）に追加した LHDC V5 エンコーダーの C 移植版を使用しています。移植版は AOSP の Rust 版エンコーダーとビット単位で一致することを確認済みで、A2DP のシグナリングは Android の `a2dp_vendor_lhdcv5` に合わせています。実機の LHDC V5 ヘッドホンでも、ユーザーにより v1.1.1-beta.1 で 1000 kbps / 192 kHz での動作が確認されています（[#50](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/50)）。v2 も同じエンコーダーを使います。対応するのはロッシーの LHDC V5 のみで、LHDC V2/V3（従来機）とロスレスの「LHDC-RAW」にはオープンソースのエンコーダーがありません。自動選択では LHDC V5 は LDAC・aptX 系より下、AAC・SBC より上に位置します。
+**LHDC V5 について。** Google が Android 17（AOSP、Apache-2.0）に追加した LHDC V5 エンコーダーの C 移植版を使用しています。移植版は AOSP の Rust 版エンコーダーとビット単位で一致することを確認済みで、A2DP のシグナリングは Android の `a2dp_vendor_lhdcv5` に合わせています。実機の LHDC V5 ヘッドホンでも、ユーザーにより v1.1.1-beta.1 で 1000 kbps / 192 kHz での動作が確認されています（[#50](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/50)）。v2 も同じエンコーダーを使います。対応するのはロッシーの LHDC V5 のみで、LHDC V2/V3（従来機）とロスレスの「LHDC-RAW」にはオープンソースのエンコーダーがありません。自動選択では LHDC V5 は LDAC・aptX 系より下、AAC・SBC より上に位置します。
 
 {: .warning }
 **Opus は実験的な対応です。** Android の A2DP Opus ベンダーコーデック（Android 13 以降、ベンダー ID 0x000000E0 Google）で、48 kHz・20 ms フレーム・ステレオ 256 kbps（Android が要求する値。標準 192、モバイル 128 kbps）を libopus 1.5.2 でエンコードします。仮想シンクとのエンドツーエンドテストには合格していますが、実際の Opus 対応ヘッドホンでは未確認です。自動選択では LHDC V5 の下、AAC / SBC の上です。
@@ -78,7 +78,7 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LHDC V5、LDAC
 **クラシック aptX だけが目的なら**、Windows 10 標準の Bluetooth スタックがクラシック aptX に対応しています（aptX HD・aptX LL・aptX Adaptive は非対応）。その場合 BlueCaster は不要です。BlueCaster が主に役立つのは LDAC・aptX HD・aptX Low Latency です。
 
 {: .note }
-**aptX Adaptive について。** [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) の MIT ライセンスの Rust 製エンコーダーでエンコードします。そのテーブルは、作者が Qualcomm の出荷済みバイナリと無線のキャプチャから再構成したものです。48 kHz ステレオ（44.1 kHz を指定しても 48 kHz で取り込みます）、24 bit で、高音質 427 kbps か低遅延 265 kbps（R2 のシンクは 270）、高音質では ABR が使えます。96 kHz（高音質 646 kbps）は、コーデックの設定で 96 kHz を選んだときに、ヘッドホンが 96 kHz を通知する R2 のシンクであれば使います。低遅延では使いません。自動では 48 kHz です。自動選択では LHDC V5、LDAC の次に選ばれます。**コーデック** 画面か `-c aptxad` で選ぶこともできます。2.0.2-beta.6 で EarFun Air Pro 4+ を使った 48 kHz での動作が利用者から報告されており、クラシック aptX と同じくらい安定しています。96 kHz もその後、実際のヘッドホンで確認されました（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）。上流は Linux で Bose QuietComfort Ultra（第 1 世代）と B&W Px7 S2e での動作を報告しています。詳しくは [aptX ファミリーと aptX Adaptive](usage#aptx-compatibility)を参照してください。
+**aptX Adaptive について。** [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) の MIT ライセンスの Rust 製エンコーダーでエンコードします。そのテーブルは、作者が Qualcomm の出荷済みバイナリと無線のキャプチャから再構成したものです。48 kHz ステレオ（44.1 kHz を指定しても 48 kHz で取り込みます）、24 bit で、高音質 427 kbps か低遅延 265 kbps（R2 のシンクは 270）、高音質では ABR が使えます。96 kHz（高音質 646 kbps）は、コーデックの設定で 96 kHz を選んだときに、ヘッドホンが 96 kHz を通知する R2 のシンクであれば使います。低遅延では使いません。自動では 48 kHz です。自動選択では LHDC V5、LDAC の次に選ばれます。**コーデック** 画面か `-c aptxad` で選ぶこともできます。2.0.2-beta.6 で EarFun Air Pro 4+ を使った 48 kHz での動作が利用者から報告されており、クラシック aptX と同じくらい安定しています。96 kHz もその後、実際のヘッドホンで確認されました（[#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)）。上流は Linux で Bose QuietComfort Ultra（第 1 世代）と B&W Px7 S2e での動作を報告しています。詳しくは [aptX ファミリーと aptX Adaptive](usage#aptx-compatibility)を参照してください。
 
 ## 対応プラットフォーム {#platform-support}
 

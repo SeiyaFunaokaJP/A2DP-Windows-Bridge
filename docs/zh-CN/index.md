@@ -16,7 +16,7 @@ has_toc: false
 ![BlueCaster streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](../images/app_sample.png)
 
 [开始使用](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[GitHub](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge){: .btn .fs-5 .mb-4 .mb-md-0 }
+[GitHub](https://github.com/SeiyaFunaokaJP/BlueCaster){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 
@@ -63,7 +63,7 @@ has_toc: false
 **aptX HD 和 aptX Low Latency 为实验性功能。** 它们参照 Android / PipeWire 的实现，并通过了编码/解码往返测试，但尚未在真实耳机上验证。表中的延迟为典型值，并非使用 BlueCaster 实测。
 
 {: .warning }
-**关于 LHDC V5。** 它使用 Google 在 Android 17 中加入的 LHDC V5 编码器（AOSP，Apache-2.0）的 C 语言移植版；该移植版已与 AOSP 的 Rust 编码器做过逐位一致性验证，A2DP 信令则参照 Android 的 `a2dp_vendor_lhdcv5`。已有用户在 v1.1.1-beta.1 上用真实的 LHDC V5 耳机验证了 1000 kbps / 192 kHz（[#50](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/50)）；v2 使用相同的编码器。仅支持有损的 LHDC V5：LHDC V2/V3（较旧的耳机）和无损的“LHDC-RAW”模式没有开源编码器。在“自动”模式下，LHDC V5 的优先级低于 LDAC 和 aptX 系列，高于 AAC / SBC。
+**关于 LHDC V5。** 它使用 Google 在 Android 17 中加入的 LHDC V5 编码器（AOSP，Apache-2.0）的 C 语言移植版；该移植版已与 AOSP 的 Rust 编码器做过逐位一致性验证，A2DP 信令则参照 Android 的 `a2dp_vendor_lhdcv5`。已有用户在 v1.1.1-beta.1 上用真实的 LHDC V5 耳机验证了 1000 kbps / 192 kHz（[#50](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/50)）；v2 使用相同的编码器。仅支持有损的 LHDC V5：LHDC V2/V3（较旧的耳机）和无损的“LHDC-RAW”模式没有开源编码器。在“自动”模式下，LHDC V5 的优先级低于 LDAC 和 aptX 系列，高于 AAC / SBC。
 
 {: .warning }
 **Opus 为实验性功能。** 它是 Android 的 A2DP Opus 厂商编解码器（Android 13+，Vendor ID 0x000000E0 Google）：48 kHz、20 ms 帧，按 Android 的请求以 256 kbps 立体声编码（标准 192 kbps，移动 128 kbps），编码器为 libopus 1.5.2。它已通过针对虚拟接收端的端到端测试，但尚未在真实的 Opus 耳机上验证。在“自动”模式下，它的优先级低于 LHDC V5，高于 AAC / SBC。
@@ -78,7 +78,7 @@ has_toc: false
 **只需要经典 aptX？** Windows 10 的内置 Bluetooth 堆栈已经支持经典 aptX（不含 aptX HD、aptX LL 和 aptX Adaptive），因此无需 BlueCaster。BlueCaster 主要用于 LDAC、aptX HD 和 aptX Low Latency。
 
 {: .note }
-**关于 aptX Adaptive。** 它使用 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 的纯 Rust 编码器（MIT 许可）编码，其中的表由该项目作者根据 Qualcomm 已出货的二进制文件和空中抓包重建。48 kHz 立体声（请求 44.1 kHz 时以 48 kHz 捕获），24-bit：对 R1 接收端为高 427 kbps、标准 364、移动 318、低延迟 265 kbps（R2 接收端有各自的表），高音质下支持 ABR。在其设置中选择 96 kHz 且耳机是列出 96 kHz 的 R2 接收端时使用 96 kHz（高 646 kbps、标准 340、移动 255）；低延迟下不使用，其他情况为 48 kHz。96 kHz 也已用真实耳机确认（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）；“自动”为 48 kHz。“自动”在 LHDC V5 和 LDAC 之后选择它；也可以在**编解码器**页面或用 `-c aptxad` 选择。有用户在 2.0.2-beta.6 上用 EarFun Air Pro 4+ 确认了 48 kHz 下的工作，与经典 aptX 一样稳定（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）；上游报告它在 Linux 上可用于 Bose QuietComfort Ultra（第 1 代）和 B&W Px7 S2e。请参阅 [aptX 系列与 aptX Adaptive](usage#aptx-compatibility)。
+**关于 aptX Adaptive。** 它使用 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 的纯 Rust 编码器（MIT 许可）编码，其中的表由该项目作者根据 Qualcomm 已出货的二进制文件和空中抓包重建。48 kHz 立体声（请求 44.1 kHz 时以 48 kHz 捕获），24-bit：对 R1 接收端为高 427 kbps、标准 364、移动 318、低延迟 265 kbps（R2 接收端有各自的表），高音质下支持 ABR。在其设置中选择 96 kHz 且耳机是列出 96 kHz 的 R2 接收端时使用 96 kHz（高 646 kbps、标准 340、移动 255）；低延迟下不使用，其他情况为 48 kHz。96 kHz 也已用真实耳机确认（[#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)）；“自动”为 48 kHz。“自动”在 LHDC V5 和 LDAC 之后选择它；也可以在**编解码器**页面或用 `-c aptxad` 选择。有用户在 2.0.2-beta.6 上用 EarFun Air Pro 4+ 确认了 48 kHz 下的工作，与经典 aptX 一样稳定（[#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)）；上游报告它在 Linux 上可用于 Bose QuietComfort Ultra（第 1 代）和 B&W Px7 S2e。请参阅 [aptX 系列与 aptX Adaptive](usage#aptx-compatibility)。
 
 ## 平台支持 {#platform-support}
 

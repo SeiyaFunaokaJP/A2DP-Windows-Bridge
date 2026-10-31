@@ -323,9 +323,9 @@ export function sampleSnapshot(scenario: MockScenario = "normal"): Snapshot {
         scenario === "update"
           ? {
               version: "2.0.0-beta.1",
-              url: "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/tag/v2.0.0-beta.1",
+              url: "https://github.com/SeiyaFunaokaJP/BlueCaster/releases/tag/v2.0.0-beta.1",
               prerelease: true,
-              manifest_url: "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/download/v2.0.0-beta.1/latest.json",
+              manifest_url: "https://github.com/SeiyaFunaokaJP/BlueCaster/releases/download/v2.0.0-beta.1/latest.json",
               notes: "- **Faster scan**: devices show up as they answer\n- A notification when a device connects ([#86](https://example.invalid))",
             }
           : null,

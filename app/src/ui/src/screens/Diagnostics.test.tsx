@@ -82,7 +82,7 @@ describe("Diagnostics", () => {
     fireEvent.click(screen.getByRole("button", { name: "Report on GitHub" }));
     await waitFor(() => expect(open).toHaveBeenCalled());
     const url = new URL(open.mock.calls[0][0]);
-    expect(url.pathname).toBe("/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new");
+    expect(url.pathname).toBe("/SeiyaFunaokaJP/BlueCaster/issues/new");
     expect(url.searchParams.get("template")).toBe("bug_report.yml");
     expect(url.searchParams.get("version")).toBe(core.state.snap!.update.current_version);
     expect(url.searchParams.get("bundle")).toMatch(/^bluecaster-diag-/);

@@ -11,7 +11,7 @@ english_only: true
 How a third-party tool talks to the BlueCaster core: show the stream state, start and stop profiles, set the volume, or reach the headphones' own services over BlueCaster's Bluetooth link. Tools that do this are listed on [Works With](works-with).
 
 {: .warning }
-> The protocol may still change during the 2.0.2 betas. The source of truth is [`app/src/crates/ipc/src/protocol.rs`](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/app/src/crates/ipc/src/protocol.rs) and the TypeScript types generated from it in [`app/src/ui/src/ipc/bindings`](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/tree/main/app/src/ui/src/ipc/bindings). This page explains how to use them; it does not list every field.
+> The protocol may still change during the 2.0.2 betas. The source of truth is [`app/src/crates/ipc/src/protocol.rs`](https://github.com/SeiyaFunaokaJP/BlueCaster/blob/main/app/src/crates/ipc/src/protocol.rs) and the TypeScript types generated from it in [`app/src/ui/src/ipc/bindings`](https://github.com/SeiyaFunaokaJP/BlueCaster/tree/main/app/src/ui/src/ipc/bindings). This page explains how to use them; it does not list every field.
 
 ## Table of contents
 {: .no_toc .text-delta }
@@ -97,7 +97,7 @@ When the core shuts down it sends the event `bye` and closes the pipe.
 {"type": "response", "id": 8, "result": null, "error": {"code": "rfcomm.not_connected", "message": {"key": "ipc.error.rfcomm_not_connected", "args": []}}}
 ```
 
-`code` is for the program (`adapter.driver_missing`, `app.streaming`, ...). `message` is a translation key of BlueCaster's language files ([`app/lang`](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/tree/main/app/lang)) with printf-style arguments, as are the status texts in the state; a tool can look the key up there or show its own text for the code.
+`code` is for the program (`adapter.driver_missing`, `app.streaming`, ...). `message` is a translation key of BlueCaster's language files ([`app/lang`](https://github.com/SeiyaFunaokaJP/BlueCaster/tree/main/app/lang)) with printf-style arguments, as are the status texts in the state; a tool can look the key up there or show its own text for the code.
 
 ### Methods
 
@@ -134,7 +134,7 @@ Available when `welcome.features` contains `"rfcomm"` (2.0.2-beta.10 and later).
 - **Features.** Check `welcome.features` before using an addition. Cores before 2.0.2-beta.10 leave the field out.
 - **Unknown requests.** A request the core cannot read (an unknown method, bad parameters) is answered with the error `ipc.bad_request`; the connection stays open. Cores before 2.0.2-beta.10 close the connection instead. Any other unreadable frame closes it.
 - **New fields.** The core adds fields to the state and to events over time. Ignore fields you do not know; do not reject a message for them.
-- **Rename in 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)): the pipe becomes `\\.\pipe\bcfw-<SID>`. The core keeps listening on `\\.\pipe\bluecaster-<SID>` as well, with the same protocol, for at least 6 months after 3.0.0; its removal is announced in the release notes first. Try `bcfw-<SID>` first and fall back to `bluecaster-<SID>`. The core's mutex changes its name without such a transition.
+- **Rename in 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/193)): the pipe becomes `\\.\pipe\bluecaster-<SID>`. The core keeps listening on `\\.\pipe\a2dpwb-<SID>` as well, with the same protocol, for at least 6 months after 3.0.0; its removal is announced in the release notes first. Try `bluecaster-<SID>` first and fall back to `a2dpwb-<SID>`. The core's mutex changes its name without such a transition.
 
 ## Example
 

@@ -28,7 +28,7 @@ use crate::connection::Ipc;
 
 pub const PHASE_EVENT: &str = "update://phase";
 /// Manifests are taken from this repository's releases only
-const MANIFEST_PREFIX: &str = "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/download/";
+const MANIFEST_PREFIX: &str = "https://github.com/SeiyaFunaokaJP/BlueCaster/releases/download/";
 /// Asking the core again while it streams
 const RETRY_INTERVAL: Duration = Duration::from_secs(3);
 /// Stopping a stream and resetting the adapter takes a few seconds

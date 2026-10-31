@@ -25,7 +25,7 @@ BlueCaster가 어댑터에 WinUSB 드라이버를 직접 할당합니다. 이제
 
 ## BlueCaster 설치
 
-각 [릴리스](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/latest)는 같은 파일을 담은 두 가지 형식으로 제공됩니다.
+각 [릴리스](https://github.com/SeiyaFunaokaJP/BlueCaster/releases/latest)는 같은 파일을 담은 두 가지 형식으로 제공됩니다.
 
 - **설치 프로그램** (`BlueCaster-<version>-win64-setup.exe`): 관리자 권한 없이 현재 사용자용으로 설치하며, 시작 메뉴 항목(**BlueCaster**)과 제거 프로그램을 추가하고, Microsoft Edge WebView2 Runtime이 없으면 함께 설치합니다(Windows 11에는 포함되어 있음). 업데이트는 앱에서 스스로 설치됩니다(**설정 > 업데이트 > 지금 업데이트**)
 - **포터블** (`BlueCaster-<version>-win64-portable.zip`): 원하는 위치에 압축을 풀고 `bluecaster.exe`를 실행합니다. 세 프로그램(`bluecaster.exe`, `bluecaster-core.exe`, `bluecaster-driver.exe`)은 같은 위치에 함께 두십시오. 포터블 버전은 업데이트를 알려 주기만 하며, WebView2 Runtime이 설치되어 있어야 합니다

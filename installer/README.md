@@ -61,7 +61,7 @@ not secret; once it is final it may also be committed as `plugins.updater.pubkey
 
 - The resident core checks GitHub once a day (`crates/core/src/update.rs`): the latest release,
   or with "include pre-releases" the highest version of the last 20 releases. It reports the
-  release with its manifest URL, `https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/download/<tag>/latest.json`.
+  release with its manifest URL, `https://github.com/SeiyaFunaokaJP/BlueCaster/releases/download/<tag>/latest.json`.
 - Every release carries its own `latest.json`, so a pre-release's manifest is separate from the
   stable one's and only reaches the pre-release channel. `x64` and `ARM64` are two platforms of the
   same manifest (`windows-x86_64`, `windows-aarch64`), which is why both builds write into the same

@@ -3,10 +3,10 @@ description: Advanced Bluetooth Audio Transmitter for Windows
 remote_theme: just-the-docs/just-the-docs
 
 url: https://seiyafunaokajp.github.io
-baseurl: /A2DP-Windows-Bridge
+baseurl: /BlueCaster
 
 aux_links:
-  GitHub: https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge
+  GitHub: https://github.com/SeiyaFunaokaJP/BlueCaster
 
 color_scheme: dark
 
@@ -20,7 +20,7 @@ callouts:
     color: red
 
 footer_content: >-
-  BlueCaster source code is dual-licensed under <a href="https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/LICENSE">Apache-2.0 or MIT</a>. The distributed programs include BTstack (in bluecaster-core.exe) and may only be used for personal, non-commercial purposes (<a href="https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/main/THIRD_PARTY_LICENSES.md">third-party licenses</a>).
+  BlueCaster source code is dual-licensed under <a href="https://github.com/SeiyaFunaokaJP/BlueCaster/blob/main/LICENSE">Apache-2.0 or MIT</a>. The distributed programs include BTstack (in bluecaster-core.exe) and may only be used for personal, non-commercial purposes (<a href="https://github.com/SeiyaFunaokaJP/BlueCaster/blob/main/THIRD_PARTY_LICENSES.md">third-party licenses</a>).
 
 plugins:
   - jekyll-remote-theme

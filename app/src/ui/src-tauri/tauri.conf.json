@@ -21,7 +21,7 @@
     "icon": ["icons/icon.ico"],
     "publisher": "Seiya Funaoka",
     "copyright": "Copyright (c) Seiya Funaoka. Apache-2.0 OR MIT.",
-    "homepage": "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge",
+    "homepage": "https://github.com/SeiyaFunaokaJP/BlueCaster",
     "license": "Apache-2.0 OR MIT",
     "licenseFile": "../../../../LICENSE",
     "category": "Utility",

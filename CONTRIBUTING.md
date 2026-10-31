@@ -4,7 +4,7 @@ Thank you for your interest in contributing to BlueCaster!
 
 ## Bug Reports & Feature Requests
 
-Feel free to [open an issue](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new/choose) — you'll find a few simple forms there:
+Feel free to [open an issue](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/new/choose) — you'll find a few simple forms there:
 
 - **Bug report**: Something isn't working right.
 - **Device compatibility report**: How BlueCaster works with your adapter and headphones. "It just works" reports are welcome too!
@@ -16,7 +16,7 @@ For connection problems, **Copy Diagnostics** on the **Diagnostics** screen puts
 
 ## Building from Source
 
-For detailed setup instructions, see the [GitHub Pages](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/) documentation.
+For detailed setup instructions, see the [GitHub Pages](https://seiyafunaokajp.github.io/BlueCaster/) documentation.
 
 ### Quick Start
 
@@ -31,8 +31,8 @@ For detailed setup instructions, see the [GitHub Pages](https://seiyafunaokajp.g
 **Build:**
 
 ```bash
-git clone --recursive https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge.git
-cd A2DP-Windows-Bridge
+git clone --recursive https://github.com/SeiyaFunaokaJP/BlueCaster.git
+cd BlueCaster
 cargo build --release -p bluecaster-core-exe -p bluecaster-driver
 cd app/src/ui && pnpm install && pnpm build && cd ../../..
 cargo build --release -p bluecaster-ui
@@ -46,7 +46,7 @@ cargo build --release -p bluecaster-ui
 2. Create a feature branch (`git checkout -b feature/my-feature`)
 3. Commit your changes (`git commit -m "Add my feature"`)
 4. Push to the branch (`git push origin feature/my-feature`)
-5. Open a [Pull Request](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/pulls)
+5. Open a [Pull Request](https://github.com/SeiyaFunaokaJP/BlueCaster/pulls)
 
 ## License
 

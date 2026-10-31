@@ -1,6 +1,6 @@
 // Web pages the UI opens (the same ones v1 opened)
 
-const REPO = "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge";
+const REPO = "https://github.com/SeiyaFunaokaJP/BlueCaster";
 
 export const LINKS = {
   repo: REPO,

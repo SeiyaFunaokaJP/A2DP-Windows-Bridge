@@ -25,7 +25,7 @@ BlueCaster asigna por sí mismo el controlador WinUSB al adaptador. [Zadig](http
 
 ## Instalar BlueCaster
 
-Cada [versión](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/latest) se publica en dos formatos con los mismos archivos:
+Cada [versión](https://github.com/SeiyaFunaokaJP/BlueCaster/releases/latest) se publica en dos formatos con los mismos archivos:
 
 - **Instalador** (`BlueCaster-<version>-win64-setup.exe`): instala para el usuario actual sin derechos de administrador, añade una entrada en el menú Inicio (**BlueCaster**) y un desinstalador, e instala Microsoft Edge WebView2 Runtime si falta (Windows 11 ya lo incluye). Las actualizaciones se instalan solas desde la aplicación (**Configuración > Actualizaciones > Actualizar ahora**)
 - **Portable** (`BlueCaster-<version>-win64-portable.zip`): extráigalo en cualquier carpeta y ejecute `bluecaster.exe`. Mantenga juntos los tres programas (`bluecaster.exe`, `bluecaster-core.exe`, `bluecaster-driver.exe`). La copia portable solo avisa de las actualizaciones; necesita WebView2 Runtime instalado

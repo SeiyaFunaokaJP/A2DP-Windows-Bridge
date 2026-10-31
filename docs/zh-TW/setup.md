@@ -25,7 +25,7 @@ BlueCaster 會自行為介面卡指派 WinUSB 驅動程式，不再需要 [Zadig
 
 ## 安裝 BlueCaster
 
-每個 [發行版本](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/latest) 都提供兩種形式，內含相同的檔案：
+每個 [發行版本](https://github.com/SeiyaFunaokaJP/BlueCaster/releases/latest) 都提供兩種形式，內含相同的檔案：
 
 - **安裝程式**（`BlueCaster-<version>-win64-setup.exe`）：不需系統管理員權限即可為目前使用者安裝，會新增「開始」功能表項目（**BlueCaster**）與解除安裝程式，並在缺少 Microsoft Edge WebView2 Runtime 時一併安裝（Windows 11 已內建）。更新可從應用程式內自行安裝（**設定 > 更新 > 立即更新**）
 - **免安裝版**（`BlueCaster-<version>-win64-portable.zip`）：解壓縮到任意位置後執行 `bluecaster.exe`。請將三個程式（`bluecaster.exe`、`bluecaster-core.exe`、`bluecaster-driver.exe`）放在一起。免安裝版只會通知有更新；需要已安裝 WebView2 Runtime

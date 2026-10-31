@@ -30,7 +30,7 @@ version = "3.0.0-alpha.1"
 edition = "2024"
 rust-version = "1.90"
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge"
+repository = "https://github.com/SeiyaFunaokaJP/BlueCaster"
 # Nothing here goes to crates.io (cargo-deny: path dependencies are fine)
 publish = false
 

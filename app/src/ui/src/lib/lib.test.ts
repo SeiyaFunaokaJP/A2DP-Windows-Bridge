@@ -472,7 +472,7 @@ describe("profiles", () => {
 describe("about", () => {
   it("links the third-party licences of the release tag", () => {
     expect(thirdPartyUrl("2.0.0-alpha.1")).toBe(
-      "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/blob/v2.0.0-alpha.1/THIRD_PARTY_LICENSES.md",
+      "https://github.com/SeiyaFunaokaJP/BlueCaster/blob/v2.0.0-alpha.1/THIRD_PARTY_LICENSES.md",
     );
   });
 });
@@ -486,7 +486,7 @@ describe("bug report", () => {
       bugReportUrl({ ...base, adapter: "RTL8761BU (2357:0604)", headphones: "WH-1000XM5", codec: "ldac", captureMode: "app" }),
     );
     const q = url.searchParams;
-    expect(url.origin + url.pathname).toBe("https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new");
+    expect(url.origin + url.pathname).toBe("https://github.com/SeiyaFunaokaJP/BlueCaster/issues/new");
     expect(q.get("template")).toBe("bug_report.yml");
     expect(q.get("version")).toBe("2.0.3");
     expect(q.get("windows")).toBe("Windows build 26100 (x86_64)");
