@@ -75,6 +75,8 @@ pub struct State {
     /// The ACL links up now (handle, device, opened by the device itself
     /// and not streamed on yet)
     pub acl_links: Vec<(u16, [u8; 6], bool)>,
+    /// The device and time of the last ACL link that came up
+    pub last_link_up: Option<([u8; 6], Instant)>,
     /// ACL handle of the A2DP signaling channel
     pub a2dp_con_handle: Option<u16>,
     pub remote_caps: RemoteCaps,
@@ -96,6 +98,12 @@ pub struct State {
 }
 
 impl State {
+    /// How long the ACL link to `addr` has been up, if it is
+    pub fn acl_link_age(&self, addr: &[u8; 6]) -> Option<Duration> {
+        self.acl_link_to(addr)?;
+        self.last_link_up.filter(|(a, _)| a == addr).map(|(_, at)| at.elapsed())
+    }
+
     /// The handle of the ACL link up to `addr`
     pub fn acl_link_to(&self, addr: &[u8; 6]) -> Option<u16> {
         self.acl_links.iter().find(|(_, a, _)| a == addr).map(|&(h, _, _)| h)
@@ -208,6 +216,13 @@ mod tests {
         s.acl_links.push((4, a, true));
         assert_eq!(s.acl_link_to(&a), Some(4));
         assert_eq!(s.acl_link_to(&b), None);
+        // Its age: of a link still up, of the device it belongs to
+        assert_eq!(s.acl_link_age(&a), None);
+        s.last_link_up = Some((a, Instant::now()));
+        assert!(s.acl_link_age(&a).is_some());
+        assert_eq!(s.acl_link_age(&b), None);
+        s.acl_links.clear();
+        assert_eq!(s.acl_link_age(&a), None);
     }
 
     #[test]

@@ -443,15 +443,23 @@ impl HostApp {
             // Not open yet (SDP query / waiting for L2CAP): the disconnect
             // emits a failed CONNECTION_ESTABLISHED and frees the connection
             // at once, but a pending outgoing L2CAP channel would be
-            // orphaned: drop the ACL too if it is up (never one still
-            // paging: no valid handle yet)
+            // orphaned: drop the ACL too if it is up. A page still running
+            // has no valid handle: it is cancelled, or the next connection
+            // waits behind its SDP query until the page times out
             AvdtpState::Pending => {
                 stack.a2dp_disconnect(self.a2dp_cid);
-                if let Some(addr) = self.remote_addr
-                    && let AclState::Open(handle) = stack.acl_state(&addr)
-                {
-                    tracing::debug!("abort: dropping ACL handle 0x{handle:04X} of the pending connection");
-                    stack.disconnect(handle);
+                if let Some(addr) = self.remote_addr {
+                    match stack.acl_state(&addr) {
+                        AclState::Open(handle) => {
+                            tracing::debug!("abort: dropping ACL handle 0x{handle:04X} of the pending connection");
+                            stack.disconnect(handle);
+                        }
+                        AclState::Paging => {
+                            tracing::info!("cancelling the page of {}", addr_str(&addr));
+                            stack.cmd_create_connection_cancel(&addr);
+                        }
+                        _ => {}
+                    }
                 }
                 false
             }
@@ -948,6 +956,7 @@ impl HostApp {
                         s.acl_requests.retain(|&a| a != addr);
                         s.acl_links.retain(|&(_, a, _)| a != addr);
                         s.acl_links.push((handle & 0x0FFF, addr, by_device));
+                        s.last_link_up = Some((addr, Instant::now()));
                         if target {
                             s.target_acl_down_reason = 0;
                             s.target_acl_handle = Some(handle & 0x0FFF);

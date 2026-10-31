@@ -399,6 +399,14 @@ impl Stack {
         status
     }
 
+    /// Ends a page still running: its Connection Complete follows at once
+    pub fn cmd_create_connection_cancel(&self, addr: &[u8; 6]) -> u8 {
+        // SAFETY: on the BTstack thread; addr is 6 bytes.
+        let status = unsafe { ffi::a2dpwb_cmd_create_connection_cancel(addr.as_ptr()) };
+        tracing::debug!(target: "btstack", "create connection cancel: 0x{status:02X}");
+        status
+    }
+
     pub fn cmd_read_bd_addr(&self) -> u8 {
         // SAFETY: on the BTstack thread.
         unsafe { ffi::a2dpwb_cmd_read_bd_addr() }
