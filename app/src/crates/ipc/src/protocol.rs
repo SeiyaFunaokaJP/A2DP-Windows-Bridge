@@ -202,6 +202,10 @@ pub struct Device {
     /// empty while not known
     #[serde(default)]
     pub codec_caps: Vec<CodecDeviceCaps>,
+    /// Codec keys the device may offer only once chosen, whatever `codecs`
+    /// says: the UI keeps them choosable (issue #30)
+    #[serde(default)]
+    pub codecs_on_request: Vec<String>,
     /// An LE Audio entry (experimental; le_audio_devices.txt and the LE
     /// scan). A dual-mode device has two entries with the same address, a
     /// classic one and an LE Audio one: address and this flag identify an
@@ -619,6 +623,10 @@ pub struct Settings {
     pub media_keys: bool,
     /// Remember each device's volume (one switch for every device)
     pub remember_volume: bool,
+    /// Connect a device that went away again by itself (on by default).
+    /// Off: the session ends and the adapter is released.
+    #[serde(default = "yes")]
+    pub auto_reconnect: bool,
     /// Windows Volume Sync for every device (on by default): the audio
     /// device's volume and the captured device's Windows volume follow each
     /// other. Off: no stream syncs. A change starts the profile in use

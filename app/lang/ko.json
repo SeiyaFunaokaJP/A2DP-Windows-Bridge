@@ -162,6 +162,7 @@
   "settings.include_prereleases": "업데이트 확인 시 시험판 포함",
   "settings.media_keys": "오디오 장치 버튼으로 재생 제어",
   "settings.remember_volume": "오디오 장치별 볼륨 기억",
+  "settings.auto_reconnect": "자동으로 다시 연결",
   "settings.le_low_latency": "게이밍 오디오 장치용 저지연 (실험적)",
   "advanced.max_packet": "최대 미디어 패킷 크기(바이트)",
   "advanced.max_packet_recommended": "권장(%d)",

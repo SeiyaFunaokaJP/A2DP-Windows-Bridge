@@ -32,6 +32,11 @@ media_keys: boolean,
  */
 remember_volume: boolean, 
 /**
+ * Connect a device that went away again by itself (on by default).
+ * Off: the session ends and the adapter is released.
+ */
+auto_reconnect: boolean, 
+/**
  * Windows Volume Sync for every device (on by default): the audio
  * device's volume and the captured device's Windows volume follow each
  * other. Off: no stream syncs. A change starts the profile in use

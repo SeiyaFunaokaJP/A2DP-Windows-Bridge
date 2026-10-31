@@ -969,14 +969,6 @@ option {
   gap: var(--s2);
   padding: 0 0 var(--s2);
 }
-.nav-logo {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-.nav-title {
-  font-weight: 600;
-  white-space: nowrap;
-}
 .nav-list {
   list-style: none;
   margin: 0;
@@ -1076,6 +1068,20 @@ option {
 .status-pill .codec-name {
   font-size: inherit;
 }
+/* The codec and its details in one box */
+.status-pill .codec-info {
+  gap: 0.125rem;
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+.status-pill .codec-badge {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+}
 
 /* Collapsed to icons: narrow windows, or by the toggle */
 @media (max-width: 860px) {
@@ -1083,8 +1089,6 @@ option {
     grid-template-columns: 3.5rem 1fr;
   }
   .shell:not(.nav-expanded) .nav-label,
-  .shell:not(.nav-expanded) .nav-title,
-  .shell:not(.nav-expanded) .nav-logo,
   .shell:not(.nav-expanded) .status-pill-text {
     display: none;
   }
@@ -1105,8 +1109,6 @@ option {
   grid-template-columns: 3.5rem 1fr;
 }
 .shell.nav-collapsed .nav-label,
-.shell.nav-collapsed .nav-title,
-.shell.nav-collapsed .nav-logo,
 .shell.nav-collapsed .status-pill-text {
   display: none;
 }
@@ -1529,18 +1531,50 @@ option {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
   gap: var(--s4);
+  max-width: 64rem;
 }
 .home-device {
   display: flex;
   flex-direction: column;
   gap: var(--s3);
+  padding: var(--s5);
   min-width: 0;
 }
 .home-device .device-card {
-  flex: 1;
   min-width: 0;
   gap: var(--s4);
-  padding: var(--s5);
+  padding: 0;
+}
+.home-device .connect-btn {
+  min-height: 2.75rem;
+  margin-top: auto;
+  border-radius: var(--r);
+  font-size: var(--fs-16);
+}
+.home-link {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+  padding: 0 var(--s1);
+}
+.home-link .link-mini {
+  flex: 1;
+  min-width: 0;
+}
+.home-link .sparkline {
+  height: 1.25rem;
+}
+.home-add {
+  min-height: 4rem;
+  padding: var(--s4);
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+.home-add:hover {
+  background: var(--surface-2);
+  color: var(--text);
 }
 /* A smaller name and ring than the defaults, so long names ("EarFun Air
    Pro 4+") fit two cards side by side before the ellipsis (issue #86) */
@@ -1553,29 +1587,11 @@ option {
 .home-device:not(.live) .ring .icon {
   color: var(--text-2);
 }
-.home-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: var(--s4);
-}
-.mini {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s2);
-  padding: var(--s4);
-  min-width: 0;
-}
 .mini-title {
   font-size: var(--fs-12);
   font-weight: 600;
   color: var(--text-2);
   text-transform: none;
-}
-.mini-body {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  min-width: 0;
 }
 .link-mini {
   display: flex;
@@ -2970,10 +2986,15 @@ html.win-flyout body {
   .page {
     padding: var(--s4);
   }
-  .device-card,
-  .home-device .device-card {
+  .device-card {
     gap: var(--s4);
     padding: var(--s4);
+  }
+  .home-device {
+    padding: var(--s4);
+  }
+  .home-device .device-card {
+    padding: 0;
   }
   .ring:not(.ring-small) {
     --size: 5.5rem;

@@ -4,8 +4,8 @@
 // core stops the running stream first). The volume is on the card of the
 // device in use, as each device keeps its own, and disabled on the others
 // (issue #86); its codec is chosen on its card (e.g. one for games and one
-// for music), its link quality below. The capture source is chosen on
-// Audio Devices.
+// for music), and its link quality shows there while it streams. The
+// capture source is chosen on Audio Devices.
 
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { useApp, type AppContext } from "../app/context";
@@ -15,7 +15,6 @@ import { Icon } from "../components/Icon";
 import {
   BatteryLevel,
   CodecBadge,
-  currentProfile,
   ErrorPanel,
   FirmwareDownload,
   LinkSparkline,
@@ -30,7 +29,7 @@ import {
 import { t } from "../i18n";
 import { IpcError, type AdapterInfo, type Snapshot, type StreamState } from "../ipc/types";
 import { CARD_ORDER, cardOrder, codecSpec } from "../lib/codecs";
-import { audioEntries, entryBase, entryByKey, entryOf, knownCodecs, type AudioEntry } from "../lib/profile";
+import { audioEntries, codecsOnRequest, entryBase, entryByKey, entryOf, knownCodecs, type AudioEntry } from "../lib/profile";
 import { chooseCodec, codecShown, pickedCodec, settle, settling, streamingCodec } from "./Codecs";
 
 /** Adapters whose firmware files are missing from the settings folder or
@@ -139,8 +138,6 @@ export function Home() {
   const snap = () => core.state.snap!;
   const stream = () => snap().stream;
   const entries = () => audioEntries(snap());
-  // The device in use (or last used)
-  const inUse = () => entryOf(entries(), currentProfile(snap()));
   // A failed request (Connect) until the state moves on
   const [reqError, setReqError] = createSignal<IpcError | null>(null);
   createEffect(on(() => stream().state, () => setReqError(null), { defer: true }));
@@ -183,27 +180,20 @@ export function Home() {
               return <DeviceCard entry={entry()} onError={(err) => setReqError(IpcError.from(err))} />;
             }}
           </For>
+          {/* A lone card does not stretch over the page (issue #86) */}
+          <Show when={entries().length === 1}>
+            <button type="button" class="card home-add" onClick={() => navigate({ name: "devices" })}>
+              {t("ui.home.add_device")}
+            </button>
+          </Show>
         </div>
-
-        <Show when={inUse()}>
-          <div class="home-grid">
-            <section class="card mini" aria-labelledby="home-link">
-              <h2 id="home-link" class="mini-title">
-                {t("quality.title")}
-              </h2>
-              <div class="mini-body">
-                <QualityIndicator />
-              </div>
-              <LinkSparkline />
-            </section>
-          </div>
-        </Show>
       </Show>
     </div>
   );
 }
 
-/** One device: ring, name, battery and state, codec, and its own button */
+/** One device: ring, name, battery and state, codec, volume, link quality
+ *  while streaming, and its own button, all in one card (issue #86) */
 function DeviceCard(props: { entry: AudioEntry; onError: (e: unknown) => void }) {
   const app = useApp();
   const snap = () => app.core.state.snap!;
@@ -236,8 +226,8 @@ function DeviceCard(props: { entry: AudioEntry; onError: (e: unknown) => void })
   const name = () => props.entry.name || props.entry.address;
   return (
     // The group names the device for its button ("Connect" on each card)
-    <div class="home-device" classList={{ live: live() }} role="group" aria-label={name()}>
-      <section class="card device-card">
+    <div class="card home-device" classList={{ live: live() }} role="group" aria-label={name()}>
+      <div class="device-card">
         <Ring state={state()} volume={live() ? stream().volume : null}>
           <Icon name="headphones" />
         </Ring>
@@ -275,9 +265,15 @@ function DeviceCard(props: { entry: AudioEntry; onError: (e: unknown) => void })
             )}
           </Show>
         </div>
-      </section>
+      </div>
       {/* Its own volume while it is the one in use, disabled on the others */}
       <VolumeControl off={!live()} />
+      <Show when={state() === "streaming"}>
+        <section class="home-link" aria-label={t("quality.title")}>
+          <QualityIndicator />
+          <LinkSparkline />
+        </section>
+      </Show>
       <button
         type="button"
         class="connect-btn"
@@ -313,7 +309,9 @@ export function CodecPicker(props: { entry: AudioEntry }) {
   const value = () => streamingCodec(snap(), e()) ?? picked() ?? (codec() === "auto" ? null : codec());
   // A quick choice: what the device supports, never the codecs Codecs hides
   const choices = () => {
-    const ids: string[] = order().filter((id) => codecShown(id, picked(), knownCodecs(snap().devices, e().address), true));
+    const known = knownCodecs(snap().devices, e().address);
+    const onRequest = codecsOnRequest(snap().devices, e().address);
+    const ids: string[] = order().filter((id) => codecShown(id, picked(), known, true, onRequest));
     const v = value();
     return v && !ids.includes(v) ? [v, ...ids] : ids;
   };

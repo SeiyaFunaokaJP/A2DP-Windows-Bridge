@@ -56,7 +56,9 @@ export type MockScenario =
   /** A third device whose codecs cap what can be set (issue #86: the
    *  moto buds+, SBC bitpool 39, AAC 131 kbps, LHDC V5 48 kHz at most),
    *  and two aptX Adaptive ones, with and without 96 kHz */
-  | "capped";
+  | "capped"
+  /** Huawei earbuds that list LDAC only once it is asked for (issue #30) */
+  | "huawei";
 
 export interface MockOptions {
   scenario?: MockScenario;
@@ -162,6 +164,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     include_prereleases: false,
     media_keys: true,
     remember_volume: true,
+    auto_reconnect: true,
     volume_sync: true,
     mute_output: true,
     developer_mode: false,
@@ -190,7 +193,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
 
 /** A device entry: classic unless `over` says otherwise */
 export function sampleDevice(over: Partial<Device> & { address: string }): Device {
-  return { name: "", saved: false, audio: true, rssi: null, codecs: [], sbc: null, codec_caps: [], le_audio: false, le_audio_set: false, ...over };
+  return { name: "", saved: false, audio: true, rssi: null, codecs: [], sbc: null, codec_caps: [], codecs_on_request: [], le_audio: false, le_audio_set: false, ...over };
 }
 
 /** What the WH-1000XM5's SBC endpoint lists (no 4 subbands, no SNR, as many headphones) */
@@ -301,6 +304,17 @@ export function sampleSnapshot(scenario: MockScenario = "normal"): Snapshot {
           }),
           sampleDevice({ address: "00:1A:7D:DA:71:13", name: "SRS-XB13", saved: true }),
           ...(scenario === "capped" ? [MOTO_BUDS, APTXAD_48K, APTXAD_96K] : []),
+          ...(scenario === "huawei"
+            ? [
+                sampleDevice({
+                  address: "CC:FF:90:12:34:56",
+                  name: "HUAWEI FreeBuds Pro 4",
+                  saved: true,
+                  codecs: ["sbc", "sbcxq", "aac"],
+                  codecs_on_request: ["ldac"],
+                }),
+              ]
+            : []),
           ...(le ? [{ ...LE_BUDS, saved: true }] : []),
         ],
     scanning: false,

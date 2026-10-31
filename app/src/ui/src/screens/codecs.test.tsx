@@ -251,6 +251,20 @@ describe("the Codecs screen", () => {
     expect(within(wh).queryByText(t("error.codec_not_supported", "aptX HD"))).toBeNull();
   });
 
+  it("keeps LDAC choosable on earbuds that list it only once asked (issue #30)", async () => {
+    const { calls } = start("#/codecs", "huawei");
+    const buds = await section("HUAWEI FreeBuds Pro 4");
+    // Not "Unsupported", and hidden with no other codec they did not list
+    const ldac = within(buds).getByRole("radio", { name: /LDAC/ });
+    expect(ldac.closest("label")).toHaveTextContent(t("ui.profile.codec_support_unknown"));
+    expect(within(buds).queryByRole("radio", { name: /aptX HD/ })).toBeNull();
+    fireEvent.click(ldac);
+    await waitFor(() => expect(saves(calls)).toHaveLength(1));
+    // LDAC itself, not the best codec they listed
+    expect(saves(calls)[0]?.profile).toMatchObject({ codec: "ldac" });
+    await waitFor(() => expect(within(buds).getByRole("radio", { name: /LDAC/ })).toBeChecked());
+  });
+
   it("offers every codec, with no Experimental tag (issue #86: the README marks them)", async () => {
     const { calls, core } = start("#/codecs");
     const wh = await section("WH-1000XM5");
@@ -943,6 +957,7 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     expect(sync).toBeChecked();
     expect(keys).toBeChecked();
     expect(within(all).getByRole("switch", named("settings.remember_volume"))).toBeChecked();
+    expect(within(all).getByRole("switch", named("settings.auto_reconnect"))).toBeChecked();
     fireEvent.click(sync);
     await waitFor(() => expect(calls.some((c) => c.method === "settings.set")).toBe(true));
     const set = calls.find((c) => c.method === "settings.set")!.params as { settings: Record<string, unknown> };

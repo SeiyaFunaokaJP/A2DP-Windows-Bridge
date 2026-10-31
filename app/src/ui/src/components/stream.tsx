@@ -411,7 +411,8 @@ export function linkQuality(samples: readonly LinkSample[]): { level: QualityLev
 
 export function QualityIndicator() {
   const { core } = useApp();
-  const q = createMemo(() => linkQuality(core.link()));
+  // No link to rate unless it streams, whatever the last samples said
+  const q = createMemo(() => (core.state.snap?.stream.state === "streaming" ? linkQuality(core.link()) : null));
   const label = () => {
     const v = q();
     if (!v) return t("ui.quality.unknown");

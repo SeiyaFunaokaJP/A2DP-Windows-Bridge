@@ -293,6 +293,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         include_prereleases: s.include_prereleases,
         media_keys: s.media_keys,
         remember_volume: s.remember_volume,
+        auto_reconnect: s.auto_reconnect,
         volume_sync: s.volume_sync,
         mute_output: s.mute_output,
         developer_mode: s.debug_mode,
@@ -340,6 +341,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.include_prereleases = s.include_prereleases;
     c.media_keys = s.media_keys;
     c.remember_volume = s.remember_volume;
+    c.auto_reconnect = s.auto_reconnect;
     c.volume_sync = s.volume_sync;
     c.mute_output = s.mute_output;
     c.debug_mode = s.developer_mode;
@@ -560,6 +562,7 @@ fn saved_devices(
             codecs: Vec::new(),
             sbc: None,
             codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio: d.le_audio,
             le_audio_set: false,
         })
@@ -591,6 +594,10 @@ fn saved_devices(
                 })
                 .collect();
         }
+        // These list LDAC only after it was asked for (the stream does)
+        if a2dpwb_core::is_huawei(&d.name) {
+            d.codecs_on_request = vec!["ldac".to_string()];
+        }
     }
     list
 }
@@ -606,6 +613,7 @@ fn scanned_device(d: &ScannedDevice) -> Device {
         codecs: Vec::new(),
         sbc: None,
         codec_caps: Vec::new(),
+        codecs_on_request: Vec::new(),
         le_audio: d.le_audio,
         le_audio_set: d.le_audio_set,
     }
@@ -2599,6 +2607,7 @@ mod tests {
             codecs: Vec::new(),
             sbc: None,
             codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio,
             le_audio_set: false,
         };
@@ -2981,6 +2990,7 @@ mod tests {
             codecs: Vec::new(),
             sbc: None,
             codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio: false,
             le_audio_set: false,
         }];
@@ -3019,6 +3029,11 @@ mod tests {
         );
         assert!(list[1].sbc.is_none());
         assert!(list[0].saved && !list[1].saved && list[1].codecs.is_empty());
+        assert!(list[0].codecs_on_request.is_empty());
+        // Huawei earbuds list LDAC only once it is asked for (issue #30)
+        devices::save(&dir, "AA:BB:CC:DD:EE:FF", "HUAWEI FreeBuds Pro 4").unwrap();
+        let list = saved_devices(&dir, &scanned, &codecs);
+        assert_eq!(list[0].codecs_on_request, ["ldac"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

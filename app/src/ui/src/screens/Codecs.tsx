@@ -14,7 +14,9 @@
 // back to the first card it offers in that order (lib/codecs.ts
 // effectiveCodec, as the core), which is also what Auto picks then: a click
 // on such a card chooses that one instead, and a profile left with one shows
-// that one chosen (issue #86: no note below the cards). The codec chosen
+// that one chosen (issue #86: no note below the cards). A codec it may offer
+// only once chosen (Device.codecs_on_request) stays a card of its own, chosen
+// also while another one streams instead (issue #30). The codec chosen
 // stays in the device's profile while Auto-select is on. The device is
 // named without its address (shown on Audio Devices).
 // Choosing changes the device's profile (made when first needed; the core
@@ -57,6 +59,7 @@ import {
 } from "../lib/codecs";
 import {
   audioEntries,
+  codecsOnRequest,
   entryBase,
   entryByKey,
   followedName,
@@ -191,6 +194,8 @@ export function pickedCodec(
 ): string | null {
   const codec = (entry.profile ?? entryBase(entry, snap.profiles)).codec;
   const known = knownCodecs(snap.devices, entry.address);
+  // One it may offer once chosen stays chosen (issue #30)
+  if (!autoAll && codecsOnRequest(snap.devices, entry.address).includes(codec)) return codec;
   // One the device does not offer: the one used instead (issue #86)
   if (!autoAll && codec !== "auto") return effectiveCodec(codec, known, true, order) ?? codec;
   return streamingCodec(snap, entry) ?? effectiveCodec("auto", known, true, autoAll ? AUTO_ORDER : order);
@@ -199,8 +204,14 @@ export function pickedCodec(
 /** Whether a codec's card shows: the one picked always, the others unless
  *  `hide` and the device did not offer them (a codec chosen that it does
  *  not offer neither: the one used instead is picked) */
-export function codecShown(id: string, picked: string | null, known: readonly string[], hide: boolean) {
-  return !hide || id === picked || codecSupport(id, known) !== "not_offered";
+export function codecShown(
+  id: string,
+  picked: string | null,
+  known: readonly string[],
+  hide: boolean,
+  onRequest: readonly string[] = [],
+) {
+  return !hide || id === picked || codecSupport(id, known, onRequest) !== "not_offered";
 }
 
 /** Whether `order` puts the cards in `ids` (those shown) in their default
@@ -302,7 +313,8 @@ function DeviceCodecs(props: {
   // The profile shown: the device's, or what it would start from
   const shown = (): Profile => e().profile ?? entryBase(e(), snap().profiles);
   const known = () => knownCodecs(snap().devices, e().address);
-  const support = (id: string) => codecSupport(id, known());
+  const onRequest = () => codecsOnRequest(snap().devices, e().address);
+  const support = (id: string) => codecSupport(id, known(), onRequest());
   // The device's order while it is being dragged (null: the saved one)
   const [dragOrder, setDragOrder] = createSignal<CodecId[] | null>(null);
   // Its cards' order: Auto-select's is the default one (highest sound
@@ -313,7 +325,7 @@ function DeviceCodecs(props: {
   const picked = () => pickedCodec(snap(), e(), props.auto, order());
   const cards = () =>
     order()
-      .filter((id) => codecShown(id, picked(), known(), props.hide))
+      .filter((id) => codecShown(id, picked(), known(), props.hide, onRequest()))
       .map((id) => codecSpec(id));
   const [settingsOf, setSettingsOf] = createSignal<CodecSpec | null>(null);
   // A save that ends after the screen is gone starts no wait
