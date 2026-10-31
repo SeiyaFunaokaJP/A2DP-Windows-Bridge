@@ -19,7 +19,7 @@ use hci_transport::UsbSelector;
 use crate::devices::SavedDevice;
 use crate::messages::Msg;
 use crate::settings::Settings;
-use crate::stream::{self, StreamInfo, StreamRequest, StreamState};
+use crate::stream::{self, SourceRequest, StreamInfo, StreamRequest, StreamState};
 
 /// Wait for the controller to answer when checking a stack before use
 const CONTROLLER_PROBE: Duration = Duration::from_secs(2);
@@ -285,11 +285,17 @@ pub(crate) struct Inner {
     /// back while it ran: a Bluetooth restart does not reconnect them
     /// (issues #86, #117)
     turned_off: AtomicBool,
+    /// The source the running A2DP session changes to at its next tick
+    source_change: Mutex<Option<SourceRequest>>,
 }
 
 impl Inner {
     pub fn stop_requested(&self) -> bool {
         self.stop.load(Ordering::Acquire)
+    }
+
+    pub fn take_source_change(&self) -> Option<SourceRequest> {
+        self.source_change.lock().unwrap_or_else(|e| e.into_inner()).take()
     }
 
     /// The session waits for headphones that were turned off
@@ -794,6 +800,7 @@ impl Service {
             streamed: AtomicBool::new(false),
             waiting: AtomicBool::new(false),
             turned_off: AtomicBool::new(false),
+            source_change: Mutex::new(None),
         });
         // Without a window, also while only the tray runs
         let weak = Arc::downgrade(&inner);
@@ -943,6 +950,24 @@ impl Service {
         self.stop_session();
     }
 
+    /// Changes the source of the running A2DP stream: the link stays up.
+    /// False when none is streaming (it connects or reconnects, a start or
+    /// stop is under way, LE Audio has its own capture path): the caller
+    /// starts it again instead.
+    pub fn change_source(&self, source: SourceRequest) -> bool {
+        let Ok(_control) = self.control.try_lock() else { return false };
+        if !self.is_running() || self.state() != StreamState::Streaming {
+            return false;
+        }
+        match self.last_request.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            Some(req) if req.le.is_none() => req.source = source.clone(),
+            _ => return false,
+        }
+        *self.inner.source_change.lock().unwrap_or_else(|e| e.into_inner()) = Some(source);
+        self.inner.tick.1.notify_all();
+        true
+    }
+
     /// A ticket for a start or stop run later on its own thread
     /// ([`Service::start_streaming_for`], [`Service::disconnect_for`]): the
     /// latest one taken is the one that runs
@@ -1081,6 +1106,9 @@ impl Service {
         stream::expect_default_switch(req.source.default_switch());
         self.stop_session();
         stream::expect_default_switch(None);
+        // Saved in the profile, so in `req` too: left over from a session
+        // that ended before it took it
+        self.inner.take_source_change();
         *self.last_request.lock().unwrap_or_else(|e| e.into_inner()) = Some(req.clone());
         self.inner.turned_off.store(false, Ordering::Release);
         self.inner.stop.store(false, Ordering::Release);
@@ -1353,6 +1381,34 @@ mod tests {
         }
         .to_request(1000)
         .unwrap()
+    }
+
+    #[test]
+    fn a_source_changes_in_place_only_on_a_running_a2dp_stream() {
+        let s = service();
+        let tone = || SourceRequest::TestTone;
+        // No session
+        *s.last_request.lock().unwrap() = Some(request());
+        assert!(!s.change_source(tone()));
+        // A session that connects
+        s.inner.running.store(true, Ordering::Release);
+        s.inner.notify(StreamState::Connecting, Msg::new("status.initializing"));
+        assert!(!s.change_source(tone()));
+        // LE Audio
+        s.inner.notify(StreamState::Streaming, Msg::new("status.connected"));
+        let le = bt_host::LeRequest { extra_devices: Vec::new(), preset: None, low_latency: true };
+        *s.last_request.lock().unwrap() = Some(StreamRequest { le: Some(le), ..request() });
+        assert!(!s.change_source(tone()));
+        assert_eq!(s.inner.take_source_change(), None);
+        // A start or stop under way
+        *s.last_request.lock().unwrap() = Some(request());
+        let control = s.control.lock().unwrap();
+        assert!(!s.change_source(tone()));
+        drop(control);
+        // Streaming: the session takes it, and a Bluetooth restart keeps it
+        assert!(s.change_source(tone()));
+        assert_eq!(s.inner.take_source_change(), Some(tone()));
+        assert_eq!(s.last_request.lock().unwrap().as_ref().unwrap().source, tone());
     }
 
     #[test]

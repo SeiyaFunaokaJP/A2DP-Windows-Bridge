@@ -958,6 +958,13 @@ fn restart_after_save(stream: &StreamStatus, saved: &str) -> bool {
         && stream.profile.as_deref() == Some(saved)
 }
 
+/// The save changed only the source of an A2DP profile streaming: the stream
+/// takes it in place ([`Service::change_source`]). What is still connecting
+/// starts again, as a restart already on its way shows as connecting too.
+fn source_changes_in_place(stream: &StreamStatus, before: Option<&CoreProfile>, saved: &CoreProfile) -> bool {
+    stream.state == StreamState::Streaming && !saved.le_audio && before.is_some_and(|b| b.only_source_differs(saved))
+}
+
 /// Whether turning Auto-select (for every device) on or off may change the
 /// codec of the profile in use: it chose one, or its own codec order (a
 /// profile left on "auto" in the default order streams as Auto either
@@ -1915,6 +1922,7 @@ impl CoreState {
                 let key = original_name.as_deref().unwrap_or(&profile.name).to_string();
                 let pos = list.iter().position(|p| p.name == key);
                 let merged = merge_profile(pos.map(|i| &list[i]), &profile);
+                let before = pos.map(|i| list[i].clone());
                 // Only the device's codec order changed (its cards dragged):
                 // the stream goes on unless the order changes its codec
                 let order_only = pos.is_some_and(|i| {
@@ -1955,15 +1963,25 @@ impl CoreState {
                     self.set_active_profile(Some(profile.name.clone()));
                 }
                 self.refresh_devices();
-                // The profile in use starts again with what was saved (v1)
+                // The profile in use starts again with what was saved (v1),
+                // but for another source, which needs nothing of the link
                 let order_keeps_codec = order_only && (order_unused || !restart_for_order(&s.stream, &in_order));
                 if restart_after_save(&s.stream, &key) && !order_keeps_codec {
-                    tracing::info!(
-                        "profile {} saved while in use: it starts again as {}",
-                        a2dpwb_core::diag::quoted(&key),
-                        a2dpwb_core::diag::quoted(&profile.name)
-                    );
-                    self.restart_profile(&profile.name)?;
+                    let in_place = source_changes_in_place(&s.stream, before.as_ref(), &in_order)
+                        && self.service.change_source(in_order.source());
+                    if in_place {
+                        tracing::info!(
+                            "profile {} saved while in use: its source changes in place",
+                            a2dpwb_core::diag::quoted(&key)
+                        );
+                    } else {
+                        tracing::info!(
+                            "profile {} saved while in use: it starts again as {}",
+                            a2dpwb_core::diag::quoted(&key),
+                            a2dpwb_core::diag::quoted(&profile.name)
+                        );
+                        self.restart_profile(&profile.name)?;
+                    }
                 }
                 Ok(Value::Null)
             }
@@ -2614,6 +2632,27 @@ mod tests {
         for state in [StreamState::Idle, StreamState::Error] {
             assert!(!restart_after_save(&status(state, Some("WH LDAC")), "WH LDAC"));
         }
+    }
+
+    #[test]
+    fn another_source_changes_in_place_only_alone_and_while_streaming() {
+        let before = CoreProfile { name: "WH".into(), ..CoreProfile::default() };
+        let app = CoreProfile { capture_mode: "app".into(), app_exe: "Spotify.exe".into(), ..before.clone() };
+        let stream = |state| StreamStatus { state, profile: Some("WH".into()), ..StreamStatus::default() };
+        let streaming = stream(StreamState::Streaming);
+        assert!(source_changes_in_place(&streaming, Some(&before), &app));
+        // Saved with something else, or nothing that changes the source
+        let codec = CoreProfile { codec: "aac".into(), ..app.clone() };
+        assert!(!source_changes_in_place(&streaming, Some(&before), &codec));
+        let names_only = CoreProfile { app_exe: "Spotify.exe".into(), ..before.clone() };
+        assert!(!source_changes_in_place(&streaming, Some(&before), &names_only));
+        // Still connecting (a restart may be on its way), LE Audio, a new profile
+        for state in [StreamState::Connecting, StreamState::Reconnecting] {
+            assert!(!source_changes_in_place(&stream(state), Some(&before), &app));
+        }
+        let le = CoreProfile { le_audio: true, ..before.clone() };
+        assert!(!source_changes_in_place(&streaming, Some(&le), &CoreProfile { le_audio: true, ..app.clone() }));
+        assert!(!source_changes_in_place(&streaming, None, &app));
     }
 
     #[test]

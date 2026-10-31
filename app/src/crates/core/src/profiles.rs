@@ -280,15 +280,9 @@ impl Profile {
         codec::AutoOrder::from_keys(&self.codec_order)
     }
 
-    /// What to stream for this profile. An LE Audio (experimental) profile
-    /// gives an LE request (`le` Some: the le_stream session, which refuses
-    /// with error.le_audio_disabled while the setting is off); its codec,
-    /// quality, rate and depth are not used (LC3 as the device and the
-    /// preset decide).
-    pub fn to_request(&self, legacy_max_media_payload: u16) -> Result<StreamRequest, ProfileError> {
-        let device = bt_host::parse_addr(&self.device_address)
-            .ok_or_else(|| ProfileError::Address(self.device_address.clone()))?;
-        let source = match self.capture_mode.as_str() {
+    /// Where the profile's audio comes from
+    pub fn source(&self) -> SourceRequest {
+        match self.capture_mode.as_str() {
             "virtual" => SourceRequest::VirtualDevice {
                 id: self.audio_device_id.clone(),
                 name: self.audio_device_name.clone(),
@@ -297,7 +291,32 @@ impl Profile {
             "app" => SourceRequest::Application { exe: self.app_exe.clone() },
             // "loopback", and v1's legacy "apo"
             _ => SourceRequest::SystemLoopback,
+        }
+    }
+
+    /// `new` is this profile with another source and nothing else changed
+    pub fn only_source_differs(&self, new: &Profile) -> bool {
+        let same_source = Profile {
+            capture_mode: new.capture_mode.clone(),
+            audio_device_id: new.audio_device_id.clone(),
+            audio_device_name: new.audio_device_name.clone(),
+            auto_switch_device: new.auto_switch_device,
+            app_exe: new.app_exe.clone(),
+            app_name: new.app_name.clone(),
+            ..self.clone()
         };
+        same_source == *new && self.source() != new.source()
+    }
+
+    /// What to stream for this profile. An LE Audio (experimental) profile
+    /// gives an LE request (`le` Some: the le_stream session, which refuses
+    /// with error.le_audio_disabled while the setting is off); its codec,
+    /// quality, rate and depth are not used (LC3 as the device and the
+    /// preset decide).
+    pub fn to_request(&self, legacy_max_media_payload: u16) -> Result<StreamRequest, ProfileError> {
+        let device = bt_host::parse_addr(&self.device_address)
+            .ok_or_else(|| ProfileError::Address(self.device_address.clone()))?;
+        let source = self.source();
         let volume_sync = match self.volume_sync.as_str() {
             "off" => VolumeSync::Off,
             "device" => VolumeSync::Device(self.volume_device_id.clone()),

@@ -1,8 +1,8 @@
 // The capture source choices of a device (its settings on Audio Devices):
 // System Loopback, a virtual device or a playing app. The source is the
 // device's: the choice is saved into all the device's profiles (issue #86);
-// a profile in use starts again with it (profile.save in the core). Home
-// chose it too until issue #86 put the codec and the link latency there.
+// a stream in use takes it without reconnecting (profile.save in the core).
+// Home chose it too until issue #86 put the codec and the link latency there.
 
 import { t } from "../i18n";
 import type { AudioApp, AudioDevice, Profile } from "../ipc/types";
