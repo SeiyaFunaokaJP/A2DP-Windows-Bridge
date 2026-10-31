@@ -46,7 +46,7 @@ describe("Home", () => {
     expect(within(wh).getByRole("status")).toHaveTextContent(/^Connected$/);
     // The other device: ready, not connected, its own Connect
     expect(xb).toHaveTextContent("Disconnected");
-    expect(xb).toHaveTextContent("—");
+    expect(xb).not.toHaveTextContent("—");
     expect(within(xb).getByRole("button", { name: "Connect" })).toBeInTheDocument();
     // The volume is the device's own; the other card keeps its slider,
     // disabled, so the cards stay alike (issue #86)
@@ -89,7 +89,7 @@ describe("Home", () => {
       expect(b).not.toBeNull();
       return b!;
     });
-    expect(battery).toHaveTextContent("Battery unknown");
+    expect(battery.getAttribute("aria-label")).toMatch(/^Battery unknown/);
     expect(battery.getAttribute("title")).toMatch(/Another device \(such as a phone\)/);
     expect(battery).not.toHaveTextContent("%");
   });
@@ -335,7 +335,7 @@ describe("every screen renders", () => {
     expect(document.querySelector(".fly-title .device-name")).toBeNull();
     // Hidden by Escape and on losing the focus: no close button
     expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.queryByText("—")).toBeNull();
     fireEvent.click(connect);
     await screen.findByRole("button", { name: "Disconnect" });
     // The codec is chosen right there, as on Home (issue #86)

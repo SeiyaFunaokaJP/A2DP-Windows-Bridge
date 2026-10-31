@@ -349,6 +349,7 @@
   "capture.volume_sync_hint": "音訊裝置與 Windows 音量互相同步。",
   "capture.volume_sync_missing": "%s (未連線)",
   "capture.no_virtual_device": "找不到虛擬音訊裝置",
+  "capture.virtual_supported": "也支援將虛擬音效裝置（例如 VB-Cable，未安裝）作為輸出來源",
   "capture.no_app_playing": "沒有正在播放音訊的應用程式",
   "capture.device_format": "輸出來源格式: %u Hz / %u 位元",
   "capture.app": "應用程式",

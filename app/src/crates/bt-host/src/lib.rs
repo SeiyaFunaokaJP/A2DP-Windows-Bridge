@@ -901,7 +901,9 @@ impl BtHost {
             s.remote_caps = Default::default();
             s.disconnect_occurred = false;
             s.last_connect_failure = None;
-            s.target_acl_handle = None;
+            // The link the device opened itself (turned on) is up already:
+            // no Connection Complete names it
+            s.target_acl_handle = s.acl_link_to(&addr);
             s.target_acl_down_reason = 0;
             s.target_auth_status = None;
             // A fresh user-initiated operation: clear a cancel left by an

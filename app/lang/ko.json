@@ -349,6 +349,7 @@
   "capture.volume_sync_hint": "오디오 장치와 Windows 볼륨을 연동합니다.",
   "capture.volume_sync_missing": "%s(연결되지 않음)",
   "capture.no_virtual_device": "가상 오디오 장치를 찾을 수 없습니다",
+  "capture.virtual_supported": "VB-Cable(설치되지 않음) 같은 가상 사운드 장치도 출력 소스로 사용할 수 있습니다",
   "capture.no_app_playing": "오디오를 재생 중인 앱이 없습니다",
   "capture.device_format": "출력 소스 형식: %u Hz / %u비트",
   "capture.app": "응용 프로그램",

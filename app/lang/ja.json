@@ -349,6 +349,7 @@
   "capture.volume_sync_hint": "オーディオデバイスと Windows の音量を連動させます。",
   "capture.volume_sync_missing": "%s（未接続）",
   "capture.no_virtual_device": "仮想オーディオデバイスが見つかりません",
+  "capture.virtual_supported": "VB-Cable（未インストール）などの仮想サウンドデバイスも出力ソースとして使えます",
   "capture.no_app_playing": "音声を再生中のアプリはありません",
   "capture.device_format": "出力ソースの形式: %u Hz / %u ビット",
   "capture.app": "アプリ",

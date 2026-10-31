@@ -51,6 +51,10 @@ const BATTERY_REARM_MARGIN: u8 = 5;
 /// ([`CoreState::restart_profile`])
 const RESTART_COALESCE: std::time::Duration = std::time::Duration::from_millis(250);
 
+/// How long the "connected" balloon waits for the battery: HFP is opened once
+/// the stream is established, so the level often comes just after it
+const BATTERY_WAIT: std::time::Duration = std::time::Duration::from_secs(4);
+
 /// Whether a battery report shows the low-battery balloon: once when the
 /// level is below `low` (the setting; also the first report of a
 /// connection), again only after it was back [`BATTERY_REARM_MARGIN`]
@@ -119,6 +123,9 @@ pub struct CoreState {
     /// A new connection started: its balloon is shown once it streams with
     /// the codec settled (not after a reconnect of the same connection)
     connect_announce: AtomicBool,
+    /// Until when the balloon of this connection waits for the battery
+    /// ([`BATTERY_WAIT`])
+    battery_deadline: Mutex<Option<Instant>>,
     /// The session starting is the profile in use started again with what
     /// was saved ([`CoreState::restart_profile`]): no balloon for it
     quiet_connect: AtomicBool,
@@ -1026,6 +1033,7 @@ impl CoreState {
             starting_profile: Mutex::new(None),
             battery_warned: AtomicBool::new(false),
             connect_announce: AtomicBool::new(false),
+            battery_deadline: Mutex::new(None),
             quiet_connect: AtomicBool::new(false),
             restarting: AtomicBool::new(false),
             tray,
@@ -1173,7 +1181,7 @@ impl CoreState {
     }
 
     /// A service event (from its thread)
-    pub fn on_service_event(&self, e: ServiceEvent) {
+    pub fn on_service_event(self: &Arc<Self>, e: ServiceEvent) {
         let (_, s) = self.snapshot();
         let mut stream = s.stream.clone();
         let mut devices_changed = false;
@@ -1204,7 +1212,8 @@ impl CoreState {
                 match state {
                     CoreStreamState::Connecting => {
                         if !self.quiet_connect.load(Ordering::Acquire) {
-                            self.connect_announce.store(true, Ordering::Release)
+                            self.connect_announce.store(true, Ordering::Release);
+                            *self.battery_deadline.lock().unwrap_or_else(|e| e.into_inner()) = None;
                         }
                     }
                     CoreStreamState::Streaming => self.quiet_connect.store(false, Ordering::Release),
@@ -1615,18 +1624,47 @@ impl CoreState {
     /// A new connection streams with its codec settled (the stream info
     /// comes after the Streaming state on a first connection, before it on a
     /// reconnect): the balloon with what it runs ([`connected_balloon`]),
-    /// once, when the setting is on
-    fn announce_connected(&self) {
+    /// once, when the setting is on. A battery not reported yet is waited
+    /// for a moment (issue #86: the balloon came before it on some devices)
+    fn announce_connected(self: &Arc<Self>) {
         let (_, s) = self.snapshot();
         if s.stream.state != StreamState::Streaming || s.stream.info.is_none() {
             return;
         }
-        if !self.connect_announce.swap(false, Ordering::AcqRel) || !self.service.settings().notify_connected {
+        if !self.service.settings().notify_connected {
+            self.connect_announce.store(false, Ordering::Release);
+            return;
+        }
+        if !self.connect_announce.load(Ordering::Acquire) {
+            return;
+        }
+        if s.stream.battery.is_none() && !s.stream.battery_refused && self.wait_for_battery() {
+            return;
+        }
+        if !self.connect_announce.swap(false, Ordering::AcqRel) {
             return;
         }
         let Some(b) = connected_balloon(&s.settings.language, streamed_device(&s), &s.stream) else { return };
         tracing::info!("connected balloon: {} / {}", b.title, b.text.replace('\n', " / "));
         (self.balloon)(b);
+    }
+
+    /// Whether the balloon still waits for the battery; the first call
+    /// starts the wait, which ends here again without a report. A wait left
+    /// by an earlier connection finds this one's later deadline.
+    fn wait_for_battery(self: &Arc<Self>) -> bool {
+        let now = Instant::now();
+        let mut deadline = self.battery_deadline.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(d) = *deadline {
+            return now < d;
+        }
+        *deadline = Some(now + BATTERY_WAIT);
+        let me = self.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(BATTERY_WAIT);
+            me.announce_connected();
+        });
+        true
     }
 
     /// The automatic check found a newer release: a balloon whose click
@@ -2471,12 +2509,16 @@ mod tests {
             }))
         };
         let texts = || shown.lock().unwrap().iter().map(|b| b.text.clone()).collect::<Vec<_>>();
-        // A first connection: Streaming, then the negotiated codec
+        // A first connection: Streaming, the negotiated codec, then a moment
+        // for the battery
         event(CoreStreamState::Connecting);
         event(CoreStreamState::Streaming);
         assert!(texts().is_empty());
         info(660);
-        assert_eq!(texts(), ["LDAC\n660 kbps | 96 kHz | 24-bit"]);
+        assert!(texts().is_empty());
+        state.on_service_event(ServiceEvent::Battery(80));
+        assert_eq!(texts().len(), 1);
+        assert!(texts()[0].ends_with(" 80%\nLDAC\n660 kbps | 96 kHz | 24-bit"));
         // A lost link reconnecting (its info again, then Streaming): quiet
         event(CoreStreamState::Reconnecting);
         info(660);
@@ -2488,6 +2530,9 @@ mod tests {
         info(990);
         assert_eq!(texts().len(), 1);
         event(CoreStreamState::Streaming);
+        assert_eq!(texts().len(), 1);
+        // The battery refused: nothing to wait for
+        state.on_service_event(ServiceEvent::BatteryRefused);
         assert_eq!(texts().len(), 2);
         assert_eq!(texts()[1], "LDAC\n990 kbps | 96 kHz | 24-bit");
         // Started again for a codec chosen (restart_profile): quiet, and
@@ -2502,7 +2547,12 @@ mod tests {
         event(CoreStreamState::Connecting);
         event(CoreStreamState::Streaming);
         info(660);
+        assert_eq!(texts().len(), 2);
+        // No report: without the battery once the wait is over
+        *state.battery_deadline.lock().unwrap() = Some(Instant::now());
+        state.announce_connected();
         assert_eq!(texts().len(), 3);
+        assert_eq!(texts()[2], "LDAC\n660 kbps | 96 kHz | 24-bit");
         // The setting off: nothing
         let mut s = state.service.settings();
         s.notify_connected = false;

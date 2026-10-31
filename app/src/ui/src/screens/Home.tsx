@@ -261,7 +261,7 @@ function DeviceCard(props: { entry: AudioEntry; onError: (e: unknown) => void })
               </span>
             </div>
           </div>
-          <Show when={live()} fallback={<span class="codec-badge idle">{t("ui.codec.none")}</span>}>
+          <Show when={live()}>
             <CodecBadge picker={<CodecPicker entry={props.entry} />} />
           </Show>
           {/* The application it captures is not playing yet (the source is
