@@ -252,6 +252,13 @@ export function knownCodecs(devices: readonly Device[], address: string): string
   return devices.find((d) => !d.le_audio && d.address.toUpperCase() === a)?.codecs ?? [];
 }
 
+/** The codec keys a device may offer only once chosen (issue #30) */
+export function codecsOnRequest(devices: readonly Device[], address: string): string[] {
+  const a = parseAddress(address);
+  if (!a) return [];
+  return devices.find((d) => !d.le_audio && d.address.toUpperCase() === a)?.codecs_on_request ?? [];
+}
+
 /** What each codec a device offered lists (rates, bit depths, largest bit
  *  rate: Device.codec_caps; empty while not known, issue #86) */
 export function knownCodecCaps(devices: readonly Device[], address: string): CodecCaps[] {

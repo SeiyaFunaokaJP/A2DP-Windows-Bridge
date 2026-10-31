@@ -560,6 +560,7 @@ fn saved_devices(
             codecs: Vec::new(),
             sbc: None,
             codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio: d.le_audio,
             le_audio_set: false,
         })
@@ -591,6 +592,10 @@ fn saved_devices(
                 })
                 .collect();
         }
+        // These list LDAC only after it was asked for (the stream does)
+        if a2dpwb_core::is_huawei(&d.name) {
+            d.codecs_on_request = vec!["ldac".to_string()];
+        }
     }
     list
 }
@@ -606,6 +611,7 @@ fn scanned_device(d: &ScannedDevice) -> Device {
         codecs: Vec::new(),
         sbc: None,
         codec_caps: Vec::new(),
+        codecs_on_request: Vec::new(),
         le_audio: d.le_audio,
         le_audio_set: d.le_audio_set,
     }
@@ -2596,6 +2602,7 @@ mod tests {
             codecs: Vec::new(),
             sbc: None,
             codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio,
             le_audio_set: false,
         };
@@ -2978,6 +2985,7 @@ mod tests {
             codecs: Vec::new(),
             sbc: None,
             codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio: false,
             le_audio_set: false,
         }];
@@ -3016,6 +3024,11 @@ mod tests {
         );
         assert!(list[1].sbc.is_none());
         assert!(list[0].saved && !list[1].saved && list[1].codecs.is_empty());
+        assert!(list[0].codecs_on_request.is_empty());
+        // Huawei earbuds list LDAC only once it is asked for (issue #30)
+        devices::save(&dir, "AA:BB:CC:DD:EE:FF", "HUAWEI FreeBuds Pro 4").unwrap();
+        let list = saved_devices(&dir, &scanned, &codecs);
+        assert_eq!(list[0].codecs_on_request, ["ldac"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

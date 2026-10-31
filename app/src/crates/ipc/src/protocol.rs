@@ -202,6 +202,10 @@ pub struct Device {
     /// empty while not known
     #[serde(default)]
     pub codec_caps: Vec<CodecDeviceCaps>,
+    /// Codec keys the device may offer only once chosen, whatever `codecs`
+    /// says: the UI keeps them choosable (issue #30)
+    #[serde(default)]
+    pub codecs_on_request: Vec<String>,
     /// An LE Audio entry (experimental; le_audio_devices.txt and the LE
     /// scan). A dual-mode device has two entries with the same address, a
     /// classic one and an LE Audio one: address and this flag identify an
