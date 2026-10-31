@@ -320,7 +320,7 @@
   "receiver.errors_value": "%llu",
   "receiver.errors_value_headers": "%llu (solo encabezados)",
   "receiver.rssi_value": "RSSI %+d dB respecto al rango óptimo",
-  "receiver.help": "Los recuentos empiezan con cada transmisión y al restablecer. Corte: el búfer se habría vaciado. Salto: lo habría desbordado.",
+  "receiver.help": "Los recuentos empiezan con cada transmisión y al restablecer. Corte: el búfer se habría vaciado. Salto: se habría desbordado.",
   "tray.exit": "Salir",
   "tray.tooltip_idle": "A2DP Windows Bridge - Desconectado",
   "tray.tooltip_streaming": "A2DP Windows Bridge - Conectado",

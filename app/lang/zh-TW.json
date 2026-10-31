@@ -320,7 +320,7 @@
   "receiver.errors_value": "%llu",
   "receiver.errors_value_headers": "%llu (僅標頭)",
   "receiver.rssi_value": "RSSI 與黃金範圍相差 %+d dB",
-  "receiver.help": "計數會在每次串流開始及重設時歸零。斷音: 緩衝區即將耗盡。跳過: 即將溢位。",
+  "receiver.help": "計數會在每次串流開始及重設時歸零。斷音: 緩衝區本應耗盡。跳過: 本應溢位。",
   "tray.exit": "結束",
   "tray.tooltip_idle": "A2DP Windows Bridge - 已中斷連線",
   "tray.tooltip_streaming": "A2DP Windows Bridge - 已連線",

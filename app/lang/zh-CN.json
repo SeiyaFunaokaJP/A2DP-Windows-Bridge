@@ -165,7 +165,7 @@
   "settings.le_low_latency": "游戏音频设备低延迟（实验性）",
   "advanced.max_packet": "最大媒体数据包大小（字节）",
   "advanced.max_packet_recommended": "推荐（%d）",
-  "advanced.max_packet_help": "最大音频数据包（%d-%d）。%d 正好容纳一个 Bluetooth 数据包。从下次连接起生效。",
+  "advanced.max_packet_help": "最大音频数据包（%d-%d）。%d 正好可放入一个 Bluetooth 数据包。从下次连接起生效。",
   "debug.capture_start": "开始 HCI 捕获",
   "debug.capture_stop": "停止 HCI 捕获",
   "debug.capture_title_suffix": " - [HCI 捕获进行中]",
