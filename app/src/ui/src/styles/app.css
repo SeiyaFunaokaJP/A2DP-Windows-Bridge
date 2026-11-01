@@ -2881,6 +2881,20 @@ option {
 .sub {
   color: var(--text-2);
 }
+.setup-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  color: var(--text-2);
+}
+.setup-general .field {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.paired-devices .status-line {
+  flex: none;
+}
 .setup-foot {
   display: flex;
   align-items: center;

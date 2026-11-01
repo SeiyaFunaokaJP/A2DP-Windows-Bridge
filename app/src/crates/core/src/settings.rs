@@ -58,7 +58,7 @@ fn pick_language(tags: &[String]) -> &'static str {
     tags.iter().find_map(|t| app_language_for(t)).unwrap_or("en")
 }
 fn default_theme() -> String {
-    "dark".into()
+    "system".into()
 }
 fn default_battery_low() -> u8 {
     20
@@ -128,6 +128,9 @@ pub struct Settings {
     /// released, so headphones turned off can go to a phone instead.
     #[serde(default = "default_true")]
     pub auto_reconnect: bool,
+    /// No VB-Cable when last looked: once it is there, the profiles that
+    /// capture System Loopback take it, one time (issue #86)
+    pub awaiting_vb_cable: bool,
     pub saved_volumes: BTreeMap<String, i32>,
     /// Before schema 6: per-device overrides of media_keys and
     /// remember_volume. Those are one setting for every device now (issue
@@ -280,6 +283,7 @@ impl Default for Settings {
             media_keys: true,
             remember_volume: true,
             auto_reconnect: true,
+            awaiting_vb_cable: false,
             saved_volumes: BTreeMap::new(),
             device_options: None,
             volume_sync: true,
@@ -488,6 +492,10 @@ mod tests {
             std::fs::write(Settings::path(&dir), format!(r#"{{"theme":"{v1}"}}"#)).unwrap();
             assert_eq!(Settings::load(&dir).theme, v2, "{v1}");
         }
+        // A file without one follows Windows, as a new install does
+        std::fs::write(Settings::path(&dir), "{}").unwrap();
+        assert_eq!(Settings::load(&dir).theme, "system");
+        assert_eq!(Settings::default().theme, "system");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

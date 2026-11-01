@@ -327,6 +327,11 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
     }
 }
 
+/// VB-Cable's playback device among Windows' outputs
+fn vb_cable(devices: &[audio_capture::DeviceInfo]) -> Option<&audio_capture::DeviceInfo> {
+    devices.iter().find(|d| d.is_virtual && d.name.to_lowercase().contains("cable"))
+}
+
 fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     let mut c = base.clone();
     c.language = s.language.clone();
@@ -1383,6 +1388,30 @@ impl CoreState {
         Ok(())
     }
 
+    /// VB-Cable that came after it was missing is taken into use, one time
+    /// (issue #86): a device the user set up otherwise before stays as it is
+    pub fn watch_vb_cable(&self, devices: &[audio_capture::DeviceInfo]) {
+        let mut s = self.service.settings();
+        match (vb_cable(devices), s.awaiting_vb_cable) {
+            (None, false) => s.awaiting_vb_cable = true,
+            (Some(cable), true) => {
+                s.awaiting_vb_cable = false;
+                let mut list = profiles::load(&self.config_dir());
+                let changed = profiles::use_virtual_device(&mut list, &cable.id, &cable.name);
+                tracing::info!("VB-Cable found: {changed} profile(s) capture it now");
+                let active = Some(s.last_profile.clone()).filter(|n| list.iter().any(|p| &p.name == n));
+                if changed > 0
+                    && let Err(e) = self.save_profiles(&list, active)
+                {
+                    tracing::warn!("VB-Cable: profiles not saved: {}", e.code);
+                }
+            }
+            _ => return,
+        }
+        let _ = s.save(&self.config_dir());
+        self.service.set_settings(s);
+    }
+
     fn save_settings(&self, s: CoreSettings) -> Result<(), ErrorInfo> {
         s.save(&self.config_dir()).map_err(|_| err("settings.save_failed", "error.settings_save"))?;
         crate::logging::set_dev(&s.log());
@@ -2120,8 +2149,12 @@ impl CoreState {
                 .await
             }
             Method::AudioDevices => {
-                blocking(Box::new(|_| {
-                    let list: Vec<AudioDevice> = audio_capture::render_devices()
+                blocking(Box::new(|me| {
+                    let devices = audio_capture::render_devices();
+                    if let Ok(d) = &devices {
+                        me.watch_vb_cable(d);
+                    }
+                    let list: Vec<AudioDevice> = devices
                         .unwrap_or_default()
                         .into_iter()
                         .map(|d| {

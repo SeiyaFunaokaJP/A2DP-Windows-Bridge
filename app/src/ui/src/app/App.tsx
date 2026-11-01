@@ -33,7 +33,7 @@ export function App(props: { core: Core }) {
     if (l) void setLanguage(l);
   });
   createEffect(() => {
-    const theme = core.state.snap?.settings.theme ?? "dark";
+    const theme = core.state.snap?.settings.theme ?? "system";
     onCleanup(applyTheme(theme, core.transport));
   });
   if (core.transport.mica) document.documentElement.classList.add("mica");

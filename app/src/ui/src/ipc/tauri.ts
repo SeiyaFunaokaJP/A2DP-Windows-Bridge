@@ -34,6 +34,7 @@ export async function createTauriTransport(): Promise<Transport> {
       await getCurrentWindow().hide();
     },
     fitHeight: (height) => invoke("fit_flyout", { height }),
+    setupWindow: (active) => invoke("setup_window", { active }),
     openUrl: (url) => invoke("open_url", { url }),
     openFolder: (path) => invoke("open_folder", { path }),
     revealPath: (path) => invoke("reveal_path", { path }),

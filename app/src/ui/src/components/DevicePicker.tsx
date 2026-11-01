@@ -10,7 +10,7 @@
 import { createEffect, createMemo, createSignal, createUniqueId, For, on, onCleanup, onMount, Show, type JSX } from "solid-js";
 import { useApp, type AppContext } from "../app/context";
 import { t } from "../i18n";
-import type { Device } from "../ipc/types";
+import type { AudioDevice, Device } from "../ipc/types";
 import { parseAddress } from "../lib/format";
 import {
   defaultProfileName,
@@ -43,9 +43,16 @@ export function sortDevices(devices: readonly Device[]): Device[] {
  * Saves a device found by a scan or typed (the list keeps its name; an
  * unnamed one is saved under its address and can be renamed). A device
  * without a profile gets one that picks the best codec ("<name> | Auto").
- * The profile of the device, or null when saving failed.
+ * The profile of the device, or null when saving failed. `cable`: a new
+ * profile captures that virtual device.
  */
-export async function saveWithProfile(app: AppContext, address: string, name: string, leAudio: boolean): Promise<string | null> {
+export async function saveWithProfile(
+  app: AppContext,
+  address: string,
+  name: string,
+  leAudio: boolean,
+  cable?: AudioDevice | null,
+): Promise<string | null> {
   const snap = () => app.core.state.snap!;
   // A saved device typed by its address keeps its name
   const known = snap().devices.find((d) => d.saved && d.le_audio === leAudio && d.address.toUpperCase() === address.toUpperCase());
@@ -64,8 +71,10 @@ export async function saveWithProfile(app: AppContext, address: string, name: st
   const base = defaultProfileName(saved, address, false, t("codec.auto"));
   let profileName = base;
   for (let n = 2; taken.includes(profileName); n++) profileName = `${base} (${n})`;
-  // Captured by System Loopback, as every new device (issue #86)
-  const profile = normalizeProfile({ ...newProfile(), name: profileName, device_address: address, device_name: saved });
+  // Captured by System Loopback, as every new device (issue #86), unless
+  // the setup found VB-Cable
+  const capture = cable ? { capture_mode: "virtual", audio_device_id: cable.id, audio_device_name: cable.name } : {};
+  const profile = normalizeProfile({ ...newProfile(), ...capture, name: profileName, device_address: address, device_name: saved });
   const made = await app.run(() => app.core.request("profile.save", { profile, original_name: null }));
   return made ? profileName : null;
 }
@@ -93,10 +102,17 @@ export function DevicePicker(props: {
   connecting?: string | null;
   /** With onConnect: no connection now (another A2DPWB holds the adapter) */
   connectDisabled?: boolean;
-  /** With onConnect: the device already added, no longer listed (issue #86) */
-  hidden?: string;
+  /** With onConnect: the saved devices stand in a list of their own, each
+   *  with its state and what can be done with it (issue #86) */
+  paired?: (d: Device) => { state: JSX.Element; action: JSX.Element };
+  /** With paired: what the scan shows while it runs */
+  scanText?: string;
+  /** With paired: no scan part now (a device is connected) */
+  noScan?: boolean;
+  /** With paired: shown between the saved devices and the scan */
+  children?: JSX.Element;
   /** The first-run setup: the scan starts by itself and goes on until a
-   *  device is added, Stop is pressed or the step is left (issue #86) */
+   *  device connects, Stop is pressed or the step is left (issue #86) */
   continuous?: boolean;
 }) {
   const app = useApp();
@@ -107,11 +123,9 @@ export function DevicePicker(props: {
     snap().adapter.le_audio === true &&
     !props.classicOnly;
   const devices = createMemo(() => {
-    const hidden = props.hidden?.toUpperCase();
-    const all = sortDevices(listedDevices(snap().devices, leListed())).filter(
-      (d) => !hidden || d.le_audio || d.address.toUpperCase() !== hidden,
-    );
-    return props.savedOnly ? all.filter((d) => d.saved) : all;
+    const all = sortDevices(listedDevices(snap().devices, leListed()));
+    if (props.savedOnly) return all.filter((d) => d.saved);
+    return props.paired ? all.filter((d) => !d.saved) : all;
   });
   const chosen = (d: Device) =>
     d.address === props.address && d.le_audio === (props.leAudio ?? false);
@@ -227,6 +241,7 @@ export function DevicePicker(props: {
   // settings below it
   const row = (d: Device, i: () => number, prefix: string) => {
     const label = () => d.name || t("device.name_unknown");
+    const paired = props.paired && d.saved ? props.paired(d) : null;
     const nameId = () => `${uid}-${prefix}${i()}`;
     return (
       // The radio covers the row (app.css); the buttons sit above it
@@ -250,6 +265,7 @@ export function DevicePicker(props: {
           <span class="device-row-name">{label()}</span>{" "}
           <span class="mono muted">{d.address}</span>
         </span>
+        {paired?.state}
         <span class="tags">
           <Show when={d.saved}>
             <span class="tag">{t("device.tag_saved")}</span>
@@ -270,11 +286,14 @@ export function DevicePicker(props: {
               )}
             </span>
           </Show>
-          <Show when={d.rssi !== null}>
+          <Show when={d.rssi !== null && !paired}>
             <span class="tag num">{d.rssi} dBm</span>
           </Show>
         </span>
-        <Show when={props.onConnect}>
+        <Show when={paired}>
+          <span class="inline device-row-actions">{paired!.action}</span>
+        </Show>
+        <Show when={!paired && props.onConnect}>
           {(connect) => (
             <span class="inline device-row-actions">
               <Button
@@ -303,7 +322,7 @@ export function DevicePicker(props: {
             </Button>
           </span>
         </Show>
-        <Show when={d.saved && !props.savedOnly && !props.onConnect}>
+        <Show when={d.saved && !props.savedOnly}>
           <span class="inline device-row-actions">
             <IconButton
               icon="edit"
@@ -329,7 +348,8 @@ export function DevicePicker(props: {
     <div class="picker-head">
       <span class="muted" role="status" aria-live="polite">
         {scanning()
-          ? t(
+          ? props.scanText ??
+            t(
               snap().le_scanning
                 ? "status.le_scanning"
                 : "connection.scanning_hint",
@@ -406,6 +426,8 @@ export function DevicePicker(props: {
   // The Audio Devices screen (issue #86): the saved devices, each with its
   // settings, then a card to add one (scan, or the address by hand)
   const saved = () => devices().filter((d) => d.saved);
+  const pairedList = () =>
+    sortDevices(listedDevices(snap().devices, false)).filter((d) => d.saved);
   const found = () => devices().filter((d) => !d.saved);
   const managed = () => (
     <>
@@ -444,7 +466,16 @@ export function DevicePicker(props: {
 
   return (
     <div class="device-picker">
-      <Show when={!props.manage} fallback={managed()}>
+      <Show when={props.paired && pairedList().length > 0}>
+        <section class="paired-devices" aria-labelledby={`${uid}-paired`}>
+          <h3 id={`${uid}-paired`}>{t("ui.setup.paired_title")}</h3>
+          <div class="device-list saved-devices">
+            <For each={pairedList()}>{(d, i) => row(d, i, "p")}</For>
+          </div>
+        </section>
+      </Show>
+      {props.children}
+      <Show when={!props.manage && !props.noScan} fallback={props.manage ? managed() : null}>
         {head(devices().length)}
         {/* Folded with a typed address: no row, only the button below */}
         <Show when={!folded() || shown().length > 0}>
