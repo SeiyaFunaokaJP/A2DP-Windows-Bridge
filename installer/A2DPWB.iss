@@ -1,4 +1,4 @@
-﻿; A2DPWB installer (Inno Setup 6.5 or later)
+﻿; A2DPWB installer (Inno Setup 7)
 ; SPDX-License-Identifier: Apache-2.0 OR MIT
 ;
 ; Built by installer/build-release.ps1 from the unpacked portable package, so
@@ -147,9 +147,8 @@ Name: "de"; MessagesFile: "compiler:Languages\German.isl"
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "ko"; MessagesFile: "compiler:Languages\Korean.isl"
-; Not shipped with Inno Setup 6 (installer/README.md)
-Name: "zhcn"; MessagesFile: "languages\ChineseSimplified.isl"
-Name: "zhtw"; MessagesFile: "languages\ChineseTraditional.isl"
+Name: "zhcn"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "zhtw"; MessagesFile: "compiler:Languages\ChineseTraditional.isl"
 
 [CustomMessages]
 en.OtherRunning=Another A2DP Windows Bridge is running (v1, or a v2 that Setup could not close). Exit it (right-click its tray icon > Exit), then click Retry.%n%nCancel stops the installation.
@@ -531,7 +530,7 @@ begin
   { The [Languages] above, each in its own language }
   Names := ['en', 'ja', 'de', 'fr', 'es', 'ko', 'zhcn', 'zhtw'];
   Captions := ['English', '日本語', 'Deutsch', 'Français', 'Español', '한국어', '简体中文', '繁體中文'];
-  Form := CreateCustomForm(ScaleX(320), ScaleY(80), False, False);
+  Form := CreateCustomForm(320, 80, False, False);
   try
     Form.Caption := SetupMessage(msgSelectLanguageTitle);
     Lbl := TNewStaticText.Create(Form);
