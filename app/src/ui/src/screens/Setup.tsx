@@ -21,7 +21,7 @@ import { t } from "../i18n";
 import { IpcError } from "../ipc/types";
 import type { AdapterInfo, AudioDevice, Device, Snapshot } from "../ipc/types";
 import { firmwareUrl, LINKS } from "../lib/links";
-import { audioEntries, deviceKey, vbCable } from "../lib/profile";
+import { audioEntries, deviceKey, vbCable, vbCables } from "../lib/profile";
 import {
   adapterExperimental,
   adapterIds,
@@ -457,9 +457,41 @@ function StepDevice() {
           if (running()) await app.core.request("stream.stop");
           await app.core.request("stream.start", { profile });
         }));
+      if (ok) await retryCapture(profile!);
       if (!ok) setPaused(false);
     } finally {
       setConnecting(null);
+    }
+  };
+  // The capture of a new profile cannot be opened (the device is in use,
+  // whatever it is): the profile moves on to the next device that may work,
+  // the other VB-Cable first, System Loopback last
+  const retryCapture = async (profile: string) => {
+    const settled = () =>
+      new Promise<void>((resolve) => {
+        const check = () => (["connecting", "reconnecting"].includes(stream().state) ? setTimeout(check, 200) : resolve());
+        check();
+      });
+    const failed = new Set<string>();
+    for (;;) {
+      await settled();
+      const key = stream().message.key;
+      if (stream().state !== "error" || (key !== "error.virtual_capture_init" && key !== "error.wasapi_init")) return;
+      const p = snap().profiles.find((x) => x.name === profile);
+      if (!p) return;
+      failed.add(p.capture_mode === "virtual" ? p.audio_device_id : "");
+      const list = await app.core.request("audio.devices").catch(() => [] as AudioDevice[]);
+      const next = vbCables(list).find((d) => !failed.has(d.id));
+      const capture = next
+        ? { capture_mode: "virtual" as const, audio_device_id: next.id, audio_device_name: next.name }
+        : failed.has("") ? null : { capture_mode: "loopback" as const, audio_device_id: "", audio_device_name: "" };
+      if (!capture) return;
+      const saved = await app.run(() =>
+        app.core.request("profile.save", { profile: { ...p, ...capture }, original_name: profile }),
+      );
+      if (!saved) return;
+      const started = await app.run(() => app.core.request("stream.start", { profile }));
+      if (!started) return;
     }
   };
   // Disconnect (or Cancel while it connects), or making room for another

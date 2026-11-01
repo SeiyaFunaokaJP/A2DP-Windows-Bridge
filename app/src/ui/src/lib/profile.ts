@@ -277,8 +277,14 @@ export function deviceKey(d: Pick<Device, "address" | "le_audio">): string {
 
 /** The entries to offer: LE Audio ones only with LE Audio (experimental) on, as v1 */
 /** VB-Cable's playback device among Windows' outputs */
+export function vbCables(devices: readonly AudioDevice[]): AudioDevice[] {
+  const cables = devices.filter((d) => d.is_virtual && /cable/i.test(d.name));
+  // The 16-channel variant comes after the standard one
+  return [...cables.filter((d) => !/16ch/i.test(d.name)), ...cables.filter((d) => /16ch/i.test(d.name))];
+}
+
 export function vbCable(devices: readonly AudioDevice[]): AudioDevice | null {
-  return devices.find((d) => d.is_virtual && /cable/i.test(d.name)) ?? null;
+  return vbCables(devices)[0] ?? null;
 }
 
 export function listedDevices(devices: readonly Device[], leAudio: boolean): Device[] {
