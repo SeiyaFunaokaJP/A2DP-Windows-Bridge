@@ -32,7 +32,7 @@ import {
 import { FlowTracker, stepDetail } from "./flow";
 import { knowAdapters, maskIdentifiers, parseAddress } from "./format";
 import { bugReportUrl, thirdPartyUrl } from "./links";
-import { deviceProfile, followedName, validateProfile, withCodec } from "./profile";
+import { deviceProfile, followedName, validateProfile, vbCable, withCodec } from "./profile";
 
 const line = (time_ms: number, message: string, level: LogLine["level"] = "info"): LogLine => ({
   time_ms,
@@ -466,6 +466,18 @@ describe("profiles", () => {
     // Empty, unclosed and multi-line quotes stay
     expect(m("name=“” and “open")).toBe("name=“” and “open");
     expect(m("“a\nb”")).toBe("“a\nb”");
+  });
+});
+
+describe("VB-Cable", () => {
+  const device = (name: string, is_virtual = true) => ({ id: name, name, is_virtual, is_default: false, mix_rate: null, mix_channels: null, mix_bits: null });
+  it("prefers the standard cable to the 16-channel one", () => {
+    const list = [device("Speakers", false), device("CABLE In 16ch (VB-Audio Virtual Cable)"), device("CABLE Input (VB-Audio Virtual Cable)")];
+    expect(vbCable(list)?.name).toBe("CABLE Input (VB-Audio Virtual Cable)");
+  });
+  it("takes the 16-channel one when it is the only one", () => {
+    expect(vbCable([device("CABLE In 16ch (VB-Audio Virtual Cable)")])?.name).toMatch(/16ch/);
+    expect(vbCable([device("Speakers", false)])).toBeNull();
   });
 });
 

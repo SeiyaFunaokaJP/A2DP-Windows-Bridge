@@ -593,6 +593,7 @@ export class MockCore implements Transport {
   private slowTimer: ReturnType<typeof setInterval> | null = null;
   /** Ends the running scan (device.scan_stop) */
   private scanStop: (() => void) | null = null;
+  private connectFailure: string | null = null;
   private logs: LogLevel | null = null;
   private receiverSub = false;
   /** Every line, as the core keeps them, and the flow it follows */
@@ -930,6 +931,11 @@ export class MockCore implements Transport {
     this.emit({ kind: "v1_running", value: on });
   }
 
+  /** The next connection ends in this error (tests) */
+  failNextConnect(key: string) {
+    this.connectFailure = key;
+  }
+
   // ---- Simulation --------------------------------------------------------
 
   private later(ms: number, f: () => void) {
@@ -1133,6 +1139,12 @@ export class MockCore implements Transport {
     this.log("info", "a2dpwb_core::stream", `stream: device ${t.address} codec ${t.codec} quality hq source ${t.source.kind}`);
     this.log("info", "a2dpwb_core::service", "state Connecting: Initializing BTstack...");
     if (this.snap.adapter.status !== "ready") this.setAdapter("initializing");
+    const failure = this.connectFailure;
+    if (failure) {
+      this.connectFailure = null;
+      this.later(100, () => this.setStream("error", failure));
+      return;
+    }
     const set = this.snap.devices.find((d) => sameEntry(d, t.address, true))?.le_audio_set ?? false;
     const info = (): StreamInfo => {
       const base = t.le

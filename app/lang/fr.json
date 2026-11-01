@@ -51,6 +51,7 @@
   "status.connected_fallback": "Connecté (%s indisponible sur l'appareil, utilisation de %s)",
   "status.connected_fallback_in_use": "Connecté (%s peut-être utilisé par un autre appareil, utilisation de %s)",
   "status.connected_fallback_experimental": "Connecté (%s est expérimental et désactivé, %s est utilisé)",
+  "status.connected_source_fallback": "Connecté (périphérique virtuel indisponible, envoi du son système)",
   "status.le_scanning": "Recherche d’appareils LE Audio...",
   "status.initializing": "Initialisation...",
   "status.initializing_btstack": "Démarrage du Bluetooth...",

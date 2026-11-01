@@ -624,6 +624,12 @@ fn open_source(request: &SourceRequest, rate: u32) -> Result<Option<(DeviceSourc
     }
 }
 
+/// System Loopback may stand in when `source` cannot be opened: a chosen
+/// virtual device only, an empty choice stays the error it is
+fn loopback_may_replace(source: &SourceRequest) -> bool {
+    matches!(source, SourceRequest::VirtualDevice { id, .. } if !id.is_empty())
+}
+
 /// What the source [`open_source`] opened delivers. Application capture:
 /// float stereo at the requested rate, known before the app runs.
 fn source_format(opened: &Option<(DeviceSource, Capture)>, rate: u32) -> Format {
@@ -1347,11 +1353,25 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // Restored while the headphones are off: switched again when they are back
     let mut switch_default_again = false;
     default_guard.follow(&req.source);
-    let opened = match open_source(&req.source, preferred) {
+    // A virtual device that cannot be opened (another app may hold it): this
+    // session sends what Windows plays, the profile stays as it is
+    let mut source = req.source.clone();
+    let mut source_text = None;
+    let opened = match open_source(&source, preferred) {
         Ok(o) => o,
         Err(m) => {
-            host.disconnect();
-            return inner.notify(StreamState::Error, m);
+            let stand_in = loopback_may_replace(&source).then(|| {
+                tracing::warn!("audio source: {source} cannot be opened, capturing System Loopback instead");
+                default_guard.follow(&SourceRequest::SystemLoopback);
+                open_source(&SourceRequest::SystemLoopback, preferred).ok()
+            });
+            let Some(o) = stand_in.flatten() else {
+                host.disconnect();
+                return inner.notify(StreamState::Error, m);
+            };
+            source = SourceRequest::SystemLoopback;
+            source_text = Some(Msg::new("status.connected_source_fallback"));
+            o
         }
     };
     let format = source_format(&opened, preferred);
@@ -1487,7 +1507,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     }
 
     tracing::debug!("stream: started {} ms after the request", session_start.elapsed().as_millis());
-    inner.notify(StreamState::Streaming, fallback_text.clone().unwrap_or_else(|| Msg::new("status.connected")));
+    let connected = fallback_text.clone().or(source_text);
+    inner.notify(StreamState::Streaming, connected.unwrap_or_else(|| Msg::new("status.connected")));
     let mut info = StreamInfo {
         codec: kind.name().into(),
         bitrate_kbps: bitrate,
@@ -1501,7 +1522,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         requested_in_use: matches!(replaced, Some((_, Unavailable::SepInUse { .. }))),
         abr,
         bitrate_capped,
-        source: req.source.info(),
+        source: source.info(),
         details: Some(Box::new(codec_details(kind, &config, &remote, &*encoder, mtu, format.sample_rate))),
     };
     inner.save_device(&addr, &req.device_name);
@@ -1513,7 +1534,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     };
     let (pipeline, input) = start_pipeline(encoder, format, channels, mtu, sink, &host);
     let input = SharedInput(Arc::new(Mutex::new(input)));
-    let Some(mut active) = start_source(opened, &req.source, preferred, &input) else {
+    let Some(mut active) = start_source(opened, &source, preferred, &input) else {
         if let Some(s) = pipeline.stop() {
             host.return_media_sink(s);
         }
@@ -1524,10 +1545,10 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     inner.stream_info(info.clone());
 
     // Headphone volume and a Windows volume act as one (volume_sync.rs)
-    let mut volume_choice = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &req.source);
+    let mut volume_choice = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &source);
     let mut volume = volume_choice.clone().map(crate::volume_sync::VolumeSyncer::new);
     let mut output_mute = OutputMute::new();
-    output_mute.tick(req.mutes_output(&req.source));
+    output_mute.tick(req.mutes_output(&source));
 
     // A reconnect builds the configuration anew from what the device lists
     // then (v1 read its capabilities again)
@@ -1549,7 +1570,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // ---- streaming ----
     let mut pipeline = Some(pipeline);
     // What the session captures: the request's until another source is chosen
-    let mut current_source = req.source.clone();
+    let mut current_source = source;
     let mut app_ticks = 0u32;
     // What the capture delivers now: a device opened again may come back
     // with other channels or samples (the rate is the stream's, converted
@@ -2129,6 +2150,16 @@ mod tests {
         let mut h = DefaultHandover::default();
         assert_eq!(h.end(Some("{cable}"), "{speakers}".into()).as_deref(), Some("{speakers}"));
         assert_eq!(h, DefaultHandover::default());
+    }
+
+    #[test]
+    fn loopback_stands_in_for_a_chosen_virtual_device_only() {
+        let virt = |id: &str| SourceRequest::VirtualDevice { id: id.into(), name: "CABLE".into(), auto_switch: true };
+        assert!(loopback_may_replace(&virt("{x}")));
+        assert!(!loopback_may_replace(&virt("")));
+        assert!(!loopback_may_replace(&SourceRequest::SystemLoopback));
+        assert!(!loopback_may_replace(&SourceRequest::TestTone));
+        assert!(!loopback_may_replace(&SourceRequest::Application { exe: "x.exe".into() }));
     }
 
     #[test]

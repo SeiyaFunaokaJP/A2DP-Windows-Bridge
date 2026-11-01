@@ -1185,22 +1185,9 @@ impl Service {
         }
     }
 
-    /// A session that failed reports Error before its thread has cleaned up:
-    /// a scan right after it waits for that instead of being refused
-    fn wait_failed_session(&self) {
-        let deadline = Instant::now() + Duration::from_secs(3);
-        while self.is_running()
-            && *self.inner.state.lock().unwrap_or_else(|e| e.into_inner()) == StreamState::Error
-            && Instant::now() < deadline
-        {
-            std::thread::sleep(Duration::from_millis(20));
-        }
-    }
-
     /// Inquiry for nearby (classic) devices
     pub fn scan(&self, seconds: u32) -> Result<Vec<DiscoveredDevice>, Msg> {
         self.end_wait_for_device();
-        self.wait_failed_session();
         if self.is_running() {
             return Err(Msg::new("status.streaming"));
         }
@@ -1233,7 +1220,6 @@ impl Service {
         on_found: &mut dyn FnMut(&[ScannedDevice]),
     ) -> Result<Vec<ScannedDevice>, Msg> {
         self.end_wait_for_device();
-        self.wait_failed_session();
         if self.is_running() {
             return Err(Msg::new("status.streaming"));
         }

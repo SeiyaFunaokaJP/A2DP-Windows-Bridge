@@ -51,6 +51,7 @@
   "status.connected_fallback": "已連線 (裝置不支援 %s，改用 %s)",
   "status.connected_fallback_in_use": "已連線 (%s 可能正由其他裝置使用，改用 %s)",
   "status.connected_fallback_experimental": "已連線 (%s 為實驗性編解碼器且已關閉，使用 %s)",
+  "status.connected_source_fallback": "已連線 (虛擬裝置無法使用，改為傳送系統音訊)",
   "status.le_scanning": "正在掃描 LE Audio 裝置...",
   "status.initializing": "正在初始化...",
   "status.initializing_btstack": "正在啟動藍牙...",
