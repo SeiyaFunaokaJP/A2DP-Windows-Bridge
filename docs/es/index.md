@@ -13,7 +13,7 @@ Transmisión de audio Bluetooth A2DP para Windows con compatibilidad completa de
 
 Transmite el audio del sistema mediante **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, aptX Low Latency, AAC, SBC** y (de forma experimental) **Opus** y el **Opus 05** de PipeWire con un adaptador Bluetooth USB en modo WinUSB, sin controlador de kernel ni firma de prueba.
 
-![BlueCaster streaming LDAC 990 kbps / 48 kHz to Sony WH-1000XM4 (Home screen)](../images/app_sample.png)
+![BlueCaster streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](../images/app_sample.png)
 
 [Primeros pasos](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [GitHub](https://github.com/SeiyaFunaokaJP/BlueCaster){: .btn .fs-5 .mb-4 .mb-md-0 }

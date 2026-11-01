@@ -13,7 +13,7 @@ has_toc: false
 
 使用处于 WinUSB 模式的 USB Bluetooth 适配器，以 **LHDC V5、LDAC、aptX Adaptive、aptX HD、aptX、aptX Low Latency、AAC、SBC** 以及（实验性的）**Opus** 和 PipeWire 的 **Opus 05** 串流系统音频——无需内核驱动，也无需测试签名。
 
-![BlueCaster streaming LDAC 990 kbps / 48 kHz to Sony WH-1000XM4 (Home screen)](../images/app_sample.png)
+![BlueCaster streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](../images/app_sample.png)
 
 [开始使用](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [GitHub](https://github.com/SeiyaFunaokaJP/BlueCaster){: .btn .fs-5 .mb-4 .mb-md-0 }
