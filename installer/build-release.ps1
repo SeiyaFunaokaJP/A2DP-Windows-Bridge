@@ -28,8 +28,8 @@ Neither key is part of the repository.
 
 Needs: Rust (with the target), pnpm, the UI's node_modules (pnpm install),
 the submodules under extern/, cargo-about (cargo install cargo-about), and
-Inno Setup 7 (winget install JRSoftware.InnoSetup.7; ISCC.exe is found in
-its default folders, on PATH or in $env:ISCC). The WebView2
+Inno Setup 6.5 or later (winget install JRSoftware.InnoSetup; ISCC.exe is
+found in its default folders, on PATH or in $env:ISCC). The WebView2
 bootstrapper is downloaded once into target/installer-cache.
 #>
 [CmdletBinding()]
@@ -113,11 +113,11 @@ $iscc = @(
     $env:ISCC
     (Get-Command ISCC.exe -ErrorAction SilentlyContinue)?.Source
     foreach ($base in $env:LOCALAPPDATA, ${env:ProgramFiles(x86)}, $env:ProgramFiles) {
-        if ($base) { Join-Path $base 'Programs/Inno Setup 7/ISCC.exe'; Join-Path $base 'Inno Setup 7/ISCC.exe' }
+        if ($base) { Join-Path $base 'Programs/Inno Setup 6/ISCC.exe'; Join-Path $base 'Inno Setup 6/ISCC.exe' }
     }
 ) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
 if (-not $iscc) {
-    throw 'Inno Setup''s ISCC.exe not found: winget install JRSoftware.InnoSetup.7 (or set $env:ISCC)'
+    throw 'Inno Setup''s ISCC.exe not found: winget install JRSoftware.InnoSetup (or set $env:ISCC)'
 }
 
 # --- The core and the driver helper (the UI is built by tauri build) ---
