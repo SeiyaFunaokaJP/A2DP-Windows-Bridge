@@ -1,3 +1,5 @@
+> **Pre-release:** [latest test builds](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases)
+
 # A2DP Windows Bridge (A2DPWB)
 
 Bluetooth A2DP audio streaming for Windows with the codecs Windows lacks: LDAC, aptX HD, aptX Low Latency, LHDC V5 and more, through a dedicated USB Bluetooth adapter in WinUSB mode — no kernel driver or test signing required.
