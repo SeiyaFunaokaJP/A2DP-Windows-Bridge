@@ -61,7 +61,24 @@ pub struct StreamRequest {
     pub le: Option<bt_host::LeRequest>,
 }
 
+/// The bitpools of a request ([`crate::profiles::Profile::bitpools`]; 0 = Auto)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Bitpools {
+    pub sbc: u8,
+    pub sbcxq: u8,
+    pub sbc_min: u8,
+    pub sbcxq_min: u8,
+}
+
 impl StreamRequest {
+    /// The bitpools, as a profile saved while streaming has them
+    pub fn set_bitpools(&mut self, b: Bitpools) {
+        self.sbc_bitpool = b.sbc;
+        self.sbcxq_bitpool = b.sbcxq;
+        self.sbc_min_bitpool = b.sbc_min;
+        self.sbcxq_min_bitpool = b.sbcxq_min;
+    }
+
     /// The SBC setup of a `kind` stream (SBC or SBC XQ): [`Self::sbc`] with
     /// that codec's minimum bitpool, as the SET_CONFIGURATION and the
     /// encoder take it
@@ -1480,6 +1497,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             || sbc_abr(&req, kind),
         peer: peer_params(&remote, kind, channels, &req),
     };
+    // What the encoder goes by: `req` with the bitpools chosen during the stream
+    let mut encoder_req = req.clone();
     tracing::debug!("encoder config: {encoder_config:?}");
     let encoder = match codec::create(kind, &encoder_config) {
         Ok(e) => e,
@@ -1640,6 +1659,45 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             info.source.waiting = active.waiting();
             inner.stream_info(info.clone());
             current_source = next;
+        }
+
+        // Other bitpools chosen: the link allows the whole range, so only
+        // the encoder changes (issue #86: the slider is heard as it moves)
+        if let Some(b) = inner.take_bitpool_change() {
+            encoder_req.set_bitpools(b);
+            encoder_config.peer = peer_params(&remote, kind, channels, &encoder_req);
+            let sink = pipeline.take().and_then(Pipeline::stop);
+            let Some(sink) = sink else {
+                inner.notify(StreamState::Error, Msg::new("error.encode_thread"));
+                lost_for_good = true;
+                break;
+            };
+            let encoder = match codec::create(kind, &encoder_config) {
+                Ok(e) => e,
+                Err(e) => {
+                    tracing::error!("encoder: {e}");
+                    host.return_media_sink(sink);
+                    inner.notify(StreamState::Error, Msg::new("error.encoder_init"));
+                    lost_for_good = true;
+                    break;
+                }
+            };
+            tracing::info!("{}: bitpool changed, now {} kbps", kind.name(), encoder.bitrate_kbps());
+            info.bitrate_kbps = encoder.bitrate_kbps();
+            info.details = Some(Box::new(codec_details(
+                kind,
+                &config,
+                &remote,
+                &*encoder,
+                encoder_config.mtu,
+                format.sample_rate,
+            )));
+            let (p, new_input) = start_pipeline(encoder, input_format, channels, encoder_config.mtu, sink, &host);
+            if let Ok(mut i) = input.0.lock() {
+                *i = new_input;
+            }
+            pipeline = Some(p);
+            inner.stream_info(info.clone());
         }
 
         // Application capture follows the app: it may quit and start again
@@ -1933,7 +1991,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         // The encoder follows the new stream: its MTU and the device's
         // settings (e.g. its SBC bitpool range) may have changed
         let new_config =
-            EncoderConfig { mtu: r.mtu, peer: peer_params(&r.remote, kind, channels, &req), ..encoder_config };
+            EncoderConfig { mtu: r.mtu, peer: peer_params(&r.remote, kind, channels, &encoder_req), ..encoder_config };
         if r.mtu != encoder_config.mtu {
             tracing::info!("reconnect: media payload size {} -> {}", encoder_config.mtu, r.mtu);
         }

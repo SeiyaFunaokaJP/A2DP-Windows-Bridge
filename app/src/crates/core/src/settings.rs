@@ -12,7 +12,7 @@ use bt_host::media::{MEDIA_PAYLOAD_LIMIT_DEFAULT, clamp_media_payload_limit};
 /// v2's, 3 has LE Audio on by default, 4 remembers each device's volume by
 /// default, 5 has one Auto-select for every device, 6 one Windows Volume
 /// Sync, media keys and remember volume for every device (see migrate.rs)
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 /// The first schema_version v2 wrote: a lower one is v1's folder
 pub const FIRST_V2_SCHEMA: u32 = 2;
 

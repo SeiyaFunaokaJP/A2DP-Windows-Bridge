@@ -162,14 +162,6 @@ export function DeviceSettings(props: { device: Device }) {
         <Show when={f.capture_mode === "app" && appSupport() !== "yes" && appSupport() !== "no"}>
           <p class="hint">{t("ui.profile.app_capture_requirement")}</p>
         </Show>
-        <Show when={noVirtual()}>
-          <div class="inline">
-            <span class="hint">{t("capture.virtual_supported")}</span>
-            <Button icon="open" onClick={() => core.transport.openUrl(LINKS.vbCable)}>
-              {t("vbcable.download")}
-            </Button>
-          </div>
-        </Show>
       </div>
       <FormatWarning fields={f} profiles={profiles()} devices={devices()} />
       {/* Whether this Windows can capture one app: only the core knows the
@@ -257,5 +249,18 @@ function FormatWarning(props: CaptureFormatProps) {
         </p>
       )}
     </Show>
+  );
+}
+
+/** Why a virtual device is wanted, where it is not installed */
+export function VbCableNote() {
+  const { core } = useApp();
+  return (
+    <div class="setup-note">
+      <p>{t("ui.setup.vbcable_note")}</p>
+      <Button icon="open" onClick={() => core.transport.openUrl(LINKS.vbCable)}>
+        {t("vbcable.download")}
+      </Button>
+    </div>
   );
 }

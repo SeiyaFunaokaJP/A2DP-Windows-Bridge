@@ -299,6 +299,9 @@ pub(crate) struct Inner {
     turned_off: AtomicBool,
     /// The source the running A2DP session changes to at its next tick
     source_change: Mutex<Option<SourceRequest>>,
+    /// Other bitpools for the session to take in place
+    /// ([`Service::change_bitpools`])
+    bitpool_change: Mutex<Option<stream::Bitpools>>,
 }
 
 impl Inner {
@@ -308,6 +311,10 @@ impl Inner {
 
     pub fn take_source_change(&self) -> Option<SourceRequest> {
         self.source_change.lock().unwrap_or_else(|e| e.into_inner()).take()
+    }
+
+    pub fn take_bitpool_change(&self) -> Option<stream::Bitpools> {
+        self.bitpool_change.lock().unwrap_or_else(|e| e.into_inner()).take()
     }
 
     /// The session waits for headphones that were turned off
@@ -817,6 +824,7 @@ impl Service {
             waiting: AtomicBool::new(false),
             turned_off: AtomicBool::new(false),
             source_change: Mutex::new(None),
+            bitpool_change: Mutex::new(None),
         });
         // Without a window, also while only the tray runs
         let weak = Arc::downgrade(&inner);
@@ -984,6 +992,51 @@ impl Service {
         true
     }
 
+    /// Other bitpools for the A2DP stream running, without touching the link
+    /// (the session's next tick). False when none runs: the caller starts it
+    /// again instead.
+    pub fn change_bitpools(&self, bitpools: stream::Bitpools) -> bool {
+        let Ok(_control) = self.control.try_lock() else { return false };
+        if !self.is_running() || self.state() != StreamState::Streaming {
+            return false;
+        }
+        match self.last_request.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            Some(req) if req.le.is_none() => req.set_bitpools(bitpools),
+            _ => return false,
+        }
+        *self.inner.bitpool_change.lock().unwrap_or_else(|e| e.into_inner()) = Some(bitpools);
+        self.inner.tick.1.notify_all();
+        true
+    }
+
+    /// What the service keeps of a device that is forgotten: no Bluetooth
+    /// restart connects it again, and (classic devices) what it offered and
+    /// its link key go, so it cannot connect by itself either
+    pub fn forget_device(&self, address: &str, le_audio: bool) {
+        let Some(addr) = bt_host::parse_addr(address) else { return };
+        {
+            let mut last = self.last_request.lock().unwrap_or_else(|e| e.into_inner());
+            if last.as_ref().is_some_and(|r| r.device == addr && r.le.is_some() == le_audio) {
+                *last = None;
+            }
+        }
+        if le_audio {
+            return;
+        }
+        {
+            let mut known = self.inner.codecs.lock().unwrap_or_else(|e| e.into_inner());
+            if known.remove(&address.to_uppercase()).is_some()
+                && let Err(e) = crate::devices::save_codecs(&self.inner.opts.config_dir, &known)
+            {
+                tracing::warn!("cannot save the devices' codecs: {e}");
+            }
+        }
+        // A running stack holds the keys in memory and writes them in full
+        if !self.host().is_some_and(|h| h.forget_link_key(addr)) {
+            bt_host::link_keys::forget(&self.inner.opts.config_dir, &addr);
+        }
+    }
+
     /// A ticket for a start or stop run later on its own thread
     /// ([`Service::start_streaming_for`], [`Service::disconnect_for`]): the
     /// latest one taken is the one that runs
@@ -1127,6 +1180,7 @@ impl Service {
         // Saved in the profile, so in `req` too: left over from a session
         // that ended before it took it
         self.inner.take_source_change();
+        self.inner.take_bitpool_change();
         *self.last_request.lock().unwrap_or_else(|e| e.into_inner()) = Some(req.clone());
         self.inner.turned_off.store(false, Ordering::Release);
         self.inner.stop.store(false, Ordering::Release);
@@ -1424,6 +1478,49 @@ mod tests {
         }
         .to_request(1000)
         .unwrap()
+    }
+
+    #[test]
+    fn bitpools_change_in_place_only_on_a_running_a2dp_stream() {
+        let s = service();
+        let new = crate::stream::Bitpools { sbc: 30, sbcxq: 0, sbc_min: 20, sbcxq_min: 0 };
+        // Nothing runs
+        assert!(!s.change_bitpools(new));
+        assert_eq!(s.inner.take_bitpool_change(), None);
+        s.inner.running.store(true, Ordering::Release);
+        *s.inner.state.lock().unwrap() = StreamState::Streaming;
+        // No session asked for
+        assert!(!s.change_bitpools(new));
+        *s.last_request.lock().unwrap() = Some(request());
+        assert!(s.change_bitpools(new));
+        assert_eq!(s.inner.take_bitpool_change(), Some(new));
+        // A Bluetooth restart keeps them
+        let last = s.last_request.lock().unwrap().clone().unwrap();
+        assert_eq!((last.sbc_bitpool, last.sbc_min_bitpool), (30, 20));
+        s.inner.running.store(false, Ordering::Release);
+    }
+
+    #[test]
+    fn forgetting_a_device_ends_what_would_connect_it_again() {
+        let s = service();
+        let req = request();
+        let address = bt_host::addr_str(&req.device);
+        let dir = s.inner.opts.config_dir.clone();
+        std::fs::create_dir_all(&dir).unwrap();
+        let line = format!("{} {} 4\n", address.replace(':', "-"), "00".repeat(16));
+        std::fs::write(dir.join("link_keys.txt"), line).unwrap();
+        s.inner.codecs.lock().unwrap().insert(address.clone(), Default::default());
+        *s.last_request.lock().unwrap() = Some(req);
+        // Another device, or the same address's other kind, changes nothing
+        s.forget_device("00:11:22:33:44:66", false);
+        s.forget_device(&address, true);
+        assert!(s.last_request.lock().unwrap().is_some());
+        assert_eq!(bt_host::link_keys::FileLinkKeyStore::open(&dir).entries().len(), 1);
+
+        s.forget_device(&address, false);
+        assert!(s.last_request.lock().unwrap().is_none());
+        assert!(s.device_codecs().is_empty());
+        assert!(bt_host::link_keys::FileLinkKeyStore::open(&dir).entries().is_empty());
     }
 
     #[test]

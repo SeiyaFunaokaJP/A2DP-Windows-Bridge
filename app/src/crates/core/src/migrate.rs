@@ -42,6 +42,9 @@
 //! The per-device overrides of media keys and remember volume
 //! (`device_options`) are dropped: the global values count.
 //!
+//! Schema 7 (issue #86): forgetting a device takes its profile, volume, codecs
+//! and link key with it. What an earlier version left behind goes once.
+//!
 //! At every start, the profiles are folded into one per device
 //! ([`profiles::consolidate`]: the Codecs screen keeps one); the
 //! first time that changes anything, profiles.json is copied as it was to
@@ -308,6 +311,53 @@ fn volume_sync_from(settings: &Settings, list: &[profiles::Profile]) -> bool {
     on
 }
 
+/// Schema 7: profiles of devices forgotten before forgetting took them along.
+/// No saved devices file: nothing says what was forgotten.
+fn drop_forgotten(dir: &Path, settings: &mut Settings) {
+    if !dir.join(crate::devices::FILE).is_file() || !profiles::path(dir).is_file() {
+        return;
+    }
+    let saved = crate::devices::load(dir);
+    let saved_le = crate::devices::load_le(dir);
+    let mut list = profiles::load(dir);
+    let (kept, gone): (Vec<_>, Vec<_>) = list.drain(..).partition(|p| {
+        let same = |d: &crate::devices::SavedDevice| d.address.eq_ignore_ascii_case(&p.device_address);
+        if p.le_audio { saved_le.iter().any(same) } else { saved.iter().any(same) }
+    });
+    if gone.is_empty() {
+        return;
+    }
+    let backup = dir.join(PROFILES_BACKUP);
+    if !backup.exists()
+        && let Err(e) = std::fs::copy(profiles::path(dir), &backup)
+    {
+        tracing::error!("profiles: cannot copy them to {}: {e}; forgotten devices' profiles kept", backup.display());
+        return;
+    }
+    if let Err(e) = profiles::save(dir, &kept) {
+        tracing::error!("profiles: cannot save {}: {e}", profiles::path(dir).display());
+        return;
+    }
+    tracing::info!("profiles: {} of forgotten devices removed", gone.len());
+    let mut codecs = crate::devices::load_codecs(dir);
+    for p in gone {
+        let key = p.device_address.to_uppercase();
+        settings.saved_volumes.remove(&key);
+        if settings.last_profile == p.name {
+            settings.last_profile.clear();
+        }
+        if !p.le_audio {
+            codecs.remove(&key);
+            if let Some(addr) = bt_host::parse_addr(&p.device_address) {
+                bt_host::link_keys::forget(dir, &addr);
+            }
+        }
+    }
+    if let Err(e) = crate::devices::save_codecs(dir, &codecs) {
+        tracing::warn!("cannot save the devices' codecs: {e}");
+    }
+}
+
 /// The schema steps after v2's first one, for a folder v2 already used
 fn upgrade_v2(dir: &Path, report: &mut Report) {
     let mut settings = Settings::load(dir);
@@ -332,6 +382,10 @@ fn upgrade_v2(dir: &Path, report: &mut Report) {
         if settings.device_options.take().is_some() {
             tracing::info!("settings: the per-device media keys and remember volume give way to the global ones");
         }
+    }
+    // 7: what forgetting a device left behind
+    if report.schema_before.is_some_and(|n| n < 7) {
+        drop_forgotten(dir, &mut settings);
     }
     match settings.save(dir) {
         Ok(()) => report.schema_written = true,
@@ -554,6 +608,49 @@ mod tests {
         off.save(dir).unwrap();
         assert_eq!(prepare(dir), Report { schema_before: Some(SCHEMA_VERSION), ..Report::default() });
         assert!(!Settings::load(dir).volume_sync);
+    }
+
+    #[test]
+    fn profiles_of_forgotten_devices_go_once() {
+        let t = TempDir::new("forgotten");
+        let dir = &t.0;
+        let (kept, gone) = ("AA:AA:AA:AA:AA:01", "AA:AA:AA:AA:AA:02");
+        std::fs::write(
+            Settings::path(dir),
+            format!(r#"{{"schema_version":6,"last_profile":"Gone","saved_volumes":{{"{gone}":90,"{kept}":80}}}}"#),
+        )
+        .unwrap();
+        crate::devices::save(dir, kept, "Kept").unwrap();
+        let profile = |name: &str, address: &str| profiles::Profile {
+            name: name.into(),
+            device_address: address.into(),
+            ..Default::default()
+        };
+        profiles::save(dir, &[profile("Kept", kept), profile("Gone", gone)]).unwrap();
+        std::fs::write(dir.join("link_keys.txt"), format!("{} {} 4\n", gone.replace(':', "-"), "00".repeat(16)))
+            .unwrap();
+
+        prepare(dir);
+
+        let names: Vec<String> = profiles::load(dir).into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["Kept"]);
+        let s = Settings::load(dir);
+        assert_eq!(s.last_profile, "");
+        assert_eq!(s.saved_volumes.keys().collect::<Vec<_>>(), [kept]);
+        assert!(bt_host::link_keys::FileLinkKeyStore::open(dir).entries().is_empty());
+        assert!(dir.join(PROFILES_BACKUP).is_file());
+    }
+
+    #[test]
+    fn profiles_stay_without_a_devices_file() {
+        let t = TempDir::new("no-devices");
+        let dir = &t.0;
+        std::fs::write(Settings::path(dir), r#"{"schema_version":6}"#).unwrap();
+        let p =
+            profiles::Profile { name: "P".into(), device_address: "AA:AA:AA:AA:AA:01".into(), ..Default::default() };
+        profiles::save(dir, &[p]).unwrap();
+        prepare(dir);
+        assert_eq!(profiles::load(dir).len(), 1);
     }
 
     #[test]

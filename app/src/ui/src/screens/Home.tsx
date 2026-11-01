@@ -118,6 +118,40 @@ export function V1Running() {
   );
 }
 
+const OTHER_RADIO_KEY = "a2dpwb.home.other_radio_dismissed";
+
+function loadDismissed(): boolean {
+  try {
+    return localStorage.getItem(OTHER_RADIO_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Another Bluetooth adapter is active (issue #86): said until dismissed,
+ *  which holds for good */
+function OtherRadio() {
+  const { core } = useApp();
+  const [dismissed, setDismissed] = createSignal(loadDismissed());
+  const dismiss = () => {
+    setDismissed(true);
+    try {
+      localStorage.setItem(OTHER_RADIO_KEY, "1");
+    } catch {
+      // Only remembered when the WebView keeps storage
+    }
+  };
+  return (
+    <Show when={!dismissed() && core.state.snap!.adapter.other_radio}>
+      {(r) => (
+        <Banner kind="warn" onDismiss={dismiss}>
+          {t(r().paired ? "ui.home.other_adapter_paired" : "ui.home.other_adapter_unpaired", r().name)}
+        </Banner>
+      )}
+    </Show>
+  );
+}
+
 /** The stream state a device's card shows: the stream's for the device of
  *  the profile streaming (or that last failed), idle for the others */
 export function entryState(snap: Snapshot, entry: AudioEntry): StreamState {
@@ -160,6 +194,7 @@ export function Home() {
       <V1Running />
       <Show when={error()}>{(e) => <ErrorPanel code={e().code} message={e().message} />}</Show>
       <FirmwareMissing />
+      <OtherRadio />
 
       <Show
         when={entries().length > 0}

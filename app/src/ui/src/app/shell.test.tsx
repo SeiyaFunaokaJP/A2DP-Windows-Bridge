@@ -258,6 +258,76 @@ describe("flyout", () => {
   });
 });
 
+describe("no device", () => {
+  it("the flyout offers to add one, as Home does (issue #86)", async () => {
+    const { core } = start("", { window: "flyout" });
+    await screen.findByRole("button", { name: "Connect" });
+    for (const d of core.state.snap!.devices.filter((x) => x.saved)) {
+      await core.request("device.forget", { address: d.address, le_audio: d.le_audio });
+    }
+    expect(await screen.findByRole("button", { name: t("ui.home.add_device") })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+  });
+
+  it("forgetting a device takes its profile with it (issue #86)", async () => {
+    const { core } = start("");
+    await screen.findByRole("group", { name: "WH-1000XM5" });
+    const { address, le_audio } = core.state.snap!.devices.find((x) => x.name === "WH-1000XM5")!;
+    expect(core.state.snap!.profiles.some((p) => p.device_address === address)).toBe(true);
+    await core.request("device.forget", { address, le_audio });
+    await waitFor(() => expect(core.state.snap!.profiles.some((p) => p.device_address === address)).toBe(false));
+  });
+});
+
+describe("another Bluetooth adapter (issue #86)", () => {
+  afterEach(() => localStorage.clear());
+
+  it("is said on Home until dismissed, then no more", async () => {
+    const first = start("");
+    first.mock.setOtherRadio({ name: "MediaTek Bluetooth Adapter", paired: true });
+    await first.core.request("adapter.list");
+    cleanup();
+    const again = new MockCore({ speed: 0 });
+    again.setOtherRadio({ name: "MediaTek Bluetooth Adapter", paired: true });
+    const view = render(() => <App core={createCore(again)} />);
+    const text = t("ui.home.other_adapter_paired", "MediaTek Bluetooth Adapter");
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t("modal.close") }));
+    await waitFor(() => expect(screen.queryByText(text)).toBeNull());
+    view.unmount();
+    again.dispose();
+
+    const later = new MockCore({ speed: 0 });
+    later.setOtherRadio({ name: "MediaTek Bluetooth Adapter", paired: true });
+    render(() => <App core={createCore(later)} />);
+    await screen.findByRole("group", { name: "WH-1000XM5" });
+    expect(screen.queryByText(text)).toBeNull();
+    later.dispose();
+  });
+
+  it("recommends disabling one with nothing paired", async () => {
+    const m = new MockCore({ speed: 0 });
+    m.setOtherRadio({ name: "MediaTek Bluetooth Adapter", paired: false });
+    mock = m;
+    render(() => <App core={createCore(m)} />);
+    expect(await screen.findByText(t("ui.home.other_adapter_unpaired", "MediaTek Bluetooth Adapter"))).toBeInTheDocument();
+  });
+});
+
+describe("Audio Devices without a virtual device (issue #86)", () => {
+  it("says why one is wanted, and not once it is installed", async () => {
+    location.hash = "#/devices";
+    const m = new MockCore({ speed: 0 });
+    m.noVirtual = true;
+    mock = m;
+    render(() => <App core={createCore(m)} />);
+    expect(await screen.findByText(t("ui.setup.vbcable_note"))).toBeInTheDocument();
+    m.noVirtual = false;
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => expect(screen.queryByText(t("ui.setup.vbcable_note"))).toBeNull());
+  });
+});
+
 describe("setup device step", () => {
   async function toDeviceStep(opts: MockOptions = {}) {
     const r = start("#/setup", opts);

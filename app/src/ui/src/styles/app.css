@@ -842,6 +842,15 @@ option {
 .dialog-actions {
   flex: none;
 }
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+.dialog-subtitle {
+  margin: 0;
+}
 .dialog-body {
   display: flex;
   flex-direction: column;

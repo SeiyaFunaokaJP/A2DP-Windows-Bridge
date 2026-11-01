@@ -175,6 +175,21 @@ pub struct AdapterState {
     /// (issue #81)
     #[serde(default)]
     pub rom_firmware: bool,
+    /// A radio Windows' own Bluetooth runs beside the adapter A2DPWB uses:
+    /// the two may interfere (issue #86). None: no such radio
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub other_radio: Option<OtherRadio>,
+}
+
+/// A radio of Windows' own Bluetooth
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct OtherRadio {
+    /// Device Manager's name ("MediaTek Bluetooth Adapter")
+    pub name: String,
+    /// Windows has devices paired
+    pub paired: bool,
 }
 
 /// A device known from the saved list or a scan
