@@ -2,6 +2,7 @@
 import type { AdapterInfo } from "./AdapterInfo";
 import type { AdapterStatus } from "./AdapterStatus";
 import type { Msg } from "./Msg";
+import type { OtherRadio } from "./OtherRadio";
 
 export type AdapterState = { status: AdapterStatus, adapters: Array<AdapterInfo>, error: Msg | null, 
 /**
@@ -16,4 +17,9 @@ le_audio: boolean | null,
  * firmware was not loaded, so it opens but cannot connect or stream
  * (issue #81)
  */
-rom_firmware: boolean, };
+rom_firmware: boolean, 
+/**
+ * A radio Windows' own Bluetooth runs beside the adapter BlueCaster uses:
+ * the two may interfere (issue #86). None: no such radio
+ */
+other_radio?: OtherRadio | null, };

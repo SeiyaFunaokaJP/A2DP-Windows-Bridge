@@ -13,6 +13,7 @@
 //! Bluetooth switched off) or with no BTHPORT interface at all may still
 //! have them, so they are read when the IOCTL gives nothing (issue #86).
 
+use windows::Devices::Radios::{Radio, RadioKind, RadioState};
 use windows::Win32::Devices::Bluetooth::GUID_BTHPORT_DEVICE_INTERFACE;
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
     CM_Get_Child, CM_Get_DevNode_PropertyW, CM_Get_Device_IDW, CM_Get_Parent, CM_Get_Sibling, CM_LOCATE_DEVNODE_NORMAL,
@@ -243,6 +244,21 @@ pub fn radios() -> Vec<WindowsRadio> {
     result
 }
 
+/// Windows' Bluetooth is switched on (Settings' switch, which leaves the
+/// radio's device in place); None if Windows would not say
+pub fn switched_on() -> Option<bool> {
+    let radios = || -> windows::core::Result<bool> {
+        let list = Radio::GetRadiosAsync()?.join()?;
+        for r in &list {
+            if r.Kind()? == RadioKind::Bluetooth && r.State()? == RadioState::On {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    };
+    radios().map_err(|e| tracing::debug!("bt_radios: GetRadiosAsync failed: {e}")).ok()
+}
+
 fn local_info(path: &str) -> Option<BthLocalRadioInfo> {
     // SAFETY: NUL-terminated path; no access rights asked (the IOCTL is
     // FILE_ANY_ACCESS), shared with Windows' stack.
@@ -341,6 +357,7 @@ mod tests {
         for r in radios() {
             println!("{r:?}");
         }
+        println!("switched on: {:?}", switched_on());
     }
 
     /// This PC's adapters' radio properties (cargo test -p win-sys

@@ -3,7 +3,8 @@
 //! streaming when this process ends.
 //!
 //! Arguments: `--flyout` opens the tray flyout instead of the main window
-//! (the core starts the UI this way when the tray icon is clicked).
+//! (the core starts the UI this way when the tray icon is clicked);
+//! `--quick-settings` opens it above Quick Settings, which just opened.
 
 #![forbid(unsafe_code)]
 // No console window in release builds
@@ -22,6 +23,7 @@ use tauri::webview::PageLoadEvent;
 fn main() {
     let _log = logging::init();
     let flyout = std::env::args().any(|a| a == "--flyout");
+    let quick_settings = std::env::args().any(|a| a == "--quick-settings");
     tracing::info!(
         "bluecaster {} starting{} (WebView2 {})",
         env!("CARGO_PKG_VERSION"),
@@ -57,6 +59,7 @@ fn main() {
             commands::show_main,
             commands::show_flyout,
             commands::fit_flyout,
+            commands::setup_window,
             commands::set_theme,
             commands::open_url,
             commands::open_folder,
@@ -69,7 +72,9 @@ fn main() {
             let handle = app.handle().clone();
             app.manage(update::Updates::new(&handle));
             connection::start(handle.clone(), ipc);
-            if flyout {
+            if quick_settings {
+                windows::show_with_quick_settings(&handle);
+            } else if flyout {
                 windows::show_flyout(&handle)?;
             } else {
                 windows::show_main(&handle, None)?;

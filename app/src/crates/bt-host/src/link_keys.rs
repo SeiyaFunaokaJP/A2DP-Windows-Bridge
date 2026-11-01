@@ -91,6 +91,12 @@ impl FileLinkKeyStore {
     }
 }
 
+/// Deletes `addr`'s key from `file` while no stack holds the
+/// file (a running stack: [`crate::BtHost::forget_link_key`])
+pub fn forget(file: &Path, addr: &[u8; 6]) {
+    FileLinkKeyStore::open(file).delete(addr);
+}
+
 impl LinkKeyStore for FileLinkKeyStore {
     fn get(&mut self, addr: &[u8; 6]) -> Option<([u8; 16], i32)> {
         let found = self.entries.iter().find(|e| &e.addr == addr).map(|e| (e.key, e.key_type));

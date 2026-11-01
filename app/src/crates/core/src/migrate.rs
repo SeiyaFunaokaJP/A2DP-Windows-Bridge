@@ -43,7 +43,10 @@
 //! The per-device overrides of media keys and remember volume
 //! (`device_options`) are dropped: the global values count.
 //!
-//! Schema 7 (3.0.0): the folder of 2.0.x (renamed from `%APPDATA%\A2DPWB`
+//! Schema 7 (issue #86): forgetting a device takes its profile, volume, codecs
+//! and link key with it. What an earlier version left behind goes once.
+//!
+//! Schema 8 (3.0.0): the folder of 2.0.x (renamed from `%APPDATA%\A2DPWB`
 //! by [`crate::paths::config_dir`]) gets its sub folders ([`relayout`]):
 //! first its small files are copied once to `backup\v2\` (so that 2.0.x can
 //! be installed again with its pairings), then each file moves to its place
@@ -67,9 +70,9 @@ use crate::profiles;
 use crate::settings::{FIRST_V2_SCHEMA, SCHEMA_VERSION, Settings};
 
 /// The first schema with the folder's sub folders
-const LAYOUT_SCHEMA: u32 = 7;
+const LAYOUT_SCHEMA: u32 = 8;
 
-/// The folder before schema 7 (v1 and 2.0.x): every file at the top level.
+/// The folder before schema 8 (v1 and 2.0.x): every file at the top level.
 /// Only the migration knows these places.
 mod old {
     /// The copy of the folder as v1 left it (2.0.x)
@@ -90,7 +93,7 @@ mod old {
     /// v1's files that mean "v1 used this folder" even without settings.json
     pub const V1_FILES: [&str; 3] = ["profiles.json", DEVICES, LINK_KEYS];
     /// The daily logs: `<prefix>core.YYYY-MM-DD.log`; 2.0.x wrote a2dpwb-
-    /// (compat), builds of the rename before schema 7 bluecaster-
+    /// (compat), builds of the rename before schema 8 bluecaster-
     pub const LOG_PREFIXES: [&str; 2] = ["a2dpwb-", "bluecaster-"];
 }
 
@@ -128,7 +131,7 @@ pub struct Report {
     pub schema_written: bool,
     /// Profiles folded into another one of the same device
     pub profiles_folded: usize,
-    /// Schema 7's sub folders were made by this call
+    /// Schema 8's sub folders were made by this call
     pub relaid_out: bool,
 }
 
@@ -311,7 +314,7 @@ fn prepare_settings(dir: &Path) -> Report {
             }
         }
     }
-    // Then schema 7's sub folders, before the schema is written
+    // Then schema 8's sub folders, before the schema is written
     if !relayout(dir, &mut report) {
         return report;
     }
@@ -350,6 +353,53 @@ fn volume_sync_from(settings: &Settings, list: &[profiles::Profile]) -> bool {
     on
 }
 
+/// Schema 7: profiles of devices forgotten before forgetting took them along.
+/// No saved devices file: nothing says what was forgotten.
+fn drop_forgotten(dir: &Path, settings: &mut Settings) {
+    if !paths::devices_file(dir).is_file() || !profiles::path(dir).is_file() {
+        return;
+    }
+    let saved = crate::devices::load(dir);
+    let saved_le = crate::devices::load_le(dir);
+    let mut list = profiles::load(dir);
+    let (kept, gone): (Vec<_>, Vec<_>) = list.drain(..).partition(|p| {
+        let same = |d: &crate::devices::SavedDevice| d.address.eq_ignore_ascii_case(&p.device_address);
+        if p.le_audio { saved_le.iter().any(same) } else { saved.iter().any(same) }
+    });
+    if gone.is_empty() {
+        return;
+    }
+    let backup = paths::profiles_backup_file(dir);
+    if !backup.exists()
+        && let Err(e) = std::fs::copy(profiles::path(dir), &backup)
+    {
+        tracing::error!("profiles: cannot copy them to {}: {e}; forgotten devices' profiles kept", backup.display());
+        return;
+    }
+    if let Err(e) = profiles::save(dir, &kept) {
+        tracing::error!("profiles: cannot save {}: {e}", profiles::path(dir).display());
+        return;
+    }
+    tracing::info!("profiles: {} of forgotten devices removed", gone.len());
+    let mut codecs = crate::devices::load_codecs(dir);
+    for p in gone {
+        let key = p.device_address.to_uppercase();
+        settings.saved_volumes.remove(&key);
+        if settings.last_profile == p.name {
+            settings.last_profile.clear();
+        }
+        if !p.le_audio {
+            codecs.remove(&key);
+            if let Some(addr) = bt_host::parse_addr(&p.device_address) {
+                bt_host::link_keys::forget(&paths::link_keys_file(dir), &addr);
+            }
+        }
+    }
+    if let Err(e) = crate::devices::save_codecs(dir, &codecs) {
+        tracing::warn!("cannot save the devices' codecs: {e}");
+    }
+}
+
 /// The schema steps after v2's first one, for a folder v2 already used
 fn upgrade_v2(dir: &Path, report: &mut Report) {
     let mut settings = Settings::load(dir);
@@ -375,9 +425,14 @@ fn upgrade_v2(dir: &Path, report: &mut Report) {
             tracing::info!("settings: the per-device media keys and remember volume give way to the global ones");
         }
     }
-    // 7: the sub folders; the schema is written only once they are done
+    // 8: the sub folders, before the step below, which looks there; the
+    // schema is written only once they are done
     if report.schema_before.is_some_and(|n| n < LAYOUT_SCHEMA) && !relayout(dir, report) {
         return;
+    }
+    // 7: what forgetting a device left behind
+    if report.schema_before.is_some_and(|n| n < 7) {
+        drop_forgotten(dir, &mut settings);
     }
     match settings.save(dir) {
         Ok(()) => report.schema_written = true,
@@ -453,7 +508,7 @@ fn day_place(dir: &Path, day: &str, kind: &str) -> std::path::PathBuf {
     if target.exists() { paths::day_log_dir(dir, day).join(format!("{kind}.old.log")) } else { target }
 }
 
-/// Schema 7's sub folders (see the module documentation). False when the
+/// Schema 8's sub folders (see the module documentation). False when the
 /// backup of the 2.0.x files could not be made: nothing moved, the next
 /// start tries again.
 pub fn relayout(dir: &Path, report: &mut Report) -> bool {
@@ -523,7 +578,7 @@ pub fn relayout(dir: &Path, report: &mut Report) -> bool {
     }
     paths::move_loose_firmware(dir);
     let _ = std::fs::remove_dir(&records);
-    tracing::info!("settings folder: schema 7's sub folders, {moved} file(s) moved");
+    tracing::info!("settings folder: schema 8's sub folders, {moved} file(s) moved");
     report.relaid_out = true;
     true
 }
@@ -742,6 +797,74 @@ mod tests {
     }
 
     #[test]
+    fn profiles_of_forgotten_devices_go_once() {
+        let t = TempDir::new("forgotten");
+        let dir = &t.0;
+        let (kept, gone) = ("AA:AA:AA:AA:AA:01", "AA:AA:AA:AA:AA:02");
+        std::fs::write(
+            Settings::path(dir),
+            format!(r#"{{"schema_version":6,"last_profile":"Gone","saved_volumes":{{"{gone}":90,"{kept}":80}}}}"#),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("devices.txt"),
+            format!(
+                "{kept}|Kept
+"
+            ),
+        )
+        .unwrap();
+        let profile = |name: &str, address: &str| profiles::Profile {
+            name: name.into(),
+            device_address: address.into(),
+            ..Default::default()
+        };
+        profiles::save(dir, &[profile("Kept", kept), profile("Gone", gone)]).unwrap();
+        std::fs::write(dir.join("link_keys.txt"), format!("{} {} 4\n", gone.replace(':', "-"), "00".repeat(16)))
+            .unwrap();
+
+        prepare(dir);
+
+        let names: Vec<String> = profiles::load(dir).into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["Kept"]);
+        let s = Settings::load(dir);
+        assert_eq!(s.last_profile, "");
+        assert_eq!(s.saved_volumes.keys().collect::<Vec<_>>(), [kept]);
+        assert!(bt_host::link_keys::FileLinkKeyStore::open(&paths::link_keys_file(dir)).entries().is_empty());
+        assert!(paths::profiles_backup_file(dir).is_file());
+    }
+
+    #[test]
+    fn profiles_stay_without_a_devices_file() {
+        let t = TempDir::new("no-devices");
+        let dir = &t.0;
+        std::fs::write(Settings::path(dir), r#"{"schema_version":6}"#).unwrap();
+        let p =
+            profiles::Profile { name: "P".into(), device_address: "AA:AA:AA:AA:AA:01".into(), ..Default::default() };
+        profiles::save(dir, &[p]).unwrap();
+        prepare(dir);
+        assert_eq!(profiles::load(dir).len(), 1);
+    }
+
+    #[test]
+    fn a_folder_at_schema_7_still_gets_its_sub_folders() {
+        // 2.0.2-beta.14 and later write schema 7 without them
+        let t = TempDir::new("schema7-flat");
+        let dir = &t.0;
+        std::fs::write(Settings::path(dir), r#"{"schema_version":7}"#).unwrap();
+        std::fs::write(
+            dir.join("devices.txt"),
+            "AA:AA:AA:AA:AA:01|Kept
+",
+        )
+        .unwrap();
+        assert!(prepare(dir).relaid_out);
+        assert!(paths::devices_file(dir).is_file());
+        assert!(!dir.join("devices.txt").exists());
+        assert_eq!(read_json(&Settings::path(dir))["schema_version"], SCHEMA_VERSION);
+    }
+
+    #[test]
     fn v1_again_after_v2_keeps_the_first_backup() {
         // v1 ran again in between and wrote settings.json without the schema
         let t = TempDir::new("again");
@@ -836,7 +959,7 @@ mod tests {
         beta_folder(dir);
         let r = prepare(dir);
         assert_eq!(r, Report { schema_before: Some(6), schema_written: true, relaid_out: true, ..Report::default() });
-        assert_eq!(Settings::load(dir).schema_version, 7);
+        assert_eq!(Settings::load(dir).schema_version, SCHEMA_VERSION);
         let today = paths::today();
         let mut want: Vec<String> = [
             "adapters/",
@@ -906,7 +1029,7 @@ mod tests {
 
         // (d) Again: nothing changes
         let before = tree(dir);
-        assert_eq!(prepare(dir), Report { schema_before: Some(7), ..Report::default() });
+        assert_eq!(prepare(dir), Report { schema_before: Some(SCHEMA_VERSION), ..Report::default() });
         let mut again = Report::default();
         assert!(relayout(dir, &mut again));
         assert_eq!(tree(dir), before);
@@ -949,7 +1072,7 @@ mod tests {
     }
 
     #[test]
-    fn a_v1_folder_goes_to_schema_7_in_one_start() {
+    fn a_v1_folder_goes_to_schema_8_in_one_start() {
         let t = TempDir::new("v1to7");
         let dir = &t.0;
         std::fs::write(Settings::path(dir), V1_SETTINGS).unwrap();
@@ -959,7 +1082,7 @@ mod tests {
         std::fs::write(dir.join("debug.log"), "v1's log").unwrap();
         let r = prepare(dir);
         assert!(r.from_v1 && r.backed_up && r.relaid_out && r.schema_written, "{r:?}");
-        assert_eq!(Settings::load(dir).schema_version, 7);
+        assert_eq!(Settings::load(dir).schema_version, SCHEMA_VERSION);
         // Both backups: v1's files as they were, then v2's
         let v1 = paths::backup_v1_dir(dir);
         assert_eq!(std::fs::read_to_string(v1.join("settings.json")).unwrap(), V1_SETTINGS);
@@ -982,7 +1105,7 @@ mod tests {
         crate::devices::save_codecs(dir, &Default::default()).unwrap();
         Settings::default().save(dir).unwrap();
         assert_eq!(tree(dir), ["devices/", "devices/device_codecs.json", "settings.json"]);
-        assert_eq!(prepare(dir), Report { schema_before: Some(7), ..Report::default() });
+        assert_eq!(prepare(dir), Report { schema_before: Some(SCHEMA_VERSION), ..Report::default() });
     }
 
     #[test]

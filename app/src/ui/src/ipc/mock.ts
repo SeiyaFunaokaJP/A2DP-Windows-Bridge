@@ -56,7 +56,9 @@ export type MockScenario =
   /** A third device whose codecs cap what can be set (issue #86: the
    *  moto buds+, SBC bitpool 39, AAC 131 kbps, LHDC V5 48 kHz at most),
    *  and two aptX Adaptive ones, with and without 96 kHz */
-  | "capped";
+  | "capped"
+  /** Huawei earbuds that list LDAC only once it is asked for (issue #30) */
+  | "huawei";
 
 export interface MockOptions {
   scenario?: MockScenario;
@@ -156,13 +158,16 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     start_minimized: false,
     minimize_to_tray: true,
     tray_click_opens_window: false,
+    flyout_with_quick_settings: false,
     notify_connected: true,
     battery_low_percent: 20,
     check_updates_on_startup: true,
     include_prereleases: false,
     media_keys: true,
     remember_volume: true,
+    auto_reconnect: true,
     volume_sync: true,
+    mute_output: true,
     developer_mode: false,
     dev_overrides: {
       rtp_marker: false,
@@ -189,7 +194,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
 
 /** A device entry: classic unless `over` says otherwise */
 export function sampleDevice(over: Partial<Device> & { address: string }): Device {
-  return { name: "", saved: false, audio: true, rssi: null, codecs: [], sbc: null, codec_caps: [], le_audio: false, le_audio_set: false, ...over };
+  return { name: "", saved: false, audio: true, rssi: null, codecs: [], sbc: null, codec_caps: [], codecs_on_request: [], le_audio: false, le_audio_set: false, ...over };
 }
 
 /** What the WH-1000XM5's SBC endpoint lists (no 4 subbands, no SNR, as many headphones) */
@@ -300,6 +305,17 @@ export function sampleSnapshot(scenario: MockScenario = "normal"): Snapshot {
           }),
           sampleDevice({ address: "00:1A:7D:DA:71:13", name: "SRS-XB13", saved: true }),
           ...(scenario === "capped" ? [MOTO_BUDS, APTXAD_48K, APTXAD_96K] : []),
+          ...(scenario === "huawei"
+            ? [
+                sampleDevice({
+                  address: "CC:FF:90:12:34:56",
+                  name: "HUAWEI FreeBuds Pro 4",
+                  saved: true,
+                  codecs: ["sbc", "sbcxq", "aac"],
+                  codecs_on_request: ["ldac"],
+                }),
+              ]
+            : []),
           ...(le ? [{ ...LE_BUDS, saved: true }] : []),
         ],
     scanning: false,
@@ -578,6 +594,7 @@ export class MockCore implements Transport {
   private slowTimer: ReturnType<typeof setInterval> | null = null;
   /** Ends the running scan (device.scan_stop) */
   private scanStop: (() => void) | null = null;
+  private connectFailure: string | null = null;
   private logs: LogLevel | null = null;
   private receiverSub = false;
   /** Every line, as the core keeps them, and the flow it follows */
@@ -668,6 +685,12 @@ export class MockCore implements Transport {
       case "device.forget":
         this.snap.devices = this.snap.devices.filter((d) => !sameEntry(d, String(p.address), p.le_audio === true));
         this.emit({ kind: "devices", value: this.snap.devices });
+        // Its profile goes with it, as in the core
+        this.snap.profiles = this.snap.profiles.filter(
+          (x) => !(x.le_audio === (p.le_audio === true) && x.device_address.toUpperCase() === String(p.address).toUpperCase()),
+        );
+        if (!this.snap.profiles.some((x) => x.name === this.snap.active_profile)) this.snap.active_profile = null;
+        this.emit({ kind: "profiles", value: { profiles: this.snap.profiles, active_profile: this.snap.active_profile } });
         return null;
       case "device.rename": {
         const name = String(p.name ?? "").trim();
@@ -759,7 +782,7 @@ export class MockCore implements Transport {
       case "adapter.download_firmware":
         return this.downloadFirmware(String(p.file));
       case "audio.devices":
-        return AUDIO_DEVICES;
+        return this.noVirtual ? AUDIO_DEVICES.filter((d) => !d.is_virtual) : AUDIO_DEVICES;
       case "audio.apps":
         return AUDIO_APPS;
       case "diag.subscribe":
@@ -863,6 +886,13 @@ export class MockCore implements Transport {
     console.info("[mock] reveal", path);
   }
   async setTheme() {}
+  /** Windows has no virtual device (tests) */
+  noVirtual = false;
+
+  setOtherRadio(radio: Snapshot["adapter"]["other_radio"]) {
+    this.snap.adapter.other_radio = radio;
+  }
+  async setupWindow(_active: boolean) {}
   onNavigate(cb: (route: string) => void) {
     this.navigate = cb;
   }
@@ -910,6 +940,11 @@ export class MockCore implements Transport {
   setV1Running(on: boolean) {
     this.snap.v1_running = on;
     this.emit({ kind: "v1_running", value: on });
+  }
+
+  /** The next connection ends in this error (tests) */
+  failNextConnect(key: string) {
+    this.connectFailure = key;
   }
 
   // ---- Simulation --------------------------------------------------------
@@ -1115,6 +1150,12 @@ export class MockCore implements Transport {
     this.log("info", "bluecaster_core::stream", `stream: device ${t.address} codec ${t.codec} quality hq source ${t.source.kind}`);
     this.log("info", "bluecaster_core::service", "state Connecting: Initializing BTstack...");
     if (this.snap.adapter.status !== "ready") this.setAdapter("initializing");
+    const failure = this.connectFailure;
+    if (failure) {
+      this.connectFailure = null;
+      this.later(100, () => this.setStream("error", failure));
+      return;
+    }
     const set = this.snap.devices.find((d) => sameEntry(d, t.address, true))?.le_audio_set ?? false;
     const info = (): StreamInfo => {
       const base = t.le
@@ -1592,5 +1633,10 @@ export function mockFromUrl(): MockCore {
   const q = new URLSearchParams(location.search);
   const scenario = (q.get("mock") as MockScenario | null) ?? "normal";
   const win = q.get("window") === "flyout" ? "flyout" : "main";
-  return new MockCore({ scenario, window: win });
+  const mock = new MockCore({ scenario, window: win });
+  mock.noVirtual = q.has("novirtual");
+  if (q.has("otherradio")) {
+    mock.setOtherRadio({ name: "MediaTek Bluetooth Adapter", paired: q.get("otherradio") === "paired" });
+  }
+  return mock;
 }

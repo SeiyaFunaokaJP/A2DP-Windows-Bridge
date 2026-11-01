@@ -4,7 +4,7 @@ Advanced Bluetooth Audio Transmitter for Windows, with the codecs Windows lacks:
 
 ![BlueCaster streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](docs/images/app_sample.png)
 
-**[Download](https://github.com/SeiyaFunaokaJP/BlueCaster/releases/latest)** (installer `-setup.exe` or `-portable.zip`) | **[Documentation](https://seiyafunaokajp.github.io/BlueCaster/)**
+**[Download](https://github.com/SeiyaFunaokaJP/BlueCaster/releases)** (installer `-setup.exe` or `-portable.zip`) | **[Documentation](https://seiyafunaokajp.github.io/BlueCaster/)**
 
 ## Codecs
 

@@ -4,19 +4,40 @@
 // source, default output switching), and a card to add one: scan for new
 // ones or type an address. Profiles then pick from this list.
 
+import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { useApp } from "../app/context";
 import { saveSettings } from "../app/settings";
 import { Toggle } from "../components/controls";
 import { DevicePicker } from "../components/DevicePicker";
-import { DeviceSettings } from "../components/DeviceSettings";
+import { DeviceSettings, VbCableNote } from "../components/DeviceSettings";
 import { t } from "../i18n";
+import { vbCable } from "../lib/profile";
 
 export function Devices() {
+  const { core } = useApp();
+  // Not installed, once Windows' list was read (installed meanwhile: gone
+  // when the window comes back)
+  const [noCable, setNoCable] = createSignal(false);
+  const load = () =>
+    core
+      .request("audio.devices")
+      .then((list) => setNoCable(vbCable(list) === null))
+      .catch(() => {});
+  onMount(() => {
+    void load();
+    window.addEventListener("focus", load);
+  });
+  onCleanup(() => window.removeEventListener("focus", load));
   return (
     <div class="page">
       <header class="page-head">
         <h1>{t("ui.nav.devices")}</h1>
       </header>
+      <Show when={noCable()}>
+        <section class="card">
+          <VbCableNote />
+        </section>
+      </Show>
       <AllDevices />
       <DevicePicker manage address="" onPick={() => {}} settings={(d) => <DeviceSettings device={d} />} />
     </div>
@@ -24,7 +45,7 @@ export function Devices() {
 }
 
 /** The settings shared by every audio device (Settings, saved at once; a
- *  Volume Sync change starts the profile in use again in the core) */
+ *  Volume Sync or output mute change starts the profile in use again in the core) */
 function AllDevices() {
   const app = useApp();
   const s = () => app.core.state.snap!.settings;
@@ -40,6 +61,12 @@ function AllDevices() {
         onChange={(v) => void saveSettings(app, { volume_sync: v })}
       />
       <Toggle
+        label={t("capture.mute_output")}
+        hint={t("capture.mute_output_hint")}
+        checked={s().mute_output}
+        onChange={(v) => void saveSettings(app, { mute_output: v })}
+      />
+      <Toggle
         label={t("settings.media_keys")}
         checked={s().media_keys}
         onChange={(v) => void saveSettings(app, { media_keys: v })}
@@ -48,6 +75,11 @@ function AllDevices() {
         label={t("settings.remember_volume")}
         checked={s().remember_volume}
         onChange={(v) => void saveSettings(app, { remember_volume: v })}
+      />
+      <Toggle
+        label={t("settings.auto_reconnect")}
+        checked={s().auto_reconnect}
+        onChange={(v) => void saveSettings(app, { auto_reconnect: v })}
       />
     </section>
   );

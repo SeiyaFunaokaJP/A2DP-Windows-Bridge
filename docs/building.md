@@ -101,7 +101,7 @@ python tools/check_lang.py
 pwsh installer/build-release.ps1 -Arch x64
 ```
 
-writes the installer (`BlueCaster-<version>-win64-setup.exe`), the portable zip and the updater manifest to `target/dist`. It needs Inno Setup 6.5 or later (`winget install JRSoftware.InnoSetup`). Signing the in-app updates and the other details are in `installer/README.md`.
+writes the installer (`BlueCaster-<version>-win64-setup.exe`), the portable zip and the updater manifest to `target/dist`. It needs Inno Setup 7 (`winget install JRSoftware.InnoSetup.7`). Signing the in-app updates and the other details are in `installer/README.md`.
 
 ## Testing Without Hardware (tools/emu) {#emu}
 

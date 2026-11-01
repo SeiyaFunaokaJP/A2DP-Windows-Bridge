@@ -48,11 +48,12 @@ Die Kopfhörer zeigen möglicherweise weiter den alten Bluetooth-Namen „A2DPWB
 
 ## Schritt 1: Einrichtung beim ersten Start {#first-run}
 
-Stecken Sie den USB-Bluetooth-Adapter ein und starten Sie BlueCaster. Solange es noch kein Profil gibt oder kein Adapter WinUSB hat, öffnet BlueCaster **BlueCaster einrichten** mit drei Schritten:
+Stecken Sie den USB-Bluetooth-Adapter ein und starten Sie BlueCaster. Solange es noch kein Profil gibt oder kein Adapter WinUSB hat, öffnet BlueCaster **BlueCaster einrichten** mit vier Schritten:
 
 1. **Adapter auswählen**: die gefundenen USB-Bluetooth-Adapter. Fehlt Ihrer, stecken Sie ihn ein und klicken Sie auf **Aktualisieren**. Ein grünes **Unterstützt** oder ein rotes **Nicht unterstützt** zeigt, ob BlueCaster ihn verwenden kann; ein nicht unterstützter wird aufgeführt, kann aber nicht gewählt werden
 2. **Treiber und Firmware**: **Durch WinUSB-Treiber ersetzen** (siehe [Schritt 2](#winusb)) und bei Realtek-Adaptern die Firmwaredateien (siehe [Firmware](#firmware))
-3. **Audiogeräte finden**: Die Suche startet von selbst. Versetzen Sie das Audiogerät in den Kopplungsmodus und klicken Sie daneben auf **Verbinden** (oder geben Sie seine Adresse ein und klicken Sie auf **Verwenden**): BlueCaster legt sein Profil an („*Name* | Auto“, der beste Codec des Geräts) und verbindet; das Gerät verschwindet aus der Liste (auch nach **Zurück** und **Weiter**). Dann **Fertig** (siehe [Schritt 3](#headphones)). Der Block **Start** dieses Schritts hat **Mit Windows starten** und **Im Infobereich starten**, dieselben Schalter wie in den Einstellungen, sofort gespeichert
+3. **Audiogeräte finden**: Die Suche startet von selbst. Versetzen Sie das Audiogerät in den Kopplungsmodus und klicken Sie daneben auf **Verbinden** (oder geben Sie seine Adresse ein und klicken Sie auf **Verwenden**): BlueCaster legt sein Profil an („*Name* | Auto“, der beste Codec des Geräts) und verbindet. Es steht dann mit **Trennen** über der Liste. **Gerät hinzufügen** trennt es und setzt die Suche für ein weiteres Gerät fort; es bleibt gespeichert, und ein falsches Gerät lässt sich dort entfernen. Mit installiertem VB-Cable nehmen neue Geräte es auf; ohne VB-Cable sagt der Schritt, wozu es dient. Findet BlueCaster es später zum ersten Mal, wechseln Geräte mit System Loopback dorthin
+4. **Allgemeine Einstellungen**: Design, **Start**, **Benachrichtigungen** und Update-Prüfung, dieselben Bedienelemente wie in den Einstellungen, sofort gespeichert (siehe [Schritt 3](#headphones))
 
 **Später einrichten** überspringt den Rest; **Einstellungen > Einrichtung ausführen** öffnet die Einrichtung erneut.
 

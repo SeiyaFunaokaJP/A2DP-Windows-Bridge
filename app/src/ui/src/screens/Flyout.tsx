@@ -40,6 +40,7 @@ export function Flyout() {
   const stream = () => snap().stream;
   const profile = () => currentProfile(snap());
   const entry = () => entryOf(audioEntries(snap()), profile());
+  const noDevice = () => audioEntries(snap()).length === 0;
   const [reqError, setReqError] = createSignal<IpcError | null>(null);
   const { fixFor, dialog } = useFixes();
   onCleanup(core.wantLink());
@@ -69,44 +70,56 @@ export function Flyout() {
 
   return (
     <div class="flyout" ref={page}>
-      <header class="fly-head">
-        <Ring state={stream().state} volume={stream().volume} size="small">
-          <Icon name="headphones" />
-        </Ring>
-        <div class="fly-title">
-          {/* The device chooser is the title: the device once (issue #86) */}
-          <Show
-            when={profile()}
-            fallback={<div class="device-name ellipsis">{t("profile.none_selected")}</div>}
-          >
-            <DeviceSwitcher />
-          </Show>
-          {/* As on Home and in the sidebar: battery | state, the codec (issue #86) */}
-          <div class="fly-state">
-            <Show when={stream().state !== "idle" && showsBattery(stream())}>
-              <BatteryLevel class="fly-battery" percent={stream().battery} />
-              <span class="muted" aria-hidden="true">
-                |
-              </span>
+      {/* As on Home (issue #86) */}
+      <Show when={noDevice()}>
+        <section class="card empty">
+          <Icon name="headphones" class="empty-icon" />
+          <p>{t("ui.home.no_device")}</p>
+          <Button kind="strong" icon="add" onClick={() => void openMain("devices")}>
+            {t("ui.home.add_device")}
+          </Button>
+        </section>
+      </Show>
+      <Show when={!noDevice()}>
+        <header class="fly-head">
+          <Ring state={stream().state} volume={stream().volume} size="small">
+            <Icon name="headphones" />
+          </Ring>
+          <div class="fly-title">
+            {/* The device chooser is the title: the device once (issue #86) */}
+            <Show
+              when={profile()}
+              fallback={<div class="device-name ellipsis">{t("profile.none_selected")}</div>}
+            >
+              <DeviceSwitcher />
             </Show>
-            <div class={`status-line st-${stream().state}`} role="status" aria-live="polite">
-              <span class="dot" aria-hidden="true" />
-              <span class="ellipsis">{statusText(stream())}</span>
+            {/* As on Home and in the sidebar: battery | state, the codec (issue #86) */}
+            <div class="fly-state">
+              <Show when={stream().state !== "idle" && showsBattery(stream())}>
+                <BatteryLevel class="fly-battery" percent={stream().battery} />
+                <span class="muted" aria-hidden="true">
+                  |
+                </span>
+              </Show>
+              <div class={`status-line st-${stream().state}`} role="status" aria-live="polite">
+                <span class="dot" aria-hidden="true" />
+                <span class="ellipsis">{statusText(stream())}</span>
+              </div>
             </div>
+            <CodecBadge
+              aside={<QualityIndicator />}
+              picker={<Show when={entry()}>{(e) => <CodecPicker entry={e()} />}</Show>}
+            />
           </div>
-          <CodecBadge
-            aside={<QualityIndicator />}
-            picker={<Show when={entry()}>{(e) => <CodecPicker entry={e()} />}</Show>}
-          />
-        </div>
-      </header>
+        </header>
 
-      <Show when={profile()} fallback={<p class="muted">{t("profile.empty")}</p>}>
-        {/* As on Home: the volume while a device is in use */}
-        <Show when={stream().state !== "idle"}>
-          <VolumeControl />
+        <Show when={profile()} fallback={<p class="muted">{t("profile.empty")}</p>}>
+          {/* As on Home: the volume while a device is in use */}
+          <Show when={stream().state !== "idle"}>
+            <VolumeControl />
+          </Show>
+          <ConnectButton compact onError={(e) => setReqError(IpcError.from(e))} />
         </Show>
-        <ConnectButton compact onError={(e) => setReqError(IpcError.from(e))} />
       </Show>
       {/* Kept simple: the capture source is chosen in the main window (issue #86) */}
       <Show when={snap().capture}>

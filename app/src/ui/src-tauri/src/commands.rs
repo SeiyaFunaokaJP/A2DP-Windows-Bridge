@@ -85,6 +85,12 @@ pub async fn fit_flyout(window: WebviewWindow, height: f64) -> Result<(), String
     windows::fit_flyout(&window, height).map_err(|e| e.to_string())
 }
 
+/// The first-run setup opened or closed: the main window fits it
+#[tauri::command]
+pub async fn setup_window(window: WebviewWindow, active: bool) -> Result<(), String> {
+    windows::setup_window(&window, active).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn set_theme(app: AppHandle, theme: String) {
     windows::set_theme(&app, &theme);

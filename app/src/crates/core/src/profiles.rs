@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use bt_host::media::clamp_media_payload_limit;
 use codec::{CodecKind, Quality};
 
-use crate::stream::{SourceRequest, StreamRequest, VolumeSync};
+use crate::stream::{Bitpools, SourceRequest, StreamRequest, VolumeSync};
 
 fn auto() -> String {
     "auto".into()
@@ -308,6 +308,35 @@ impl Profile {
         same_source == *new && self.source() != new.source()
     }
 
+    /// `new` is this profile with only the settings kept for other codecs
+    /// changed: nothing a stream uses
+    pub fn only_kept_settings_differ(&self, new: &Profile) -> bool {
+        self.codec_settings != new.codec_settings
+            && Profile { codec_settings: new.codec_settings.clone(), ..self.clone() } == *new
+    }
+
+    /// The SBC / SBC XQ bitpools, which a stream takes in place
+    pub fn bitpools(&self) -> Bitpools {
+        Bitpools {
+            sbc: self.sbc_bitpool,
+            sbcxq: self.sbcxq_bitpool,
+            sbc_min: self.sbc_min_bitpool,
+            sbcxq_min: self.sbcxq_min_bitpool,
+        }
+    }
+
+    /// `new` is this profile with other bitpools and nothing else changed
+    pub fn only_bitpools_differ(&self, new: &Profile) -> bool {
+        let same = Profile {
+            sbc_bitpool: new.sbc_bitpool,
+            sbcxq_bitpool: new.sbcxq_bitpool,
+            sbc_min_bitpool: new.sbc_min_bitpool,
+            sbcxq_min_bitpool: new.sbcxq_min_bitpool,
+            ..self.clone()
+        };
+        same == *new && self.bitpools() != new.bitpools()
+    }
+
     /// What to stream for this profile. An LE Audio (experimental) profile
     /// gives an LE request (`le` Some: the le_stream session, which refuses
     /// with error.le_audio_disabled while the setting is off); its codec,
@@ -363,6 +392,7 @@ impl Profile {
             },
             source,
             volume_sync,
+            mute_output: false,
             max_media_payload: clamp_media_payload_limit(
                 self.max_media_payload.unwrap_or(legacy_max_media_payload) as u32
             ),
@@ -506,6 +536,21 @@ pub fn drop_sbc_dual_channel(list: &mut [Profile]) -> usize {
 /// The saved profiles, names made unique and SBC's dual channel dropped in
 /// memory (see make_names_unique, drop_sbc_dual_channel; written at the next
 /// save)
+/// The profiles that capture System Loopback capture this virtual device
+/// instead, and make it the Windows default output while connected. How many
+/// changed.
+pub fn use_virtual_device(list: &mut [Profile], id: &str, name: &str) -> usize {
+    let mut changed = 0;
+    for p in list.iter_mut().filter(|p| p.capture_mode == "loopback") {
+        p.capture_mode = "virtual".into();
+        p.audio_device_id = id.into();
+        p.audio_device_name = name.into();
+        p.auto_switch_device = true;
+        changed += 1;
+    }
+    changed
+}
+
 pub fn load(dir: &Path) -> Vec<Profile> {
     load_counted(dir).0
 }
@@ -557,6 +602,21 @@ pub fn save(dir: &Path, profiles: &[Profile]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_system_loopback_takes_the_virtual_device() {
+        let mut list = vec![Profile::default(), Profile::default()];
+        list[1].capture_mode = "app".into();
+        list[0].auto_switch_device = false;
+        assert_eq!(use_virtual_device(&mut list, "{cable}", "CABLE Input"), 1);
+        assert_eq!(list[0].capture_mode, "virtual");
+        assert_eq!(list[0].audio_device_id, "{cable}");
+        assert_eq!(list[0].audio_device_name, "CABLE Input");
+        assert!(list[0].auto_switch_device);
+        assert_eq!(list[1].capture_mode, "app");
+        // A second time changes nothing
+        assert_eq!(use_virtual_device(&mut list, "{cable}", "CABLE Input"), 0);
+    }
 
     #[test]
     fn v1_profile() {
@@ -765,6 +825,20 @@ mod tests {
         assert_eq!(consolidate(&mut list, "Buds | AAC"), ["B"]);
         assert_eq!(names(&list), ["A"]);
         assert!(list[0].codec_settings.contains_key("ldac"));
+    }
+
+    #[test]
+    fn what_a_stream_can_take_without_starting_again() {
+        let p = Profile { name: "A".into(), device_address: "AA:BB:CC:DD:EE:FF".into(), ..Default::default() };
+        let bitpool = Profile { sbc_bitpool: 30, ..p.clone() };
+        assert!(p.only_bitpools_differ(&bitpool));
+        assert!(!p.only_bitpools_differ(&p));
+        assert!(!p.only_bitpools_differ(&Profile { sample_rate: 44100, ..bitpool.clone() }));
+        let mut kept = p.clone();
+        kept.codec_settings.insert("ldac".into(), CodecValues::default());
+        assert!(p.only_kept_settings_differ(&kept));
+        assert!(!p.only_kept_settings_differ(&p));
+        assert!(!p.only_kept_settings_differ(&Profile { sbc_bitpool: 30, ..kept }));
     }
 
     #[test]

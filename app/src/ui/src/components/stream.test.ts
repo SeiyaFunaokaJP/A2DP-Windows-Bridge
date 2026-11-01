@@ -89,7 +89,7 @@ describe("codec summary", () => {
   it("shows SBC's bitpool now and its ceiling under ABR", () => {
     expect(codecDetails(SBC_INFO)).toEqual(["285 kbps", "bitpool 41/53", "48 kHz", "16-bit", "ABR"]);
     expect(codecDetails(SBC_INFO).join(" | ")).toBe("285 kbps | bitpool 41/53 | 48 kHz | 16-bit | ABR");
-    expect(abrTooltipKey(SBC_INFO)).toBe("tooltip.sbc_abr");
+    expect(abrTooltipKey(SBC_INFO)).toBe("tooltip.abr");
   });
 
   it("shows no bitpool without ABR, nor for other codecs", () => {

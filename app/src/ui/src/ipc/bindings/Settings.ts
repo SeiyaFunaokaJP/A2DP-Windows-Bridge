@@ -15,6 +15,10 @@ theme: string, start_with_windows: boolean, start_minimized: boolean, minimize_t
  */
 tray_click_opens_window: boolean, 
 /**
+ * The flyout opens above Windows 11's Quick Settings, along with them
+ */
+flyout_with_quick_settings: boolean, 
+/**
  * A notification when a device connects: its codec, what the codec
  * runs with, the battery (on by default)
  */
@@ -32,12 +36,23 @@ media_keys: boolean,
  */
 remember_volume: boolean, 
 /**
+ * Connect a device that went away again by itself (on by default).
+ * Off: the session ends and the adapter is released.
+ */
+auto_reconnect: boolean, 
+/**
  * Windows Volume Sync for every device (on by default): the audio
  * device's volume and the captured device's Windows volume follow each
  * other. Off: no stream syncs. A change starts the profile in use
  * again.
  */
 volume_sync: boolean, 
+/**
+ * System Loopback mutes the default output device while streaming (on
+ * by default), so only the audio device plays. A change starts the
+ * profile in use again.
+ */
+mute_output: boolean, 
 /**
  * Developer mode: receiver test, HCI capture, debug details
  */

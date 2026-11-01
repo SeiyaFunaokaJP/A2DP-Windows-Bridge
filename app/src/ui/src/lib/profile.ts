@@ -119,8 +119,7 @@ export function deviceProfile(
 }
 
 /** The saved devices with their profiles, in the saved list's order; LE
- *  Audio entries only with LE Audio (experimental) on. A forgotten device's
- *  profile (Audio Devices leaves it) gets no entry. */
+ *  Audio entries only with LE Audio (experimental) on. */
 export function audioEntries(snap: Pick<Snapshot, "profiles" | "active_profile" | "stream" | "devices" | "settings">): AudioEntry[] {
   return listedDevices(
     snap.devices.filter((d) => d.saved),
@@ -252,6 +251,13 @@ export function knownCodecs(devices: readonly Device[], address: string): string
   return devices.find((d) => !d.le_audio && d.address.toUpperCase() === a)?.codecs ?? [];
 }
 
+/** The codec keys a device may offer only once chosen (issue #30) */
+export function codecsOnRequest(devices: readonly Device[], address: string): string[] {
+  const a = parseAddress(address);
+  if (!a) return [];
+  return devices.find((d) => !d.le_audio && d.address.toUpperCase() === a)?.codecs_on_request ?? [];
+}
+
 /** What each codec a device offered lists (rates, bit depths, largest bit
  *  rate: Device.codec_caps; empty while not known, issue #86) */
 export function knownCodecCaps(devices: readonly Device[], address: string): CodecCaps[] {
@@ -269,6 +275,13 @@ export function deviceKey(d: Pick<Device, "address" | "le_audio">): string {
 }
 
 /** The entries to offer: LE Audio ones only with LE Audio (experimental) on, as v1 */
+/** VB-Cable's playback device among Windows' outputs */
+export function vbCable(devices: readonly AudioDevice[]): AudioDevice | null {
+  const cables = devices.filter((d) => d.is_virtual && /cable/i.test(d.name));
+  // The standard one before the 16-channel one
+  return cables.find((d) => !/16ch/i.test(d.name)) ?? cables[0] ?? null;
+}
+
 export function listedDevices(devices: readonly Device[], leAudio: boolean): Device[] {
   return leAudio ? [...devices] : devices.filter((d) => !d.le_audio);
 }
