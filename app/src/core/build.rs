@@ -1,4 +1,4 @@
-//! Embeds the app icon (ID 101, also the tray icon; drawn by
+//! Embeds the app icon (ID 101, also the tray icon; built by
 //! app/resources/make_icon.py), the manifest (per-monitor DPI awareness,
 //! Windows 10/11) and the version information. Its FileDescription is the
 //! name Windows heads the tray's notifications with: the app's own name, not
