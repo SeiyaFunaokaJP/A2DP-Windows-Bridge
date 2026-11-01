@@ -19,6 +19,7 @@ pub mod perf;
 pub mod pipe;
 pub mod power;
 pub mod process;
+pub mod quick_settings;
 pub mod single_instance;
 pub mod usb_adapters;
 pub mod webview;

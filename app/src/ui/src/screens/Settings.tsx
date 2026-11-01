@@ -126,6 +126,14 @@ export function Settings() {
           checked={s().tray_click_opens_window}
           onChange={(v) => set({ tray_click_opens_window: v })}
         />
+        {/* Quick Settings are Windows 11's, as Mica is */}
+        <Show when={core.transport.mica}>
+          <Toggle
+            label={t("ui.settings.flyout_with_quick_settings")}
+            checked={s().flyout_with_quick_settings}
+            onChange={(v) => set({ flyout_with_quick_settings: v })}
+          />
+        </Show>
       </Section>
 
       <Section title={t("ui.settings.notifications")}>

@@ -614,6 +614,7 @@
   "ui.settings.start_minimized_logon": "A2DP Windows Bridge が Windows と一緒に起動したときは、トレイのアイコンだけを出します。",
   "ui.settings.tray_click_opens_window": "トレイアイコンのクリックでメインウィンドウを開く",
   "ui.settings.tray_click_opens_window_hint": "オフなら、クリックで小さなトレイウィンドウを開きます。",
+  "ui.settings.flyout_with_quick_settings": "クイック設定（音量ボタン）の上にトレイウィンドウを表示する",
   "ui.settings.updates": "更新",
   "ui.settings.notifications": "通知",
   "ui.settings.notify_connected": "デバイスの接続時に通知する",

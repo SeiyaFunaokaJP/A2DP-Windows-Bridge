@@ -158,6 +158,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     start_minimized: false,
     minimize_to_tray: true,
     tray_click_opens_window: false,
+    flyout_with_quick_settings: false,
     notify_connected: true,
     battery_low_percent: 20,
     check_updates_on_startup: true,

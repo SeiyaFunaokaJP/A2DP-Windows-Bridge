@@ -614,6 +614,7 @@
   "ui.settings.start_minimized_logon": "A2DP Windows Bridge 隨 Windows 啟動時只會顯示系統匣圖示。",
   "ui.settings.tray_click_opens_window": "按一下系統匣圖示開啟主視窗",
   "ui.settings.tray_click_opens_window_hint": "關閉時，按一下會開啟小型系統匣視窗。",
+  "ui.settings.flyout_with_quick_settings": "在快速設定（音量按鈕）上方顯示系統匣視窗",
   "ui.settings.updates": "更新",
   "ui.settings.notifications": "通知",
   "ui.settings.notify_connected": "裝置連線時通知",

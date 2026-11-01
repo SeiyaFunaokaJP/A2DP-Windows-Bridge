@@ -614,6 +614,7 @@
   "ui.settings.start_minimized_logon": "Solo aparece el icono de la bandeja cuando A2DP Windows Bridge se inicia con Windows.",
   "ui.settings.tray_click_opens_window": "Al hacer clic en el icono de la bandeja se abre la ventana principal",
   "ui.settings.tray_click_opens_window_hint": "Desactivado: un clic abre la pequeña ventana de la bandeja.",
+  "ui.settings.flyout_with_quick_settings": "Mostrar la ventana de la bandeja sobre la configuración rápida (botón de volumen)",
   "ui.settings.updates": "Actualizaciones",
   "ui.settings.notifications": "Notificaciones",
   "ui.settings.notify_connected": "Notificar cuando se conecta un dispositivo",
