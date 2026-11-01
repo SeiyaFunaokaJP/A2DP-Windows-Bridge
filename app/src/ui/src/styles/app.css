@@ -959,8 +959,8 @@ option {
 
 .shell {
   display: grid;
-  /* Wide enough for a long device name and the codec line unwrapped (issue #86) */
-  grid-template-columns: 16.5rem 1fr;
+  /* Wide enough for the codec's details unwrapped, ABR included (issue #86) */
+  grid-template-columns: 15rem 1fr;
   height: 100%;
 }
 .nav {
@@ -1054,6 +1054,7 @@ option {
 .status-pill-text {
   display: flex;
   flex-direction: column;
+  flex: 1;
   gap: 0.125rem;
   min-width: 0;
   font-size: var(--fs-12);
@@ -1079,6 +1080,7 @@ option {
 }
 /* The codec and its details in one box */
 .status-pill .codec-info {
+  align-self: stretch;
   gap: 0.125rem;
   padding: var(--s1) var(--s2);
   border: 1px solid var(--border-strong);
