@@ -338,6 +338,26 @@ describe("every screen renders", () => {
     await waitFor(() => expect(connect).toBeEnabled());
   });
 
+  it("the setup keeps a failed connection's error and starts no scan by itself", async () => {
+    const { calls, core } = start("#/home", { scenario: "fresh" });
+    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Set up this adapter" }));
+    await screen.findByText("The adapter is ready for A2DP Windows Bridge", {}, { timeout: 5000 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    const connect = (await screen.findAllByRole("button", { name: "Connect" }, { timeout: 5000 }))[0];
+    mock!.failNextConnect("error.virtual_capture_init");
+    fireEvent.click(connect);
+    await waitFor(() => expect(core.state.snap!.stream.state).toBe("error"));
+    const scans = calls.filter((c) => c.method === "device.scan").length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(calls.filter((c) => c.method === "device.scan")).toHaveLength(scans);
+    expect(core.state.snap!.stream.state).toBe("error");
+    // The Scan button still finds devices
+    fireEvent.click(await screen.findByRole("button", { name: "Scan Devices" }));
+    await waitFor(() => expect(calls.filter((c) => c.method === "device.scan")).toHaveLength(scans + 1));
+  });
+
   it("the flyout", async () => {
     start("", { window: "flyout" });
     expect(await screen.findByRole("button", { name: "Connect" })).toBeInTheDocument();

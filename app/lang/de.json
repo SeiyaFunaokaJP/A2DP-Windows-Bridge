@@ -51,6 +51,7 @@
   "status.connected_fallback": "Verbunden (%s ist auf dem Gerät nicht verfügbar, %s wird verwendet)",
   "status.connected_fallback_in_use": "Verbunden (%s wird evtl. von einem anderen Gerät genutzt, %s wird verwendet)",
   "status.connected_fallback_experimental": "Verbunden (%s ist experimentell und ausgeschaltet, %s wird verwendet)",
+  "status.connected_source_fallback": "Verbunden (virtuelles Gerät nicht verfügbar, Systemton wird gesendet)",
   "status.le_scanning": "Suche nach LE-Audio-Geräten...",
   "status.initializing": "Initialisierung...",
   "status.initializing_btstack": "Bluetooth wird gestartet...",

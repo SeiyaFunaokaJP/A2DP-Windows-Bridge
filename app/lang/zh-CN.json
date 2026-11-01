@@ -51,6 +51,7 @@
   "status.connected_fallback": "已连接（设备不支持 %s，改用 %s）",
   "status.connected_fallback_in_use": "已连接（%s 可能正被其他设备使用，改用 %s）",
   "status.connected_fallback_experimental": "已连接（%s 为实验性编解码器且已关闭，使用 %s）",
+  "status.connected_source_fallback": "已连接（虚拟设备不可用，改为发送系统音频）",
   "status.le_scanning": "正在扫描 LE Audio 设备...",
   "status.initializing": "正在初始化...",
   "status.initializing_btstack": "正在启动 Bluetooth...",

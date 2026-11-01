@@ -51,6 +51,7 @@
   "status.connected_fallback": "接続済み（デバイスが %s に対応していないため %s を使用）",
   "status.connected_fallback_in_use": "接続済み（%s は別の機器が使用中の可能性があるため %s を使用）",
   "status.connected_fallback_experimental": "接続済み（%s は実験的コーデックで、オフにされているため %s を使用）",
+  "status.connected_source_fallback": "接続済み（仮想デバイスを使えないためシステム音声を送信）",
   "status.le_scanning": "LE Audio デバイスをスキャン中...",
   "status.initializing": "初期化中...",
   "status.initializing_btstack": "Bluetooth を起動中...",

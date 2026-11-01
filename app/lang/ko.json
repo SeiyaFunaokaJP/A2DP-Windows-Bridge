@@ -51,6 +51,7 @@
   "status.connected_fallback": "연결됨(장치에서 %s을(를) 사용할 수 없어 %s 사용)",
   "status.connected_fallback_in_use": "연결됨(%s이(가) 다른 장치에서 사용 중일 수 있어 %s 사용)",
   "status.connected_fallback_experimental": "연결됨(%s은(는) 실험적 코덱이며 꺼져 있어 %s 사용)",
+  "status.connected_source_fallback": "연결됨(가상 장치를 사용할 수 없어 시스템 오디오 전송)",
   "status.le_scanning": "LE 오디오 기기 검색 중...",
   "status.initializing": "초기화 중...",
   "status.initializing_btstack": "Bluetooth 시작 중...",

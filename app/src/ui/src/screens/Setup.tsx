@@ -434,10 +434,12 @@ function StepDevice() {
   onCleanup(() => window.removeEventListener("focus", load));
   // The device being connected: its button spins
   const [connecting, setConnecting] = createSignal<string | null>(null);
-  // No scan from a Connect until the stream it starts has ended
+  // No scan from a Connect until the stream it starts has ended; after a
+  // failure none by itself either: a scan would clear the error on the row,
+  // and the core refuses one until the session has cleaned up
   const [paused, setPaused] = createSignal(false);
   const running = () => ["connecting", "reconnecting", "streaming"].includes(stream().state);
-  createEffect(on(running, (now) => void (now || setPaused(false)), { defer: true }));
+  createEffect(on(running, (now) => void (now || stream().state === "error" || setPaused(false)), { defer: true }));
 
   // One click: the device is saved, gets its "<name> | Auto" profile (the
   // best codec it has) and is connected with it
