@@ -683,6 +683,12 @@ export class MockCore implements Transport {
       case "device.forget":
         this.snap.devices = this.snap.devices.filter((d) => !sameEntry(d, String(p.address), p.le_audio === true));
         this.emit({ kind: "devices", value: this.snap.devices });
+        // Its profile goes with it, as in the core
+        this.snap.profiles = this.snap.profiles.filter(
+          (x) => !(x.le_audio === (p.le_audio === true) && x.device_address.toUpperCase() === String(p.address).toUpperCase()),
+        );
+        if (!this.snap.profiles.some((x) => x.name === this.snap.active_profile)) this.snap.active_profile = null;
+        this.emit({ kind: "profiles", value: { profiles: this.snap.profiles, active_profile: this.snap.active_profile } });
         return null;
       case "device.rename": {
         const name = String(p.name ?? "").trim();
@@ -880,6 +886,10 @@ export class MockCore implements Transport {
   async setTheme() {}
   /** Windows has no virtual device (tests) */
   noVirtual = false;
+
+  setOtherRadio(radio: Snapshot["adapter"]["other_radio"]) {
+    this.snap.adapter.other_radio = radio;
+  }
   async setupWindow(_active: boolean) {}
   onNavigate(cb: (route: string) => void) {
     this.navigate = cb;
@@ -1612,5 +1622,8 @@ export function mockFromUrl(): MockCore {
   const win = q.get("window") === "flyout" ? "flyout" : "main";
   const mock = new MockCore({ scenario, window: win });
   mock.noVirtual = q.has("novirtual");
+  if (q.has("otherradio")) {
+    mock.setOtherRadio({ name: "MediaTek Bluetooth Adapter", paired: q.get("otherradio") === "paired" });
+  }
   return mock;
 }

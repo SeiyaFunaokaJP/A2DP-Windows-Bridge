@@ -23,7 +23,7 @@ pub struct SavedDevice {
     pub le_audio: bool,
 }
 
-const FILE: &str = "devices.txt";
+pub(crate) const FILE: &str = "devices.txt";
 const LE_FILE: &str = "le_audio_devices.txt";
 /// The suffix of the prototype's LE Audio lines in devices.txt
 const LEGACY_LE_SUFFIX: &str = "|le";

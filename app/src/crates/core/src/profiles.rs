@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use bt_host::media::clamp_media_payload_limit;
 use codec::{CodecKind, Quality};
 
-use crate::stream::{SourceRequest, StreamRequest, VolumeSync};
+use crate::stream::{Bitpools, SourceRequest, StreamRequest, VolumeSync};
 
 fn auto() -> String {
     "auto".into()
@@ -306,6 +306,35 @@ impl Profile {
             ..self.clone()
         };
         same_source == *new && self.source() != new.source()
+    }
+
+    /// `new` is this profile with only the settings kept for other codecs
+    /// changed: nothing a stream uses
+    pub fn only_kept_settings_differ(&self, new: &Profile) -> bool {
+        self.codec_settings != new.codec_settings
+            && Profile { codec_settings: new.codec_settings.clone(), ..self.clone() } == *new
+    }
+
+    /// The SBC / SBC XQ bitpools, which a stream takes in place
+    pub fn bitpools(&self) -> Bitpools {
+        Bitpools {
+            sbc: self.sbc_bitpool,
+            sbcxq: self.sbcxq_bitpool,
+            sbc_min: self.sbc_min_bitpool,
+            sbcxq_min: self.sbcxq_min_bitpool,
+        }
+    }
+
+    /// `new` is this profile with other bitpools and nothing else changed
+    pub fn only_bitpools_differ(&self, new: &Profile) -> bool {
+        let same = Profile {
+            sbc_bitpool: new.sbc_bitpool,
+            sbcxq_bitpool: new.sbcxq_bitpool,
+            sbc_min_bitpool: new.sbc_min_bitpool,
+            sbcxq_min_bitpool: new.sbcxq_min_bitpool,
+            ..self.clone()
+        };
+        same == *new && self.bitpools() != new.bitpools()
     }
 
     /// What to stream for this profile. An LE Audio (experimental) profile
@@ -796,6 +825,20 @@ mod tests {
         assert_eq!(consolidate(&mut list, "Buds | AAC"), ["B"]);
         assert_eq!(names(&list), ["A"]);
         assert!(list[0].codec_settings.contains_key("ldac"));
+    }
+
+    #[test]
+    fn what_a_stream_can_take_without_starting_again() {
+        let p = Profile { name: "A".into(), device_address: "AA:BB:CC:DD:EE:FF".into(), ..Default::default() };
+        let bitpool = Profile { sbc_bitpool: 30, ..p.clone() };
+        assert!(p.only_bitpools_differ(&bitpool));
+        assert!(!p.only_bitpools_differ(&p));
+        assert!(!p.only_bitpools_differ(&Profile { sample_rate: 44100, ..bitpool.clone() }));
+        let mut kept = p.clone();
+        kept.codec_settings.insert("ldac".into(), CodecValues::default());
+        assert!(p.only_kept_settings_differ(&kept));
+        assert!(!p.only_kept_settings_differ(&p));
+        assert!(!p.only_kept_settings_differ(&Profile { sbc_bitpool: 30, ..kept }));
     }
 
     #[test]

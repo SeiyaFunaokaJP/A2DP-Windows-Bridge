@@ -1345,6 +1345,13 @@ impl BtHost {
         self.abort_pending_connection();
     }
 
+    /// Drops `addr`'s link key from the running stack and its file: the
+    /// device can no longer connect by itself. False when the stack did not
+    /// answer.
+    pub fn forget_link_key(&self, addr: [u8; 6]) -> bool {
+        self.call(Duration::from_secs(2), move |_, s| s.drop_link_key(&addr)).is_some()
+    }
+
     pub fn is_connected(&self) -> bool {
         self.shared.lock().connected
     }

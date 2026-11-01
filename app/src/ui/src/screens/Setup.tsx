@@ -14,6 +14,7 @@ import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, onMo
 import { errorText, useApp, type AppContext } from "../app/context";
 import { saveSettings } from "../app/settings";
 import { Banner, Button, Toggle } from "../components/controls";
+import { VbCableNote } from "../components/DeviceSettings";
 import { DevicePicker, saveWithProfile } from "../components/DevicePicker";
 import { Icon } from "../components/Icon";
 import { openFirmwareFolder, statusText } from "../components/stream";
@@ -525,12 +526,7 @@ function StepDevice() {
         continuous={!paused()}
       >
         <Show when={cable() === null}>
-          <div class="setup-note">
-            <p>{t("ui.setup.vbcable_note")}</p>
-            <Button icon="open" onClick={() => app.core.transport.openUrl(LINKS.vbCable)}>
-              {t("vbcable.download")}
-            </Button>
-          </div>
+          <VbCableNote />
         </Show>
       </DevicePicker>
       <Show when={running()}>

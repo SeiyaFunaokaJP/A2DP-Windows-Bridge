@@ -27,6 +27,10 @@
 // Every codec is offered, the experimental ones too (issue #86: they are
 // marked in the README only; the core no longer reads
 // settings.experimental_codecs).
+// A codec's "..." applies each change at once (issue #86): the codec in use
+// is saved, which starts the stream again but for the bitpools, which the
+// encoder takes as the slider moves; another codec's settings are only kept
+// for when it is chosen.
 // A codec chosen while a stream runs starts it again: the cards (and Home's
 // Codec card) then wait until it streams again before the next choice
 // (issue #86: quick switches left no sound or crackling; a fixed 3 s was
@@ -73,6 +77,17 @@ import { knownSbcCaps } from "../lib/sbc";
 import { entryState } from "./Home";
 
 const HIDE_KEY = "a2dpwb.codecs.hide_unsupported";
+
+/** A "..." dialog's changes are saved this long after the last one: only
+ *  the end of a quick series (a slider moved) */
+export const SAVE_DELAY_MS = 120;
+
+const BITPOOLS: readonly string[] = ["sbc_bitpool", "sbcxq_bitpool", "sbc_min_bitpool", "sbcxq_min_bitpool"];
+
+/** `values` differ from the profile's in the bitpools alone */
+function onlyBitpools(p: Profile, values: Omit<CodecChoice, "codec">): boolean {
+  return (Object.keys(values) as (keyof typeof values)[]).every((k) => BITPOOLS.includes(k) || p[k] === values[k]);
+}
 
 /** After a codec chosen during a stream, the codec cards wait at least
  *  this long, and until the stream is no longer starting again... */
@@ -339,8 +354,8 @@ function DeviceCodecs(props: {
     saving = done.catch(() => undefined);
     return done;
   };
-  const choose = async (id: string, values?: Omit<CodecChoice, "codec">) => {
-    // A "..." dialog's OK while the cards wait: applied after (the cards
+  const choose = async (id: string, values?: Omit<CodecChoice, "codec">, live = false) => {
+    // A "..." dialog's change while the cards wait: applied after (the cards
     // themselves are disabled meanwhile)
     if (settling()) await untilSettled();
     // A card the device does not offer: the first card it offers instead
@@ -357,8 +372,26 @@ function DeviceCodecs(props: {
     // The card clicked is checked by the browser: back to the one chosen
     // (another one instead, nothing saved, or the save failed)
     for (const r of grid?.querySelectorAll<HTMLInputElement>("input[type=radio]") ?? []) r.checked = r.value === picked();
-    if (saved && running && mounted) settle(app);
+    if (saved && running && mounted && !live) settle(app);
   };
+  // ---- a "..." dialog's changes (issue #86: applied at once) ----
+  let pending: CodecChoice | null = null;
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  const apply = async ({ codec: id, ...values }: CodecChoice) => {
+    const p = shown();
+    if (id === p.codec || id === picked()) await choose(id, values, id === p.codec && onlyBitpools(p, values));
+    else
+      await queued(() =>
+        saveEntry(app, e(), (base) => ({ ...base, codec_settings: { ...base.codec_settings, [id]: values } })),
+      );
+  };
+  const saveNow = () => {
+    clearTimeout(saveTimer);
+    const values = pending;
+    pending = null;
+    if (values) void apply(values);
+  };
+  onCleanup(saveNow);
   const locked = () => busy() || settling();
   const titleId = () => `codecs-${e().key.replace(/[^0-9A-Za-z]/g, "")}`;
   const leSupport = () => snap().adapter.le_audio;
@@ -636,11 +669,6 @@ function DeviceCodecs(props: {
             )}
           </For>
         </div>
-        <Show when={settling()}>
-          <p class="hint" role="status">
-            {t("ui.codecs.settling")}
-          </p>
-        </Show>
         <span id={hintId} class="sr-only">
           {t("ui.codecs.order_keys")}
         </span>
@@ -667,12 +695,16 @@ function DeviceCodecs(props: {
           kept={(id) => shown().codec_settings?.[id]}
           sbcCaps={knownSbcCaps(snap().devices, e().address)}
           caps={knownCodecCaps(snap().devices, e().address)}
-          onApply={(values) => {
-            const { codec: id, ...rest } = values;
-            setSettingsOf(null);
-            void choose(id, rest);
+          deviceName={e().name}
+          onChange={(values) => {
+            pending = values;
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(saveNow, SAVE_DELAY_MS);
           }}
-          onCancel={() => setSettingsOf(null)}
+          onClose={() => {
+            saveNow();
+            setSettingsOf(null);
+          }}
         />
       </Show>
     </section>

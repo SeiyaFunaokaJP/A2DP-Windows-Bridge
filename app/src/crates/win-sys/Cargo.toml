@@ -16,6 +16,8 @@ webview2-com = "0.39"
 [dependencies.windows]
 version = "0.62"
 features = [
+    "Devices_Radios",
+    "Foundation_Collections",
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Security",

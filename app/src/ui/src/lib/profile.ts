@@ -119,8 +119,7 @@ export function deviceProfile(
 }
 
 /** The saved devices with their profiles, in the saved list's order; LE
- *  Audio entries only with LE Audio (experimental) on. A forgotten device's
- *  profile (Audio Devices leaves it) gets no entry. */
+ *  Audio entries only with LE Audio (experimental) on. */
 export function audioEntries(snap: Pick<Snapshot, "profiles" | "active_profile" | "stream" | "devices" | "settings">): AudioEntry[] {
   return listedDevices(
     snap.devices.filter((d) => d.saved),
