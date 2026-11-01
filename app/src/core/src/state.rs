@@ -287,6 +287,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         start_minimized: s.start_minimized,
         minimize_to_tray: s.minimize_to_tray,
         tray_click_opens_window: s.tray_click_opens_window,
+        flyout_with_quick_settings: s.flyout_with_quick_settings,
         notify_connected: s.notify_connected,
         battery_low_percent: s.battery_low_percent,
         check_updates_on_startup: s.check_updates_on_startup,
@@ -340,6 +341,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.start_minimized = s.start_minimized;
     c.minimize_to_tray = s.minimize_to_tray;
     c.tray_click_opens_window = s.tray_click_opens_window;
+    c.flyout_with_quick_settings = s.flyout_with_quick_settings;
     c.notify_connected = s.notify_connected;
     c.battery_low_percent = s.battery_low_percent;
     c.check_updates_on_startup = s.check_updates_on_startup;
@@ -1648,6 +1650,11 @@ impl CoreState {
     /// Settings > "Clicking the tray icon opens the main window"
     pub fn tray_click_opens_window(&self) -> bool {
         self.service.settings().tray_click_opens_window
+    }
+
+    /// Settings > the flyout above Quick Settings
+    pub fn flyout_with_quick_settings(&self) -> bool {
+        self.service.settings().flyout_with_quick_settings
     }
 
     pub fn quit(&self) {

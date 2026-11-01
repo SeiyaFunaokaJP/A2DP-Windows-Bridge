@@ -96,6 +96,9 @@ pub struct Settings {
     /// A click on the tray icon opens the main window instead of the tray
     /// flyout (issue #86; off by default)
     pub tray_click_opens_window: bool,
+    /// The flyout opens above Windows 11's Quick Settings, along with them
+    /// (off by default)
+    pub flyout_with_quick_settings: bool,
     /// A notification when a device connects (issue #86): its name, codec,
     /// what the codec runs with and the battery. On by default.
     #[serde(default = "default_true")]
@@ -275,6 +278,7 @@ impl Default for Settings {
             start_minimized: false,
             minimize_to_tray: true,
             tray_click_opens_window: false,
+            flyout_with_quick_settings: false,
             notify_connected: true,
             battery_low_percent: default_battery_low(),
             check_updates_on_startup: true,

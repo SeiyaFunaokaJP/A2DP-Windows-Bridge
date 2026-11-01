@@ -15,6 +15,10 @@ theme: string, start_with_windows: boolean, start_minimized: boolean, minimize_t
  */
 tray_click_opens_window: boolean, 
 /**
+ * The flyout opens above Windows 11's Quick Settings, along with them
+ */
+flyout_with_quick_settings: boolean, 
+/**
  * A notification when a device connects: its codec, what the codec
  * runs with, the battery (on by default)
  */

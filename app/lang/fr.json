@@ -614,6 +614,7 @@
   "ui.settings.start_minimized_logon": "Seule l'icône de la zone de notification apparaît quand A2DP Windows Bridge démarre avec Windows.",
   "ui.settings.tray_click_opens_window": "Un clic sur l'icône de la zone de notification ouvre la fenêtre principale",
   "ui.settings.tray_click_opens_window_hint": "Désactivé : un clic ouvre la petite fenêtre de la zone de notification.",
+  "ui.settings.flyout_with_quick_settings": "Afficher la petite fenêtre au-dessus des paramètres rapides (bouton de volume)",
   "ui.settings.updates": "Mises à jour",
   "ui.settings.notifications": "Notifications",
   "ui.settings.notify_connected": "Notifier lorsqu'un appareil se connecte",

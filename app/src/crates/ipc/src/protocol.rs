@@ -625,6 +625,9 @@ pub struct Settings {
     /// A click on the tray icon opens the main window, not the flyout
     #[serde(default)]
     pub tray_click_opens_window: bool,
+    /// The flyout opens above Windows 11's Quick Settings, along with them
+    #[serde(default)]
+    pub flyout_with_quick_settings: bool,
     /// A notification when a device connects: its codec, what the codec
     /// runs with, the battery (on by default)
     #[serde(default = "yes")]

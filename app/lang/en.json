@@ -614,6 +614,7 @@
   "ui.settings.start_minimized_logon": "Only the tray icon appears when A2DP Windows Bridge starts with Windows.",
   "ui.settings.tray_click_opens_window": "Clicking the tray icon opens the full app window",
   "ui.settings.tray_click_opens_window_hint": "Off: a click opens the small tray window.",
+  "ui.settings.flyout_with_quick_settings": "Show the tray window above Quick Settings (the volume button)",
   "ui.settings.updates": "Updates",
   "ui.settings.notifications": "Notifications",
   "ui.settings.notify_connected": "Notify when a device connects",

@@ -614,6 +614,7 @@
   "ui.settings.start_minimized_logon": "Beim Start von A2DP Windows Bridge mit Windows erscheint nur das Symbol im Infobereich.",
   "ui.settings.tray_click_opens_window": "Klick auf das Infobereich-Symbol öffnet das Hauptfenster",
   "ui.settings.tray_click_opens_window_hint": "Aus: Ein Klick öffnet das kleine Fenster am Infobereich.",
+  "ui.settings.flyout_with_quick_settings": "Kleines Fenster über den Schnelleinstellungen (Lautstärketaste) anzeigen",
   "ui.settings.updates": "Updates",
   "ui.settings.notifications": "Benachrichtigungen",
   "ui.settings.notify_connected": "Benachrichtigen, wenn ein Gerät verbunden wird",

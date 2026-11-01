@@ -101,7 +101,7 @@ Shown while **Settings > Developer mode** is on; most users never need it. Three
 | Section | Settings |
 |:--------|:---------|
 | Appearance | Language, theme (System / Light / Dark) |
-| Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray** and **Clicking the tray icon opens the full app window** (see [Tray and Flyout](#tray)) |
+| Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray**, **Clicking the tray icon opens the full app window** and **Show the tray window above Quick Settings (the volume button)** (see [Tray and Flyout](#tray)) |
 | Notifications | **Notify when a device connects** (the device, its battery, the codec and what it runs with; on by default), **Notify when the battery is low**: **Below 20%** (the default), **Below 10%**, **Below 5%** or **Never**, once per connection (again only after the battery was back 5 points above) |
 | Updates | **Check for Updates**, **Check for Updates on Startup**, **Include Pre-releases in Update Checks** (also offer beta releases), **Update now** (see [Updates](#updates)) |
 | Advanced | **Developer mode** (adds the [Developer](#developer) screen with codec overrides, each device's **Max media packet size**, logging options and the peer receiver test, and more details to the log; no restart needed), **Settings folder** with **Open Config Folder**, **Run setup** |
@@ -116,6 +116,7 @@ The first start (no audio device yet, or no adapter with WinUSB) opens **Set up 
 A2DPWB keeps running in the system tray, with or without the window:
 
 - **Left-click** the tray icon for the flyout: the device and its state, **Connect** / **Disconnect**, the volume, the device switcher, the codec (a list to choose it, as on Home), the link quality and **Open app**. It is just as tall as what it shows. Esc or a click elsewhere hides it. If an error needs a screen of the main window (Codecs, Audio Devices, the adapter), its button opens the window there. With **Settings > Clicking the tray icon opens the full app window** on (off by default), a left-click opens the main window instead
+- On Windows 11, with **Settings > Show the tray window above Quick Settings (the volume button)** on (off by default), the flyout also opens with Quick Settings, on top of the panels there, and closes with them. It works there without closing them. If the screen is too short, it opens to their left
 - **Right-click** for the menu: **Open A2DP Windows Bridge**, the first 10 devices by name (an LE Audio entry tagged "(LE Audio)"; the one streaming checked; click one to connect it), **Disconnect** and **Exit**. The menu opens at once, without starting the window
 - The tooltip says whether A2DPWB is idle or connected
 
