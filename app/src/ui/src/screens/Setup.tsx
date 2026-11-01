@@ -1,25 +1,27 @@
 // First-run setup, shown when there is no profile or no adapter on WinUSB.
-// Three steps (issue #86): 1 choose the adapter, 2 driver and firmware (one
+// Four steps (issue #86): 1 choose the adapter, 2 driver and firmware (one
 // button switches it to WinUSB and downloads its firmware), 3 find the audio
-// device: the scan starts by itself, and Connect on a device makes its
+// devices: the scan starts by itself, and Connect on a device makes its
 // "<name> | Auto" profile and connects with it, so one click is enough.
-// The last step also asks whether A2DPWB starts with Windows (on, in the
-// tray, by default). The scan goes on until a device is added, Stop is
-// pressed or the setup is left; the added device leaves the list. A wrong
-// device is disconnected right there: it goes back to the list and the scan
-// resumes, so that another one can be connected.
+// 4 the general settings worth asking (Start with Windows and in the tray are
+// on by default). The scan runs while nothing is connected, as the core
+// refuses one during a stream: a connected device joins the saved ones above
+// the list, and adding another one disconnects it. With VB-Cable installed
+// new devices capture it; without it the step says why one is wanted. The
+// setup has a window size of its own.
 
-import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
 import { errorText, useApp, type AppContext } from "../app/context";
 import { saveSettings } from "../app/settings";
 import { Banner, Button, Toggle } from "../components/controls";
 import { DevicePicker, saveWithProfile } from "../components/DevicePicker";
 import { Icon } from "../components/Icon";
-import { CodecBadge, openFirmwareFolder, Ring, statusText } from "../components/stream";
+import { openFirmwareFolder, statusText } from "../components/stream";
 import { t } from "../i18n";
 import { IpcError } from "../ipc/types";
-import type { AdapterInfo, Snapshot } from "../ipc/types";
+import type { AdapterInfo, AudioDevice, Device, Snapshot } from "../ipc/types";
 import { firmwareUrl, LINKS } from "../lib/links";
+import { audioEntries, deviceKey, vbCable } from "../lib/profile";
 import {
   adapterExperimental,
   adapterIds,
@@ -29,14 +31,21 @@ import {
   driverText,
   usableFirst,
 } from "./Adapter";
-import { V1Running } from "./Home";
+import { entryState, V1Running } from "./Home";
+import { BatteryLowChoice, ThemeChoice } from "./Settings";
 
 export function needsSetup(snap: Snapshot): boolean {
   return snap.profiles.length === 0 || !snap.adapter.adapters.some((a) => a.driver === "winusb");
 }
 
-const STEP_KEYS = ["ui.setup.step_adapter", "ui.setup.step_driver", "ui.setup.step_device"];
+const STEP_KEYS = ["ui.setup.step_adapter", "ui.setup.step_driver", "ui.setup.step_device", "ui.setup.step_general"];
+/** Each step's heading; the last two have headings of their own below it */
+const HEADING_KEYS = ["ui.setup.adapter_intro", "ui.setup.selected_adapter", "ui.setup.step_device", "ui.setup.step_general"];
+const DEVICE_STEP = 2;
 const LAST = STEP_KEYS.length - 1;
+
+/** The classic saved devices: what the setup finds and connects */
+const classicEntries = (snap: Snapshot) => audioEntries(snap).filter((e) => !e.le_audio);
 
 /** The adapter's name and what A2DPWB can do with it (issue #86): Device
  *  Manager's name with the chip as the title, its IDs and the driver below,
@@ -82,10 +91,11 @@ export function Setup() {
       null
     );
   });
-  const [profileName, setProfileName] = createSignal<string | null>(snap().active_profile);
-  // The device connected on the last step: kept out of its list after Back
-  // and Next too (issue #86)
-  const [added, setAdded] = createSignal<string | null>(null);
+  // A first setup: no profile yet when it reached the devices
+  let first = false;
+
+  onMount(() => void core.transport.setupWindow?.(true).catch(() => {}));
+  onCleanup(() => void core.transport.setupWindow?.(false).catch(() => {}));
 
   const finish = () => {
     app.setSetupActive(false);
@@ -102,20 +112,21 @@ export function Setup() {
       case 1:
         return adapter()?.driver === "winusb";
       default:
-        return profileName() !== null && snap().profiles.some((p) => p.name === profileName());
+        return classicEntries(snap()).some((e) => e.profile);
     }
   };
 
   let heading: HTMLHeadingElement | undefined;
   // "Start with Windows" and "Start in the tray" are on by default (issue
-  // #86): turned on once when a first setup (no profile yet) reaches them;
-  // switched off there, they stay off
+  // #86): turned on once when a first setup reaches them; switched off
+  // there, they stay off
   let startupOn = false;
   const go = (n: number) => {
+    if (n === DEVICE_STEP && snap().profiles.length === 0) first = true;
     if (n === LAST && !startupOn) {
       startupOn = true;
       const s = snap().settings;
-      if (snap().profiles.length === 0 && !(s.start_with_windows && s.start_minimized)) {
+      if (first && !(s.start_with_windows && s.start_minimized)) {
         void saveSettings(app, { start_with_windows: true, start_minimized: true });
       }
     }
@@ -129,7 +140,7 @@ export function Setup() {
       <header class="setup-head">
         <img src="/app-icon.png" alt="" width="32" height="32" />
         <div>
-          <h1>{t("ui.setup.title")}</h1>
+          <h1>{t("ui.setup.wizard_title")}</h1>
           <p class="muted">{t("ui.setup.intro")}</p>
         </div>
       </header>
@@ -145,8 +156,8 @@ export function Setup() {
         </For>
       </ol>
       <section class="card setup-body" aria-labelledby="setup-step-title">
-        <h2 id="setup-step-title" tabindex="-1" ref={heading}>
-          {t(STEP_KEYS[step()])}
+        <h2 id="setup-step-title" tabindex="-1" ref={heading} classList={{ "sr-only": step() >= DEVICE_STEP }}>
+          {t(HEADING_KEYS[step()])}
         </h2>
         <Switch>
           <Match when={step() === 0}>
@@ -155,15 +166,20 @@ export function Setup() {
           <Match when={step() === 1}>
             <StepDriver adapter={adapter()} />
           </Match>
-          <Match when={step() === 2}>
-            <StepDevice profileName={profileName()} onCreated={setProfileName} added={added()} onAdded={setAdded} />
+          <Match when={step() === DEVICE_STEP}>
+            <StepDevice />
+          </Match>
+          <Match when={step() === LAST}>
+            <StepFinish />
           </Match>
         </Switch>
       </section>
       <footer class="setup-foot">
-        <Button kind="subtle" onClick={finish}>
-          {t("ui.setup.skip")}
-        </Button>
+        <Show when={step() < LAST}>
+          <Button kind="subtle" onClick={finish}>
+            {t("ui.setup.skip")}
+          </Button>
+        </Show>
         <span class="spacer" />
         <Show when={step() > 0}>
           <Button icon="arrow_left" onClick={() => go(step() - 1)}>
@@ -173,7 +189,7 @@ export function Setup() {
         <Show
           when={step() < LAST}
           fallback={
-            <Button kind="strong" icon="checkmark" disabled={!canNext()} onClick={finish}>
+            <Button kind="strong" icon="checkmark" onClick={finish}>
               {t("ui.setup.finish")}
             </Button>
           }
@@ -211,7 +227,6 @@ function StepAdapter(props: { chosen: AdapterInfo | null; onChoose: (id: string)
   };
   return (
     <div class="stack">
-      <p>{t("ui.setup.adapter_intro")}</p>
       <Show
         when={adapters().length > 0}
         fallback={
@@ -317,7 +332,7 @@ function StepDriver(props: { adapter: AdapterInfo | null }) {
                 </div>
               </Match>
               <Match when={todo()}>
-                <p>{t("ui.setup.auto_explain")}</p>
+                <p>{t(needsDriver() ? "ui.setup.auto_explain_admin" : "ui.setup.auto_explain")}</p>
                 <ul class="files">
                   <Show when={needsDriver()}>
                     <li>{t("ui.setup.auto_will_driver")}</li>
@@ -325,15 +340,10 @@ function StepDriver(props: { adapter: AdapterInfo | null }) {
                   <Show when={needsFirmware() && a().firmware_download}>
                     <li>
                       {t("ui.setup.auto_will_firmware")} <span class="mono">{a().firmware_files.join(", ")}</span>
+                      <p class="hint">{t("ui.setup.license_note")}</p>
                     </li>
                   </Show>
                 </ul>
-                <Show when={needsFirmware() && a().firmware_download}>
-                  <p class="hint">{t("firmware.download_license")}</p>
-                </Show>
-                <Show when={needsDriver()}>
-                  <p class="hint">{t("ui.adapter.uac_note")}</p>
-                </Show>
                 <div>
                   <Button
                     kind="strong"
@@ -347,9 +357,7 @@ function StepDriver(props: { adapter: AdapterInfo | null }) {
                 <p class="hint">{t("ui.setup.auto_advanced")}</p>
               </Match>
               <Match when={!manualFirmware()}>
-                <Banner kind="good" title={t("ui.setup.driver_ok")}>
-                  {t("ui.adapter.restore_short")}
-                </Banner>
+                <Banner kind="good" title={t("ui.setup.driver_ok")} />
               </Match>
             </Switch>
             <Show when={failed()}>
@@ -406,127 +414,174 @@ function scanEnded(app: AppContext): Promise<void> {
   });
 }
 
-function StepDevice(props: {
-  profileName: string | null;
-  onCreated: (name: string) => void;
-  added: string | null;
-  onAdded: (address: string | null) => void;
-}) {
+function StepDevice() {
   const app = useApp();
   const snap = () => app.core.state.snap!;
   const stream = () => snap().stream;
+  const entries = createMemo(() => classicEntries(snap()));
+  // VB-Cable, when Windows' list was read: new devices capture it, without
+  // it the step says why one is wanted (issue #86)
+  const [cable, setCable] = createSignal<AudioDevice | null | undefined>(undefined);
+  const load = () =>
+    app.core
+      .request("audio.devices")
+      .then((list) => setCable(vbCable(list)))
+      .catch(() => {});
+  onMount(() => {
+    void load();
+    window.addEventListener("focus", load);
+  });
+  onCleanup(() => window.removeEventListener("focus", load));
   // The device being connected: its button spins
   const [connecting, setConnecting] = createSignal<string | null>(null);
-  // Done when the connect in flight has started the stream
-  let connected: Promise<void> = Promise.resolve();
-  // The device connected here: shown above the list, no longer in it, and
-  // the scan ends (issue #86)
-  const added = () => props.added;
-  const existing = () => snap().profiles.find((p) => p.name === props.profileName) ?? null;
+  // No scan from a Connect until the stream it starts has ended
+  const [paused, setPaused] = createSignal(false);
+  const running = () => ["connecting", "reconnecting", "streaming"].includes(stream().state);
+  createEffect(on(running, (now) => void (now || setPaused(false)), { defer: true }));
 
   // One click: the device is saved, gets its "<name> | Auto" profile (the
   // best codec it has) and is connected with it
-  const connect = (address: string, name: string) => {
+  const connect = async (address: string, name: string) => {
     if (connecting() || snap().v1_running) return;
     setConnecting(address);
-    connected = start(address, name);
-  };
-  const start = async (address: string, name: string) => {
+    setPaused(true);
     try {
-      const profile = await saveWithProfile(app, address, name, false);
-      if (!profile) return;
-      props.onAdded(address);
-      props.onCreated(profile);
-      await app.run(async () => {
-        await app.core.request("profile.set_active", { name: profile });
-        // The scan looks until a device is added: it ends here
-        if (snap().scanning) await app.core.request("device.scan_stop");
-        await scanEnded(app);
-        const st = stream().state;
-        if (st === "connecting" || st === "reconnecting" || st === "streaming") await app.core.request("stream.stop");
-        await app.core.request("stream.start", { profile });
-      });
+      const profile = await saveWithProfile(app, address, name, false, cable());
+      const ok =
+        profile &&
+        (await app.run(async () => {
+          await app.core.request("profile.set_active", { name: profile });
+          // The stream waits for the scan to end
+          if (snap().scanning) await app.core.request("device.scan_stop");
+          await scanEnded(app);
+          if (running()) await app.core.request("stream.stop");
+          await app.core.request("stream.start", { profile });
+        }));
+      if (!ok) setPaused(false);
     } finally {
       setConnecting(null);
     }
   };
-  const running = () => ["connecting", "reconnecting", "streaming"].includes(stream().state);
-  // Disconnect (or Cancel while it connects): the device goes back to the
-  // list and the scan resumes, for another one
+  // Disconnect (or Cancel while it connects), or making room for another
+  // device: the scan resumes
   const [stopping, setStopping] = createSignal(false);
   const disconnect = async () => {
     setStopping(true);
     try {
-      // The button shows before the stream starts: stop that one too
-      await connected;
       if (running()) await app.run(() => app.core.request("stream.stop"));
-      props.onAdded(null);
     } finally {
       setStopping(false);
     }
   };
 
+  // A saved device's state and its Connect or Disconnect
+  const paired = (d: Device) => {
+    const key = deviceKey(d);
+    const state = () => {
+      const entry = entries().find((e) => e.key === key);
+      return entry ? entryState(snap(), entry) : "idle";
+    };
+    const live = () => state() !== "idle" && state() !== "error";
+    return {
+      state: (
+        <span class={`status-line st-${state()}`} role="status" aria-live="polite">
+          {state() === "idle" ? t("status.ready") : statusText({ state: state(), message: stream().message })}
+        </span>
+      ),
+      action: (
+        <Show
+          when={live()}
+          fallback={
+            <Button
+              icon="power"
+              busy={connecting() === d.address}
+              disabled={!!connecting() || snap().v1_running}
+              onClick={() => void connect(d.address, d.name)}
+            >
+              {t("connection.connect")}
+            </Button>
+          }
+        >
+          <Button icon="plug_disconnected" busy={stopping()} onClick={disconnect}>
+            {state() === "streaming" ? t("connection.disconnect") : t("modal.cancel")}
+          </Button>
+        </Show>
+      ),
+    };
+  };
+
   return (
     <div class="stack">
-      <p>{t("ui.setup.device_intro")}</p>
-      <Show when={existing()}>
-        {(p) => (
-          <div class="test-row">
-            <Ring state={stream().state} volume={stream().volume} size="small">
-              <Icon name="headphones" />
-            </Ring>
-            <div class="stack-tight">
-              <strong>{p().device_name || p().device_address}</strong>
-              <span class={`status-line st-${stream().state}`} role="status" aria-live="polite">
-                <span class="dot" aria-hidden="true" />
-                {statusText(stream())}
-              </span>
-              <CodecBadge />
-            </div>
-            <Show when={running() || added()}>
-              <span class="spacer" />
-              <Button icon="plug_disconnected" busy={stopping()} onClick={disconnect}>
-                {stream().state === "streaming" || !running() ? t("connection.disconnect") : t("modal.cancel")}
-              </Button>
-            </Show>
-          </div>
-        )}
-      </Show>
       <DevicePicker
         address=""
         classicOnly
         onPick={() => {}}
-        onConnect={connect}
+        onConnect={(a, n) => void connect(a, n)}
         connecting={connecting()}
         connectDisabled={snap().v1_running}
-        hidden={added() ?? undefined}
-        continuous={!added()}
-      />
-      <Startup />
+        paired={paired}
+        scanText={t("ui.setup.scanning")}
+        noScan={running()}
+        continuous={!paused()}
+      >
+        <Show when={cable() === null}>
+          <div class="setup-note">
+            <p>{t("ui.setup.vbcable_note")}</p>
+            <Button icon="open" onClick={() => app.core.transport.openUrl(LINKS.vbCable)}>
+              {t("vbcable.download")}
+            </Button>
+          </div>
+        </Show>
+      </DevicePicker>
+      <Show when={running()}>
+        <div>
+          <Button icon="add" busy={stopping()} onClick={disconnect}>
+            {t("ui.home.add_device")}
+          </Button>
+        </div>
+      </Show>
     </div>
   );
 }
 
-/** Asked during the setup (issue #86): start with Windows, and then only in
- *  the tray; the same switches as on Settings, saved at once */
-function Startup() {
+/** The general settings worth asking at the start (issue #86): the same
+ *  controls as on Settings, saved at once */
+function StepFinish() {
   const app = useApp();
   const s = () => app.core.state.snap!.settings;
+  const set = (patch: Parameters<typeof saveSettings>[1]) => void saveSettings(app, patch);
   return (
-    <section class="stack-tight" aria-labelledby="setup-startup">
-      <h3 id="setup-startup">{t("ui.settings.startup")}</h3>
+    <div class="stack setup-general">
+      <ThemeChoice />
+      <section class="stack-tight" aria-labelledby="setup-startup">
+        <h3 id="setup-startup">{t("ui.settings.startup")}</h3>
+        <Toggle
+          label={t("settings.start_with_windows")}
+          checked={s().start_with_windows}
+          onChange={(v) => set({ start_with_windows: v })}
+        />
+        <Toggle
+          label={t("ui.settings.start_minimized")}
+          hint={t("ui.settings.start_minimized_logon")}
+          checked={s().start_minimized}
+          disabled={!s().start_with_windows}
+          onChange={(v) => set({ start_minimized: v })}
+        />
+      </section>
+      <section class="stack-tight" aria-labelledby="setup-notifications">
+        <h3 id="setup-notifications">{t("ui.settings.notifications")}</h3>
+        <Toggle
+          label={t("ui.settings.notify_connected")}
+          checked={s().notify_connected}
+          onChange={(v) => set({ notify_connected: v })}
+        />
+        <BatteryLowChoice />
+      </section>
       <Toggle
-        label={t("settings.start_with_windows")}
-        checked={s().start_with_windows}
-        onChange={(v) => void saveSettings(app, { start_with_windows: v })}
+        label={t("settings.check_updates_on_startup")}
+        checked={s().check_updates_on_startup}
+        onChange={(v) => set({ check_updates_on_startup: v })}
       />
-      <Toggle
-        label={t("ui.settings.start_minimized")}
-        hint={t("ui.settings.start_minimized_logon")}
-        checked={s().start_minimized}
-        disabled={!s().start_with_windows}
-        onChange={(v) => void saveSettings(app, { start_minimized: v })}
-      />
-    </section>
+    </div>
   );
 }

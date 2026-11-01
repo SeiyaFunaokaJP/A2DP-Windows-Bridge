@@ -12,6 +12,53 @@ import type { UpdatePhase } from "../ipc/transport";
 import { IpcError, type Msg } from "../ipc/types";
 import { LINKS } from "../lib/links";
 
+/** The theme, here and on the setup's last step */
+export function ThemeChoice() {
+  const app = useApp();
+  return (
+    <div class="field">
+      <span class="field-label" id="theme-label">
+        {t("settings.theme")}
+      </span>
+      <Segmented
+        label={t("settings.theme")}
+        value={app.core.state.snap!.settings.theme}
+        options={[
+          { value: "system", label: t("settings.theme_system") },
+          { value: "light", label: t("settings.theme_light") },
+          { value: "dark", label: t("settings.theme_dark") },
+        ]}
+        onChange={(v) => void saveSettings(app, { theme: v })}
+      />
+    </div>
+  );
+}
+
+/** When the low battery notice comes, here and on the setup's last step */
+export function BatteryLowChoice() {
+  const app = useApp();
+  return (
+    <div class="row">
+      <span class="row-text">
+        <span class="row-label">{t("ui.settings.battery_low")}</span>
+        <span id="battery-low-help" class="hint">
+          {t("ui.settings.battery_low_hint")}
+        </span>
+      </span>
+      <Select<number>
+        value={app.core.state.snap!.settings.battery_low_percent}
+        label={t("ui.settings.battery_low")}
+        describedBy="battery-low-help"
+        options={[
+          ...[20, 10, 5].map((p) => ({ value: p, label: t("ui.settings.battery_low_below", p) })),
+          { value: 0, label: t("ui.settings.battery_low_never") },
+        ]}
+        onChange={(v) => void saveSettings(app, { battery_low_percent: v })}
+      />
+    </div>
+  );
+}
+
 export function Settings() {
   const app = useApp();
   const { core } = app;
@@ -58,21 +105,7 @@ export function Settings() {
             />
           )}
         </Field>
-        <div class="field">
-          <span class="field-label" id="theme-label">
-            {t("settings.theme")}
-          </span>
-          <Segmented
-            label={t("settings.theme")}
-            value={s().theme}
-            options={[
-              { value: "system", label: t("settings.theme_system") },
-              { value: "light", label: t("settings.theme_light") },
-              { value: "dark", label: t("settings.theme_dark") },
-            ]}
-            onChange={(v) => set({ theme: v })}
-          />
-        </div>
+        <ThemeChoice />
       </Section>
 
       <Section title={t("ui.settings.startup")}>
@@ -101,24 +134,7 @@ export function Settings() {
           checked={s().notify_connected}
           onChange={(v) => set({ notify_connected: v })}
         />
-        <div class="row">
-          <span class="row-text">
-            <span class="row-label">{t("ui.settings.battery_low")}</span>
-            <span id="battery-low-help" class="hint">
-              {t("ui.settings.battery_low_hint")}
-            </span>
-          </span>
-          <Select<number>
-            value={s().battery_low_percent}
-            label={t("ui.settings.battery_low")}
-            describedBy="battery-low-help"
-            options={[
-              ...[20, 10, 5].map((p) => ({ value: p, label: t("ui.settings.battery_low_below", p) })),
-              { value: 0, label: t("ui.settings.battery_low_never") },
-            ]}
-            onChange={(v) => set({ battery_low_percent: v })}
-          />
-        </div>
+        <BatteryLowChoice />
       </Section>
 
       <Section

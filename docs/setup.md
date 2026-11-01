@@ -39,11 +39,12 @@ At its first start v2 copies the v1 settings to `%APPDATA%\A2DPWB\backup-v1\` be
 
 ## Step 1: First-Run Setup {#first-run}
 
-Plug in the USB Bluetooth adapter and start A2DPWB. When there is no audio device yet, or no adapter has WinUSB, A2DPWB opens **Set up A2DP Windows Bridge**, three steps:
+Plug in the USB Bluetooth adapter and start A2DPWB. When there is no audio device yet, or no adapter has WinUSB, A2DPWB opens **Set up A2DP Windows Bridge**, four steps:
 
 1. **Choose the adapter**: the USB Bluetooth adapters found. If yours is missing, plug it in and press **Refresh**. A green **Supported** or a red **Unsupported** says whether A2DPWB can use each one; an unsupported one is listed but cannot be chosen
 2. **Driver and firmware**: **Replace with WinUSB driver** (see [Step 2](#winusb)), and for Realtek adapters the firmware files (see [Firmware](#firmware))
-3. **Find your audio devices**: the scan starts by itself. Put the audio device into pairing mode and press **Connect** next to it (or type its address and press **Use**): A2DPWB saves it with the best codec it has (Auto) and connects; it leaves the list (also after **Back** and **Next**) and its row gets **Disconnect** (**Cancel** while it connects): a wrong device goes back to the list and the scan resumes, so that you can connect another one. Then **Finish** (see [Step 3](#headphones)). Its codec can be changed later on **Codecs**. The step's **Startup** block has **Start with Windows** and **Start in the tray**, the same switches as in Settings, saved at once
+3. **Find your audio devices**: the scan starts by itself. Put the audio device into pairing mode and press **Connect** next to it (or type its address and press **Use**): A2DPWB saves it with the best codec it has (Auto) and connects. It then stands above the list with **Disconnect** (**Cancel** while it connects). **Add a device** disconnects it and resumes the scan for another device; it stays saved, and a wrong device can be forgotten there. With VB-Cable installed, new devices capture it; without it the step says why one is wanted, with **Download VB-Cable**, and the first time A2DPWB finds it later, devices on System Loopback switch to it. Its codec can be changed later on **Codecs**
+4. **General Settings**: the theme, **Startup**, **Notifications** and update checks, the same controls as in Settings, saved at once (see [Step 3](#headphones))
 
 **Set up later** skips the rest; **Settings > Run setup** opens it again.
 

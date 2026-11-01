@@ -507,6 +507,21 @@ pub fn drop_sbc_dual_channel(list: &mut [Profile]) -> usize {
 /// The saved profiles, names made unique and SBC's dual channel dropped in
 /// memory (see make_names_unique, drop_sbc_dual_channel; written at the next
 /// save)
+/// The profiles that capture System Loopback capture this virtual device
+/// instead, and make it the Windows default output while connected. How many
+/// changed.
+pub fn use_virtual_device(list: &mut [Profile], id: &str, name: &str) -> usize {
+    let mut changed = 0;
+    for p in list.iter_mut().filter(|p| p.capture_mode == "loopback") {
+        p.capture_mode = "virtual".into();
+        p.audio_device_id = id.into();
+        p.audio_device_name = name.into();
+        p.auto_switch_device = true;
+        changed += 1;
+    }
+    changed
+}
+
 pub fn load(dir: &Path) -> Vec<Profile> {
     load_counted(dir).0
 }
@@ -558,6 +573,21 @@ pub fn save(dir: &Path, profiles: &[Profile]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_system_loopback_takes_the_virtual_device() {
+        let mut list = vec![Profile::default(), Profile::default()];
+        list[1].capture_mode = "app".into();
+        list[0].auto_switch_device = false;
+        assert_eq!(use_virtual_device(&mut list, "{cable}", "CABLE Input"), 1);
+        assert_eq!(list[0].capture_mode, "virtual");
+        assert_eq!(list[0].audio_device_id, "{cable}");
+        assert_eq!(list[0].audio_device_name, "CABLE Input");
+        assert!(list[0].auto_switch_device);
+        assert_eq!(list[1].capture_mode, "app");
+        // A second time changes nothing
+        assert_eq!(use_virtual_device(&mut list, "{cable}", "CABLE Input"), 0);
+    }
 
     #[test]
     fn v1_profile() {

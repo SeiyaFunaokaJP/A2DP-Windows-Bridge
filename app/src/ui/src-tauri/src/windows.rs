@@ -1,4 +1,4 @@
-//! The two windows: the main window (960×640) and the tray flyout (360 wide, as tall as its page,
+//! The two windows: the main window (960×640, 760×720 for the setup) and the tray flyout (360 wide, as tall as its page,
 //! frameless, near the notification area), and the rule that ends the UI
 //! process: closing a window only hides it, so that reopening it from the
 //! tray is instant, and the process exits after everything was hidden for
@@ -30,6 +30,9 @@ const FLYOUT_HEIGHT: f64 = 340.0;
 /// The heights `fit_flyout` takes (logical pixels)
 const FLYOUT_MIN_HEIGHT: f64 = 160.0;
 const FLYOUT_MAX_HEIGHT: f64 = 560.0;
+/// The main window's size during the first-run setup (logical pixels)
+const SETUP_WIDTH: f64 = 760.0;
+const SETUP_HEIGHT: f64 = 720.0;
 /// How long the flyout counts as opening after it was shown (or its page
 /// appeared) (#140). Meanwhile another click on the tray icon (a double
 /// click, or a second click while a cold start is still loading the page)
@@ -39,6 +42,8 @@ const FLYOUT_OPENING: Duration = Duration::from_millis(800);
 
 /// When the flyout was last shown or its page appeared
 static FLYOUT_OPENED: Mutex<Option<Instant>> = Mutex::new(None);
+/// The main window's size and whether it was maximized, while the setup has it
+static BEFORE_SETUP: Mutex<Option<(LogicalSize<f64>, bool)>> = Mutex::new(None);
 
 fn flyout_opened_now() {
     *FLYOUT_OPENED.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
@@ -73,12 +78,12 @@ fn builder<'a>(app: &'a AppHandle, label: &'a str) -> WebviewWindowBuilder<'a, t
     // One page for both windows; the frontend picks the view by the label
     let b = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
         .title("A2DP Windows Bridge")
-        .visible(false)
-        .theme(Some(Theme::Dark));
+        .visible(false);
     if mica_supported() {
         b.transparent(true).effects(mica())
     } else {
         // The dark theme's background, so no white flash before the page
+        // (a light page replaces it as quickly)
         b.background_color(tauri::window::Color(0x15, 0x17, 0x1c, 0xff))
     }
 }
@@ -170,6 +175,35 @@ pub fn fit_flyout(w: &WebviewWindow, height: f64) -> tauri::Result<()> {
     }
     w.set_size(LogicalSize::new(FLYOUT_WIDTH, height))?;
     place_flyout(w)
+}
+
+/// The first-run setup has a window size of its own; leaving it restores
+/// the one before. A page reloaded during the setup keeps that size.
+pub fn setup_window(w: &WebviewWindow, active: bool) -> tauri::Result<()> {
+    if w.label() != MAIN {
+        return Ok(());
+    }
+    let mut before = BEFORE_SETUP.lock().unwrap_or_else(|e| e.into_inner());
+    if active {
+        if before.is_some() {
+            return Ok(());
+        }
+        let maximized = w.is_maximized()?;
+        *before = Some((w.inner_size()?.to_logical::<f64>(w.scale_factor()?), maximized));
+        if maximized {
+            w.unmaximize()?;
+        }
+        w.set_size(LogicalSize::new(SETUP_WIDTH, SETUP_HEIGHT))?;
+    } else {
+        let Some((size, maximized)) = before.take() else {
+            return Ok(());
+        };
+        w.set_size(size)?;
+        if maximized {
+            w.maximize()?;
+        }
+    }
+    w.center()
 }
 
 pub fn toggle_flyout(app: &AppHandle) -> tauri::Result<()> {

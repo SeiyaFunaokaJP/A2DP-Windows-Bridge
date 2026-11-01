@@ -774,7 +774,7 @@ export class MockCore implements Transport {
       case "adapter.download_firmware":
         return this.downloadFirmware(String(p.file));
       case "audio.devices":
-        return AUDIO_DEVICES;
+        return this.noVirtual ? AUDIO_DEVICES.filter((d) => !d.is_virtual) : AUDIO_DEVICES;
       case "audio.apps":
         return AUDIO_APPS;
       case "diag.subscribe":
@@ -878,6 +878,9 @@ export class MockCore implements Transport {
     console.info("[mock] reveal", path);
   }
   async setTheme() {}
+  /** Windows has no virtual device (tests) */
+  noVirtual = false;
+  async setupWindow(_active: boolean) {}
   onNavigate(cb: (route: string) => void) {
     this.navigate = cb;
   }
@@ -1607,5 +1610,7 @@ export function mockFromUrl(): MockCore {
   const q = new URLSearchParams(location.search);
   const scenario = (q.get("mock") as MockScenario | null) ?? "normal";
   const win = q.get("window") === "flyout" ? "flyout" : "main";
-  return new MockCore({ scenario, window: win });
+  const mock = new MockCore({ scenario, window: win });
+  mock.noVirtual = q.has("novirtual");
+  return mock;
 }

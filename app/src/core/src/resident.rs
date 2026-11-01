@@ -297,6 +297,14 @@ pub fn run(args: &[String]) -> i32 {
     state.refresh_autostart(replaces_v1);
     {
         let state = state.clone();
+        std::thread::spawn(move || {
+            if let Ok(devices) = audio_capture::render_devices() {
+                state.watch_vb_cable(&devices);
+            }
+        });
+    }
+    {
+        let state = state.clone();
         std::thread::Builder::new()
             .name("service-events".into())
             .spawn(move || {

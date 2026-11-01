@@ -305,7 +305,7 @@ describe("every screen renders", () => {
 
   it("the first-run setup when no adapter is on WinUSB", async () => {
     const { calls } = start("#/home", { scenario: "fresh" });
-    expect(await screen.findByRole("heading", { level: 1, name: "Set up A2DP Windows Bridge" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Setup Wizard" })).toBeInTheDocument();
     mock!.setV1Running(true);
     expect(await screen.findByText("Another A2DP Windows Bridge is running")).toBeInTheDocument();
     // The setup waits while the other one holds the adapter
@@ -316,7 +316,7 @@ describe("every screen renders", () => {
     // Step 2: one explanation and one button, which switches the driver and
     // downloads the firmware (issue #86)
     const setUp = await screen.findByRole("button", { name: "Set up this adapter" });
-    expect(screen.getByText(/Windows stops using this adapter/)).toBeInTheDocument();
+    expect(screen.getByText(/removes the adapter from Windows/)).toBeInTheDocument();
     expect(screen.getByText("rtl8761bu_fw.bin, rtl8761bu_config.bin")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Replace with WinUSB driver" })).toBeNull();
     // Another A2DPWB started meanwhile: no driver change until it exits
