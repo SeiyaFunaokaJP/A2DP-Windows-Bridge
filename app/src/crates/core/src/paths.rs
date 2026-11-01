@@ -15,7 +15,7 @@
 //! ```
 //!
 //! Up to 2.0.x the folder was `%APPDATA%\A2DPWB` with every file at its top
-//! level: [`config_dir`] renames that folder once, and the core's schema 7
+//! level: [`config_dir`] renames that folder once, and the core's schema 8
 //! step (crate::migrate) moves the files into their sub folders.
 //!
 //! The window process (bluecaster-ui) compiles this file too (`#[path]`),
@@ -306,7 +306,7 @@ pub fn backup_v1_dir(config: &Path) -> PathBuf {
     backup_dir(config).join("v1")
 }
 
-/// The small files as 2.0.x left them (schema 7), to go back to 2.0.x
+/// The small files as 2.0.x left them (before schema 8), to go back to 2.0.x
 pub fn backup_v2_dir(config: &Path) -> PathBuf {
     backup_dir(config).join("v2")
 }

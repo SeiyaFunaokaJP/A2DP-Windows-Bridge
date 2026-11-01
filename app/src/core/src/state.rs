@@ -20,7 +20,7 @@ use bt_host::LinkStats;
 use bt_host::chips::{self, ChipVendor};
 use ipc::{
     AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, DevLog, DevOverrides, Device,
-    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, Msg, Profile,
+    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, Msg, OtherRadio, Profile,
     ReceiverConnection, ReceiverState, Settings, SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus,
     UpdateState,
 };
@@ -287,13 +287,16 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         start_minimized: s.start_minimized,
         minimize_to_tray: s.minimize_to_tray,
         tray_click_opens_window: s.tray_click_opens_window,
+        flyout_with_quick_settings: s.flyout_with_quick_settings,
         notify_connected: s.notify_connected,
         battery_low_percent: s.battery_low_percent,
         check_updates_on_startup: s.check_updates_on_startup,
         include_prereleases: s.include_prereleases,
         media_keys: s.media_keys,
         remember_volume: s.remember_volume,
+        auto_reconnect: s.auto_reconnect,
         volume_sync: s.volume_sync,
+        mute_output: s.mute_output,
         developer_mode: s.debug_mode,
         dev_overrides: DevOverrides {
             rtp_marker: s.dev_overrides.rtp_marker,
@@ -325,6 +328,11 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
     }
 }
 
+/// VB-Cable's playback device among Windows' outputs
+fn vb_cable(devices: &[audio_capture::DeviceInfo]) -> Option<&audio_capture::DeviceInfo> {
+    devices.iter().find(|d| d.is_virtual && d.name.to_lowercase().contains("cable"))
+}
+
 fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     let mut c = base.clone();
     c.language = s.language.clone();
@@ -333,13 +341,16 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.start_minimized = s.start_minimized;
     c.minimize_to_tray = s.minimize_to_tray;
     c.tray_click_opens_window = s.tray_click_opens_window;
+    c.flyout_with_quick_settings = s.flyout_with_quick_settings;
     c.notify_connected = s.notify_connected;
     c.battery_low_percent = s.battery_low_percent;
     c.check_updates_on_startup = s.check_updates_on_startup;
     c.include_prereleases = s.include_prereleases;
     c.media_keys = s.media_keys;
     c.remember_volume = s.remember_volume;
+    c.auto_reconnect = s.auto_reconnect;
     c.volume_sync = s.volume_sync;
+    c.mute_output = s.mute_output;
     c.debug_mode = s.developer_mode;
     c.dev_overrides = codec::dev::DevOverrides {
         rtp_marker: s.dev_overrides.rtp_marker,
@@ -406,6 +417,21 @@ fn adapter_chip(vendor: ChipVendor, realtek_pid: Option<u16>, settings: &CoreSet
         return (0, "");
     }
     (chips::resolve_chip_pid(settings.bt_chip_pid, &settings.bt_chip_fw_stem, [realtek_pid]), &settings.bt_chip_fw_stem)
+}
+
+/// A radio Windows' Bluetooth has switched on while BlueCaster has an adapter of
+/// its own (WinUSB): Windows' list of paired devices is one for all radios
+fn other_radio(adapters: &[AdapterInfo]) -> Option<OtherRadio> {
+    if !adapters.iter().any(|a| a.driver == DriverKind::Winusb) {
+        return None;
+    }
+    let radio = win_sys::bt_radios::radios().into_iter().find(|r| !r.name.is_empty())?;
+    if win_sys::bt_radios::switched_on() == Some(false) {
+        return None;
+    }
+    let paired =
+        win_sys::bt_paired::paired_devices().is_ok_and(|list| list.iter().any(|d| d.remembered || d.authenticated));
+    Some(OtherRadio { name: radio.name, paired })
 }
 
 fn adapter_infos(config_dir: &Path, settings: &CoreSettings) -> Vec<AdapterInfo> {
@@ -558,6 +584,7 @@ fn saved_devices(
             codecs: Vec::new(),
             sbc: None,
             codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio: d.le_audio,
             le_audio_set: false,
         })
@@ -589,6 +616,10 @@ fn saved_devices(
                 })
                 .collect();
         }
+        // These list LDAC only after it was asked for (the stream does)
+        if bluecaster_core::is_huawei(&d.name) {
+            d.codecs_on_request = vec!["ldac".to_string()];
+        }
     }
     list
 }
@@ -604,6 +635,7 @@ fn scanned_device(d: &ScannedDevice) -> Device {
         codecs: Vec::new(),
         sbc: None,
         codec_caps: Vec::new(),
+        codecs_on_request: Vec::new(),
         le_audio: d.le_audio,
         le_audio_set: d.le_audio_set,
     }
@@ -1024,6 +1056,30 @@ fn source_changes_in_place(stream: &StreamStatus, before: Option<&CoreProfile>, 
     stream.state == StreamState::Streaming && !saved.le_audio && before.is_some_and(|b| b.only_source_differs(saved))
 }
 
+/// The save changed only the bitpools of an A2DP SBC / SBC XQ profile
+/// streaming: the encoder takes them in place ([`Service::change_bitpools`]),
+/// as long as they stay within the range the link was set up with. Its lowest
+/// is the profile's minimum at the time; a lower one needs a new setup.
+fn bitpools_change_in_place(stream: &StreamStatus, before: Option<&CoreProfile>, saved: &CoreProfile) -> bool {
+    if stream.state != StreamState::Streaming
+        || saved.le_audio
+        || !before.is_some_and(|b| b.only_bitpools_differ(saved))
+    {
+        return false;
+    }
+    let Some(info) = stream.info.as_ref() else { return false };
+    let Some(sbc) = info.details.as_ref().and_then(|d| d.sbc.as_ref()) else { return false };
+    let Some((lowest, _)) = sbc.config_bitpool else { return false };
+    let (max, min) = if info.codec == codec::CodecKind::SbcXq.name() {
+        (saved.sbcxq_bitpool, saved.sbcxq_min_bitpool)
+    } else {
+        (saved.sbc_bitpool, saved.sbc_min_bitpool)
+    };
+    // Auto's minimum is the device's
+    let floor = if min != 0 { u32::from(min) } else { sbc.device.as_ref().map_or(2, |d| d.min_bitpool) };
+    floor >= lowest && (max == 0 || u32::from(max) >= lowest)
+}
+
 /// Whether turning Auto-select (for every device) on or off may change the
 /// codec of the profile in use: it chose one, or its own codec order (a
 /// profile left on "auto" in the default order streams as Auto either
@@ -1063,6 +1119,7 @@ impl CoreState {
             adapter: AdapterState {
                 status: AdapterStatus::Stopped,
                 le_audio: le_audio_now(service.le_audio_supported(), &adapters),
+                other_radio: other_radio(&adapters),
                 adapters,
                 error: None,
                 rom_firmware: false,
@@ -1432,6 +1489,64 @@ impl CoreState {
         Ok(())
     }
 
+    /// Forgets a device: its stream ends, and its entry, profile, volume,
+    /// what it offered and its link key go, so nothing can connect it again
+    /// (issue #86: the tray still could, with the profile left behind)
+    fn forget_device(&self, address: &str, le_audio: bool) -> Result<Value, ErrorInfo> {
+        let dir = self.config_dir();
+        let mut list = profiles::load(&dir);
+        let of_it = |p: &CoreProfile| p.le_audio == le_audio && p.device_address.eq_ignore_ascii_case(address);
+        let (_, s) = self.snapshot();
+        let streaming = s.stream.profile.as_ref().is_some_and(|n| list.iter().any(|p| p.name == *n && of_it(p)));
+        if streaming && s.stream.state != StreamState::Idle {
+            // Waited for: a session ending later would save the device again
+            self.service.disconnect_for(self.service.ticket());
+        }
+        let r = if le_audio { devices::remove_le(&dir, address) } else { devices::remove(&dir, address) };
+        r.map_err(|_| err("device.forget_failed", "error.device_forget"))?;
+        let gone: Vec<String> = list.iter().filter(|p| of_it(p)).map(|p| p.name.clone()).collect();
+        list.retain(|p| !of_it(p));
+        let active = s.active_profile.filter(|a| !gone.contains(a));
+        self.save_profiles(&list, active)?;
+        self.service.forget_device(address, le_audio);
+        let mut settings = self.service.settings();
+        let volume = settings.saved_volumes.remove(&address.to_uppercase()).is_some();
+        let last = gone.contains(&settings.last_profile);
+        if last {
+            settings.last_profile.clear();
+        }
+        if volume || last {
+            let _ = settings.save(&dir);
+            self.service.set_settings(settings);
+        }
+        self.refresh_devices();
+        Ok(Value::Null)
+    }
+
+    /// VB-Cable that came after it was missing is taken into use, one time
+    /// (issue #86): a device the user set up otherwise before stays as it is
+    pub fn watch_vb_cable(&self, devices: &[audio_capture::DeviceInfo]) {
+        let mut s = self.service.settings();
+        match (vb_cable(devices), s.awaiting_vb_cable) {
+            (None, false) => s.awaiting_vb_cable = true,
+            (Some(cable), true) => {
+                s.awaiting_vb_cable = false;
+                let mut list = profiles::load(&self.config_dir());
+                let changed = profiles::use_virtual_device(&mut list, &cable.id, &cable.name);
+                tracing::info!("VB-Cable found: {changed} profile(s) capture it now");
+                let active = Some(s.last_profile.clone()).filter(|n| list.iter().any(|p| &p.name == n));
+                if changed > 0
+                    && let Err(e) = self.save_profiles(&list, active)
+                {
+                    tracing::warn!("VB-Cable: profiles not saved: {}", e.code);
+                }
+            }
+            _ => return,
+        }
+        let _ = s.save(&self.config_dir());
+        self.service.set_settings(s);
+    }
+
     fn save_settings(&self, s: CoreSettings) -> Result<(), ErrorInfo> {
         s.save(&self.config_dir()).map_err(|_| err("settings.save_failed", "error.settings_save"))?;
         crate::logging::set_dev(&s.log());
@@ -1473,7 +1588,8 @@ impl CoreState {
         let change = firmware_change(&s.adapter.adapters, &list);
         warn_invalid_firmware(&paths::firmware_dir(&self.config_dir()), &change.invalid);
         let le_audio = le_audio_now(self.service.le_audio_supported(), &list);
-        self.publish(Event::Adapter(AdapterState { adapters: list.clone(), le_audio, ..s.adapter }));
+        let other_radio = other_radio(&list);
+        self.publish(Event::Adapter(AdapterState { adapters: list.clone(), le_audio, other_radio, ..s.adapter }));
         (list, change.fixed)
     }
 
@@ -1527,6 +1643,7 @@ impl CoreState {
             .map_err(|_| err("profile.invalid_address", "error.invalid_address"))?;
         req.experimental_codecs = settings.experimental_codecs;
         req.volume_sync = effective_volume_sync(settings.volume_sync, req.volume_sync);
+        req.mute_output = settings.mute_output;
         self.set_active_profile(Some(name.to_string()));
         self.begin_stream(req, Some(name.to_string()));
         Ok(())
@@ -1537,6 +1654,7 @@ impl CoreState {
         let settings = self.service.settings();
         let mut req = custom_request(c, settings.legacy_max_media_payload())?;
         req.experimental_codecs = settings.experimental_codecs;
+        req.mute_output = settings.mute_output;
         tracing::info!("custom stream to {}: codec {}, source {}", c.device, c.codec, req.source);
         self.begin_stream(req, None);
         Ok(())
@@ -1591,6 +1709,11 @@ impl CoreState {
     /// Settings > "Clicking the tray icon opens the main window"
     pub fn tray_click_opens_window(&self) -> bool {
         self.service.settings().tray_click_opens_window
+    }
+
+    /// Settings > the flyout above Quick Settings
+    pub fn flyout_with_quick_settings(&self) -> bool {
+        self.service.settings().flyout_with_quick_settings
     }
 
     pub fn quit(&self) {
@@ -1956,15 +2079,7 @@ impl CoreState {
                 Ok(Value::Null)
             }
             Method::DeviceForget { address, le_audio } => {
-                let dir = self.config_dir();
-                let r = if le_audio == Some(true) {
-                    devices::remove_le(&dir, &address)
-                } else {
-                    devices::remove(&dir, &address)
-                };
-                r.map_err(|_| err("device.forget_failed", "error.device_forget"))?;
-                self.refresh_devices();
-                Ok(Value::Null)
+                blocking(Box::new(move |me| me.forget_device(&address, le_audio == Some(true)))).await
             }
             Method::DeviceRename { address, name, le_audio } => {
                 let name = name.trim();
@@ -2002,6 +2117,8 @@ impl CoreState {
                 });
                 // Under Auto-select the order is not used
                 let order_unused = self.service.settings().auto_codec || merged.le_audio;
+                // Settings of a codec not in use: nothing the stream uses
+                let kept_only = pos.is_some_and(|i| list[i].only_kept_settings_differ(&merged));
                 let in_order = merged.clone();
                 // The profile's device joins the saved ones of its kind (as
                 // a connection saves it)
@@ -2037,10 +2154,18 @@ impl CoreState {
                 // The profile in use starts again with what was saved (v1),
                 // but for another source, which needs nothing of the link
                 let order_keeps_codec = order_only && (order_unused || !restart_for_order(&s.stream, &in_order));
-                if restart_after_save(&s.stream, &key) && !order_keeps_codec {
+                if restart_after_save(&s.stream, &key) && !order_keeps_codec && !kept_only {
                     let in_place = source_changes_in_place(&s.stream, before.as_ref(), &in_order)
                         && self.service.change_source(in_order.source());
-                    if in_place {
+                    let bitpools_in_place = !self.service.settings().auto_codec
+                        && bitpools_change_in_place(&s.stream, before.as_ref(), &in_order)
+                        && self.service.change_bitpools(in_order.bitpools());
+                    if bitpools_in_place {
+                        tracing::debug!(
+                            "profile {} saved while in use: new bitpools",
+                            bluecaster_core::diag::quoted(&key)
+                        );
+                    } else if in_place {
                         tracing::info!(
                             "profile {} saved while in use: its source changes in place",
                             bluecaster_core::diag::quoted(&key)
@@ -2081,15 +2206,15 @@ impl CoreState {
                     let chip = chip_changed(&base, &merged);
                     let le_toggled = base.le_audio_experimental != merged.le_audio_experimental;
                     let auto_toggled = base.auto_codec != merged.auto_codec;
-                    let sync_toggled = base.volume_sync != merged.volume_sync;
+                    let sync_toggled = base.volume_sync != merged.volume_sync || base.mute_output != merged.mute_output;
                     me.save_settings(merged)?;
                     if chip {
                         me.reload_adapter();
                     }
                     // Auto-select on / off: a profile in use whose codec it
                     // changes starts again (as a profile save does); Windows
-                    // Volume Sync on / off: the profile in use starts again
-                    // (as when it was the profile's own setting)
+                    // Volume Sync or the output mute on / off: the profile in
+                    // use starts again (as when it was the profile's own setting)
                     if auto_toggled || sync_toggled {
                         let (_, s) = me.snapshot();
                         let list = profiles::load(&me.config_dir());
@@ -2100,9 +2225,10 @@ impl CoreState {
                         };
                         if let Some(p) = in_use.filter(restart) {
                             tracing::info!(
-                                "Auto-select {}, volume sync {}: profile {} starts again",
+                                "Auto-select {}, volume sync {}, output mute {}: profile {} starts again",
                                 if settings.auto_codec { "on" } else { "off" },
                                 if settings.volume_sync { "on" } else { "off" },
+                                if settings.mute_output { "on" } else { "off" },
                                 bluecaster_core::diag::quoted(&p.name)
                             );
                             me.restart_profile(&p.name.clone())?;
@@ -2178,8 +2304,12 @@ impl CoreState {
                 .await
             }
             Method::AudioDevices => {
-                blocking(Box::new(|_| {
-                    let list: Vec<AudioDevice> = audio_capture::render_devices()
+                blocking(Box::new(|me| {
+                    let devices = audio_capture::render_devices();
+                    if let Ok(d) = &devices {
+                        me.watch_vb_cable(d);
+                    }
+                    let list: Vec<AudioDevice> = devices
                         .unwrap_or_default()
                         .into_iter()
                         .map(|d| {
@@ -2665,6 +2795,7 @@ mod tests {
             codecs: Vec::new(),
             sbc: None,
             codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio,
             le_audio_set: false,
         };
@@ -2816,6 +2947,33 @@ mod tests {
             }
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn bitpools_change_in_place_within_the_range_of_the_link() {
+        let before =
+            CoreProfile { name: "WH".into(), codec: "sbc".into(), sbc_min_bitpool: 20, ..CoreProfile::default() };
+        let mut info = sbc_abr_info();
+        info.details.as_mut().unwrap().sbc.as_mut().unwrap().config_bitpool = Some((20, 53));
+        let stream = |state| StreamStatus {
+            state,
+            profile: Some("WH".into()),
+            info: Some(info.clone()),
+            ..StreamStatus::default()
+        };
+        let streaming = stream(StreamState::Streaming);
+        let with = |max, min| CoreProfile { sbc_bitpool: max, sbc_min_bitpool: min, ..before.clone() };
+        assert!(bitpools_change_in_place(&streaming, Some(&before), &with(30, 20)));
+        assert!(bitpools_change_in_place(&streaming, Some(&before), &with(0, 25)));
+        // Below what the link was set up with
+        assert!(!bitpools_change_in_place(&streaming, Some(&before), &with(30, 10)));
+        assert!(!bitpools_change_in_place(&streaming, Some(&before), &with(15, 20)));
+        assert!(!bitpools_change_in_place(&streaming, Some(&before), &with(30, 0)));
+        // Anything else changes the link
+        let rate = CoreProfile { sample_rate: 44100, ..with(30, 20) };
+        assert!(!bitpools_change_in_place(&streaming, Some(&before), &rate));
+        assert!(!bitpools_change_in_place(&stream(StreamState::Connecting), Some(&before), &with(30, 20)));
+        assert!(!bitpools_change_in_place(&streaming, None, &with(30, 20)));
     }
 
     #[test]
@@ -3086,6 +3244,7 @@ mod tests {
             codecs: Vec::new(),
             sbc: None,
             codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio: false,
             le_audio_set: false,
         }];
@@ -3124,6 +3283,11 @@ mod tests {
         );
         assert!(list[1].sbc.is_none());
         assert!(list[0].saved && !list[1].saved && list[1].codecs.is_empty());
+        assert!(list[0].codecs_on_request.is_empty());
+        // Huawei earbuds list LDAC only once it is asked for (issue #30)
+        devices::save(&dir, "AA:BB:CC:DD:EE:FF", "HUAWEI FreeBuds Pro 4").unwrap();
+        let list = saved_devices(&dir, &scanned, &codecs);
+        assert_eq!(list[0].codecs_on_request, ["ldac"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -3182,6 +3346,11 @@ mod tests {
         let merged = merge_settings(&base, &off);
         assert!(!merged.le_audio_experimental && merged.le_audio_low_latency);
         assert_eq!(to_ipc_settings(&merged), off);
+
+        // The output mute under System Loopback: on by default
+        assert!(to_ipc_settings(&base).mute_output);
+        let no_mute = Settings { mute_output: false, ..off.clone() };
+        assert!(!merge_settings(&base, &no_mute).mute_output);
 
         // Windows Volume Sync for every device: on by default
         assert!(to_ipc_settings(&base).volume_sync);

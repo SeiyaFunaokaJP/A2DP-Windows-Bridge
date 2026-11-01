@@ -104,16 +104,28 @@ impl ScannedDevice {
     }
 }
 
+/// Appearance categories (the value's upper 10 bits)
+const APPEARANCE_PHONE: u16 = 0x001;
+const APPEARANCE_COMPUTER: u16 = 0x002;
+
 /// The LE Audio entries of an LE scan (v1 A2dpService scan thread): LE
 /// Audio advertisers only; a saved LE Audio device is listed (with its new
 /// name); of a coordinated set nobody saved, one member (connecting it
 /// finds the others). Classic entries of the same address are another
 /// list. Returns the entries and the number of LE Audio advertisers seen.
-fn le_scan_entries(results: &[LeScanResult], saved_le: &[SavedDevice]) -> (Vec<ScannedDevice>, usize) {
+/// A PC or phone is a source, not something to play to: this PC's own
+/// Windows adapters (`own`, advertising LE Audio) are left out with them.
+fn le_scan_entries(results: &[LeScanResult], saved_le: &[SavedDevice], own: &[String]) -> (Vec<ScannedDevice>, usize) {
     let mut out: Vec<ScannedDevice> = Vec::new();
     let mut sets_listed: Vec<u32> = Vec::new();
     let mut found = 0;
     for r in results.iter().filter(|r| r.le_audio) {
+        let category = r.appearance >> 6;
+        if matches!(category, APPEARANCE_PHONE | APPEARANCE_COMPUTER)
+            || own.iter().any(|a| a.eq_ignore_ascii_case(&r.addr.to_string()))
+        {
+            continue;
+        }
         found += 1;
         let address = r.addr.to_string();
         let set_member = r.rsi.is_some();
@@ -288,6 +300,9 @@ pub(crate) struct Inner {
     turned_off: AtomicBool,
     /// The source the running A2DP session changes to at its next tick
     source_change: Mutex<Option<SourceRequest>>,
+    /// Other bitpools for the session to take in place
+    /// ([`Service::change_bitpools`])
+    bitpool_change: Mutex<Option<stream::Bitpools>>,
 }
 
 impl Inner {
@@ -297,6 +312,10 @@ impl Inner {
 
     pub fn take_source_change(&self) -> Option<SourceRequest> {
         self.source_change.lock().unwrap_or_else(|e| e.into_inner()).take()
+    }
+
+    pub fn take_bitpool_change(&self) -> Option<stream::Bitpools> {
+        self.bitpool_change.lock().unwrap_or_else(|e| e.into_inner()).take()
     }
 
     /// The session waits for headphones that were turned off
@@ -664,7 +683,7 @@ impl Inner {
         !self.stop_requested()
     }
 
-    fn shutdown_host(&self) {
+    pub fn shutdown_host(&self) {
         let old = self.host.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(h) = old {
             let t = Instant::now();
@@ -679,6 +698,10 @@ impl Inner {
     /// every device, issue #86)
     pub fn media_keys(&self) -> bool {
         self.settings.lock().unwrap_or_else(|e| e.into_inner()).media_keys
+    }
+
+    pub fn auto_reconnect(&self) -> bool {
+        self.settings.lock().unwrap_or_else(|e| e.into_inner()).auto_reconnect
     }
 
     pub fn saved_volume(&self, addr: &str) -> Option<u8> {
@@ -802,6 +825,7 @@ impl Service {
             waiting: AtomicBool::new(false),
             turned_off: AtomicBool::new(false),
             source_change: Mutex::new(None),
+            bitpool_change: Mutex::new(None),
         });
         // Without a window, also while only the tray runs
         let weak = Arc::downgrade(&inner);
@@ -969,6 +993,51 @@ impl Service {
         true
     }
 
+    /// Other bitpools for the A2DP stream running, without touching the link
+    /// (the session's next tick). False when none runs: the caller starts it
+    /// again instead.
+    pub fn change_bitpools(&self, bitpools: stream::Bitpools) -> bool {
+        let Ok(_control) = self.control.try_lock() else { return false };
+        if !self.is_running() || self.state() != StreamState::Streaming {
+            return false;
+        }
+        match self.last_request.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            Some(req) if req.le.is_none() => req.set_bitpools(bitpools),
+            _ => return false,
+        }
+        *self.inner.bitpool_change.lock().unwrap_or_else(|e| e.into_inner()) = Some(bitpools);
+        self.inner.tick.1.notify_all();
+        true
+    }
+
+    /// What the service keeps of a device that is forgotten: no Bluetooth
+    /// restart connects it again, and (classic devices) what it offered and
+    /// its link key go, so it cannot connect by itself either
+    pub fn forget_device(&self, address: &str, le_audio: bool) {
+        let Some(addr) = bt_host::parse_addr(address) else { return };
+        {
+            let mut last = self.last_request.lock().unwrap_or_else(|e| e.into_inner());
+            if last.as_ref().is_some_and(|r| r.device == addr && r.le.is_some() == le_audio) {
+                *last = None;
+            }
+        }
+        if le_audio {
+            return;
+        }
+        {
+            let mut known = self.inner.codecs.lock().unwrap_or_else(|e| e.into_inner());
+            if known.remove(&address.to_uppercase()).is_some()
+                && let Err(e) = crate::devices::save_codecs(&self.inner.opts.config_dir, &known)
+            {
+                tracing::warn!("cannot save the devices' codecs: {e}");
+            }
+        }
+        // A running stack holds the keys in memory and writes them in full
+        if !self.host().is_some_and(|h| h.forget_link_key(addr)) {
+            bt_host::link_keys::forget(&crate::paths::link_keys_file(&self.inner.opts.config_dir), &addr);
+        }
+    }
+
     /// A ticket for a start or stop run later on its own thread
     /// ([`Service::start_streaming_for`], [`Service::disconnect_for`]): the
     /// latest one taken is the one that runs
@@ -1105,11 +1174,14 @@ impl Service {
         // The running session leaves Windows' default output switched when
         // this one switches it to the same device (issue #203)
         stream::expect_default_switch(req.source.default_switch());
+        crate::mute_output::expect_session(req.mutes_output(&req.source));
         self.stop_session();
         stream::expect_default_switch(None);
+        crate::mute_output::expect_session(false);
         // Saved in the profile, so in `req` too: left over from a session
         // that ended before it took it
         self.inner.take_source_change();
+        self.inner.take_bitpool_change();
         *self.last_request.lock().unwrap_or_else(|e| e.into_inner()) = Some(req.clone());
         self.inner.turned_off.store(false, Ordering::Release);
         self.inner.stop.store(false, Ordering::Release);
@@ -1130,6 +1202,7 @@ impl Service {
                     inner.notify(StreamState::Error, Msg::new("error.btstack_crash_stream"));
                 }
                 stream::restore_unclaimed_default();
+                crate::mute_output::unmute_unclaimed();
                 inner.running.store(false, Ordering::Release);
             })
             .expect("spawning the session thread");
@@ -1233,7 +1306,18 @@ impl Service {
                 self.inner.notify(StreamState::Idle, Msg::new("status.le_scanning"));
                 let results = host.le_scan(LE_SCAN);
                 let saved = crate::devices::load_le(&self.inner.opts.config_dir);
-                let (entries, found) = le_scan_entries(&results, &saved);
+                let own: Vec<String> = win_sys::bt_radios::radios().into_iter().filter_map(|r| r.address).collect();
+                for r in results.iter().filter(|r| r.le_audio) {
+                    tracing::debug!(
+                        "le scan: advertiser {} {} appearance 0x{:04X}, connectable {}, UUIDs {:04X?}",
+                        r.addr,
+                        crate::diag::quoted(&r.name),
+                        r.appearance,
+                        r.connectable,
+                        r.uuids16
+                    );
+                }
+                let (entries, found) = le_scan_entries(&results, &saved, &own);
                 tracing::debug!(
                     "le scan: {} result(s), {found} LE Audio advertiser(s), {} listed, {} saved",
                     results.len(),
@@ -1374,6 +1458,19 @@ mod tests {
         Service::new(opts, tx)
     }
 
+    #[test]
+    fn only_system_loopback_mutes_the_output() {
+        let req = StreamRequest { mute_output: true, ..request() };
+        let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: false };
+        let app = SourceRequest::Application { exe: "a.exe".into() };
+        assert!(req.mutes_output(&SourceRequest::SystemLoopback));
+        for other in [virt, app, SourceRequest::TestTone] {
+            assert!(!req.mutes_output(&other), "{other}");
+        }
+        let off = StreamRequest { mute_output: false, ..req };
+        assert!(!off.mutes_output(&SourceRequest::SystemLoopback));
+    }
+
     fn request() -> StreamRequest {
         crate::profiles::Profile {
             device_address: "00:11:22:33:44:55".into(),
@@ -1382,6 +1479,49 @@ mod tests {
         }
         .to_request(1000)
         .unwrap()
+    }
+
+    #[test]
+    fn bitpools_change_in_place_only_on_a_running_a2dp_stream() {
+        let s = service();
+        let new = crate::stream::Bitpools { sbc: 30, sbcxq: 0, sbc_min: 20, sbcxq_min: 0 };
+        // Nothing runs
+        assert!(!s.change_bitpools(new));
+        assert_eq!(s.inner.take_bitpool_change(), None);
+        s.inner.running.store(true, Ordering::Release);
+        *s.inner.state.lock().unwrap() = StreamState::Streaming;
+        // No session asked for
+        assert!(!s.change_bitpools(new));
+        *s.last_request.lock().unwrap() = Some(request());
+        assert!(s.change_bitpools(new));
+        assert_eq!(s.inner.take_bitpool_change(), Some(new));
+        // A Bluetooth restart keeps them
+        let last = s.last_request.lock().unwrap().clone().unwrap();
+        assert_eq!((last.sbc_bitpool, last.sbc_min_bitpool), (30, 20));
+        s.inner.running.store(false, Ordering::Release);
+    }
+
+    #[test]
+    fn forgetting_a_device_ends_what_would_connect_it_again() {
+        let s = service();
+        let req = request();
+        let address = bt_host::addr_str(&req.device);
+        let dir = s.inner.opts.config_dir.clone();
+        std::fs::create_dir_all(crate::paths::pairing_dir(&dir)).unwrap();
+        let line = format!("{} {} 4\n", address.replace(':', "-"), "00".repeat(16));
+        std::fs::write(crate::paths::link_keys_file(&dir), line).unwrap();
+        s.inner.codecs.lock().unwrap().insert(address.clone(), Default::default());
+        *s.last_request.lock().unwrap() = Some(req);
+        // Another device, or the same address's other kind, changes nothing
+        s.forget_device("00:11:22:33:44:66", false);
+        s.forget_device(&address, true);
+        assert!(s.last_request.lock().unwrap().is_some());
+        assert_eq!(bt_host::link_keys::FileLinkKeyStore::open(&crate::paths::link_keys_file(&dir)).entries().len(), 1);
+
+        s.forget_device(&address, false);
+        assert!(s.last_request.lock().unwrap().is_none());
+        assert!(s.device_codecs().is_empty());
+        assert!(bt_host::link_keys::FileLinkKeyStore::open(&crate::paths::link_keys_file(&dir)).entries().is_empty());
     }
 
     #[test]
@@ -1528,7 +1668,7 @@ mod tests {
             le("00:A2:D0:00:00:20", "Speaker 2", None),
             le("00:A2:D0:00:00:40", "Other L", Some(1)),
         ];
-        let (list, found) = le_scan_entries(&results, &[]);
+        let (list, found) = le_scan_entries(&results, &[], &[]);
         let got: Vec<_> = list.iter().map(|d| (d.address.as_str(), d.name.as_str(), d.le_audio_set)).collect();
         assert_eq!(
             got,
@@ -1548,7 +1688,7 @@ mod tests {
         // stands for the set
         let saved = [SavedDevice { address: "00:A2:D0:00:00:13".into(), name: "R".into(), le_audio: true }];
         let results = [le("00:A2:D0:00:00:13", "Buds R", Some(0)), le("00:A2:D0:00:00:12", "Buds L", Some(0))];
-        let (list, _) = le_scan_entries(&results, &saved);
+        let (list, _) = le_scan_entries(&results, &saved, &[]);
         assert_eq!(list.len(), 2);
         // A third member is a duplicate of the listed set
         let results = [
@@ -1556,9 +1696,26 @@ mod tests {
             le("00:A2:D0:00:00:14", "Buds C", Some(0)),
             le("00:A2:D0:00:00:13", "Buds R", Some(0)),
         ];
-        let (list, _) = le_scan_entries(&results, &saved);
+        let (list, _) = le_scan_entries(&results, &saved, &[]);
         let got: Vec<_> = list.iter().map(|d| d.address.as_str()).collect();
         assert_eq!(got, ["00:A2:D0:00:00:12", "00:A2:D0:00:00:13"]);
+    }
+
+    #[test]
+    fn le_scan_leaves_out_this_pc_and_other_sources() {
+        let appearing = |addr, name, appearance| LeScanResult { appearance, ..le(addr, name, None) };
+        let results = [
+            le("00:A2:D0:00:00:50", "THIS-PC", None),
+            appearing("00:A2:D0:00:00:51", "Other PC", 0x0080),
+            appearing("00:A2:D0:00:00:52", "Laptop", 0x0083),
+            appearing("00:A2:D0:00:00:53", "Phone", 0x0040),
+            appearing("00:A2:D0:00:00:54", "Earbuds", 0x0941),
+            le("00:A2:D0:00:00:55", "Speaker", None),
+        ];
+        let (list, found) = le_scan_entries(&results, &[], &["00:a2:d0:00:00:50".into()]);
+        let got: Vec<_> = list.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(got, ["Earbuds", "Speaker"]);
+        assert_eq!(found, 2);
     }
 
     #[test]
@@ -1571,7 +1728,7 @@ mod tests {
         };
         let c = ScannedDevice::classic(&classic);
         assert!(!c.le_audio && c.audio);
-        let (le_list, _) = le_scan_entries(&[le("00:A2:D0:00:00:12", "Buds", None)], &[]);
+        let (le_list, _) = le_scan_entries(&[le("00:A2:D0:00:00:12", "Buds", None)], &[], &[]);
         assert_eq!(le_list[0].address, c.address);
         assert!(le_list[0].le_audio);
     }

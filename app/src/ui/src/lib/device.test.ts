@@ -28,6 +28,7 @@ const dev = (address: string, codecs: string[]): Device => ({
   codecs,
   sbc: null,
   codec_caps: [],
+  codecs_on_request: [],
   le_audio: false,
   le_audio_set: false,
 });
@@ -72,6 +73,12 @@ describe("codecs a device offers", () => {
     expect(codecSupport("aptxhd", known)).toBe("not_offered");
     expect(codecSupport("auto", known)).toBe("offered");
     expect(codecSupport("LDAC", ["ldac"])).toBe("offered");
+  });
+
+  it("does not call one it may offer once chosen not offered", () => {
+    expect(codecSupport("ldac", ["sbc", "aac"], ["ldac"])).toBe("unknown");
+    expect(codecSupport("aptx", ["sbc", "aac"], ["ldac"])).toBe("not_offered");
+    expect(codecSupport("ldac", ["sbc", "ldac"], ["ldac"])).toBe("offered");
   });
 
   it("finds the profile's device by its address as typed", () => {

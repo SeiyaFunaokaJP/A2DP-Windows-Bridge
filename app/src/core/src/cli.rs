@@ -517,6 +517,7 @@ pub fn run(args: &[String]) -> i32 {
         bit_depth: a.bits,
         source,
         volume_sync: VolumeSync::Off,
+        mute_output: false,
         max_media_payload: a.max_packet,
         le: None,
     };

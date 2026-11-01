@@ -26,12 +26,14 @@ enum UserEvent {
     Tray(TrayView),
     Menu(String),
     Click,
+    QuickSettingsOpened,
     Balloon(BalloonRequest),
     Quit,
 }
 
-/// Starts the UI (bluecaster.exe next to us), optionally its flyout
-fn launch_ui(flyout: bool) {
+/// Starts the UI (bluecaster.exe next to us), `arg` saying what it opens; a
+/// running UI gets it instead
+fn launch_ui(arg: Option<&str>) {
     let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) else { return };
     let ui = dir.join("bluecaster.exe");
     if !ui.exists() {
@@ -39,9 +41,7 @@ fn launch_ui(flyout: bool) {
         return;
     }
     let mut cmd = std::process::Command::new(ui);
-    if flyout {
-        cmd.arg("--flyout");
-    }
+    cmd.args(arg);
     if let Err(e) = cmd.spawn() {
         tracing::warn!("cannot start the UI: {e}");
     }
@@ -287,7 +287,7 @@ pub fn run(args: &[String]) -> i32 {
             // Already running: a start from the shortcut opens the UI
             tracing::info!("the core runs already");
             if !background {
-                launch_ui(false);
+                launch_ui(None);
             }
             return 0;
         }
@@ -337,6 +337,14 @@ pub fn run(args: &[String]) -> i32 {
     };
     // A missing Run value, v1's, or one naming a copy of the core that is gone
     state.refresh_autostart(replaces_v1);
+    {
+        let state = state.clone();
+        std::thread::spawn(move || {
+            if let Ok(devices) = audio_capture::render_devices() {
+                state.watch_vb_cable(&devices);
+            }
+        });
+    }
     {
         let state = state.clone();
         std::thread::Builder::new()
@@ -398,7 +406,7 @@ pub fn run(args: &[String]) -> i32 {
     }
     state.check_update_if_due();
     if !background {
-        launch_ui(false);
+        launch_ui(None);
     }
 
     let mut tray: Option<TrayIcon> = None;
@@ -432,6 +440,10 @@ pub fn run(args: &[String]) -> i32 {
                     }
                     Err(e) => tracing::error!("tray icon: {e}"),
                 }
+                let p = proxy.clone();
+                win_sys::quick_settings::watch_opened(move || {
+                    let _ = p.send_event(UserEvent::QuickSettingsOpened);
+                });
             }
             TaoEvent::UserEvent(UserEvent::Tray(v)) => {
                 if let Some(t) = &tray {
@@ -443,14 +455,19 @@ pub fn run(args: &[String]) -> i32 {
             TaoEvent::UserEvent(UserEvent::Click) => {
                 win_sys::notify::allow_foreground_for_click();
                 // The flyout, or the main window when Settings say so
-                launch_ui(!state.tray_click_opens_window());
+                launch_ui((!state.tray_click_opens_window()).then_some("--flyout"));
+            }
+            TaoEvent::UserEvent(UserEvent::QuickSettingsOpened) => {
+                if state.flyout_with_quick_settings() {
+                    launch_ui(Some("--quick-settings"));
+                }
             }
             TaoEvent::UserEvent(UserEvent::Balloon(b)) => match &notifier {
                 Some(n) => show_balloon(n, b),
                 None => tracing::info!("no tray icon for the balloon \"{}\"", b.title),
             },
             TaoEvent::UserEvent(UserEvent::Menu(id)) => match id.as_str() {
-                "open" => launch_ui(false),
+                "open" => launch_ui(None),
                 "disconnect" => state.stop(),
                 "exit" => state.quit(),
                 other => {

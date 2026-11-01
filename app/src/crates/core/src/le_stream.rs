@@ -32,6 +32,7 @@ use pipeline::le::{LePipeline, LePipelineConfig};
 use pipeline::{BufferPreset, CaptureInput};
 
 use crate::messages::Msg;
+use crate::mute_output::OutputMute;
 use crate::service::Inner;
 use crate::stream::{
     DefaultDeviceGuard, DiscontinuityLog, SourceRequest, StreamInfo, StreamRequest, StreamState, VolumeSync,
@@ -370,6 +371,9 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let sync_volume = req.source != SourceRequest::TestTone && req.volume_sync != VolumeSync::Off;
     let mut volume = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &req.source)
         .map(crate::volume_sync::VolumeSyncer::new);
+    let mutes_output = req.mutes_output(&req.source);
+    let mut output_mute = OutputMute::new();
+    output_mute.tick(mutes_output);
 
     let mut lost_for_good = false;
     let mut discontinuities = DiscontinuityLog::default();
@@ -381,6 +385,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         if let Some(v) = volume.as_mut() {
             v.tick(sync_volume, &crate::volume_sync::LeHeadphones(&host));
         }
+        output_mute.tick(mutes_output);
         discontinuities.tick(audio.as_ref().map_or(0, LeAudioPath::discontinuities));
         if !host.le_stream_lost() {
             continue;
@@ -388,6 +393,15 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
 
         // A device or CIS went away: tear down and set it up again
         tracing::debug!("le stream: lost after {} s of the session", session_start.elapsed().as_secs());
+        if !inner.auto_reconnect() {
+            tracing::info!("LE Audio stream lost: reconnecting is off, the session ends");
+            // Not connected again by a Bluetooth restart either
+            inner.waiting_for_device();
+            inner.done_waiting_for_device(false);
+            inner.notify(StreamState::Idle, Msg::new("status.device_off"));
+            lost_for_good = true;
+            break;
+        }
         let off = device_turned_off(inner, &host, &devices);
         if !off {
             tracing::warn!("LE Audio stream lost, reconnecting");
@@ -407,6 +421,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                 default_guard = DefaultDeviceGuard(None);
                 switch_default_again = true;
             }
+            output_mute.tick(false);
             if !wait_for_device(inner, &host, req.device) {
                 lost_for_good = true;
                 break;
@@ -481,10 +496,14 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     if let Some(mut v) = volume.take() {
         v.stop();
     }
+    drop(output_mute);
     drop(default_guard);
     inner.set_le_stream(None);
     if !lost_for_good {
         ready();
+    } else if !inner.auto_reconnect() {
+        // As the A2DP stream: free for the phone the headphones may go to
+        inner.shutdown_host();
     }
 }
 
@@ -514,7 +533,12 @@ fn wait_for_device(inner: &Inner, host: &BtHost, device: [u8; 6]) -> bool {
     inner.waiting_for_device();
     let t = Instant::now();
     let back = loop {
-        if inner.stop_requested() || inner.power.suspending() || inner.power.stale() || host.stalled() {
+        if inner.stop_requested()
+            || inner.power.suspending()
+            || inner.power.stale()
+            || host.stalled()
+            || !inner.auto_reconnect()
+        {
             break false;
         }
         if host.le_find(device, OFF_FIND).is_some() {

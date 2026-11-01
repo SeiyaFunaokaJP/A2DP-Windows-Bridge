@@ -27,7 +27,17 @@ import {
   type CodecSpec,
   type CodecSupport,
 } from "../lib/codecs";
-import { SBC_ALLOCATIONS, SBC_BLOCKS, SBC_CHANNEL_MODES, SBC_SUBBANDS, sbcOffered, sbcRate, sbcSetup, type SbcCaps } from "../lib/sbc";
+import {
+  SBC_ALLOCATIONS,
+  SBC_BLOCKS,
+  SBC_CHANNEL_MODES,
+  SBC_SUBBANDS,
+  sbcKbpsText,
+  sbcOffered,
+  sbcRate,
+  sbcSetup,
+  type SbcCaps,
+} from "../lib/sbc";
 import { Button, Check, Dialog, Field, IconButton, Select } from "./controls";
 import { Icon } from "./Icon";
 
@@ -213,8 +223,9 @@ export function BitpoolSlider(props: {
   const hi = () => clamp(props.high || Math.max(props.autoHigh, props.low));
   const lo = () => Math.min(clamp(props.low || props.min), hi());
   const at = (x: number) => (props.max > props.min ? (x - props.min) / (props.max - props.min) : 0);
-  const lowText = () => (props.low ? String(lo()) : t("codec.auto"));
+  const lowText = () => (props.low ? String(lo()) : t("ui.profile.sbc_bitpool_auto", lo()));
   const highText = () => (props.high ? String(hi()) : t("ui.profile.sbc_bitpool_auto", hi()));
+  const highShown = () => (props.high ? String(hi()) : t("ui.profile.sbc_bitpool_auto_high", hi()));
   return (
     <div class="bp-slider" role="group" aria-label={props.label}>
       <output class="bp-value num" aria-hidden="true">
@@ -263,7 +274,7 @@ export function BitpoolSlider(props: {
         />
       </div>
       <output class="bp-value num" aria-hidden="true">
-        {highText()}
+        {highShown()}
       </output>
     </div>
   );
@@ -277,8 +288,8 @@ export function BitpoolSlider(props: {
  * issue #86), with the bit rate that gives. A codec with one quality shows
  * it rather than a choice. It starts from the profile's values fitted
  * to the codec, or from what that codec was last set to (`kept`: the
- * profile's codec_settings); OK chooses the codec with them, Cancel leaves
- * the profile alone.
+ * profile's codec_settings); each change goes to `onChange` at once
+ * (issue #86: no OK or Cancel).
  */
 export function CodecSettings(props: {
   spec: CodecSpec | null;
@@ -287,8 +298,10 @@ export function CodecSettings(props: {
   sbcCaps: SbcCaps | null;
   /** Device.codec_caps (empty: not known) */
   caps?: readonly CodecCaps[];
-  onApply: (values: CodecChoice) => void;
-  onCancel: () => void;
+  /** Who listed what is offered, once it did */
+  deviceName?: string;
+  onChange: (values: CodecChoice) => void;
+  onClose: () => void;
 }) {
   const [v, setV] = createStore<CodecChoice>({
     codec: "auto",
@@ -389,24 +402,22 @@ export function CodecSettings(props: {
         label: sbcOffered(props.sbcCaps, field, x) ? label(x) : t("ui.profile.sbc_not_offered", label(x)),
       })),
   ];
-  // The bit rate it gives, as the core works it out, at the profile's rate
-  // (both when Auto)
-  // (on Auto 48 kHz, 44.1 kHz on a device without it: one figure, issue #86)
-  const sbcBitrate = () => {
-    if (bitpoolError()) return "";
-    const r = sbcRate(v, props.sbcCaps);
-    return t("ui.profile.sbc_bitrate", sbcSetup(v, r, props.sbcCaps).kbps, r === 44100 ? "44.1" : "48");
+  // The bit rate it gives, as the core works it out (one figure, issue #86)
+  const sbcBitrate = () => (bitpoolError() ? "" : sbcKbpsText(v, props.sbcCaps));
+  const changed = () => {
+    if (!bitpoolError()) props.onChange({ ...v });
   };
+  const set = <K extends keyof CodecChoice>(key: K, value: CodecChoice[K]) => {
+    setV(key as "codec", value as string);
+    changed();
+  };
+  const listed = () => !!props.deviceName && !!(spec().bitpool ? props.sbcCaps : caps());
   return (
     <Dialog
       open={props.spec !== null}
       title={t("ui.profile.codec_settings", name())}
-      confirm={t("modal.ok")}
-      cancel={t("modal.cancel")}
-      onConfirm={() => {
-        if (!bitpoolError()) props.onApply({ ...v });
-      }}
-      onCancel={() => props.onCancel()}
+      subtitle={listed() ? t("ui.profile.codec_settings_device", props.deviceName!) : undefined}
+      onCancel={() => props.onClose()}
     >
       <div class="codec-settings">
         {/* SBC and SBC XQ: the bitpool and frame setup below decide the bit
@@ -414,7 +425,7 @@ export function CodecSettings(props: {
         <Show
           when={!spec().bitpool}
           fallback={
-            <Field label={t("connection.quality")} hint={t("ui.profile.sbc_quality_hint")}>
+            <Field label={t("connection.quality")} hint={t("tooltip.quality")}>
               {(id, described) => (
                 <output id={id} class="input readonly num" aria-describedby={described} aria-live="polite">
                   {sbcBitrate() || "–"}
@@ -428,10 +439,7 @@ export function CodecSettings(props: {
           <Show
             when={qualities().length > 1}
             fallback={
-              <Field
-                label={t("connection.quality")}
-                hint={t(spec().qualities.length ? "ui.profile.quality_highest_hint" : "tooltip.quality")}
-              >
+              <Field label={t("connection.quality")} hint={t("tooltip.quality")}>
                 {(id, described) => (
                   <output id={id} class="input readonly" aria-describedby={described}>
                     {qualities().length ? qualityText(qualities()[0]) : t("ui.profile.fixed_bitrate")}
@@ -448,7 +456,7 @@ export function CodecSettings(props: {
                   value={v.quality}
                   disabled={qualityIgnored(v.codec, v.abr)}
                   options={qualities().map((q) => ({ value: q.id, label: qualityText(q) }))}
-                  onChange={(x) => setV("quality", x)}
+                  onChange={(x) => set("quality", x)}
                 />
               )}
             </Field>
@@ -465,7 +473,7 @@ export function CodecSettings(props: {
                 const listed = offeredSampleRates(v.codec, caps()).includes(r);
                 return { value: r, label: listed ? label : t("ui.profile.sbc_not_offered", label) };
               })}
-              onChange={(x) => setV("sample_rate", x)}
+              onChange={(x) => set("sample_rate", x)}
             />
           )}
         </Field>
@@ -487,31 +495,24 @@ export function CodecSettings(props: {
                       ? t(`bitdepth.${b}`)
                       : t("ui.profile.sbc_not_offered", t(`bitdepth.${b}`)),
               }))}
-              onChange={(x) => setV("bit_depth", x)}
+              onChange={(x) => set("bit_depth", x)}
             />
           )}
         </Field>
         <Show when={spec().abr}>
-          <Check
-            label={t("connection.abr")}
-            title={t(spec().bitpool ? "tooltip.sbc_abr" : "tooltip.abr")}
-            checked={v.abr}
-            onChange={(x) => setV("abr", x)}
-          />
+          <div class="field">
+            <Check label={t("connection.abr")} checked={v.abr} onChange={(x) => set("abr", x)} />
+            <span class="hint">{t("tooltip.abr")}</span>
+          </div>
         </Show>
         <Show when={spec().vbr}>
-          <Check label={t("connection.vbr")} title={t("tooltip.vbr")} checked={v.abr} onChange={(x) => setV("abr", x)} />
+          <div class="field">
+            <Check label={t("connection.vbr")} checked={v.abr} onChange={(x) => set("abr", x)} />
+            <span class="hint">{t("tooltip.vbr")}</span>
+          </div>
         </Show>
         <Show when={spec().bitpool}>
-          <Field
-            label={t("connection.sbc_bitpool")}
-            hint={
-              props.sbcCaps
-                ? `${t("tooltip.sbc_bitpool", BITPOOL_MIN, bitpoolRange(v.codec, null).max)} ${t("ui.profile.sbc_bitpool_handles")} ${t("ui.profile.sbc_bitpool_device", bpMin(), bpMax())}`
-                : `${t("tooltip.sbc_bitpool", bpMin(), bpMax())} ${t("ui.profile.sbc_bitpool_handles")}`
-            }
-            error={bitpoolError()}
-          >
+          <Field label={t("connection.sbc_bitpool")} hint={t("tooltip.sbc_bitpool")} error={bitpoolError()}>
             {(id, described) => (
               <div class="inline bp-field">
                 <BitpoolSlider
@@ -523,15 +524,15 @@ export function CodecSettings(props: {
                   low={bpLow()}
                   high={bp()}
                   autoHigh={autoMax()}
-                  onLow={(x) => setV(bpMinKey(), x)}
-                  onHigh={(x) => setV(bpKey(), x)}
+                  onLow={(x) => set(bpMinKey(), x)}
+                  onHigh={(x) => set(bpKey(), x)}
                 />
                 <Button
                   kind="subtle"
                   disabled={bp() === 0 && bpLow() === 0}
                   onClick={() => {
                     setV(bpKey(), 0);
-                    setV(bpMinKey(), 0);
+                    set(bpMinKey(), 0);
                   }}
                 >
                   {t("codec.auto")}
@@ -547,7 +548,7 @@ export function CodecSettings(props: {
                   id={id}
                   value={v.sbc_blocks}
                   options={sbcChoice("blocks", SBC_BLOCKS, v.sbc_blocks, String)}
-                  onChange={(x) => setV("sbc_blocks", x)}
+                  onChange={(x) => set("sbc_blocks", x)}
                 />
               )}
             </Field>
@@ -557,7 +558,7 @@ export function CodecSettings(props: {
                   id={id}
                   value={v.sbc_subbands}
                   options={sbcChoice("subbands", SBC_SUBBANDS, v.sbc_subbands, String)}
-                  onChange={(x) => setV("sbc_subbands", x)}
+                  onChange={(x) => set("sbc_subbands", x)}
                 />
               )}
             </Field>
@@ -567,7 +568,7 @@ export function CodecSettings(props: {
                   id={id}
                   value={v.sbc_allocation}
                   options={sbcChoice("allocations", SBC_ALLOCATIONS, v.sbc_allocation, (a) => t(`ui.diag.cd_alloc.${a}`))}
-                  onChange={(x) => setV("sbc_allocation", x)}
+                  onChange={(x) => set("sbc_allocation", x)}
                 />
               )}
             </Field>
@@ -579,16 +580,13 @@ export function CodecSettings(props: {
                     id={id}
                     value={v.sbc_channel_mode}
                     options={sbcChoice("channel_modes", SBC_CHANNEL_MODES, v.sbc_channel_mode, (m) => t(`ui.diag.cd_mode.${m}`))}
-                    onChange={(x) => setV("sbc_channel_mode", x)}
+                    onChange={(x) => set("sbc_channel_mode", x)}
                   />
                 )}
               </Field>
             </Show>
-            <p class="hint">{t("ui.profile.sbc_frame_hint")}</p>
+            <p class="hint">{t(v.codec === "sbc" ? "ui.profile.sbc_frame_hint" : "ui.profile.sbc_frame_hint_xq")}</p>
           </fieldset>
-        </Show>
-        <Show when={v.codec !== props.profile.codec}>
-          <p class="hint">{t("ui.profile.codec_settings_apply", name())}</p>
         </Show>
       </div>
     </Dialog>

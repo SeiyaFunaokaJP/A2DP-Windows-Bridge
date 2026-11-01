@@ -175,6 +175,21 @@ pub struct AdapterState {
     /// (issue #81)
     #[serde(default)]
     pub rom_firmware: bool,
+    /// A radio Windows' own Bluetooth runs beside the adapter BlueCaster uses:
+    /// the two may interfere (issue #86). None: no such radio
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub other_radio: Option<OtherRadio>,
+}
+
+/// A radio of Windows' own Bluetooth
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct OtherRadio {
+    /// Device Manager's name ("MediaTek Bluetooth Adapter")
+    pub name: String,
+    /// Windows has devices paired
+    pub paired: bool,
 }
 
 /// A device known from the saved list or a scan
@@ -202,6 +217,10 @@ pub struct Device {
     /// empty while not known
     #[serde(default)]
     pub codec_caps: Vec<CodecDeviceCaps>,
+    /// Codec keys the device may offer only once chosen, whatever `codecs`
+    /// says: the UI keeps them choosable (issue #30)
+    #[serde(default)]
+    pub codecs_on_request: Vec<String>,
     /// An LE Audio entry (experimental; le_audio_devices.txt and the LE
     /// scan). A dual-mode device has two entries with the same address, a
     /// classic one and an LE Audio one: address and this flag identify an
@@ -606,6 +625,9 @@ pub struct Settings {
     /// A click on the tray icon opens the main window, not the flyout
     #[serde(default)]
     pub tray_click_opens_window: bool,
+    /// The flyout opens above Windows 11's Quick Settings, along with them
+    #[serde(default)]
+    pub flyout_with_quick_settings: bool,
     /// A notification when a device connects: its codec, what the codec
     /// runs with, the battery (on by default)
     #[serde(default = "yes")]
@@ -619,12 +641,21 @@ pub struct Settings {
     pub media_keys: bool,
     /// Remember each device's volume (one switch for every device)
     pub remember_volume: bool,
+    /// Connect a device that went away again by itself (on by default).
+    /// Off: the session ends and the adapter is released.
+    #[serde(default = "yes")]
+    pub auto_reconnect: bool,
     /// Windows Volume Sync for every device (on by default): the audio
     /// device's volume and the captured device's Windows volume follow each
     /// other. Off: no stream syncs. A change starts the profile in use
     /// again.
     #[serde(default = "yes")]
     pub volume_sync: bool,
+    /// System Loopback mutes the default output device while streaming (on
+    /// by default), so only the audio device plays. A change starts the
+    /// profile in use again.
+    #[serde(default = "yes")]
+    pub mute_output: bool,
     /// Developer mode: receiver test, HCI capture, debug details
     pub developer_mode: bool,
     /// Developer mode: overrides of the codec and media path, in force

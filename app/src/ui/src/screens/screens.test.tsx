@@ -95,14 +95,33 @@ describe("Home", () => {
   });
 
   it("shows the link quality, not a codec card, the link latency nor the capture source (issue #86)", async () => {
-    start("#/home");
-    await homeCard("WH-1000XM5");
+    const { core } = start("#/home");
+    const wh = await homeCard("WH-1000XM5");
     const main = within(screen.getByRole("main"));
-    expect(await main.findByRole("region", { name: t("quality.title") })).toBeInTheDocument();
+    // Only while it streams: after that there is no link to rate
+    expect(main.queryByRole("region", { name: t("quality.title") })).toBeNull();
+    await core.request("stream.start", { profile: core.state.snap!.active_profile! });
+    const quality = await within(wh).findByRole("region", { name: t("quality.title") });
+    expect(quality).toBeInTheDocument();
     // The codec is on the device's card
     expect(main.queryByRole("region", { name: t("quality.codec") })).toBeNull();
     expect(main.queryByText("Link latency")).toBeNull();
     expect(main.queryByLabelText(t("capture.mode"))).toBeNull();
+    await core.request("stream.stop");
+    await waitFor(() => expect(main.queryByRole("region", { name: t("quality.title") })).toBeNull());
+  });
+
+  it("offers to add a device beside a lone card, not beside two (issue #86)", async () => {
+    const { core } = start("#/home");
+    await homeCard("WH-1000XM5");
+    const add = () => screen.queryByRole("button", { name: t("ui.home.add_device") });
+    expect(document.querySelectorAll(".home-device").length).toBeGreaterThan(1);
+    expect(add()).toBeNull();
+    const devices = core.state.snap!.devices.filter((d) => d.saved && !d.name.startsWith("WH-1000XM5"));
+    for (const d of devices) await core.request("device.forget", { address: d.address, le_audio: d.le_audio });
+    await waitFor(() => expect(document.querySelectorAll(".home-device")).toHaveLength(1));
+    fireEvent.click(add()!);
+    await waitFor(() => expect(location.hash).toBe("#/devices"));
   });
 
   it("switches to another device with its Connect (one device streams at a time)", async () => {
@@ -286,7 +305,7 @@ describe("every screen renders", () => {
 
   it("the first-run setup when no adapter is on WinUSB", async () => {
     const { calls } = start("#/home", { scenario: "fresh" });
-    expect(await screen.findByRole("heading", { level: 1, name: "Set up BlueCaster" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Setup Wizard" })).toBeInTheDocument();
     mock!.setV1Running(true);
     expect(await screen.findByText("Another BlueCaster is running")).toBeInTheDocument();
     // The setup waits while the other one holds the adapter
@@ -297,7 +316,7 @@ describe("every screen renders", () => {
     // Step 2: one explanation and one button, which switches the driver and
     // downloads the firmware (issue #86)
     const setUp = await screen.findByRole("button", { name: "Set up this adapter" });
-    expect(screen.getByText(/Windows stops using this adapter/)).toBeInTheDocument();
+    expect(screen.getByText(/removes the adapter from Windows/)).toBeInTheDocument();
     expect(screen.getByText("rtl8761bu_fw.bin, rtl8761bu_config.bin")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Replace with WinUSB driver" })).toBeNull();
     // Another BlueCaster started meanwhile: no driver change until it exits
@@ -317,6 +336,26 @@ describe("every screen renders", () => {
     await waitFor(() => expect(connect).toBeDisabled());
     mock!.setV1Running(false);
     await waitFor(() => expect(connect).toBeEnabled());
+  });
+
+  it("the setup keeps a failed connection's error and starts no scan by itself", async () => {
+    const { calls, core } = start("#/home", { scenario: "fresh" });
+    fireEvent.click(await screen.findByRole("button", { name: "Next" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Set up this adapter" }));
+    await screen.findByText("The adapter is ready for BlueCaster", {}, { timeout: 5000 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    const connect = (await screen.findAllByRole("button", { name: "Connect" }, { timeout: 5000 }))[0];
+    mock!.failNextConnect("error.virtual_capture_init");
+    fireEvent.click(connect);
+    await waitFor(() => expect(core.state.snap!.stream.state).toBe("error"));
+    const scans = calls.filter((c) => c.method === "device.scan").length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(calls.filter((c) => c.method === "device.scan")).toHaveLength(scans);
+    expect(core.state.snap!.stream.state).toBe("error");
+    // The Scan button still finds devices
+    fireEvent.click(await screen.findByRole("button", { name: "Scan Devices" }));
+    await waitFor(() => expect(calls.filter((c) => c.method === "device.scan")).toHaveLength(scans + 1));
   });
 
   it("the flyout", async () => {

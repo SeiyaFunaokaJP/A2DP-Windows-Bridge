@@ -21,6 +21,7 @@ mod service;
 pub mod settings;
 pub mod stream;
 
+pub use huawei::is_huawei;
 pub use le_stream::{LeAudioPath, LeStreamDetails, le_silence_set, le_stats_line};
 pub use messages::Msg;
 pub use service::{LeCliOptions, ScannedDevice, Service, ServiceEvent, ServiceOptions};
@@ -30,6 +31,7 @@ pub use stream::{
 };
 pub mod diag;
 pub mod firmware;
+pub mod mute_output;
 pub mod receiver;
 pub mod update;
 pub mod volume_sync;

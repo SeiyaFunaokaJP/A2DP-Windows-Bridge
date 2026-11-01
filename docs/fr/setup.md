@@ -48,11 +48,12 @@ Le casque peut continuer à afficher l'ancien nom Bluetooth « A2DPWB » jusqu'�
 
 ## Étape 1 : configuration au premier lancement {#first-run}
 
-Branchez l'adaptateur Bluetooth USB et lancez BlueCaster. S'il n'existe encore aucun profil, ou si aucun adaptateur n'a WinUSB, BlueCaster ouvre **Configurer BlueCaster**, en trois étapes :
+Branchez l'adaptateur Bluetooth USB et lancez BlueCaster. S'il n'existe encore aucun profil, ou si aucun adaptateur n'a WinUSB, BlueCaster ouvre **Configurer BlueCaster**, en quatre étapes :
 
 1. **Choisir l'adaptateur** : les adaptateurs Bluetooth USB détectés. Si le vôtre n'apparaît pas, branchez-le et appuyez sur **Actualiser**. Un **Pris en charge** vert ou un **Non pris en charge** rouge indique si BlueCaster peut l'utiliser ; un adaptateur non pris en charge apparaît dans la liste mais ne peut pas être choisi
 2. **Pilote et firmware** : **Remplacer par le pilote WinUSB** (voir [Étape 2](#winusb)) et, pour les adaptateurs Realtek, les fichiers de firmware (voir [Firmware](#firmware))
-3. **Trouver vos appareils audio** : la recherche démarre d'elle-même. Mettez l'appareil audio en mode d'association et cliquez sur **Connecter** à côté (ou saisissez son adresse et cliquez sur **Utiliser**) : BlueCaster crée son profil (« *nom* | Auto », le meilleur codec de l'appareil) et se connecte ; l'appareil quitte la liste (également après **Précédent** et **Suivant**). Puis **Terminer** (voir [Étape 3](#headphones)). Le bloc **Démarrage** de cette étape propose **Démarrer avec Windows** et **Démarrer dans la zone de notification**, les mêmes interrupteurs que dans les paramètres, enregistrés aussitôt
+3. **Trouver vos appareils audio** : la recherche démarre d'elle-même. Mettez l'appareil audio en mode d'association et cliquez sur **Connecter** à côté (ou saisissez son adresse et cliquez sur **Utiliser**) : BlueCaster crée son profil (« *nom* | Auto », le meilleur codec de l'appareil) et se connecte. Il apparaît alors au-dessus de la liste. **Ajouter un appareil** le déconnecte et relance la recherche pour un autre appareil ; il reste enregistré, et un mauvais appareil peut y être oublié. Avec VB-Cable installé, les nouveaux appareils le capturent ; sans lui, l'étape explique son utilité. La première fois qu'BlueCaster le trouve ensuite, les appareils en System Loopback passent dessus
+4. **Paramètres généraux** : thème, **Démarrage**, **Notifications** et vérification des mises à jour, les mêmes commandes que dans les paramètres, enregistrées aussitôt (voir [Étape 3](#headphones))
 
 **Configurer plus tard** ignore la suite ; **Paramètres > Lancer la configuration** la rouvre.
 

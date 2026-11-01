@@ -33,7 +33,7 @@ export function App(props: { core: Core }) {
     if (l) void setLanguage(l);
   });
   createEffect(() => {
-    const theme = core.state.snap?.settings.theme ?? "dark";
+    const theme = core.state.snap?.settings.theme ?? "system";
     onCleanup(applyTheme(theme, core.transport));
   });
   if (core.transport.mica) document.documentElement.classList.add("mica");
@@ -168,8 +168,6 @@ function MainWindow() {
               >
                 <Icon name="navigation" />
               </button>
-              <img src="/app-icon.png" alt="" class="nav-logo" width="20" height="20" />
-              <span class="nav-title">{t("app.title")}</span>
             </div>
             <ul class="nav-list">
               <For each={NAV.filter((n) => n.name !== "developer" || core.state.snap?.settings.developer_mode)}>

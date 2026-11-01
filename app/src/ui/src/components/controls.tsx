@@ -296,6 +296,7 @@ export function Banner(props: {
   title?: string;
   children?: JSX.Element;
   actions?: JSX.Element;
+  onDismiss?: () => void;
 }) {
   const icon = (): IconName =>
     props.kind === "error" ? "error_circle" : props.kind === "warn" ? "warning" : props.kind === "good" ? "checkmark_circle" : "info";
@@ -313,6 +314,9 @@ export function Banner(props: {
           <div class="banner-actions">{props.actions}</div>
         </Show>
       </div>
+      <Show when={props.onDismiss}>
+        <IconButton icon="dismiss" label={t("modal.close")} onClick={() => props.onDismiss?.()} />
+      </Show>
     </div>
   );
 }
@@ -321,12 +325,14 @@ export function Banner(props: {
 export function Dialog(props: {
   open: boolean;
   title: string;
+  subtitle?: string;
   children: JSX.Element;
-  confirm: string;
-  cancel: string;
+  /** Without these two the dialog only closes: what is in it applies at once */
+  confirm?: string;
+  cancel?: string;
   danger?: boolean;
   busy?: boolean;
-  onConfirm: () => void;
+  onConfirm?: () => void;
   onCancel: () => void;
 }) {
   const id = createUniqueId();
@@ -368,16 +374,26 @@ export function Dialog(props: {
       <Portal>
         <div class="backdrop" onClick={(e) => e.target === e.currentTarget && cancel()}>
           <div class="dialog card" role="dialog" aria-modal="true" aria-labelledby={id} ref={box} onKeyDown={onKey}>
-            <h2 id={id}>{props.title}</h2>
-            <div class="dialog-body">{props.children}</div>
-            <div class="dialog-actions">
-              <Button kind="subtle" disabled={props.busy} onClick={cancel} data-autofocus>
-                {props.cancel}
-              </Button>
-              <Button kind={props.danger ? "danger" : "strong"} busy={props.busy} onClick={() => props.onConfirm()}>
-                {props.confirm}
-              </Button>
+            <div class="dialog-head">
+              <h2 id={id}>{props.title}</h2>
+              <Show when={!props.confirm}>
+                <IconButton icon="dismiss" label={t("modal.close")} onClick={cancel} data-autofocus />
+              </Show>
             </div>
+            <Show when={props.subtitle}>
+              <p class="hint dialog-subtitle">{props.subtitle}</p>
+            </Show>
+            <div class="dialog-body">{props.children}</div>
+            <Show when={props.confirm}>
+              <div class="dialog-actions">
+                <Button kind="subtle" disabled={props.busy} onClick={cancel} data-autofocus>
+                  {props.cancel}
+                </Button>
+                <Button kind={props.danger ? "danger" : "strong"} busy={props.busy} onClick={() => props.onConfirm?.()}>
+                  {props.confirm}
+                </Button>
+              </div>
+            </Show>
           </div>
         </div>
       </Portal>

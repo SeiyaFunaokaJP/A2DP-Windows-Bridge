@@ -14,6 +14,7 @@ use pipeline::{BufferPreset, CaptureInput, InputFormat, Pipeline, PipelineConfig
 
 use crate::health::{CaptureReading, StreamHealth};
 use crate::messages::Msg;
+use crate::mute_output::OutputMute;
 use crate::service::Inner;
 
 /// What to stream (from a profile, or the command line)
@@ -51,13 +52,33 @@ pub struct StreamRequest {
     pub bit_depth: Option<u8>,
     pub source: SourceRequest,
     pub volume_sync: VolumeSync,
+    /// System Loopback mutes the default output device while streaming
+    /// (settings `mute_output`)
+    pub mute_output: bool,
     pub max_media_payload: u16,
     /// LE Audio (experimental) instead of A2DP: the le_stream session
     /// streams to `device` and these extra devices. None: A2DP.
     pub le: Option<bt_host::LeRequest>,
 }
 
+/// The bitpools of a request ([`crate::profiles::Profile::bitpools`]; 0 = Auto)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Bitpools {
+    pub sbc: u8,
+    pub sbcxq: u8,
+    pub sbc_min: u8,
+    pub sbcxq_min: u8,
+}
+
 impl StreamRequest {
+    /// The bitpools, as a profile saved while streaming has them
+    pub fn set_bitpools(&mut self, b: Bitpools) {
+        self.sbc_bitpool = b.sbc;
+        self.sbcxq_bitpool = b.sbcxq;
+        self.sbc_min_bitpool = b.sbc_min;
+        self.sbcxq_min_bitpool = b.sbcxq_min;
+    }
+
     /// The SBC setup of a `kind` stream (SBC or SBC XQ): [`Self::sbc`] with
     /// that codec's minimum bitpool, as the SET_CONFIGURATION and the
     /// encoder take it
@@ -68,6 +89,12 @@ impl StreamRequest {
             _ => 0,
         };
         codec::sbc::SbcParams { min_bitpool, ..self.sbc }
+    }
+
+    /// Whether a session capturing `source` mutes the default output device.
+    /// Not Application capture: other apps may play there on purpose.
+    pub fn mutes_output(&self, source: &SourceRequest) -> bool {
+        self.mute_output && *source == SourceRequest::SystemLoopback
     }
 }
 
@@ -614,6 +641,12 @@ fn open_source(request: &SourceRequest, rate: u32) -> Result<Option<(DeviceSourc
     }
 }
 
+/// System Loopback may stand in when `source` cannot be opened: a chosen
+/// virtual device only, an empty choice stays the error it is
+fn loopback_may_replace(source: &SourceRequest) -> bool {
+    matches!(source, SourceRequest::VirtualDevice { id, .. } if !id.is_empty())
+}
+
 /// What the source [`open_source`] opened delivers. Application capture:
 /// float stereo at the requested rate, known before the app runs.
 fn source_format(opened: &Option<(DeviceSource, Capture)>, rate: u32) -> Format {
@@ -869,6 +902,13 @@ enum LinkCheck {
     SleepThrough,
 }
 
+/// What connects again only with Reconnect automatically on: the device
+/// gone, by itself or through the PC's sleep. A stack that stopped working is
+/// recovered either way.
+fn needs_auto_reconnect(check: LinkCheck) -> bool {
+    matches!(check, LinkCheck::Reconnect | LinkCheck::SleepThrough | LinkCheck::Restart(RESUMED))
+}
+
 fn check_link(lost: bool, stalled: bool, stale: bool, suspending: bool) -> LinkCheck {
     if suspending {
         // A stack left from an earlier sleep is replaced after this one;
@@ -920,7 +960,12 @@ fn wait_for_device(inner: &Inner, host: &BtHost, device: [u8; 6], pipeline: &mut
     let t = Instant::now();
     let back = loop {
         inner.wait_tick(Duration::from_millis(200));
-        if inner.stop_requested() || inner.power.suspending() || inner.power.stale() || host.stalled() {
+        if inner.stop_requested()
+            || inner.power.suspending()
+            || inner.power.stale()
+            || host.stalled()
+            || !inner.auto_reconnect()
+        {
             break false;
         }
         match host.link_came_up() {
@@ -1325,11 +1370,25 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // Restored while the headphones are off: switched again when they are back
     let mut switch_default_again = false;
     default_guard.follow(&req.source);
-    let opened = match open_source(&req.source, preferred) {
+    // A virtual device that cannot be opened (another app may hold it): this
+    // session sends what Windows plays, the profile stays as it is
+    let mut source = req.source.clone();
+    let mut source_text = None;
+    let opened = match open_source(&source, preferred) {
         Ok(o) => o,
         Err(m) => {
-            host.disconnect();
-            return inner.notify(StreamState::Error, m);
+            let stand_in = loopback_may_replace(&source).then(|| {
+                tracing::warn!("audio source: {source} cannot be opened, capturing System Loopback instead");
+                default_guard.follow(&SourceRequest::SystemLoopback);
+                open_source(&SourceRequest::SystemLoopback, preferred).ok()
+            });
+            let Some(o) = stand_in.flatten() else {
+                host.disconnect();
+                return inner.notify(StreamState::Error, m);
+            };
+            source = SourceRequest::SystemLoopback;
+            source_text = Some(Msg::new("status.connected_source_fallback"));
+            o
         }
     };
     let format = source_format(&opened, preferred);
@@ -1438,6 +1497,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             || sbc_abr(&req, kind),
         peer: peer_params(&remote, kind, channels, &req),
     };
+    // What the encoder goes by: `req` with the bitpools chosen during the stream
+    let mut encoder_req = req.clone();
     tracing::debug!("encoder config: {encoder_config:?}");
     let encoder = match codec::create(kind, &encoder_config) {
         Ok(e) => e,
@@ -1465,7 +1526,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     }
 
     tracing::debug!("stream: started {} ms after the request", session_start.elapsed().as_millis());
-    inner.notify(StreamState::Streaming, fallback_text.clone().unwrap_or_else(|| Msg::new("status.connected")));
+    let connected = fallback_text.clone().or(source_text);
+    inner.notify(StreamState::Streaming, connected.unwrap_or_else(|| Msg::new("status.connected")));
     let mut info = StreamInfo {
         codec: kind.name().into(),
         bitrate_kbps: bitrate,
@@ -1479,7 +1541,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         requested_in_use: matches!(replaced, Some((_, Unavailable::SepInUse { .. }))),
         abr,
         bitrate_capped,
-        source: req.source.info(),
+        source: source.info(),
         details: Some(Box::new(codec_details(kind, &config, &remote, &*encoder, mtu, format.sample_rate))),
     };
     inner.save_device(&addr, &req.device_name);
@@ -1491,7 +1553,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     };
     let (pipeline, input) = start_pipeline(encoder, format, channels, mtu, sink, &host);
     let input = SharedInput(Arc::new(Mutex::new(input)));
-    let Some(mut active) = start_source(opened, &req.source, preferred, &input) else {
+    let Some(mut active) = start_source(opened, &source, preferred, &input) else {
         if let Some(s) = pipeline.stop() {
             host.return_media_sink(s);
         }
@@ -1502,8 +1564,10 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     inner.stream_info(info.clone());
 
     // Headphone volume and a Windows volume act as one (volume_sync.rs)
-    let mut volume_choice = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &req.source);
+    let mut volume_choice = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &source);
     let mut volume = volume_choice.clone().map(crate::volume_sync::VolumeSyncer::new);
+    let mut output_mute = OutputMute::new();
+    output_mute.tick(req.mutes_output(&source));
 
     // A reconnect builds the configuration anew from what the device lists
     // then (v1 read its capabilities again)
@@ -1525,7 +1589,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // ---- streaming ----
     let mut pipeline = Some(pipeline);
     // What the session captures: the request's until another source is chosen
-    let mut current_source = req.source.clone();
+    let mut current_source = source;
     let mut app_ticks = 0u32;
     // What the capture delivers now: a device opened again may come back
     // with other channels or samples (the rate is the stream's, converted
@@ -1543,6 +1607,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         if let Some(v) = volume.as_mut() {
             v.tick(true, &*host);
         }
+        output_mute.tick(req.mutes_output(&current_source));
         inner.remember_volume(&addr, host.remote_volume());
 
         // Another source chosen: only the capture changes, the encoder (at
@@ -1594,6 +1659,45 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             info.source.waiting = active.waiting();
             inner.stream_info(info.clone());
             current_source = next;
+        }
+
+        // Other bitpools chosen: the link allows the whole range, so only
+        // the encoder changes (issue #86: the slider is heard as it moves)
+        if let Some(b) = inner.take_bitpool_change() {
+            encoder_req.set_bitpools(b);
+            encoder_config.peer = peer_params(&remote, kind, channels, &encoder_req);
+            let sink = pipeline.take().and_then(Pipeline::stop);
+            let Some(sink) = sink else {
+                inner.notify(StreamState::Error, Msg::new("error.encode_thread"));
+                lost_for_good = true;
+                break;
+            };
+            let encoder = match codec::create(kind, &encoder_config) {
+                Ok(e) => e,
+                Err(e) => {
+                    tracing::error!("encoder: {e}");
+                    host.return_media_sink(sink);
+                    inner.notify(StreamState::Error, Msg::new("error.encoder_init"));
+                    lost_for_good = true;
+                    break;
+                }
+            };
+            tracing::info!("{}: bitpool changed, now {} kbps", kind.name(), encoder.bitrate_kbps());
+            info.bitrate_kbps = encoder.bitrate_kbps();
+            info.details = Some(Box::new(codec_details(
+                kind,
+                &config,
+                &remote,
+                &*encoder,
+                encoder_config.mtu,
+                format.sample_rate,
+            )));
+            let (p, new_input) = start_pipeline(encoder, input_format, channels, encoder_config.mtu, sink, &host);
+            if let Ok(mut i) = input.0.lock() {
+                *i = new_input;
+            }
+            pipeline = Some(p);
+            inner.stream_info(info.clone());
         }
 
         // Application capture follows the app: it may quit and start again
@@ -1669,6 +1773,21 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         // again on it
         let lost = host.check_disconnected();
         let check = check_link(lost, host.stalled(), inner.power.stale(), inner.power.suspending());
+        if needs_auto_reconnect(check) && !inner.auto_reconnect() {
+            tracing::info!("link check {check:?}: reconnecting is off, the session ends");
+            if check == LinkCheck::SleepThrough {
+                if let Some(p) = pipeline.take() {
+                    let _ = p.stop();
+                }
+                inner.shutdown_host_for_sleep();
+            }
+            // Not connected again by a Bluetooth restart either
+            inner.waiting_for_device();
+            inner.done_waiting_for_device(false);
+            inner.notify(StreamState::Idle, Msg::new("status.device_off"));
+            lost_for_good = true;
+            break;
+        }
         // Headphones turned back on: connecting to them is no failure
         let mut back_on = false;
         let mut restart_why = match check {
@@ -1685,6 +1804,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                     default_guard = DefaultDeviceGuard(None);
                     switch_default_again = true;
                 }
+                output_mute.tick(false);
                 if !wait_for_device(inner, &host, req.device, &mut pipeline) {
                     lost_for_good = true;
                     break;
@@ -1871,7 +1991,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         // The encoder follows the new stream: its MTU and the device's
         // settings (e.g. its SBC bitpool range) may have changed
         let new_config =
-            EncoderConfig { mtu: r.mtu, peer: peer_params(&r.remote, kind, channels, &req), ..encoder_config };
+            EncoderConfig { mtu: r.mtu, peer: peer_params(&r.remote, kind, channels, &encoder_req), ..encoder_config };
         if r.mtu != encoder_config.mtu {
             tracing::info!("reconnect: media payload size {} -> {}", encoder_config.mtu, r.mtu);
         }
@@ -1961,9 +2081,14 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     host.stop_stream();
     host.disconnect();
     host.set_restore_volume(None);
+    drop(output_mute);
     drop(default_guard);
     if !lost_for_good {
         inner.notify(StreamState::Idle, Msg::new("status.ready"));
+    } else if !inner.auto_reconnect() {
+        // A stack left running would accept the headphones when they are
+        // turned on, which they may mean for a phone
+        inner.shutdown_host();
     }
 }
 
@@ -1991,6 +2116,15 @@ mod tests {
         assert!(!sbc_abr(&req("ldac", true), CodecKind::Sbc));
         assert!(!sbc_abr(&req("sbcxq", true), CodecKind::Sbc));
         assert!(!sbc_abr(&req("faststream", true), CodecKind::FastStream));
+    }
+
+    #[test]
+    fn only_a_stopped_adapter_recovers_with_reconnecting_off() {
+        assert!(needs_auto_reconnect(LinkCheck::Reconnect));
+        assert!(needs_auto_reconnect(LinkCheck::SleepThrough));
+        assert!(needs_auto_reconnect(LinkCheck::Restart(RESUMED)));
+        assert!(!needs_auto_reconnect(LinkCheck::Restart(ADAPTER_STOPPED)));
+        assert!(!needs_auto_reconnect(LinkCheck::Fine));
     }
 
     #[test]
@@ -2074,6 +2208,16 @@ mod tests {
         let mut h = DefaultHandover::default();
         assert_eq!(h.end(Some("{cable}"), "{speakers}".into()).as_deref(), Some("{speakers}"));
         assert_eq!(h, DefaultHandover::default());
+    }
+
+    #[test]
+    fn loopback_stands_in_for_a_chosen_virtual_device_only() {
+        let virt = |id: &str| SourceRequest::VirtualDevice { id: id.into(), name: "CABLE".into(), auto_switch: true };
+        assert!(loopback_may_replace(&virt("{x}")));
+        assert!(!loopback_may_replace(&virt("")));
+        assert!(!loopback_may_replace(&SourceRequest::SystemLoopback));
+        assert!(!loopback_may_replace(&SourceRequest::TestTone));
+        assert!(!loopback_may_replace(&SourceRequest::Application { exe: "x.exe".into() }));
     }
 
     #[test]

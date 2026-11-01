@@ -245,15 +245,18 @@ export function codecLabelKey(name: string): string {
 /**
  * Whether a device offers a codec, from the codec keys the core learnt when
  * it last connected (Device.codecs: "ldac", "aac", ...; empty: not known
- * until the first connection). Auto takes what the device offers.
+ * until the first connection). Auto takes what the device offers. One it may
+ * offer only once chosen (`onRequest`, Device.codecs_on_request) is not known
+ * until then (issue #30).
  */
 export type CodecSupport = "offered" | "not_offered" | "unknown";
 
-export function codecSupport(codec: string, known: readonly string[]): CodecSupport {
+export function codecSupport(codec: string, known: readonly string[], onRequest: readonly string[] = []): CodecSupport {
   if (known.length === 0) return "unknown";
   if (codec === "auto") return "offered";
   const id = codec.toLowerCase();
-  return known.some((k) => k.toLowerCase() === id) ? "offered" : "not_offered";
+  if (known.some((k) => k.toLowerCase() === id)) return "offered";
+  return onRequest.includes(id) ? "unknown" : "not_offered";
 }
 
 /**

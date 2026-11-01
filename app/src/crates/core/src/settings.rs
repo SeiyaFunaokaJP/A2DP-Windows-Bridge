@@ -11,9 +11,10 @@ use bt_host::media::{MEDIA_PAYLOAD_LIMIT_DEFAULT, clamp_media_payload_limit};
 /// settings.json's format: 1 is v1's (which wrote no schema_version), 2 is
 /// v2's, 3 has LE Audio on by default, 4 remembers each device's volume by
 /// default, 5 has one Auto-select for every device, 6 one Windows Volume
-/// Sync, media keys and remember volume for every device, 7 the folder's
-/// sub folders (3.0.0; see migrate.rs)
-pub const SCHEMA_VERSION: u32 = 7;
+/// Sync, media keys and remember volume for every device, 7 has what
+/// forgetting a device left behind gone, 8 the folder's sub folders (3.0.0;
+/// see migrate.rs)
+pub const SCHEMA_VERSION: u32 = 8;
 /// The first schema_version v2 wrote: a lower one is v1's folder
 pub const FIRST_V2_SCHEMA: u32 = 2;
 
@@ -59,7 +60,7 @@ fn pick_language(tags: &[String]) -> &'static str {
     tags.iter().find_map(|t| app_language_for(t)).unwrap_or("en")
 }
 fn default_theme() -> String {
-    "dark".into()
+    "system".into()
 }
 fn default_battery_low() -> u8 {
     20
@@ -97,6 +98,9 @@ pub struct Settings {
     /// A click on the tray icon opens the main window instead of the tray
     /// flyout (issue #86; off by default)
     pub tray_click_opens_window: bool,
+    /// The flyout opens above Windows 11's Quick Settings, along with them
+    /// (off by default)
+    pub flyout_with_quick_settings: bool,
     /// A notification when a device connects (issue #86): its name, codec,
     /// what the codec runs with and the battery. On by default.
     #[serde(default = "default_true")]
@@ -124,6 +128,14 @@ pub struct Settings {
     /// for every device.
     #[serde(default = "default_true")]
     pub remember_volume: bool,
+    /// A session whose device went away connects it again by itself, and
+    /// takes it when it comes back. Off: the session ends and the adapter is
+    /// released, so headphones turned off can go to a phone instead.
+    #[serde(default = "default_true")]
+    pub auto_reconnect: bool,
+    /// No VB-Cable when last looked: once it is there, the profiles that
+    /// capture System Loopback take it, one time (issue #86)
+    pub awaiting_vb_cable: bool,
     pub saved_volumes: BTreeMap<String, i32>,
     /// Before schema 6: per-device overrides of media_keys and
     /// remember_volume. Those are one setting for every device now (issue
@@ -136,6 +148,9 @@ pub struct Settings {
     /// another device, set in developer mode); off for every stream
     #[serde(default = "default_true")]
     pub volume_sync: bool,
+    /// System Loopback mutes the default output device while streaming
+    #[serde(default = "default_true")]
+    pub mute_output: bool,
 
     pub debug_mode: bool,
     /// Developer mode: overrides of the codec and media path (in force only
@@ -265,6 +280,7 @@ impl Default for Settings {
             start_minimized: false,
             minimize_to_tray: true,
             tray_click_opens_window: false,
+            flyout_with_quick_settings: false,
             notify_connected: true,
             battery_low_percent: default_battery_low(),
             check_updates_on_startup: true,
@@ -272,9 +288,12 @@ impl Default for Settings {
             include_prereleases: default_prereleases(),
             media_keys: true,
             remember_volume: true,
+            auto_reconnect: true,
+            awaiting_vb_cable: false,
             saved_volumes: BTreeMap::new(),
             device_options: None,
             volume_sync: true,
+            mute_output: true,
             debug_mode: false,
             dev_overrides: codec::dev::DevOverrides::default(),
             dev_log: DevLog::default(),
@@ -479,6 +498,10 @@ mod tests {
             std::fs::write(Settings::path(&dir), format!(r#"{{"theme":"{v1}"}}"#)).unwrap();
             assert_eq!(Settings::load(&dir).theme, v2, "{v1}");
         }
+        // A file without one follows Windows, as a new install does
+        std::fs::write(Settings::path(&dir), "{}").unwrap();
+        assert_eq!(Settings::load(&dir).theme, "system");
+        assert_eq!(Settings::default().theme, "system");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
