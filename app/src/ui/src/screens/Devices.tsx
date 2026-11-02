@@ -34,7 +34,7 @@ export function Devices() {
         <h1>{t("ui.nav.devices")}</h1>
       </header>
       <Show when={noCable()}>
-        <section class="card">
+        <section class="card device-note">
           <VbCableNote />
         </section>
       </Show>

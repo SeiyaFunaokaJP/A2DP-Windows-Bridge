@@ -2,7 +2,7 @@
 // comparison bars and whether the device supported it when it last
 // connected (green / red, issue #86), and behind "..." that codec's
 // quality, sample rate, bit depth
-// and ABR (SBC and SBC XQ: bitpool and frame setup). The codecs offered
+// and ABR (SBC and SBC XQ: bitpool). The codecs offered
 // and what they can be set to come from lib/codecs.ts, as far as the
 // device listed them when it last connected (issue #86: its rates, bit
 // depths, largest bit rate and bitpool range).
@@ -27,17 +27,7 @@ import {
   type CodecSpec,
   type CodecSupport,
 } from "../lib/codecs";
-import {
-  SBC_ALLOCATIONS,
-  SBC_BLOCKS,
-  SBC_CHANNEL_MODES,
-  SBC_SUBBANDS,
-  sbcKbpsText,
-  sbcOffered,
-  sbcRate,
-  sbcSetup,
-  type SbcCaps,
-} from "../lib/sbc";
+import { sbcKbpsText, sbcRate, sbcSetup, type SbcCaps } from "../lib/sbc";
 import { Button, Check, Dialog, Field, IconButton, Select } from "./controls";
 import { Icon } from "./Icon";
 
@@ -162,10 +152,6 @@ export type CodecChoice = Pick<
   | "sbcxq_bitpool"
   | "sbc_min_bitpool"
   | "sbcxq_min_bitpool"
-  | "sbc_blocks"
-  | "sbc_subbands"
-  | "sbc_allocation"
-  | "sbc_channel_mode"
 >;
 
 export function codecChoice(p: CodecChoice): CodecChoice {
@@ -179,10 +165,6 @@ export function codecChoice(p: CodecChoice): CodecChoice {
     sbcxq_bitpool: p.sbcxq_bitpool,
     sbc_min_bitpool: p.sbc_min_bitpool,
     sbcxq_min_bitpool: p.sbcxq_min_bitpool,
-    sbc_blocks: p.sbc_blocks,
-    sbc_subbands: p.sbc_subbands,
-    sbc_allocation: p.sbc_allocation,
-    sbc_channel_mode: p.sbc_channel_mode,
   };
 }
 
@@ -282,9 +264,9 @@ export function BitpoolSlider(props: {
 
 /**
  * One codec's quality, sample rate, bit depth and ABR (what "Advanced" had
- * for the chosen codec); SBC and SBC XQ also their bitpool and frame setup,
- * offering only what the device listed when it last connected (`sbcCaps`,
- * and for every codec its rates, bit depths and largest bit rate: `caps`,
+ * for the chosen codec); SBC and SBC XQ also their bitpool, offering only
+ * what the device listed when it last connected (`sbcCaps`, and for every
+ * codec its rates, bit depths and largest bit rate: `caps`,
  * issue #86), with the bit rate that gives. A codec with one quality shows
  * it rather than a choice. It starts from the profile's values fitted
  * to the codec, or from what that codec was last set to (`kept`: the
@@ -313,10 +295,6 @@ export function CodecSettings(props: {
     sbcxq_bitpool: 0,
     sbc_min_bitpool: 0,
     sbcxq_min_bitpool: 0,
-    sbc_blocks: 0,
-    sbc_subbands: 0,
-    sbc_allocation: "",
-    sbc_channel_mode: "",
   });
   createEffect(
     on(
@@ -325,8 +303,8 @@ export function CodecSettings(props: {
         if (!s) return;
         const kept = props.kept(s.id);
         const p = s.id === props.profile.codec || !kept ? props.profile : { ...kept, codec: s.id };
-        // From another codec's values: without its ABR or SBC frame setup
-        // (SBC and SBC XQ apart, issue #86)
+        // From another codec's values: without its ABR (SBC and SBC XQ
+        // apart, issue #86)
         const from = carryToCodec(codecChoice(p), s.id);
         // SBC / SBC XQ: no quality to choose, Auto is the highest bitpool
         const fitted = s.bitpool ? { ...from, quality: "hq" } : from;
@@ -386,22 +364,6 @@ export function CodecSettings(props: {
     const offered = offeredBitDepths(v.codec, caps());
     return offered.includes(v.bit_depth) ? offered : [...offered, v.bit_depth];
   };
-  // The frame setup: Auto, then what the device listed (the value chosen
-  // stays, marked, when it did not list it: it falls back when connecting)
-  const sbcChoice = <T extends string | number>(
-    field: "blocks" | "subbands" | "allocations" | "channel_modes",
-    values: T[],
-    current: T,
-    label: (v: T) => string,
-  ) => [
-    { value: (typeof current === "number" ? 0 : "") as T, label: t("codec.auto") },
-    ...values
-      .filter((x) => x === current || sbcOffered(props.sbcCaps, field, x))
-      .map((x) => ({
-        value: x,
-        label: sbcOffered(props.sbcCaps, field, x) ? label(x) : t("ui.profile.sbc_not_offered", label(x)),
-      })),
-  ];
   // The bit rate it gives, as the core works it out (one figure, issue #86)
   const sbcBitrate = () => (bitpoolError() ? "" : sbcKbpsText(v, props.sbcCaps));
   const changed = () => {
@@ -420,8 +382,8 @@ export function CodecSettings(props: {
       onCancel={() => props.onClose()}
     >
       <div class="codec-settings">
-        {/* SBC and SBC XQ: the bitpool and frame setup below decide the bit
-            rate, shown here as worked out (issue #86) */}
+        {/* SBC and SBC XQ: the bitpool below decides the bit rate, shown
+            here as worked out (issue #86) */}
         <Show
           when={!spec().bitpool}
           fallback={
@@ -540,53 +502,6 @@ export function CodecSettings(props: {
               </div>
             )}
           </Field>
-          <fieldset class="sbc-frame">
-            <legend class="field-label">{t("ui.profile.sbc_frame")}</legend>
-            <Field label={t("ui.diag.cd_blocks")}>
-              {(id) => (
-                <Select
-                  id={id}
-                  value={v.sbc_blocks}
-                  options={sbcChoice("blocks", SBC_BLOCKS, v.sbc_blocks, String)}
-                  onChange={(x) => set("sbc_blocks", x)}
-                />
-              )}
-            </Field>
-            <Field label={t("ui.diag.cd_subbands")}>
-              {(id) => (
-                <Select
-                  id={id}
-                  value={v.sbc_subbands}
-                  options={sbcChoice("subbands", SBC_SUBBANDS, v.sbc_subbands, String)}
-                  onChange={(x) => set("sbc_subbands", x)}
-                />
-              )}
-            </Field>
-            <Field label={t("ui.diag.cd_allocation")}>
-              {(id) => (
-                <Select
-                  id={id}
-                  value={v.sbc_allocation}
-                  options={sbcChoice("allocations", SBC_ALLOCATIONS, v.sbc_allocation, (a) => t(`ui.diag.cd_alloc.${a}`))}
-                  onChange={(x) => set("sbc_allocation", x)}
-                />
-              )}
-            </Field>
-            {/* SBC XQ is dual channel by definition */}
-            <Show when={v.codec === "sbc"}>
-              <Field label={t("ui.diag.cd_channel_mode")}>
-                {(id) => (
-                  <Select
-                    id={id}
-                    value={v.sbc_channel_mode}
-                    options={sbcChoice("channel_modes", SBC_CHANNEL_MODES, v.sbc_channel_mode, (m) => t(`ui.diag.cd_mode.${m}`))}
-                    onChange={(x) => set("sbc_channel_mode", x)}
-                  />
-                )}
-              </Field>
-            </Show>
-            <p class="hint">{t(v.codec === "sbc" ? "ui.profile.sbc_frame_hint" : "ui.profile.sbc_frame_hint_xq")}</p>
-          </fieldset>
         </Show>
       </div>
     </Dialog>

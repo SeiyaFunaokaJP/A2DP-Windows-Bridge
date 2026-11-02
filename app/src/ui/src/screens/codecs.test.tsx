@@ -728,32 +728,19 @@ describe("SBC settings", () => {
     expect(rate).toBe(within(dialog).getByLabelText(t("connection.quality")));
     expect(rate).toHaveTextContent("≈ 357 kbps");
 
-    // The WH-1000XM5 lists 8 subbands and loudness only (the mock's XM5_SBC)
-    const subbands = within(dialog).getByLabelText(t("ui.diag.cd_subbands"));
-    expect(within(subbands).getAllByRole("option").map((o) => o.textContent)).toEqual([t("codec.auto"), "8"]);
-    const alloc = within(dialog).getByLabelText(t("ui.diag.cd_allocation"));
-    expect(within(alloc).queryByRole("option", { name: t("ui.diag.cd_alloc.snr") })).toBeNull();
-    const blocks = within(dialog).getByLabelText(t("ui.diag.cd_blocks"));
-    expect(within(blocks).getAllByRole("option")).toHaveLength(5);
+    // The frame itself is not a choice (issue #86)
+    for (const label of ["cd_blocks", "cd_subbands", "cd_allocation", "cd_channel_mode"])
+      expect(within(dialog).queryByLabelText(t(`ui.diag.${label}`))).toBeNull();
 
-    // 8 blocks: shorter frames, a higher rate
-    fireEvent.change(blocks, { target: { value: "8" } });
-    await waitFor(() => expect(rate).toHaveTextContent("≈ 396 kbps"));
-    // Stereo at 44.1 kHz with bitpool 40
-    fireEvent.change(within(dialog).getByLabelText(t("ui.diag.cd_channel_mode")), { target: { value: "stereo" } });
+    // 44.1 kHz with bitpool 40: 4 + 8 + (16 * 40 + 8) / 8 = 93 bytes per 128 samples
     fireEvent.change(within(dialog).getByLabelText(t("connection.sample_rate")), { target: { value: "44100" } });
     fireEvent.input(within(dialog).getByRole("slider", { name: t("ui.profile.sbc_bitpool_max") }), { target: { value: "40" } });
-    // 4 + 8 + 8 * 40 / 8 = 52 bytes per 64 samples
-    await waitFor(() => expect(rate).toHaveTextContent("≈ 286 kbps"));
+    await waitFor(() => expect(rate).toHaveTextContent("≈ 256 kbps"));
 
     fireEvent.click(within(dialog).getByRole("button", { name: t("modal.close") }));
     await waitFor(() =>
       expect(saves(calls).at(-1)?.profile.codec_settings).toMatchObject({
         sbc: {
-          sbc_blocks: 8,
-          sbc_subbands: 0,
-          sbc_allocation: "",
-          sbc_channel_mode: "stereo",
           sbc_bitpool: 40,
           sample_rate: 44100,
         },
@@ -836,26 +823,16 @@ describe("SBC settings", () => {
     );
   });
 
-  it("SBC XQ has no channel mode of its own", async () => {
+  it("SBC XQ shows its bit rate at its own bitpool", async () => {
     start("#/codecs");
     // Not among what the mock's WH-1000XM5 supported: shown when not hidden
     fireEvent.click(await screen.findByRole("switch", { name: (n) => n.startsWith(t("ui.profile.codecs_hide")) }));
     const dialog = await codecSettings(await section("WH-1000XM5"), "codec.sbc_xq");
-    expect(within(dialog).queryByLabelText(t("ui.diag.cd_channel_mode"))).toBeNull();
     // Bitpool 43 per channel at 48 kHz
     expect(within(dialog).getByRole("status")).toHaveTextContent("≈ 552 kbps");
   });
 
-  it("plain SBC offers no dual channel: that is SBC XQ (issue #86)", async () => {
-    start("#/codecs");
-    const dialog = await codecSettings(await section("WH-1000XM5"), "codec.sbc");
-    const mode = within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"));
-    expect(within(mode).getAllByRole("option").map((o) => o.textContent)).toEqual(
-      [t("codec.auto"), ...["joint_stereo", "stereo", "mono"].map((m) => t(`ui.diag.cd_mode.${m}`))],
-    );
-  });
-
-  it("SBC's ABR and frame setup do not carry to SBC XQ, nor back (issue #86)", async () => {
+  it("SBC's ABR does not carry to SBC XQ, nor back (issue #86)", async () => {
     const { calls } = start("#/codecs");
     fireEvent.click(await screen.findByRole("switch", { name: (n) => n.startsWith(t("ui.profile.codecs_hide")) }));
     const wh = await section("SRS-XB13");
@@ -864,25 +841,22 @@ describe("SBC settings", () => {
     await settled(wh);
     let dialog = await codecSettings(wh, "codec.sbc");
     fireEvent.click(within(dialog).getByRole("switch", { name: t("connection.abr") }));
-    fireEvent.change(within(dialog).getByLabelText(t("ui.diag.cd_blocks")), { target: { value: "8" } });
     fireEvent.click(within(dialog).getByRole("button", { name: t("modal.close") }));
-    await waitFor(() => expect(saves(calls).at(-1)?.profile).toMatchObject({ codec: "sbc", abr: true, sbc_blocks: 8 }));
+    await waitFor(() => expect(saves(calls).at(-1)?.profile).toMatchObject({ codec: "sbc", abr: true }));
     await settled(wh);
 
     dialog = await codecSettings(wh, "codec.sbc_xq");
     expect(within(dialog).getByRole("switch", { name: t("connection.abr") })).not.toBeChecked();
-    expect(within(dialog).getByLabelText(t("ui.diag.cd_blocks"))).toHaveValue("0");
     fireEvent.click(within(dialog).getByRole("button", { name: t("modal.close") }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     fireEvent.click(within(wh).getByRole("radio", { name: /SBC XQ/ }));
-    await waitFor(() => expect(saves(calls).at(-1)?.profile).toMatchObject({ codec: "sbcxq", abr: false, sbc_blocks: 0 }));
-    expect(saves(calls).at(-1)?.profile.codec_settings).toMatchObject({ sbc: { abr: true, sbc_blocks: 8 } });
+    await waitFor(() => expect(saves(calls).at(-1)?.profile).toMatchObject({ codec: "sbcxq", abr: false }));
+    expect(saves(calls).at(-1)?.profile.codec_settings).toMatchObject({ sbc: { abr: true } });
     await settled(wh);
 
     // SBC's own come back as they were
     dialog = await codecSettings(wh, "codec.sbc");
     expect(within(dialog).getByRole("switch", { name: t("connection.abr") })).toBeChecked();
-    expect(within(dialog).getByLabelText(t("ui.diag.cd_blocks"))).toHaveValue("8");
   });
 });
 

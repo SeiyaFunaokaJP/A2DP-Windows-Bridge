@@ -185,10 +185,6 @@ fn to_ipc_profile(p: &CoreProfile, legacy: u16) -> Profile {
         sbcxq_bitpool: p.sbcxq_bitpool,
         sbc_min_bitpool: p.sbc_min_bitpool,
         sbcxq_min_bitpool: p.sbcxq_min_bitpool,
-        sbc_blocks: p.sbc_blocks,
-        sbc_subbands: p.sbc_subbands,
-        sbc_allocation: p.sbc_allocation.clone(),
-        sbc_channel_mode: p.sbc_channel_mode.clone(),
         codec_settings: p.codec_settings.iter().map(|(c, v)| (c.clone(), to_ipc_codec_values(v))).collect(),
         codec_order: p.codec_order.clone(),
     }
@@ -204,10 +200,6 @@ fn to_ipc_codec_values(v: &profiles::CodecValues) -> ipc::CodecValues {
         sbcxq_bitpool: v.sbcxq_bitpool,
         sbc_min_bitpool: v.sbc_min_bitpool,
         sbcxq_min_bitpool: v.sbcxq_min_bitpool,
-        sbc_blocks: v.sbc_blocks,
-        sbc_subbands: v.sbc_subbands,
-        sbc_allocation: v.sbc_allocation.clone(),
-        sbc_channel_mode: v.sbc_channel_mode.clone(),
     }
 }
 
@@ -221,10 +213,6 @@ fn from_ipc_codec_values(v: &ipc::CodecValues) -> profiles::CodecValues {
         sbcxq_bitpool: v.sbcxq_bitpool,
         sbc_min_bitpool: v.sbc_min_bitpool,
         sbcxq_min_bitpool: v.sbcxq_min_bitpool,
-        sbc_blocks: v.sbc_blocks,
-        sbc_subbands: v.sbc_subbands,
-        sbc_allocation: v.sbc_allocation.clone(),
-        sbc_channel_mode: v.sbc_channel_mode.clone(),
     }
 }
 
@@ -256,10 +244,6 @@ fn merge_profile(base: Option<&CoreProfile>, p: &Profile) -> CoreProfile {
     c.sbcxq_bitpool = p.sbcxq_bitpool;
     c.sbc_min_bitpool = p.sbc_min_bitpool;
     c.sbcxq_min_bitpool = p.sbcxq_min_bitpool;
-    c.sbc_blocks = p.sbc_blocks;
-    c.sbc_subbands = p.sbc_subbands;
-    c.sbc_allocation = p.sbc_allocation.clone();
-    c.sbc_channel_mode = p.sbc_channel_mode.clone();
     // The codec in use has its settings in the fields above
     c.codec_settings = p
         .codec_settings
