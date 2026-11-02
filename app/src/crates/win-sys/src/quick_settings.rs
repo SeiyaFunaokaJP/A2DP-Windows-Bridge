@@ -10,18 +10,21 @@ use std::cell::Cell;
 use std::mem::ManuallyDrop;
 use std::sync::OnceLock;
 
-use windows::Win32::Foundation::{HWND, RECT};
+use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
+use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::System::Variant::{VARIANT, VT_BSTR, VariantClear};
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, HWINEVENTHOOK, IUIAutomation, IUIAutomationCondition, SetWinEventHook, TreeScope_Descendants,
     UIA_AutomationIdPropertyId,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EVENT_SYSTEM_FOREGROUND, GetClassNameW, GetForegroundWindow, GetWindowRect, IsWindowVisible, WINEVENT_OUTOFCONTEXT,
-    WINEVENT_SKIPOWNPROCESS,
+    EVENT_SYSTEM_FOREGROUND, EnumWindows, GWL_EXSTYLE, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW,
+    GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT,
 };
-use windows::core::BSTR;
+use windows::core::{BOOL, BSTR};
 
 /// The window's class, the same in every language
 const WINDOW_CLASS: &str = "ControlCenterWindow";
@@ -145,6 +148,75 @@ impl Reader {
     }
 }
 
+/// `panels` taken up to the cards other apps keep on top of them (issue #86:
+/// EncoDeck shows one there too), for the flyout to stand above those as well
+pub fn with_other_cards(panels: Panels, gap: i32) -> Panels {
+    let mut cards = Vec::new();
+    // SAFETY: the Vec outlives the call, which runs the callback on this thread
+    let _ = unsafe { EnumWindows(Some(collect_card), LPARAM(&mut cards as *mut Vec<RECT> as isize)) };
+    Panels { top: top_of_cards(&panels, &cards, gap), ..panels }
+}
+
+unsafe extern "system" fn collect_card(hwnd: HWND, cards: LPARAM) -> BOOL {
+    // SAFETY: with_other_cards passes its Vec, alive for the whole enumeration
+    let cards = unsafe { &mut *(cards.0 as *mut Vec<RECT>) };
+    if let Some(r) = card_rect(hwnd) {
+        cards.push(r);
+    }
+    true.into()
+}
+
+/// Where a window is, if it can be another app's card: visible, on top of
+/// everything, and not passing clicks through as an overlay does
+fn card_rect(hwnd: HWND) -> Option<RECT> {
+    let mut process = 0;
+    // SAFETY: the windows are only looked at; each call takes a buffer of its
+    // size, and a window that is gone fails them
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        if style & WS_EX_TOPMOST.0 == 0 || style & WS_EX_TRANSPARENT.0 != 0 {
+            return None;
+        }
+        if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() || is_quick_settings(hwnd) {
+            return None;
+        }
+        GetWindowThreadProcessId(hwnd, Some(&mut process));
+        if process == GetCurrentProcessId() {
+            return None;
+        }
+        let mut cloaked = 0u32;
+        let size = size_of::<u32>() as u32;
+        let read = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, (&mut cloaked as *mut u32).cast(), size);
+        if read.is_ok() && cloaked != 0 {
+            return None;
+        }
+        // Without the shadow, where Windows has one
+        let mut r = RECT::default();
+        let size = size_of::<RECT>() as u32;
+        DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, (&mut r as *mut RECT).cast(), size)
+            .or_else(|_| GetWindowRect(hwnd, &mut r))
+            .ok()?;
+        Some(r)
+    }
+}
+
+/// The top of the panels, or of the cards on them: a card lies over most of
+/// the panels' width, its bottom within `gap` of the top so far
+fn top_of_cards(panels: &Panels, cards: &[RECT], gap: i32) -> i32 {
+    let width = panels.right - panels.left;
+    let mut top = panels.top;
+    while let Some(next) = cards
+        .iter()
+        .filter(|c| c.right.min(panels.right) - c.left.max(panels.left) > width / 2)
+        .filter(|c| c.top < top && (c.bottom - top).abs() <= gap)
+        .map(|c| c.top)
+        .min()
+    {
+        top = next;
+    }
+    top
+}
+
 /// The smallest rectangle around the non-empty `rects`
 fn union(rects: &[RECT]) -> Option<Panels> {
     rects.iter().filter(|r| r.right > r.left && r.bottom > r.top).fold(None, |all, r| {
@@ -163,6 +235,22 @@ fn union(rects: &[RECT]) -> Option<Panels> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cards_on_the_panels_raise_their_top() {
+        let panels = Panels { left: 1000, top: 700, right: 1360, bottom: 1040 };
+        let rect = |left, top, right, bottom| RECT { left, top, right, bottom };
+        assert_eq!(top_of_cards(&panels, &[], 12), 700);
+        // A card on the panels, and one on that card
+        let card = rect(1000, 400, 1360, 690);
+        assert_eq!(top_of_cards(&panels, &[card], 12), 400);
+        assert_eq!(top_of_cards(&panels, &[rect(1010, 200, 1350, 395), card], 12), 200);
+        // A little over them is still on them
+        assert_eq!(top_of_cards(&panels, &[rect(1000, 400, 1360, 705)], 12), 400);
+        // Elsewhere on the screen, or a window as tall as the screen
+        let others = [rect(100, 400, 460, 690), rect(1000, 100, 1360, 500), rect(0, 0, 1366, 1040)];
+        assert_eq!(top_of_cards(&panels, &others, 12), 700);
+    }
 
     #[test]
     fn union_takes_both_panels_and_skips_empty_ones() {

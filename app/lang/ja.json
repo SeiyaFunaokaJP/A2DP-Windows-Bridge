@@ -162,7 +162,6 @@
   "settings.check_updates_on_startup": "起動時にアップデートを確認",
   "settings.include_prereleases": "アップデート確認にプレリリースを含める",
   "settings.media_keys": "オーディオデバイスのボタンで再生を操作",
-  "settings.remember_volume": "オーディオデバイスごとの音量を記憶",
   "settings.auto_reconnect": "自動で再接続する",
   "settings.le_low_latency": "ゲーミング向けオーディオデバイスの低遅延（実験的）",
   "advanced.max_packet": "最大メディアパケットサイズ（バイト）",
@@ -625,6 +624,7 @@
   "ui.settings.flyout_from_quick": "クイック設定（音量ボタン）",
   "ui.settings.flyout_from_none": "開かない",
   "ui.settings.flyout_from_hint": "トレイアイコンではメインウィンドウが開きます。",
+  "ui.settings.flyout_from_win11": "クイック設定には Windows 11 が必要です。",
   "ui.settings.updates": "更新",
   "ui.settings.notifications": "通知",
   "ui.settings.notify_connected": "デバイスの接続時に通知する",
@@ -759,6 +759,7 @@
   "ui.codecs.moved": "%s: %d 番目 (全 %d 個)",
   "ui.devices.none_saved": "オーディオデバイスはまだありません。下でスキャンするか、アドレスを入力して追加してください。",
   "ui.devices.add_title": "オーディオデバイスを追加",
+  "ui.devices.scan_disconnect": "新しいオーディオデバイスをスキャンするには、%s を切断する必要があります。",
   "ui.settings.open_config_folder": "設定フォルダーを開く",
   "ui.update.later": "後で",
   "ui.update.release_notes": "リリースノート全文"

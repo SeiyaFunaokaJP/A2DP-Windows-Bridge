@@ -162,7 +162,6 @@
   "settings.check_updates_on_startup": "Check for Updates on Startup",
   "settings.include_prereleases": "Include Pre-releases in Update Checks",
   "settings.media_keys": "Control playback with the audio device's buttons",
-  "settings.remember_volume": "Remember each audio device's volume",
   "settings.auto_reconnect": "Reconnect automatically",
   "settings.le_low_latency": "Low latency for gaming audio devices (experimental)",
   "advanced.max_packet": "Max media packet size (bytes)",
@@ -625,6 +624,7 @@
   "ui.settings.flyout_from_quick": "Quick Settings (the volume button)",
   "ui.settings.flyout_from_none": "Nowhere",
   "ui.settings.flyout_from_hint": "The tray icon opens the full app.",
+  "ui.settings.flyout_from_win11": "Quick Settings need Windows 11.",
   "ui.settings.updates": "Updates",
   "ui.settings.notifications": "Notifications",
   "ui.settings.notify_connected": "Notify when a device connects",
@@ -759,6 +759,7 @@
   "ui.codecs.moved": "%s: place %d of %d",
   "ui.devices.none_saved": "No audio devices yet. Scan for yours or add it by its address below.",
   "ui.devices.add_title": "Add an audio device",
+  "ui.devices.scan_disconnect": "To scan for new audio devices, %s needs to be disconnected.",
   "ui.settings.open_config_folder": "Open Settings Folder",
   "ui.update.later": "Later",
   "ui.update.release_notes": "Full release notes"

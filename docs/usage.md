@@ -58,7 +58,7 @@ The headphones and speakers A2DPWB can stream to, each with its own settings: **
 - **Output Source**: System Loopback (a new device's default), Virtual Device or Application (see [Capture Modes](#capture-modes)). Beside it, the format Windows mixes the captured device in (sample rate and bit depth, read only), in amber when the device's codec settings ask for another one, with a line below saying which (it still streams, converted); below it, what the source does
 - **Set as Windows default output while connected**, with a virtual device
 
-**All audio devices**, above the list, has the switches that apply to every device: **Windows Volume Sync** (see [Volume](#volume)), **Control playback with the audio device's buttons**, **Remember each audio device's volume** and **Reconnect automatically**. Each device's **Max media packet size** is on the **Developer** screen (see [Max Media Packet Size](#max-packet)).
+**All audio devices**, above the list, has the switches that apply to every device: **Windows Volume Sync** (see [Volume](#volume)), **Control playback with the audio device's buttons** and **Reconnect automatically**. Each device's **Max media packet size** is on the **Developer** screen (see [Max Media Packet Size](#max-packet)).
 
 ### Diagnostics
 
@@ -116,7 +116,7 @@ The first start (no audio device yet, or no adapter with WinUSB) opens **Set up 
 A2DPWB keeps running in the system tray, with or without the window:
 
 - **Left-click** the tray icon for the flyout: the device and its state, **Connect** / **Disconnect**, the volume, the device switcher, the codec (a list to choose it, as on Home), the link quality and **Open app**. It is just as tall as what it shows. Esc or a click elsewhere hides it. If an error needs a screen of the main window (Codecs, Audio Devices, the adapter), its button opens the window there. With **Settings > Clicking the tray icon opens the full app window** on (off by default), a left-click opens the main window instead
-- On Windows 11, with **Settings > Open the tray window from** set to **Quick Settings** (**Tray icon** by default), the tray icon opens the main window and the flyout opens with Quick Settings instead, on top of the panels there, and closes with them. It works there without closing them. If the screen is too short, it opens to their left
+- On Windows 11, with **Settings > Open the tray window from** set to **Quick Settings** (**Tray icon** by default), the tray icon opens the main window and the flyout opens with Quick Settings instead, on top of the panels there, and closes with them. It works there without closing them. If the screen is too short, it opens to their left With **Nowhere**, no flyout opens and the tray icon opens the main window.
 - **Right-click** for the menu: **Open A2DP Windows Bridge**, the first 10 devices by name (an LE Audio entry tagged "(LE Audio)"; the one streaming checked; click one to connect it), **Disconnect** and **Exit**. The menu opens at once, without starting the window
 - The tooltip says whether A2DPWB is idle or connected
 
@@ -269,7 +269,7 @@ While streaming, Home and the tray flyout show a **Volume** slider when the head
 
 Earlier versions let a device follow another output device's volume (in developer mode); that choice is no longer used.
 
-**Remember each audio device's volume** (on **Audio Devices**, for every device; on by default) saves each audio device's own volume and sets it again as soon as it connects, before any audio is sent, so one device's volume does not carry over to another. Turn it off to let each device start at its own last volume, which may be much louder than the volume used last time with A2DPWB (e.g., after using it with a phone).
+A2DPWB saves each audio device's own volume and sets it again as soon as it connects, before any audio is sent, so one device's volume does not carry over to another.
 
 ### Headphone buttons {#headphone-buttons}
 

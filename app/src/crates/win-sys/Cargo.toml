@@ -19,6 +19,7 @@ features = [
     "Devices_Radios",
     "Foundation_Collections",
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Globalization",
     "Win32_Security",
     "Win32_Security_Authorization",

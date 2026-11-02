@@ -161,6 +161,28 @@ export function DevicePicker(props: {
     stopped = true;
     return app.run(() => app.core.request("device.scan_stop"));
   };
+  // A device in use: the scan asks to disconnect it first (issue #86)
+  const inUse = () => ["connecting", "reconnecting", "streaming"].includes(snap().stream.state);
+  const inUseName = () => {
+    const profile = snap().stream.profile;
+    return snap().profiles.find((p) => p.name === profile)?.device_name || profile || "";
+  };
+  const [askDisconnect, setAskDisconnect] = createSignal(false);
+  const [disconnecting, setDisconnecting] = createSignal(false);
+  const disconnectAndScan = async () => {
+    setDisconnecting(true);
+    try {
+      await app.run(() => app.core.request("stream.stop"));
+      await new Promise<void>((resolve) => {
+        const check = () => (inUse() ? setTimeout(check, 100) : resolve());
+        check();
+      });
+    } finally {
+      setDisconnecting(false);
+      setAskDisconnect(false);
+    }
+    void scan();
+  };
   onMount(() => {
     if (props.continuous && !scanning()) void scan();
   });
@@ -369,7 +391,11 @@ export function DevicePicker(props: {
       >
         <Button
           icon={scanning() ? "stop" : "search"}
-          onClick={() => void (scanning() ? stopScan() : scan())}
+          onClick={() => {
+            if (scanning()) void stopScan();
+            else if (inUse()) setAskDisconnect(true);
+            else void scan();
+          }}
         >
           {scanning() ? t("connection.scan_stop") : t("connection.scan")}
         </Button>
@@ -519,6 +545,17 @@ export function DevicePicker(props: {
         </Show>
         <Show when={!props.savedOnly}>{manualField()}</Show>
       </Show>
+      <Dialog
+        open={askDisconnect()}
+        title={t("modal.confirm_title")}
+        confirm={t("connection.disconnect")}
+        cancel={t("modal.cancel")}
+        busy={disconnecting()}
+        onConfirm={() => void disconnectAndScan()}
+        onCancel={() => setAskDisconnect(false)}
+      >
+        <p>{t("ui.devices.scan_disconnect", inUseName())}</p>
+      </Dialog>
       <Dialog
         open={renaming() !== null}
         title={t("device.edit_name_title")}

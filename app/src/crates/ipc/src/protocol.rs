@@ -622,6 +622,9 @@ pub struct Settings {
     pub start_with_windows: bool,
     pub start_minimized: bool,
     pub minimize_to_tray: bool,
+    /// A click on the tray icon opens the main window, not the flyout
+    #[serde(default)]
+    pub tray_click_opens_window: bool,
     /// The flyout opens above Windows 11's Quick Settings, along with them,
     /// and a click on the tray icon opens the main window, not the flyout
     #[serde(default)]
@@ -637,8 +640,6 @@ pub struct Settings {
     pub include_prereleases: bool,
     /// The headphones' buttons act as Windows media keys (every device)
     pub media_keys: bool,
-    /// Remember each device's volume (one switch for every device)
-    pub remember_volume: bool,
     /// Connect a device that went away again by itself (on by default).
     /// Off: the session ends and the adapter is released.
     #[serde(default = "yes")]
@@ -1707,7 +1708,7 @@ mod tests {
         let settings: Settings = serde_json::from_value(serde_json::json!({
             "language": "en", "theme": "system", "start_with_windows": false, "start_minimized": false,
             "minimize_to_tray": true, "check_updates_on_startup": true, "include_prereleases": false,
-            "media_keys": true, "remember_volume": true, "developer_mode": false, "bt_chip_pid": 0,
+            "media_keys": true, "developer_mode": false, "bt_chip_pid": 0,
             "bt_chip_fw_stem": "", "afh": "auto", "remote_sink": ""}))
         .unwrap();
         assert!(!settings.le_audio_experimental && !settings.le_audio_low_latency);

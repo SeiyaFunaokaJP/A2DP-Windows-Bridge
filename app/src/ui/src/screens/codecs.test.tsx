@@ -977,13 +977,37 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     });
   });
 
-  it("has one Volume Sync, buttons and remembered volume for every device, above the list", async () => {
+  it("asks to disconnect the device in use before a scan (issue #86)", async () => {
+    const { calls, core } = start("#/devices");
+    await screen.findByRole("region", { name: t("ui.devices.all_title") });
+    await core.request("stream.start", { profile: core.state.snap!.active_profile! });
+    await waitFor(() => expect(core.state.snap!.stream.state).toBe("streaming"));
+    const scans = () => calls.filter((c) => c.method === "device.scan").length;
+    const scan = screen.getByRole("button", { name: t("connection.scan") });
+
+    fireEvent.click(scan);
+    const text = t("ui.devices.scan_disconnect", core.state.snap!.profiles[0].device_name);
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t("modal.cancel") }));
+    await waitFor(() => expect(screen.queryByText(text)).toBeNull());
+    expect(core.state.snap!.stream.state).toBe("streaming");
+    expect(scans()).toBe(0);
+
+    fireEvent.click(scan);
+    await screen.findByText(text);
+    fireEvent.click(screen.getByRole("button", { name: t("connection.disconnect") }));
+    await waitFor(() => expect(scans()).toBe(1));
+    expect(calls.some((c) => c.method === "stream.stop")).toBe(true);
+    expect(screen.queryByText(text)).toBeNull();
+  });
+
+  it("has one Volume Sync and buttons for every device, above the list", async () => {
     const { calls } = start("#/devices");
     const entry = await deviceEntry(/WH-1000XM5/);
     const all = await screen.findByRole("region", { name: t("ui.devices.all_title") });
     const named = (key: string) => ({ name: (n: string) => n.startsWith(t(key)) });
     // Not in a device's own settings
-    for (const key of ["capture.volume_sync", "settings.media_keys", "settings.remember_volume"]) {
+    for (const key of ["capture.volume_sync", "settings.media_keys"]) {
       expect(within(entry).queryByRole("switch", named(key))).toBeNull();
     }
     expect(within(entry).queryByLabelText(t("capture.volume_sync"))).toBeNull();
@@ -993,7 +1017,6 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     const keys = within(all).getByRole("switch", named("settings.media_keys"));
     expect(sync).toBeChecked();
     expect(keys).toBeChecked();
-    expect(within(all).getByRole("switch", named("settings.remember_volume"))).toBeChecked();
     expect(within(all).getByRole("switch", named("settings.auto_reconnect"))).toBeChecked();
     fireEvent.click(sync);
     await waitFor(() => expect(calls.some((c) => c.method === "settings.set")).toBe(true));

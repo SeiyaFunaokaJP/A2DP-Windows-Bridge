@@ -93,9 +93,11 @@ pub struct Settings {
     pub start_minimized: bool,
     #[serde(default = "default_true")]
     pub minimize_to_tray: bool,
+    /// A click on the tray icon opens the main window instead of the tray
+    /// flyout (issue #86; off by default)
+    pub tray_click_opens_window: bool,
     /// The flyout opens above Windows 11's Quick Settings, along with them,
-    /// and a click on the tray icon opens the main window; otherwise that
-    /// click opens the flyout (issue #86; off by default)
+    /// and a click on the tray icon opens the main window (off by default)
     pub flyout_with_quick_settings: bool,
     /// A notification when a device connects (issue #86): its name, codec,
     /// what the codec runs with and the battery. On by default.
@@ -118,12 +120,6 @@ pub struct Settings {
     /// The headphones' buttons act as Windows media keys (every device)
     #[serde(default = "default_true")]
     pub media_keys: bool,
-    /// Remember the headphones' volume per device (address -> AVRCP volume
-    /// 0..127) and set it again when they connect; on by default (issue
-    /// #86: one device's volume must not carry over to another). One switch
-    /// for every device.
-    #[serde(default = "default_true")]
-    pub remember_volume: bool,
     /// A session whose device went away connects it again by itself, and
     /// takes it when it comes back. Off: the session ends and the adapter is
     /// released, so headphones turned off can go to a phone instead.
@@ -132,10 +128,13 @@ pub struct Settings {
     /// No VB-Cable when last looked: once it is there, the profiles that
     /// capture System Loopback take it, one time (issue #86)
     pub awaiting_vb_cable: bool,
+    /// Each device's volume (address -> AVRCP volume 0..127), set again when
+    /// it connects (issue #86: one device's volume must not carry over to
+    /// another)
     pub saved_volumes: BTreeMap<String, i32>,
-    /// Before schema 6: per-device overrides of media_keys and
-    /// remember_volume. Those are one setting for every device now (issue
-    /// #86); read (and ignored), not written.
+    /// Before schema 6: per-device overrides of media_keys and of remembering
+    /// the volume. The first is one setting for every device now, the second
+    /// always on (issue #86); read (and ignored), not written.
     #[serde(skip_serializing)]
     pub device_options: Option<serde_json::Value>,
     /// Windows Volume Sync for every device (issue #86; each profile had its
@@ -277,6 +276,7 @@ impl Default for Settings {
             start_with_windows: false,
             start_minimized: false,
             minimize_to_tray: true,
+            tray_click_opens_window: false,
             flyout_with_quick_settings: false,
             notify_connected: true,
             battery_low_percent: default_battery_low(),
@@ -284,7 +284,6 @@ impl Default for Settings {
             last_update_check: String::new(),
             include_prereleases: default_prereleases(),
             media_keys: true,
-            remember_volume: true,
             auto_reconnect: true,
             awaiting_vb_cable: false,
             saved_volumes: BTreeMap::new(),
@@ -341,11 +340,8 @@ impl Settings {
                 }
                 s.theme = normalize_theme(&s.theme).into();
                 s.other.remove("mute_output");
-                // Now the one choice of where the flyout opens (issue #86):
-                // the click that opened the main window still does
-                if s.other.remove("tray_click_opens_window").is_some_and(|v| v == true) {
-                    s.flyout_with_quick_settings = true;
-                }
+                // No longer a choice (issue #86)
+                s.other.remove("remember_volume");
                 // No longer a choice (issue #86): a file with it off uses
                 // every codec too
                 s.experimental_codecs = true;
@@ -465,7 +461,7 @@ mod tests {
     #[test]
     fn old_device_options_are_read_but_not_written() {
         let s: Settings = serde_json::from_str("{}").unwrap();
-        assert!(s.volume_sync && s.media_keys && s.remember_volume);
+        assert!(s.volume_sync && s.media_keys);
         // Schema 5's per-device overrides: read without error, never in force
         // nor written back (nor kept as an unknown key)
         let s: Settings = serde_json::from_str(
@@ -514,14 +510,13 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             Settings::path(&dir),
-            r#"{"schema_version":7,"mute_output":true,"tray_click_opens_window":true,"debug_mode":true}"#,
+            r#"{"schema_version":7,"mute_output":true,"remember_volume":false,"debug_mode":true}"#,
         )
         .unwrap();
-        // The old mute (on by default) does not carry over; the click that
-        // opened the main window does
+        // The old mute (on by default) does not carry over; neither does
+        // turning the remembered volume off
         let s = Settings::load(&dir);
         assert!(!s.mute_output);
-        assert!(s.flyout_with_quick_settings);
         assert!(s.other.is_empty());
 
         std::fs::write(Settings::path(&dir), r#"{"schema_version":5,"experimental_codecs":false}"#).unwrap();

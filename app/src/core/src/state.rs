@@ -286,13 +286,13 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         start_with_windows: s.start_with_windows,
         start_minimized: s.start_minimized,
         minimize_to_tray: s.minimize_to_tray,
+        tray_click_opens_window: s.tray_click_opens_window,
         flyout_with_quick_settings: s.flyout_with_quick_settings,
         notify_connected: s.notify_connected,
         battery_low_percent: s.battery_low_percent,
         check_updates_on_startup: s.check_updates_on_startup,
         include_prereleases: s.include_prereleases,
         media_keys: s.media_keys,
-        remember_volume: s.remember_volume,
         auto_reconnect: s.auto_reconnect,
         volume_sync: s.volume_sync,
         mute_output: s.mute_output,
@@ -339,13 +339,13 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.start_with_windows = s.start_with_windows;
     c.start_minimized = s.start_minimized;
     c.minimize_to_tray = s.minimize_to_tray;
+    c.tray_click_opens_window = s.tray_click_opens_window;
     c.flyout_with_quick_settings = s.flyout_with_quick_settings;
     c.notify_connected = s.notify_connected;
     c.battery_low_percent = s.battery_low_percent;
     c.check_updates_on_startup = s.check_updates_on_startup;
     c.include_prereleases = s.include_prereleases;
     c.media_keys = s.media_keys;
-    c.remember_volume = s.remember_volume;
     c.auto_reconnect = s.auto_reconnect;
     c.volume_sync = s.volume_sync;
     c.mute_output = s.mute_output;
@@ -1647,10 +1647,16 @@ impl CoreState {
         std::thread::spawn(move || service.disconnect_for(ticket));
     }
 
-    /// Settings > "Clicking the tray icon opens the main window"
     /// Settings > the flyout above Quick Settings
     pub fn flyout_with_quick_settings(&self) -> bool {
         self.service.settings().flyout_with_quick_settings
+    }
+
+    /// A click on the tray icon opens the flyout, not the main window:
+    /// Settings > where the flyout opens is the tray icon
+    pub fn tray_click_opens_flyout(&self) -> bool {
+        let s = self.service.settings();
+        !s.tray_click_opens_window && !s.flyout_with_quick_settings
     }
 
     pub fn quit(&self) {

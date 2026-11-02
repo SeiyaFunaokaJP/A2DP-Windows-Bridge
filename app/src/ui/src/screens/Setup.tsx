@@ -487,7 +487,7 @@ function StepDevice() {
     const live = () => state() !== "idle" && state() !== "error";
     return {
       state: (
-        <span class={`status-line st-${state()}`} role="status" aria-live="polite">
+        <span class="sr-only" role="status" aria-live="polite">
           {state() === "idle" ? t("status.ready") : statusText({ state: state(), message: stream().message })}
         </span>
       ),
@@ -496,18 +496,24 @@ function StepDevice() {
           when={live()}
           fallback={
             <Button
+              class="btn-icon"
               icon="power"
+              aria-label={t("connection.connect")}
+              title={t("connection.connect")}
               busy={connecting() === d.address}
               disabled={!!connecting() || snap().v1_running}
               onClick={() => void connect(d.address, d.name)}
-            >
-              {t("connection.connect")}
-            </Button>
+            />
           }
         >
-          <Button icon="plug_disconnected" busy={stopping()} onClick={disconnect}>
-            {state() === "streaming" ? t("connection.disconnect") : t("modal.cancel")}
-          </Button>
+          <Button
+            class="btn-icon"
+            icon="plug_disconnected"
+            aria-label={t(state() === "streaming" ? "connection.disconnect" : "modal.cancel")}
+            title={t(state() === "streaming" ? "connection.disconnect" : "modal.cancel")}
+            busy={stopping()}
+            onClick={disconnect}
+          />
         </Show>
       ),
     };

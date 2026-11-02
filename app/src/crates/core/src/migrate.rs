@@ -25,8 +25,7 @@
 //! `le_audio_experimental` turned on once (2.0.0 wrote it off for everyone).
 //!
 //! Schema 4 (2.0.2): each device's volume is remembered by default (issue
-//! #86), so a folder of schema 3 or older gets `remember_volume` turned on
-//! once.
+//! #86). Always on now, so nothing is left of this step.
 //!
 //! Schema 5 (issue #86): "Auto-select the codec with the highest quality"
 //! is one setting for every device (`auto_codec`) instead of each profile's
@@ -366,11 +365,6 @@ fn upgrade_v2(dir: &Path, report: &mut Report) {
         settings.le_audio_experimental = true;
         tracing::info!("settings: LE Audio (experimental) turned on, as it now is by default");
     }
-    // 4: each device's volume remembered by default
-    if report.schema_before.is_some_and(|n| n < 4) && !settings.remember_volume {
-        settings.remember_volume = true;
-        tracing::info!("settings: remembering each device's volume, as it now is by default");
-    }
     // 5: one Auto-select for every device
     if report.schema_before.is_some_and(|n| n < 5) {
         settings.auto_codec = auto_codec_from(&profiles::load(dir));
@@ -511,7 +505,7 @@ mod tests {
     }
 
     #[test]
-    fn v2_settings_remember_each_volume_once() {
+    fn v2_settings_keep_each_volume() {
         let t = TempDir::new("schema4");
         let dir = &t.0;
         std::fs::write(
@@ -524,18 +518,11 @@ mod tests {
         assert_eq!(r, Report { schema_before: Some(3), schema_written: true, ..Report::default() });
         let s = Settings::load(dir);
         assert_eq!(s.schema_version, SCHEMA_VERSION);
-        assert!(s.remember_volume);
         assert_eq!(s.saved_volumes["AA:BB:CC:DD:EE:FF"], 40);
         // A device's own value gave way to the one for every device (schema 6)
         assert!(s.device_options.is_none());
         assert!(read_json(&Settings::path(dir)).get("device_options").is_none());
-
-        // Turned off again by the user: stays off
-        let mut off = s;
-        off.remember_volume = false;
-        off.save(dir).unwrap();
-        assert_eq!(prepare(dir), Report { schema_before: Some(SCHEMA_VERSION), ..Report::default() });
-        assert!(!Settings::load(dir).remember_volume);
+        assert!(read_json(&Settings::path(dir)).get("remember_volume").is_none());
     }
 
     #[test]

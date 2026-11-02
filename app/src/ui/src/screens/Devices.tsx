@@ -66,11 +66,6 @@ function AllDevices() {
         onChange={(v) => void saveSettings(app, { media_keys: v })}
       />
       <Toggle
-        label={t("settings.remember_volume")}
-        checked={s().remember_volume}
-        onChange={(v) => void saveSettings(app, { remember_volume: v })}
-      />
-      <Toggle
         label={t("settings.auto_reconnect")}
         checked={s().auto_reconnect}
         onChange={(v) => void saveSettings(app, { auto_reconnect: v })}

@@ -236,6 +236,7 @@ fn place_by_panels(w: &WebviewWindow, panels: Panels) -> tauri::Result<()> {
     };
     let size = w.inner_size()?;
     let margin = (FLYOUT_MARGIN * m.scale_factor()).round() as i32;
+    let panels = win_sys::quick_settings::with_other_cards(panels, 2 * margin);
     let (x, y) = by_panels(panels, size.width as i32, size.height as i32, margin, m.work_area().position.y);
     // The window's frame is its transparent shadow: the page lines up
     let (outer, inner) = (w.outer_position()?, w.inner_position()?);

@@ -2911,6 +2911,10 @@ option {
   gap: var(--s4);
   padding: var(--s5);
 }
+/* One size for every step's headings (issue #86) */
+.setup-body h2 {
+  font-size: var(--fs-14);
+}
 .setup-body h2:focus {
   outline: none;
 }
@@ -2927,9 +2931,6 @@ option {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-}
-.paired-devices .status-line {
-  flex: none;
 }
 .setup-foot {
   display: flex;
