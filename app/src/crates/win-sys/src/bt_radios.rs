@@ -247,6 +247,7 @@ pub fn radios() -> Vec<WindowsRadio> {
 /// Windows' Bluetooth is switched on (Settings' switch, which leaves the
 /// radio's device in place); None if Windows would not say
 pub fn switched_on() -> Option<bool> {
+    crate::com::keep_mta();
     let radios = || -> windows::core::Result<bool> {
         let list = Radio::GetRadiosAsync()?.join()?;
         for r in &list {
