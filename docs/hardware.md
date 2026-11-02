@@ -29,6 +29,7 @@ Tried A2DPWB with other hardware? Please tell us in an [issue](https://github.co
 | "Realtek Bluetooth 6.0" dongle | Realtek RTL8761B | 0BDA:A760 | USB dongle | ✅ | Not detected automatically yet (LMP subversion 0x8761). No LE Audio | [#208](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/208) |
 | CSR8510 A10 dongle | CSR8510 | 0A12:0001 | USB dongle | ✅ | No firmware files needed | [#32](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/32) |
 | "MA530" adapter | Not given | – | USB dongle | ✅ | Reported on v1.0.9 | [#3](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/3), [#9](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/9) |
+| UGREEN Bluetooth 5.4 and 6.0 dongles | Not given | – | USB dongle | ✅ | Reported on 2.0.1 | [#11](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/11#issuecomment-6563908711) |
 
 Intel, MediaTek and Qualcomm adapters have no reports yet: see [Recommended Adapters](setup#adapters) for what is expected of them.
 
@@ -47,6 +48,7 @@ Intel, MediaTek and Qualcomm adapters have no reports yet: see [Recommended Adap
 | Huawei FreeBuds 5i | RTL8761B (0BDA:A760) | ✅ LDAC 990 / 660 kbps · ✅ AAC 256 kbps · ✅ SBC | Offered LDAC on some connections only. Also offers a Huawei codec (0x027D/0x4C36) that A2DPWB does not support | 2.0.1 | [#208](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/208) |
 | Huawei FreeBuds Neo | RTL8761B (0BDA:A760) | ✅ LDAC 990 kbps · ✅ AAC 256 kbps · ✅ SBC | On 2.0.1 they offered only SBC and AAC. On 2.0.2-beta.13 LDAC works once LDAC is chosen in the profile (Auto-select off). On a busy 2.4 GHz Wi-Fi it dropped out until AFH was set to Manual on the router's channel | 2.0.2-beta.13 | [#208](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/208), [#30](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/30) |
 | EDIFIER W820NB (dual gold label) | CSR8510 A10 | ✅ SBC · ❓ LDAC | LDAC failed on 1.0.16 and was fixed in 1.0.17; not confirmed since | 1.0.16 | [#32](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/32) |
+| ROSESELSA Ceramics Ultra | UGREEN Bluetooth 5.4 / 6.0 | ✅ LDAC · ⚠️ LHDC V5 · ✅ AAC · ✅ SBC | LDAC had the steadiest link quality and bitrate. LHDC V5 can drop out at random | 2.0.1 | [#11](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/11#issuecomment-6563908711) |
 
 ## Test equipment
 
