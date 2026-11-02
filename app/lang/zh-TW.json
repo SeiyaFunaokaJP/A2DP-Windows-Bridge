@@ -351,7 +351,7 @@
   "capture.app_refresh": "重新整理",
   "capture.app_not_playing": "%s (目前未播放)",
   "capture.app_hint": "若找不到應用程式，請先在其中開始播放，再按「重新整理」。",
-  "capture.hint_loopback": "傳送 Windows 預設輸出播放的所有內容。",
+  "capture.hint_loopback": "傳送 Windows 預設輸出播放的所有內容。預設輸出上也會繼續播放。",
   "capture.hint_virtual": "錄製應用程式播放到所選裝置的內容。",
   "capture.hint_app": "僅傳送所選應用程式播放的內容。它也會繼續在自己的輸出上播放。",
   "tooltip.quality": "編碼品質等級。位元率越高，占用頻寬越多。",
