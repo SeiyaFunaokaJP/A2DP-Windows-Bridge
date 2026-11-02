@@ -1,10 +1,11 @@
 //! Windows 11's Quick Settings (the volume button's panels): when they open
 //! and where they are, for the flyout to stand above them.
 //!
-//! No API covers them. Their window has a class of its own and is the
-//! foreground window as they open (the input method can take that over while
-//! they stay open), but it is a column as tall as the screen, mostly
-//! transparent; where the panels are comes from UI Automation.
+//! No API covers them. Their window has a class of its own, stays hidden
+//! while they are closed and is the foreground window as they open (the input
+//! method can take that over while they stay open), but it is a column as tall
+//! as the screen, mostly transparent; where the panels are comes from UI
+//! Automation.
 
 use std::cell::Cell;
 use std::mem::ManuallyDrop;
@@ -21,11 +22,11 @@ use windows::Win32::UI::Accessibility::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::SetActiveWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    EVENT_SYSTEM_FOREGROUND, EnumWindows, GWL_EXSTYLE, GetClassNameW, GetCursorPos, GetForegroundWindow,
-    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_SHOWNOACTIVATE,
-    ShowWindow, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+    EVENT_SYSTEM_FOREGROUND, EnumWindows, FindWindowExW, GWL_EXSTYLE, GetClassNameW, GetCursorPos, GetWindowLongPtrW,
+    GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_SHOWNOACTIVATE, ShowWindow,
+    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
 };
-use windows::core::{BOOL, BSTR};
+use windows::core::{BOOL, BSTR, HSTRING};
 
 /// The window's class, the same in every language
 const WINDOW_CLASS: &str = "ControlCenterWindow";
@@ -40,6 +41,23 @@ fn is_quick_settings(hwnd: HWND) -> bool {
     // SAFETY: a buffer of its length; an invalid window gives 0
     let len = unsafe { GetClassNameW(hwnd, &mut name) } as usize;
     String::from_utf16_lossy(&name[..len]) == WINDOW_CLASS
+}
+
+/// Their window while they are open, whichever window has the foreground
+fn open_window() -> Option<HWND> {
+    let class = HSTRING::from(WINDOW_CLASS);
+    let mut after = None;
+    // SAFETY: the windows are only looked at; a window that is gone is not
+    // visible, and the search then ends with an error
+    unsafe {
+        while let Ok(hwnd) = FindWindowExW(None, after, &class, None) {
+            if IsWindowVisible(hwnd).as_bool() {
+                return Some(hwnd);
+            }
+            after = Some(hwnd);
+        }
+    }
+    None
 }
 
 unsafe extern "system" fn on_foreground(_: HWINEVENTHOOK, _: u32, hwnd: HWND, _: i32, _: i32, _: u32, _: u32) {
@@ -88,7 +106,7 @@ pub struct Panels {
 pub struct Reader {
     automation: IUIAutomation,
     panels: IUIAutomationCondition,
-    window: Cell<Option<HWND>>,
+    last: Cell<Option<Panels>>,
 }
 
 impl Reader {
@@ -111,25 +129,27 @@ impl Reader {
         let (a, b) = (id(&automation, PANELS[0])?, id(&automation, PANELS[1])?);
         // SAFETY: two valid conditions
         let panels = unsafe { automation.CreateOrCondition(&a, &b)? };
-        Ok(Self { automation, panels, window: Cell::new(None) })
+        Ok(Self { automation, panels, last: Cell::new(None) })
     }
 
     /// The panels, None when Quick Settings are closed. If UI Automation
-    /// does not find them, the whole window.
+    /// does not find them, the last ones it did: as Quick Settings close the
+    /// panels go a moment before the window. Failing that, the whole window.
     pub fn read(&self) -> Option<Panels> {
-        let hwnd = self.window.get().or_else(|| {
-            // SAFETY: no arguments; the window is only looked at
-            Some(unsafe { GetForegroundWindow() }).filter(|h| is_quick_settings(*h))
-        })?;
-        self.window.set(Some(hwnd));
-        // SAFETY: as above; a window that is gone is not visible
-        if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
-            return None;
+        let hwnd = open_window()?;
+        if let Some(panels) = self.bounds(hwnd) {
+            self.last.set(Some(panels));
         }
-        self.bounds(hwnd).or_else(|| {
+        self.last.get().or_else(|| {
             let mut r = RECT::default();
-            // SAFETY: a RECT to fill in
-            unsafe { GetWindowRect(hwnd, &mut r) }.ok()?;
+            // SAFETY: a RECT to fill in; the first read can take seconds, so
+            // the window is looked at again
+            unsafe {
+                if !IsWindowVisible(hwnd).as_bool() {
+                    return None;
+                }
+                GetWindowRect(hwnd, &mut r).ok()?;
+            }
             Some(Panels { left: r.left, top: r.top, right: r.right, bottom: r.bottom })
         })
     }
