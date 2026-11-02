@@ -1,7 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../app/App";
-import { mixerAvailable } from "../components/Mixer";
 import { t } from "../i18n";
 import { MockCore } from "../ipc/mock";
 import { createCore } from "../ipc/store";
@@ -15,7 +14,7 @@ afterEach(() => {
   mock = null;
 });
 
-async function open(settings: Partial<Settings> = { developer_mode: true, mute_output: true }) {
+async function open(settings: Partial<Settings> = { developer_mode: true, mute_output: false }) {
   location.hash = "#/mixer";
   const calls: { method: string; params: unknown }[] = [];
   mock = new MockCore({ speed: 0, onCall: (method, params) => calls.push({ method, params }) });
@@ -28,22 +27,32 @@ async function open(settings: Partial<Settings> = { developer_mode: true, mute_o
 
 describe("volume mixer", () => {
   it("is only in the menu in developer mode, even with the mute left on", async () => {
-    const { core } = await open({ developer_mode: false, mute_output: true });
+    await open({ developer_mode: false, mute_output: true });
     expect(screen.queryByRole("link", { name: t("ui.nav.mixer") })).toBeNull();
     expect(screen.queryByRole("heading", { level: 1, name: t("ui.nav.mixer") })).toBeNull();
-    expect(mixerAvailable(core.state.snap!)).toBe(false);
+    expect(screen.queryByRole("slider", { name: "Music Player" })).toBeNull();
   });
 
-  it("shows the apps, here and in the flyout, once the mute is on", async () => {
-    const { core } = await open({ developer_mode: true, mute_output: false });
+  it("shows the apps with the output's mute off", async () => {
+    await open();
     expect(await screen.findByRole("link", { name: t("ui.nav.mixer") })).toBeInTheDocument();
-    await screen.findByRole("heading", { level: 1, name: t("ui.nav.mixer") });
-    expect(screen.queryByRole("slider", { name: "Music Player" })).toBeNull();
-    expect(mixerAvailable(core.state.snap!)).toBe(false);
-
-    fireEvent.click(screen.getByRole("switch", { name: (n) => n.startsWith(t("capture.mute_output")) }));
     expect(await screen.findByRole("slider", { name: "Music Player" })).toBeInTheDocument();
-    expect(mixerAvailable(core.state.snap!)).toBe(true);
+    expect(screen.getByRole("switch", { name: (n) => n.startsWith(t("capture.mute_output")) })).not.toBeChecked();
+  });
+
+  it("keeps the slider in the hand through a move and a refresh", async () => {
+    const { calls } = await open();
+    const slider = await screen.findByRole<HTMLInputElement>("slider", { name: "Music Player" });
+    fireEvent.input(slider, { target: { value: "30" } });
+    fireEvent.input(slider, { target: { value: "31" } });
+    expect(screen.getByRole("slider", { name: "Music Player" })).toBe(slider);
+
+    const refreshes = calls.filter((c) => c.method === "audio.mixer").length;
+    await waitFor(() => expect(calls.filter((c) => c.method === "audio.mixer").length).toBeGreaterThan(refreshes), {
+      timeout: 3000,
+    });
+    expect(screen.getByRole("slider", { name: "Music Player" })).toBe(slider);
+    expect(slider.value).toBe("31");
   });
 
   it("sets an app's volume and mute, and the output's mute", async () => {
@@ -59,9 +68,9 @@ describe("volume mixer", () => {
     );
 
     const mute = screen.getByRole("switch", { name: (n) => n.startsWith(t("capture.mute_output")) });
-    expect(mute).toBeChecked();
+    expect(mute).not.toBeChecked();
     fireEvent.click(mute);
-    await waitFor(() => expect(core.state.snap!.settings.mute_output).toBe(false));
+    await waitFor(() => expect(core.state.snap!.settings.mute_output).toBe(true));
     expect(screen.getByText(t("ui.mixer.note_exit"))).toBeInTheDocument();
   });
 });
