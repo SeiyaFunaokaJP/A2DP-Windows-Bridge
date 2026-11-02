@@ -5,6 +5,7 @@ import { mixerAvailable } from "../components/Mixer";
 import { t } from "../i18n";
 import { MockCore } from "../ipc/mock";
 import { createCore } from "../ipc/store";
+import type { Settings } from "../ipc/types";
 
 let mock: MockCore | null = null;
 
@@ -14,29 +15,35 @@ afterEach(() => {
   mock = null;
 });
 
-async function open() {
+async function open(settings: Partial<Settings> = { developer_mode: true, mute_output: true }) {
   location.hash = "#/mixer";
   const calls: { method: string; params: unknown }[] = [];
   mock = new MockCore({ speed: 0, onCall: (method, params) => calls.push({ method, params }) });
   const core = createCore(mock);
   render(() => <App core={core} />);
   await screen.findByRole("navigation");
+  await core.request("settings.set", { settings: { ...core.state.snap!.settings, ...settings } });
   return { core, calls };
 }
 
 describe("volume mixer", () => {
-  it("is in the menu for System Loopback, and for any source in developer mode", async () => {
-    const { core } = await open();
-    expect(await screen.findByRole("link", { name: t("ui.nav.mixer") })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { level: 1, name: t("ui.nav.mixer") })).toBeInTheDocument();
+  it("is only in the menu in developer mode, even with the mute left on", async () => {
+    const { core } = await open({ developer_mode: false, mute_output: true });
+    expect(screen.queryByRole("link", { name: t("ui.nav.mixer") })).toBeNull();
+    expect(screen.queryByRole("heading", { level: 1, name: t("ui.nav.mixer") })).toBeNull();
+    expect(mixerAvailable(core.state.snap!)).toBe(false);
+  });
 
-    const snap = core.state.snap!;
-    const app = snap.profiles.map((p) => ({ ...p, capture_mode: "app" }));
-    expect(mixerAvailable({ ...snap, profiles: app })).toBe(false);
-    expect(mixerAvailable({ ...snap, profiles: app, settings: { ...snap.settings, developer_mode: true } })).toBe(true);
-    // No profile in use: any that captures System Loopback
-    expect(mixerAvailable({ ...snap, active_profile: null })).toBe(true);
-    expect(mixerAvailable({ ...snap, active_profile: null, profiles: app })).toBe(false);
+  it("shows the apps, here and in the flyout, once the mute is on", async () => {
+    const { core } = await open({ developer_mode: true, mute_output: false });
+    expect(await screen.findByRole("link", { name: t("ui.nav.mixer") })).toBeInTheDocument();
+    await screen.findByRole("heading", { level: 1, name: t("ui.nav.mixer") });
+    expect(screen.queryByRole("slider", { name: "Music Player" })).toBeNull();
+    expect(mixerAvailable(core.state.snap!)).toBe(false);
+
+    fireEvent.click(screen.getByRole("switch", { name: (n) => n.startsWith(t("capture.mute_output")) }));
+    expect(await screen.findByRole("slider", { name: "Music Player" })).toBeInTheDocument();
+    expect(mixerAvailable(core.state.snap!)).toBe(true);
   });
 
   it("sets an app's volume and mute, and the output's mute", async () => {
@@ -52,9 +59,9 @@ describe("volume mixer", () => {
     );
 
     const mute = screen.getByRole("switch", { name: (n) => n.startsWith(t("capture.mute_output")) });
-    expect(mute).not.toBeChecked();
+    expect(mute).toBeChecked();
     fireEvent.click(mute);
-    await waitFor(() => expect(core.state.snap!.settings.mute_output).toBe(true));
+    await waitFor(() => expect(core.state.snap!.settings.mute_output).toBe(false));
     expect(screen.getByText(t("ui.mixer.note_exit"))).toBeInTheDocument();
   });
 });

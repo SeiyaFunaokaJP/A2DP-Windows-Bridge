@@ -143,9 +143,9 @@ pub struct Settings {
     /// another device, set in developer mode); off for every stream
     #[serde(default = "default_true")]
     pub volume_sync: bool,
-    /// The default output device is muted while streaming System Loopback,
-    /// and any source while debug_mode is on (issues #86, #223). A key of its
-    /// own: the `mute_output` of earlier versions was on by default.
+    /// The default output device is muted while streaming, while debug_mode
+    /// is on too (issues #86, #223). A key of its own: the `mute_output` of
+    /// earlier versions was on by default.
     #[serde(rename = "output_mute")]
     pub mute_output: bool,
 
@@ -372,6 +372,11 @@ impl Settings {
         let r = std::fs::rename(&tmp, &path);
         tracing::debug!("settings: saved {}: {r:?}", path.display());
         r
+    }
+
+    /// Whether a stream mutes the default output device
+    pub fn mutes_output(&self) -> bool {
+        self.mute_output && self.debug_mode
     }
 
     /// The media packet size limit of a settings file from before v1.1, for

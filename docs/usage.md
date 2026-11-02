@@ -233,9 +233,11 @@ A2DPWB supports three audio capture modes. Each records a different point in the
 
 **Audio Devices** shows the same explanation under **Output Source**. A new device captures System Loopback, which works with nothing else installed; choose Virtual Device or Application for it there.
 
-System Loopback copies the audio; it does not take it away from the default output device. So that the audio does not play there (speakers, wired headphones, an HDMI TV, ...) as well as on the Bluetooth headphones, **Mute Windows default output while connected** (on the **Volume Mixer** screen; off by default) mutes that device while streaming and unmutes it when streaming stops. This does not affect what A2DPWB captures. A device you had muted stays muted, and if A2DPWB exits unexpectedly, the device stays muted: unmute it in Windows. Turn the setting off to keep the audio playing on the PC too.
+System Loopback copies the audio; it does not take it away from the default output device, so the audio also plays there (speakers, wired headphones, an HDMI TV, ...). To hear it only on the Bluetooth headphones, use a virtual device such as VB-CABLE.
 
-While a System Loopback profile is in use, **Volume Mixer** in the left menu and the flyout set each app's volume. With developer mode on they are there for every capture source, and the mute applies to them too. They work while the output is muted, when the Windows mixer may cut the sound. If the Windows default output is a virtual device, muting it can silence the stream too: turn the mute off.
+In developer mode, **Mute Windows default output while connected** (on the **Volume Mixer** screen; off by default) mutes that device while streaming and unmutes it when streaming stops, for every capture source but the test tone. This does not affect what A2DPWB captures. Moving the Windows volume slider breaks the mute. A device you had muted stays muted, and if A2DPWB exits unexpectedly, the device stays muted: unmute it in Windows. With developer mode off, the mute stays off whatever this setting says.
+
+While that mute is on, the **Volume Mixer** screen and the flyout set each app's volume. They work while the output is muted, when the Windows mixer may cut the sound. If the Windows default output is a virtual device, muting it can silence the stream too: turn the mute off.
 
 In Virtual Device mode, **Set as Windows default output while connected** makes the selected device the Windows default output while streaming, so apps play to it without changing Windows settings. When streaming stops, A2DPWB switches back to the previous default device.
 

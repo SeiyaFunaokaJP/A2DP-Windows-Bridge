@@ -52,11 +52,9 @@ pub struct StreamRequest {
     pub bit_depth: Option<u8>,
     pub source: SourceRequest,
     pub volume_sync: VolumeSync,
-    /// System Loopback mutes the default output device while streaming
-    /// (settings `mute_output`)
+    /// The default output device is muted while streaming
+    /// (`Settings::mutes_output`)
     pub mute_output: bool,
-    /// So do the virtual device and Application sources (developer mode)
-    pub mute_every_source: bool,
     pub max_media_payload: u16,
     /// LE Audio (experimental) instead of A2DP: the le_stream session
     /// streams to `device` and these extra devices. None: A2DP.
@@ -93,16 +91,9 @@ impl StreamRequest {
         codec::sbc::SbcParams { min_bitpool, ..self.sbc }
     }
 
-    /// Whether a session capturing `source` mutes the default output device.
-    /// Not Application capture unless asked: other apps may play there on
-    /// purpose.
+    /// Whether a session capturing `source` mutes the default output device
     pub fn mutes_output(&self, source: &SourceRequest) -> bool {
-        self.mute_output
-            && match source {
-                SourceRequest::SystemLoopback => true,
-                SourceRequest::TestTone => false,
-                _ => self.mute_every_source,
-            }
+        self.mute_output && *source != SourceRequest::TestTone
     }
 }
 

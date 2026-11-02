@@ -1566,8 +1566,7 @@ impl CoreState {
             .map_err(|_| err("profile.invalid_address", "error.invalid_address"))?;
         req.experimental_codecs = settings.experimental_codecs;
         req.volume_sync = effective_volume_sync(settings.volume_sync, req.volume_sync);
-        req.mute_output = settings.mute_output;
-        req.mute_every_source = settings.debug_mode;
+        req.mute_output = settings.mutes_output();
         self.set_active_profile(Some(name.to_string()));
         self.begin_stream(req, Some(name.to_string()));
         Ok(())
@@ -1578,8 +1577,7 @@ impl CoreState {
         let settings = self.service.settings();
         let mut req = custom_request(c, settings.legacy_max_media_payload())?;
         req.experimental_codecs = settings.experimental_codecs;
-        req.mute_output = settings.mute_output;
-        req.mute_every_source = settings.debug_mode;
+        req.mute_output = settings.mutes_output();
         tracing::info!("custom stream to {}: codec {}, source {}", c.device, c.codec, req.source);
         self.begin_stream(req, None);
         Ok(())
@@ -2118,9 +2116,8 @@ impl CoreState {
                     let chip = chip_changed(&base, &merged);
                     let le_toggled = base.le_audio_experimental != merged.le_audio_experimental;
                     let auto_toggled = base.auto_codec != merged.auto_codec;
-                    let sync_toggled = base.volume_sync != merged.volume_sync
-                        || base.mute_output != merged.mute_output
-                        || (merged.mute_output && base.debug_mode != merged.debug_mode);
+                    let sync_toggled =
+                        base.volume_sync != merged.volume_sync || base.mutes_output() != merged.mutes_output();
                     me.save_settings(merged)?;
                     if chip {
                         me.reload_adapter();
