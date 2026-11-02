@@ -61,12 +61,6 @@ function AllDevices() {
         onChange={(v) => void saveSettings(app, { volume_sync: v })}
       />
       <Toggle
-        label={t("capture.mute_output")}
-        hint={t("capture.mute_output_hint")}
-        checked={s().mute_output}
-        onChange={(v) => void saveSettings(app, { mute_output: v })}
-      />
-      <Toggle
         label={t("settings.media_keys")}
         checked={s().media_keys}
         onChange={(v) => void saveSettings(app, { media_keys: v })}

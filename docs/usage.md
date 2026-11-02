@@ -101,7 +101,7 @@ Shown while **Settings > Developer mode** is on; most users never need it. Three
 | Section | Settings |
 |:--------|:---------|
 | Appearance | Language, theme (System / Light / Dark) |
-| Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray**, **Clicking the tray icon opens the full app window** and **Show the tray window above Quick Settings (the volume button)** (see [Tray and Flyout](#tray)) |
+| Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray** and **Open the tray window from** (see [Tray and Flyout](#tray)) |
 | Notifications | **Notify when a device connects** (the device, its battery, the codec and what it runs with; on by default), **Notify when the battery is low**: **Below 20%** (the default), **Below 10%**, **Below 5%** or **Never**, once per connection (again only after the battery was back 5 points above) |
 | Updates | **Check for Updates**, **Check for Updates on Startup**, **Include Pre-releases in Update Checks** (also offer beta releases), **Update now** (see [Updates](#updates)) |
 | Advanced | **Developer mode** (adds the [Developer](#developer) screen with codec overrides, each device's **Max media packet size**, logging options and the peer receiver test, and more details to the log; no restart needed), **Settings folder** with **Open Config Folder**, **Run setup** |
@@ -116,7 +116,7 @@ The first start (no audio device yet, or no adapter with WinUSB) opens **Set up 
 A2DPWB keeps running in the system tray, with or without the window:
 
 - **Left-click** the tray icon for the flyout: the device and its state, **Connect** / **Disconnect**, the volume, the device switcher, the codec (a list to choose it, as on Home), the link quality and **Open app**. It is just as tall as what it shows. Esc or a click elsewhere hides it. If an error needs a screen of the main window (Codecs, Audio Devices, the adapter), its button opens the window there. With **Settings > Clicking the tray icon opens the full app window** on (off by default), a left-click opens the main window instead
-- On Windows 11, with **Settings > Show the tray window above Quick Settings (the volume button)** on (off by default), the flyout also opens with Quick Settings, on top of the panels there, and closes with them. It works there without closing them. If the screen is too short, it opens to their left
+- On Windows 11, with **Settings > Open the tray window from** set to **Quick Settings** (**Tray icon** by default), the tray icon opens the main window and the flyout opens with Quick Settings instead, on top of the panels there, and closes with them. It works there without closing them. If the screen is too short, it opens to their left
 - **Right-click** for the menu: **Open A2DP Windows Bridge**, the first 10 devices by name (an LE Audio entry tagged "(LE Audio)"; the one streaming checked; click one to connect it), **Disconnect** and **Exit**. The menu opens at once, without starting the window
 - The tooltip says whether A2DPWB is idle or connected
 
@@ -234,7 +234,7 @@ A2DPWB supports three audio capture modes. Each records a different point in the
 
 **Audio Devices** shows the same explanation under **Output Source**. A new device captures System Loopback, which works with nothing else installed; choose Virtual Device or Application for it there.
 
-System Loopback copies the audio; it does not take it away from the default output device. So that the audio does not play there (speakers, wired headphones, an HDMI TV, ...) as well as on the Bluetooth headphones, **Mute Windows default output while connected** (on **Audio Devices**, for every device; on by default) mutes that device while streaming and unmutes it when streaming stops. This does not affect what A2DPWB captures. A device you had muted stays muted, and if A2DPWB exits unexpectedly, the device stays muted: unmute it in Windows. Turn the setting off to keep the audio playing on the PC too.
+System Loopback copies the audio; it does not take it away from the default output device. So that the audio does not play there (speakers, wired headphones, an HDMI TV, ...) as well as on the Bluetooth headphones, **Mute Windows default output while connected** (on the **Developer** screen in developer mode; off by default) mutes that device while streaming and unmutes it when streaming stops. This does not affect what A2DPWB captures. A device you had muted stays muted, and if A2DPWB exits unexpectedly, the device stays muted: unmute it in Windows. Turn the setting off to keep the audio playing on the PC too.
 
 In Virtual Device mode, **Set as Windows default output while connected** makes the selected device the Windows default output while streaming, so apps play to it without changing Windows settings. When streaming stops, A2DPWB switches back to the previous default device.
 

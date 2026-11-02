@@ -120,20 +120,28 @@ export function Settings() {
           onChange={(v) => set({ start_minimized: v })}
         />
         <Toggle label={t("settings.minimize_to_tray")} checked={s().minimize_to_tray} onChange={(v) => set({ minimize_to_tray: v })} />
-        <Toggle
-          label={t("ui.settings.tray_click_opens_window")}
-          hint={t("ui.settings.tray_click_opens_window_hint")}
-          checked={s().tray_click_opens_window}
-          onChange={(v) => set({ tray_click_opens_window: v })}
-        />
-        {/* Quick Settings are Windows 11's, as Mica is */}
-        <Show when={core.transport.mica}>
-          <Toggle
-            label={t("ui.settings.flyout_with_quick_settings")}
-            checked={s().flyout_with_quick_settings}
-            onChange={(v) => set({ flyout_with_quick_settings: v })}
-          />
-        </Show>
+        {/* Off the tray icon, the icon's click opens the main window.
+            Quick Settings are Windows 11's, as Mica is */}
+        <Field
+          label={t("ui.settings.flyout_from")}
+          hint={s().flyout_with_quick_settings ? t("ui.settings.flyout_from_hint") : undefined}
+        >
+          {(id, describedBy) => (
+            <Select
+              id={id}
+              describedBy={describedBy}
+              value={s().flyout_with_quick_settings ? "other" : "tray"}
+              options={[
+                { value: "tray", label: t("ui.settings.flyout_from_tray") },
+                {
+                  value: "other",
+                  label: t(core.transport.mica ? "ui.settings.flyout_from_quick" : "ui.settings.flyout_from_none"),
+                },
+              ]}
+              onChange={(v) => set({ flyout_with_quick_settings: v === "other" })}
+            />
+          )}
+        </Field>
       </Section>
 
       <Section title={t("ui.settings.notifications")}>

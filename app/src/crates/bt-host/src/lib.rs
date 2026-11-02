@@ -959,6 +959,7 @@ impl BtHost {
                     started.elapsed().as_millis()
                 );
                 self.abort_pending_connection();
+                let f = if !stuck && !cancelled && self.page_outlived_cancel() { ConnectFailure::Stalled } else { f };
                 // Set after the abort, whose failed CONNECTION_ESTABLISHED is
                 // classified as a lost link
                 self.set_failure(f);
@@ -1021,9 +1022,10 @@ impl BtHost {
         }
         let why = match self.call(Duration::from_secs(2), |app, s| app.still_paging(s)) {
             None => Some("the BTstack run loop does not respond"),
-            // Still paging long after the page timeout
-            Some(true) => Some("the controller never finished the connection"),
-            Some(false) if !self.controller_responds(Duration::from_secs(2)) => {
+            // A page can outrun the page timeout and still end (issue #86:
+            // 27 s on an RTL8761B): the abort cancels it, and a retry needs
+            // no new stack while the controller answers
+            Some(_) if !self.controller_responds(Duration::from_secs(2)) => {
                 Some("the controller does not answer HCI commands")
             }
             _ => None,
@@ -1035,6 +1037,21 @@ impl BtHost {
         tracing::error!("Bluetooth stack stalled: {why}");
         self.shared.update(|s| s.stalled = true);
         true
+    }
+
+    /// After the abort of a timed out connection: a page its cancel did not
+    /// end stays in the way of every retry. Sets stalled.
+    fn page_outlived_cancel(&self) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while self.call(Duration::from_secs(2), |app, s| app.still_paging(s)) == Some(true) {
+            if Instant::now() >= deadline {
+                tracing::error!("Bluetooth stack stalled: the controller never finished the connection");
+                self.shared.update(|s| s.stalled = true);
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        false
     }
 
     /// Whether the controller still answers an HCI command (Read BD_ADDR)

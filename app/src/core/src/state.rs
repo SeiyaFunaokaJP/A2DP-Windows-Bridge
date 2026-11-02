@@ -286,7 +286,6 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         start_with_windows: s.start_with_windows,
         start_minimized: s.start_minimized,
         minimize_to_tray: s.minimize_to_tray,
-        tray_click_opens_window: s.tray_click_opens_window,
         flyout_with_quick_settings: s.flyout_with_quick_settings,
         notify_connected: s.notify_connected,
         battery_low_percent: s.battery_low_percent,
@@ -340,7 +339,6 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.start_with_windows = s.start_with_windows;
     c.start_minimized = s.start_minimized;
     c.minimize_to_tray = s.minimize_to_tray;
-    c.tray_click_opens_window = s.tray_click_opens_window;
     c.flyout_with_quick_settings = s.flyout_with_quick_settings;
     c.notify_connected = s.notify_connected;
     c.battery_low_percent = s.battery_low_percent;
@@ -1584,7 +1582,7 @@ impl CoreState {
             .map_err(|_| err("profile.invalid_address", "error.invalid_address"))?;
         req.experimental_codecs = settings.experimental_codecs;
         req.volume_sync = effective_volume_sync(settings.volume_sync, req.volume_sync);
-        req.mute_output = settings.mute_output;
+        req.mute_output = settings.mutes_output();
         self.set_active_profile(Some(name.to_string()));
         self.begin_stream(req, Some(name.to_string()));
         Ok(())
@@ -1595,7 +1593,7 @@ impl CoreState {
         let settings = self.service.settings();
         let mut req = custom_request(c, settings.legacy_max_media_payload())?;
         req.experimental_codecs = settings.experimental_codecs;
-        req.mute_output = settings.mute_output;
+        req.mute_output = settings.mutes_output();
         tracing::info!("custom stream to {}: codec {}, source {}", c.device, c.codec, req.source);
         self.begin_stream(req, None);
         Ok(())
@@ -1648,10 +1646,6 @@ impl CoreState {
     }
 
     /// Settings > "Clicking the tray icon opens the main window"
-    pub fn tray_click_opens_window(&self) -> bool {
-        self.service.settings().tray_click_opens_window
-    }
-
     /// Settings > the flyout above Quick Settings
     pub fn flyout_with_quick_settings(&self) -> bool {
         self.service.settings().flyout_with_quick_settings
@@ -2132,7 +2126,8 @@ impl CoreState {
                     let chip = chip_changed(&base, &merged);
                     let le_toggled = base.le_audio_experimental != merged.le_audio_experimental;
                     let auto_toggled = base.auto_codec != merged.auto_codec;
-                    let sync_toggled = base.volume_sync != merged.volume_sync || base.mute_output != merged.mute_output;
+                    let sync_toggled =
+                        base.volume_sync != merged.volume_sync || base.mutes_output() != merged.mutes_output();
                     me.save_settings(merged)?;
                     if chip {
                         me.reload_adapter();
@@ -2154,7 +2149,7 @@ impl CoreState {
                                 "Auto-select {}, volume sync {}, output mute {}: profile {} starts again",
                                 if settings.auto_codec { "on" } else { "off" },
                                 if settings.volume_sync { "on" } else { "off" },
-                                if settings.mute_output { "on" } else { "off" },
+                                if settings.developer_mode && settings.mute_output { "on" } else { "off" },
                                 a2dpwb_core::diag::quoted(&p.name)
                             );
                             me.restart_profile(&p.name.clone())?;
@@ -3234,10 +3229,13 @@ mod tests {
         assert!(!merged.le_audio_experimental && merged.le_audio_low_latency);
         assert_eq!(to_ipc_settings(&merged), off);
 
-        // The output mute under System Loopback: on by default
-        assert!(to_ipc_settings(&base).mute_output);
-        let no_mute = Settings { mute_output: false, ..off.clone() };
-        assert!(!merge_settings(&base, &no_mute).mute_output);
+        // The output mute under System Loopback: off by default, and only
+        // in developer mode
+        assert!(!to_ipc_settings(&base).mute_output);
+        let mute = Settings { mute_output: true, ..off.clone() };
+        let merged = merge_settings(&base, &mute);
+        assert!(merged.mute_output && !merged.mutes_output());
+        assert!(merge_settings(&base, &Settings { developer_mode: true, ..mute }).mutes_output());
 
         // Windows Volume Sync for every device: on by default
         assert!(to_ipc_settings(&base).volume_sync);
