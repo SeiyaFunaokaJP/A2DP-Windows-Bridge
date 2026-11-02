@@ -81,6 +81,7 @@
   "error.btstack_crash_stream": "Bluetooth se detuvo inesperadamente. Reinicie la aplicación.",
   "status.connecting_retry": "Error de conexión, reintentando (%d/%d)...",
   "status.huawei_ldac": "Pidiendo a los auriculares que ofrezcan LDAC...",
+  "status.oppo_hi_res": "Pidiendo a los auriculares que activen Hi-Res...",
   "error.connect_no_answer": "El dispositivo no respondió. Compruebe que esté encendido, disponible para conexión (en modo de emparejamiento si es nuevo) y dentro del alcance.",
   "error.connect_link_lost": "La conexión se cortó enseguida. Vuelva a intentarlo o acerque el adaptador al dispositivo.",
   "error.connect_refused": "El dispositivo cerró la conexión. Puede que se esté apagando, cargando o esté conectado a otro dispositivo. Compruébelo y vuelva a intentarlo.",

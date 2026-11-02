@@ -81,6 +81,7 @@
   "error.btstack_crash_stream": "Bluetooth stopped unexpectedly. Restart the app.",
   "status.connecting_retry": "Connection failed, trying again (%d/%d)...",
   "status.huawei_ldac": "Asking the earbuds to offer LDAC...",
+  "status.oppo_hi_res": "Asking the earbuds for Hi-Res...",
   "error.connect_no_answer": "The device did not answer. Check that it is on, connectable (pairing mode for a new device) and within range.",
   "error.connect_link_lost": "The connection dropped right away. Try again, or move the adapter closer to the device.",
   "error.connect_refused": "The device ended the connection. It may be turning off, charging or connected to another device. Check it and try again.",

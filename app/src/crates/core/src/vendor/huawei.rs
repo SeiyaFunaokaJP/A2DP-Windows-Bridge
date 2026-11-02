@@ -12,15 +12,15 @@
 //! by the same command.
 
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use bt_host::{BtHost, RfcommError, RfcommEvent, RfcommOpened, RfcommSink};
+use bt_host::BtHost;
 
-const SERIAL_PORT_UUID: &str = "1101";
-/// Where earbuds serve the protocol, for those whose SDP does not lead to it:
-/// the FreeBuds Pro 4 serve it on 1, the FreeBuds 5i on 16
-const SERIAL_PORT_CHANNELS: [u8; 2] = [1, 16];
+use super::channel::{Channel, Place, Received};
+
+/// The serial port service, and where earbuds serve the protocol when their
+/// SDP does not lead to it: the FreeBuds Pro 4 on 1, the FreeBuds 5i on 16
+const PLACES: [Place; 3] = [Place::Service("1101"), Place::Channel(1), Place::Channel(16)];
 const QUALITY_WRITE: u16 = 0x2BA2;
 const QUALITY_READ: u16 = 0x2BA3;
 const DUAL_CONNECT_READ: u16 = 0x2B2F;
@@ -172,43 +172,16 @@ enum Read {
 
 /// The serial port channel to the earbuds; closed when dropped
 struct Link<'a> {
-    host: &'a BtHost,
-    id: u32,
-    events: mpsc::Receiver<RfcommEvent>,
+    channel: Channel<'a>,
     packets: Packets,
     /// Packets received and not taken yet
     answers: VecDeque<Answer>,
-    closed: bool,
 }
 
 impl<'a> Link<'a> {
     fn open(host: &'a BtHost, addr: [u8; 6]) -> Option<Link<'a>> {
-        let uuid = bt_host::parse_uuid(SERIAL_PORT_UUID)?;
-        let mut opened = Link::connect(host, |sink| host.rfcomm_open(addr, uuid, sink));
-        for channel in SERIAL_PORT_CHANNELS {
-            if !matches!(opened, Err(RfcommError::ServiceNotFound | RfcommError::Refused(_))) {
-                break;
-            }
-            opened = Link::connect(host, |sink| host.rfcomm_open_channel(addr, channel, sink));
-        }
-        opened
-            .inspect_err(|e| {
-                tracing::info!("Huawei: no serial port channel ({e:?}), the sound quality mode stays as it is");
-            })
-            .ok()
-    }
-
-    fn connect(
-        host: &'a BtHost,
-        open: impl FnOnce(RfcommSink) -> Result<RfcommOpened, RfcommError>,
-    ) -> Result<Link<'a>, RfcommError> {
-        let (tx, events) = mpsc::channel();
-        let opened = open(Box::new(move |_, event| tx.send(event).is_ok()))?;
-        Ok(Link { host, id: opened.id, events, packets: Packets::default(), answers: VecDeque::new(), closed: false })
-    }
-
-    fn send(&self, data: Vec<u8>) -> bool {
-        self.host.rfcomm_send(self.id, data).wait().is_ok()
+        let channel = Channel::open(host, addr, "Huawei", &PLACES)?;
+        Some(Link { channel, packets: Packets::default(), answers: VecDeque::new() })
     }
 
     /// The next packet, until `deadline`: else `NoAnswer` or `Closed`
@@ -224,19 +197,10 @@ impl<'a> Link<'a> {
                 }
                 return Ok(answer);
             }
-            let left = deadline.saturating_duration_since(Instant::now());
-            match self.events.recv_timeout(left) {
-                Ok(RfcommEvent::Data(data)) => self.answers.extend(self.packets.feed(&data)),
-                Ok(RfcommEvent::Closed(reason)) => {
-                    tracing::info!("Huawei: serial port closed ({reason:?})");
-                    self.closed = true;
-                    return Err(Read::Closed);
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => return Err(Read::NoAnswer),
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    self.closed = true;
-                    return Err(Read::Closed);
-                }
+            match self.channel.receive(deadline) {
+                Received::Data(data) => self.answers.extend(self.packets.feed(&data)),
+                Received::Timeout => return Err(Read::NoAnswer),
+                Received::Closed => return Err(Read::Closed),
             }
         }
     }
@@ -259,8 +223,7 @@ impl<'a> Link<'a> {
     }
 
     fn read(&mut self, request: Vec<u8>, command: u16, kind: u8) -> Read {
-        if !self.send(request) {
-            self.closed = true;
+        if !self.channel.send(request) {
             return Read::Closed;
         }
         self.wait_for(command, kind, ANSWER_TIMEOUT)
@@ -277,7 +240,7 @@ impl<'a> Link<'a> {
     /// Sets sound quality first to `value`. True when the earbuds took it,
     /// also when they end the link for it.
     fn write_quality(&mut self, value: u8) -> bool {
-        if !self.send(packet(QUALITY_WRITE, &[(1, &[value])])) {
+        if !self.channel.send(packet(QUALITY_WRITE, &[(1, &[value])])) {
             tracing::info!("Huawei: the sound quality mode could not be sent");
             return false;
         }
@@ -311,8 +274,7 @@ impl<'a> Link<'a> {
     /// connected, 9 playing. Not their addresses or names. None: the channel
     /// closed.
     fn dual_connect_states(&mut self) -> Option<String> {
-        if !self.send(packet(DUAL_CONNECT_LIST, &[(1, &[])])) {
-            self.closed = true;
+        if !self.channel.send(packet(DUAL_CONNECT_LIST, &[(1, &[])])) {
             return None;
         }
         let deadline = Instant::now() + ANSWER_TIMEOUT;
@@ -344,14 +306,6 @@ impl<'a> Link<'a> {
              low latency {latency}"
         );
         true
-    }
-}
-
-impl Drop for Link<'_> {
-    fn drop(&mut self) {
-        if !self.closed {
-            let _ = self.host.rfcomm_close(self.id).wait();
-        }
     }
 }
 

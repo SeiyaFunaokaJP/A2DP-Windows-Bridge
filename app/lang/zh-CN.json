@@ -81,6 +81,7 @@
   "error.btstack_crash_stream": "Bluetooth 意外停止。请重新启动应用程序。",
   "status.connecting_retry": "连接失败，正在重试（%d/%d）...",
   "status.huawei_ldac": "正在请求耳机启用 LDAC...",
+  "status.oppo_hi_res": "正在请求耳机启用 Hi-Res...",
   "error.connect_no_answer": "设备无应答。请确认设备已开启、可连接（新设备需处于配对模式）且在范围内。",
   "error.connect_link_lost": "连接立即断开。请重试，或将适配器移近设备。",
   "error.connect_refused": "设备结束了连接。它可能正在关机、充电或已连接到其他设备。请检查设备后重试。",

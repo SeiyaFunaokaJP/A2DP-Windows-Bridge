@@ -245,7 +245,8 @@ APTXAD_R2 = ([0x39, 0x0A, 0x37, 0x6A, 0x00, 0xAF, 0x64, 0x4B, 0x00, 0x01, 0x03, 
               0x02, 0x03, 0x03, 0x03, 0x00, 0xAA] + [0] * 14)
 
 
-def sink_codec_capabilities(sbc_dual=True, sbc_max_bitpool=53, aptxad_r2=False, aptxad_rates=None):
+def sink_codec_capabilities(sbc_dual=True, sbc_max_bitpool=53, aptxad_r2=False, aptxad_rates=None,
+                            lhdcv5_limited=False):
     """Endpoints a typical high-end headset offers (all sample rates / modes).
     SBC allows SBC XQ (dual channel, bitpool up to 53) unless sbc_dual is
     False; aptX Adaptive is an R1 sink's unless aptxad_r2, with its rate
@@ -308,7 +309,9 @@ def sink_codec_capabilities(sbc_dual=True, sbc_max_bitpool=53, aptxad_r2=False, 
         vendor(0x0000012D, 0x00AA, [0x3C, 0x07]),
         # LHDC V5 (Android a2dp_vendor_lhdcv5_constants.h): 44.1 / 48 / 96 / 192 kHz,
         # 16 / 24-bit, 64..1000 kbps, V5 ver.1 with 5 ms frames, low latency offered
-        vendor(0x0000053A, 0x4C35, [0x35, 0x06, 0x11, 0x40, 0x00]),
+        # (limited: 44.1 / 48 kHz and at most 400 kbps, as issue #237's earbuds)
+        vendor(0x0000053A, 0x4C35, [0x30, 0x16, 0x11, 0x40, 0x00] if lhdcv5_limited
+               else [0x35, 0x06, 0x11, 0x40, 0x00]),
         # FastStream (PipeWire a2dp_faststream_t) as a CSR headset lists it:
         # music (sink) and voice (source) directions, music at 44.1 / 48 kHz,
         # voice at 16 kHz
@@ -325,7 +328,7 @@ def sink_codec_capabilities(sbc_dual=True, sbc_max_bitpool=53, aptxad_r2=False, 
 
 
 def huawei_packet(command, params):
-    """A packet of the earbuds' protocol (app/src/crates/core/src/huawei.rs)."""
+    """A packet of the earbuds' protocol (app/src/crates/core/src/vendor/huawei.rs)."""
     body = struct.pack('>H', command) + b''.join(bytes([k, len(v)]) + v for k, v in params)
     packet = b'\x5A' + struct.pack('>H', len(body) + 1) + b'\0' + body
     crc = 0
@@ -386,6 +389,64 @@ class HuaweiEarbuds:
                 asyncio.ensure_future(self.connection.disconnect())
 
 
+def oppo_packet(command, sequence, payload):
+    """A packet of the earbuds' protocol (app/src/crates/core/src/vendor/oppo.rs)."""
+    return b'\xAA' + bytes([7 + len(payload)]) + b'\0\0' + struct.pack('<HBH', command, sequence, len(payload)) + payload
+
+
+class OppoEarbuds:
+    """The HeyMelody service of Enco Free4 earbuds: LHDC V5 is listed without
+    its 400 kbps limit from the connection after a write that asks for
+    Hi-Res, also when the read reported it on already (set from a phone, as
+    issue #237's earbuds). drop: the earbuds end the link at the write.
+    product: what they report. no_change: the write is taken, and the limit
+    stays. spatial: spatial audio is on."""
+
+    PRODUCT = 0x068C10
+    # Writing features and reading the codec, and with codec_write the codec
+    CAPABILITIES = 1 << 7 | 1 << 17
+
+    def __init__(self, device, hi_res, drop, product, no_change, spatial, codec_write):
+        self.hi_res, self.drop, self.no_change = int(hi_res), drop, no_change
+        self.spatial, self.product = int(spatial), product or self.PRODUCT
+        self.capabilities = self.CAPABILITIES | (1 << 37 if codec_write else 0)
+        self.unlimited = False
+        self.connection = None
+        device.on('connection', self.on_connection)
+        served = Server(device).listen(self.on_dlc, 0)
+        device.sdp_service_records[0x00010003] = make_service_sdp_records(
+            0x00010003, served, UUID('0000079A-D102-11E1-9B23-00025B00A5A5'))
+
+    def on_connection(self, connection):
+        self.connection = connection
+
+    def on_dlc(self, dlc):
+        log.info('OPPO control channel open')
+        dlc.sink = lambda data: self.on_data(dlc, data)
+
+    def on_data(self, dlc, data):
+        command, sequence, length = struct.unpack('<HBH', data[4:9])
+        payload = data[9:9 + length]
+        log.info('OPPO control: %04X %s', command, payload.hex())
+        reply = lambda answer: dlc.write(oppo_packet(command | 0x8000, sequence, answer))
+        if command == 0x0100:
+            reply(b'\0' + self.capabilities.to_bytes(6, 'little'))
+        elif command == 0x0103:
+            reply(b'\0' + self.product.to_bytes(3, 'little'))
+        elif command == 0x010D:
+            reply(bytes([0, 3, 0x11, 1, 0x18, self.hi_res, 0x1B, self.spatial]))
+        elif command == 0x0114:
+            reply(bytes([0, 8]))
+        elif command in (0x0403, 0x041A):
+            on = command == 0x041A or payload[1] == 1
+            self.hi_res = int(on)
+            self.unlimited = on and not self.no_change
+            if self.drop:
+                asyncio.ensure_future(self.connection.disconnect())
+            else:
+                reply(b'\0')
+
+
 def refuse_dual_channel(sink):
     """The SBC endpoint lists dual channel but rejects a SET_CONFIGURATION
     with it, as some headsets do (SBC XQ then has to fall back to SBC)."""
@@ -434,6 +495,10 @@ async def main(args):
     if args.huawei:
         huawei = HuaweiEarbuds(device, args.huawei == 'on', args.huawei_drop, args.huawei_silent,
                                args.huawei_no_ldac, args.huawei_channel)
+    oppo = None
+    if args.oppo:
+        oppo = OppoEarbuds(device, args.oppo == 'on', args.oppo_drop, args.oppo_product, args.oppo_no_change,
+                           args.oppo_spatial, args.oppo_codec_write)
     await device.power_on()
     await device.set_discoverable(True)
     await device.set_connectable(True)
@@ -448,7 +513,8 @@ async def main(args):
                 media_codec_information=VendorSpecificMediaCodecInformation(0x0000FFFE, 0x0001, bytes(1)),
             ))
         for name, capabilities in zip(CODEC_NAMES, sink_codec_capabilities(not args.sbc_no_dual, args.sbc_max_bitpool,
-                                                                         args.aptxad_r2, args.aptxad_rates)):
+                                                                         args.aptxad_r2, args.aptxad_rates,
+                                                                         oppo is not None and not oppo.unlimited)):
             if args.codecs and name not in args.codecs and not (name == 'ldac' and huawei and huawei.ldac):
                 continue
             # BTstack 1.8.1 keeps at most 10 discovered SEPs (a2dp.c
@@ -517,5 +583,13 @@ if __name__ == '__main__':
                         help='sound quality first is taken, and LDAC is never listed')
     parser.add_argument('--huawei-channel', type=int,
                         help='serve the control channel on this RFCOMM channel, not listed in SDP')
+    parser.add_argument('--oppo', choices=['off', 'on'],
+                        help='serve the control channel of Enco Free4 earbuds, Hi-Res as given; '
+                             'LHDC V5 lists 400 kbps at 44.1 / 48 kHz until a write asks for it')
+    parser.add_argument('--oppo-drop', action='store_true', help='end the link at a write')
+    parser.add_argument('--oppo-product', type=lambda s: int(s, 16), help='the product id reported, in hex')
+    parser.add_argument('--oppo-no-change', action='store_true', help='take writes and keep the limit')
+    parser.add_argument('--oppo-spatial', action='store_true', help='report spatial audio on')
+    parser.add_argument('--oppo-codec-write', action='store_true', help='advertise the codec write')
     bumble.logging.setup_basic_logging(parser.parse_known_args()[0].log_level)
     asyncio.run(main(parser.parse_args()))

@@ -81,6 +81,7 @@
   "error.btstack_crash_stream": "藍牙意外停止。請重新啟動應用程式。",
   "status.connecting_retry": "連線失敗，正在重試 (%d/%d)...",
   "status.huawei_ldac": "正在要求耳機啟用 LDAC...",
+  "status.oppo_hi_res": "正在要求耳機啟用 Hi-Res...",
   "error.connect_no_answer": "裝置沒有回應。請確認裝置已開啟、可供連線 (新裝置需處於配對模式) 且在範圍內。",
   "error.connect_link_lost": "連線隨即中斷。請再試一次，或將介面卡移近裝置。",
   "error.connect_refused": "裝置結束了連線。可能正在關機、充電或已連線到其他裝置。請檢查裝置後再試一次。",
