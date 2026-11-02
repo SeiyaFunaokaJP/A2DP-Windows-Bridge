@@ -645,7 +645,7 @@
   "ui.update.open_releases": "릴리스 페이지 열기",
   "ui.settings.advanced": "고급",
   "ui.settings.developer_mode": "개발자 모드",
-  "ui.settings.developer_mode_hint": "볼륨 믹서와 개발자 화면을 추가하고 로그를 더 자세히 기록합니다.",
+  "ui.settings.developer_mode_hint": "개발자 화면을 추가하고 로그에 더 많은 세부 정보를 남깁니다.",
   "ui.settings.le_low_latency_hint": "다음 LE 오디오 연결부터 적용됩니다.",
   "ui.settings.config_folder": "설정 폴더",
   "ui.settings.run_setup": "설정 마법사 실행",

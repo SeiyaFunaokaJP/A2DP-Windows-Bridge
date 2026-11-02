@@ -645,7 +645,7 @@
   "ui.update.open_releases": "Release-Seite öffnen",
   "ui.settings.advanced": "Erweitert",
   "ui.settings.developer_mode": "Entwicklermodus",
-  "ui.settings.developer_mode_hint": "Fügt die Seiten Lautstärkemixer und Entwickler sowie mehr Details im Protokoll hinzu.",
+  "ui.settings.developer_mode_hint": "Fügt die Seite Entwickler und mehr Details im Protokoll hinzu.",
   "ui.settings.le_low_latency_hint": "Gilt ab der nächsten LE-Audio-Verbindung.",
   "ui.settings.config_folder": "Einstellungsordner",
   "ui.settings.run_setup": "Einrichtung ausführen",

@@ -55,6 +55,8 @@ pub struct StreamRequest {
     /// System Loopback mutes the default output device while streaming
     /// (settings `mute_output`)
     pub mute_output: bool,
+    /// So do the virtual device and Application sources (developer mode)
+    pub mute_every_source: bool,
     pub max_media_payload: u16,
     /// LE Audio (experimental) instead of A2DP: the le_stream session
     /// streams to `device` and these extra devices. None: A2DP.
@@ -89,6 +91,18 @@ impl StreamRequest {
             _ => 0,
         };
         codec::sbc::SbcParams { min_bitpool, ..self.sbc }
+    }
+
+    /// Whether a session capturing `source` mutes the default output device.
+    /// Not Application capture unless asked: other apps may play there on
+    /// purpose.
+    pub fn mutes_output(&self, source: &SourceRequest) -> bool {
+        self.mute_output
+            && match source {
+                SourceRequest::SystemLoopback => true,
+                SourceRequest::TestTone => false,
+                _ => self.mute_every_source,
+            }
     }
 }
 
@@ -1561,7 +1575,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let mut volume_choice = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &source);
     let mut volume = volume_choice.clone().map(crate::volume_sync::VolumeSyncer::new);
     let mut output_mute = OutputMute::new();
-    output_mute.tick(req.mute_output);
+    output_mute.tick(req.mutes_output(&source));
 
     // A reconnect builds the configuration anew from what the device lists
     // then (v1 read its capabilities again)
@@ -1601,7 +1615,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         if let Some(v) = volume.as_mut() {
             v.tick(true, &*host);
         }
-        output_mute.tick(req.mute_output);
+        output_mute.tick(req.mutes_output(&current_source));
         inner.remember_volume(&addr, host.remote_volume());
 
         // Another source chosen: only the capture changes, the encoder (at

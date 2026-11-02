@@ -28,7 +28,7 @@ import {
   useFixes,
   VolumeControl,
 } from "../components/stream";
-import { MixerList } from "../components/Mixer";
+import { MixerList, mixerAvailable } from "../components/Mixer";
 import { t, tm } from "../i18n";
 import { IpcError } from "../ipc/types";
 import { audioEntries, entryOf } from "../lib/profile";
@@ -123,7 +123,7 @@ export function Flyout() {
         </Show>
       </Show>
       {/* One click from the taskbar (issue #223) */}
-      <Show when={snap().settings.developer_mode}>
+      <Show when={mixerAvailable(snap())}>
         <div class="fly-mixer">
           <MixerList />
         </div>

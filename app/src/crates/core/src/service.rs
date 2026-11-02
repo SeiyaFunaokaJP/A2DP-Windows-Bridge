@@ -1173,7 +1173,7 @@ impl Service {
         // The running session leaves Windows' default output switched when
         // this one switches it to the same device (issue #203)
         stream::expect_default_switch(req.source.default_switch());
-        crate::mute_output::expect_session(req.mute_output);
+        crate::mute_output::expect_session(req.mutes_output(&req.source));
         self.stop_session();
         stream::expect_default_switch(None);
         crate::mute_output::expect_session(false);
@@ -1455,6 +1455,23 @@ mod tests {
         };
         let (tx, _rx) = std::sync::mpsc::channel();
         Service::new(opts, tx)
+    }
+
+    #[test]
+    fn developer_mode_mutes_the_output_for_other_sources() {
+        let req = StreamRequest { mute_output: true, ..request() };
+        let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: false };
+        let app = SourceRequest::Application { exe: "a.exe".into() };
+        assert!(req.mutes_output(&SourceRequest::SystemLoopback));
+        assert!(!req.mutes_output(&SourceRequest::TestTone));
+        assert!(!req.mutes_output(&virt) && !req.mutes_output(&app));
+
+        let every = StreamRequest { mute_every_source: true, ..req };
+        assert!(every.mutes_output(&virt) && every.mutes_output(&app));
+        assert!(!every.mutes_output(&SourceRequest::TestTone));
+
+        let off = StreamRequest { mute_output: false, ..every };
+        assert!(!off.mutes_output(&SourceRequest::SystemLoopback) && !off.mutes_output(&virt));
     }
 
     fn request() -> StreamRequest {

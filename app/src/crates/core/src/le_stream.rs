@@ -371,7 +371,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let sync_volume = req.source != SourceRequest::TestTone && req.volume_sync != VolumeSync::Off;
     let mut volume = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &req.source)
         .map(crate::volume_sync::VolumeSyncer::new);
-    let mutes_output = req.mute_output;
+    let mutes_output = req.mutes_output(&req.source);
     let mut output_mute = OutputMute::new();
     output_mute.tick(mutes_output);
 

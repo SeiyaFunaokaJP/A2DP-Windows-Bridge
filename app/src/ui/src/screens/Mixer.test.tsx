@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../app/App";
+import { mixerAvailable } from "../components/Mixer";
 import { t } from "../i18n";
 import { MockCore } from "../ipc/mock";
 import { createCore } from "../ipc/store";
@@ -24,17 +25,22 @@ async function open() {
 }
 
 describe("volume mixer", () => {
-  it("is in the menu only in developer mode", async () => {
+  it("is in the menu for System Loopback, and for any source in developer mode", async () => {
     const { core } = await open();
-    expect(screen.queryByRole("link", { name: t("ui.nav.mixer") })).toBeNull();
-    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
     expect(await screen.findByRole("link", { name: t("ui.nav.mixer") })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { level: 1, name: t("ui.nav.mixer") })).toBeInTheDocument();
+
+    const snap = core.state.snap!;
+    const app = snap.profiles.map((p) => ({ ...p, capture_mode: "app" }));
+    expect(mixerAvailable({ ...snap, profiles: app })).toBe(false);
+    expect(mixerAvailable({ ...snap, profiles: app, settings: { ...snap.settings, developer_mode: true } })).toBe(true);
+    // No profile in use: any that captures System Loopback
+    expect(mixerAvailable({ ...snap, active_profile: null })).toBe(true);
+    expect(mixerAvailable({ ...snap, active_profile: null, profiles: app })).toBe(false);
   });
 
   it("sets an app's volume and mute, and the output's mute", async () => {
     const { core, calls } = await open();
-    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
     const slider = await screen.findByRole("slider", { name: "Music Player" });
     fireEvent.input(slider, { target: { value: "30" } });
     await waitFor(() =>

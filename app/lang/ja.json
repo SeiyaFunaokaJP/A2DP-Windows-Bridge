@@ -645,7 +645,7 @@
   "ui.update.open_releases": "リリースページを開く",
   "ui.settings.advanced": "詳細",
   "ui.settings.developer_mode": "開発者モード",
-  "ui.settings.developer_mode_hint": "音量ミキサーと開発者の画面を追加し、ログを詳しくします。",
+  "ui.settings.developer_mode_hint": "開発者画面を追加し、ログを詳しくします。",
   "ui.settings.le_low_latency_hint": "次の LE Audio 接続から適用されます。",
   "ui.settings.config_folder": "設定フォルダ",
   "ui.settings.run_setup": "セットアップを実行",

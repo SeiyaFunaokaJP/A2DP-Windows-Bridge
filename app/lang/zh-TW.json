@@ -645,7 +645,7 @@
   "ui.update.open_releases": "開啟發行頁面",
   "ui.settings.advanced": "進階",
   "ui.settings.developer_mode": "開發人員模式",
-  "ui.settings.developer_mode_hint": "新增音量混音程式與開發者頁面，並讓記錄更詳細。",
+  "ui.settings.developer_mode_hint": "加入「開發者」畫面，並在記錄中寫入更多詳細資訊。",
   "ui.settings.le_low_latency_hint": "從下一次 LE Audio 連線起生效。",
   "ui.settings.config_folder": "設定資料夾",
   "ui.settings.run_setup": "執行設定精靈",

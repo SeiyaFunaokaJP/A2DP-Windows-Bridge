@@ -4,11 +4,18 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { useApp } from "../app/context";
 import { t } from "../i18n";
-import type { MixerApp } from "../ipc/types";
+import type { MixerApp, Profile, Snapshot } from "../ipc/types";
 import { Icon } from "./Icon";
 
 /** Sessions come and go without an event */
 const REFRESH_MS = 2000;
+
+/** System Loopback plays on the default output too; developer mode opens it to every source */
+export function mixerAvailable(snap: Snapshot): boolean {
+  const loopback = (p: Profile) => p.capture_mode === "loopback";
+  const active = snap.profiles.find((p) => p.name === snap.active_profile);
+  return snap.settings.developer_mode || (active ? loopback(active) : snap.profiles.some(loopback));
+}
 
 const appName = (a: MixerApp) => (a.key === "*system" ? t("ui.mixer.system") : a.name);
 

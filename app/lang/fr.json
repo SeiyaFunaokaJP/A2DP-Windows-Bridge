@@ -645,7 +645,7 @@
   "ui.update.open_releases": "Ouvrir la page des versions",
   "ui.settings.advanced": "Avancé",
   "ui.settings.developer_mode": "Mode développeur",
-  "ui.settings.developer_mode_hint": "Ajoute les écrans Mélangeur de volume et Développeur, et plus de détails dans le journal.",
+  "ui.settings.developer_mode_hint": "Ajoute l'écran Développeur et plus de détails au journal.",
   "ui.settings.le_low_latency_hint": "S'applique à partir de la prochaine connexion LE Audio.",
   "ui.settings.config_folder": "Dossier des paramètres",
   "ui.settings.run_setup": "Lancer la configuration",

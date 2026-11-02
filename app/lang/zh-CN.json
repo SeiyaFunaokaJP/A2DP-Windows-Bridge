@@ -645,7 +645,7 @@
   "ui.update.open_releases": "打开发布页面",
   "ui.settings.advanced": "高级",
   "ui.settings.developer_mode": "开发者模式",
-  "ui.settings.developer_mode_hint": "添加音量合成器和开发者页面，并使日志更详细。",
+  "ui.settings.developer_mode_hint": "加入开发者页面，并在日志中记录更多详细信息。",
   "ui.settings.le_low_latency_hint": "从下一次 LE Audio 连接起生效。",
   "ui.settings.config_folder": "设置文件夹",
   "ui.settings.run_setup": "运行设置向导",

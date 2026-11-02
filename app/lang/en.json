@@ -645,7 +645,7 @@
   "ui.update.open_releases": "Open release page",
   "ui.settings.advanced": "Advanced",
   "ui.settings.developer_mode": "Developer mode",
-  "ui.settings.developer_mode_hint": "Adds the Volume Mixer and Developer screens and more detail in the log.",
+  "ui.settings.developer_mode_hint": "Adds the Developer screen and more detail in the log.",
   "ui.settings.le_low_latency_hint": "Applies from the next LE Audio connection.",
   "ui.settings.config_folder": "Settings folder",
   "ui.settings.run_setup": "Run setup",
