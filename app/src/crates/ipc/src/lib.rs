@@ -155,6 +155,7 @@ mod tests {
         LinkSample::export_all(&cfg).unwrap();
         AudioDevice::export_all(&cfg).unwrap();
         AudioApp::export_all(&cfg).unwrap();
+        MixerApp::export_all(&cfg).unwrap();
         DiagInfo::export_all(&cfg).unwrap();
         FlowView::export_all(&cfg).unwrap();
         AdapterInfo::export_all(&cfg).unwrap();

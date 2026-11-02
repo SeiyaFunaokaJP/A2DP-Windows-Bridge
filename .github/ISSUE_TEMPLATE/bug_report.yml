@@ -37,6 +37,26 @@ body:
       placeholder: e.g. Sony WH-1000XM4
 
   - type: dropdown
+    id: dual_connection
+    attributes:
+      label: Dual connection
+      description: Were the headphones connected to a second device (a phone, for example) at the same time?
+      options:
+        - "No"
+        - "Yes"
+        - I don't know
+
+  - type: dropdown
+    id: other_adapter
+    attributes:
+      label: Another Bluetooth adapter
+      description: Was another Bluetooth adapter active in this PC, such as the built-in one?
+      options:
+        - "No"
+        - "Yes"
+        - I don't know
+
+  - type: dropdown
     id: codec
     attributes:
       label: Codec

@@ -83,15 +83,15 @@ pub static OEM_TABLE: &[OemChipMapping] = &[
 
 /// The controller vendor, guessed from the USB VID:PID. Decides which
 /// firmware loader (if any) runs before HCI init. Only Realtek is well
-/// tested; Intel and Broadcom loaders are experimental; MediaTek and
-/// Qualcomm need loaders BTstack does not have.
+/// tested; the Intel (crate::intel) and Broadcom loaders are experimental;
+/// MediaTek and Qualcomm need loaders BTstack does not have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChipVendor {
     #[default]
     Unknown,
     /// rtl*_fw.bin + rtl*_config.bin (btstack_chipset_realtek)
     Realtek,
-    /// ibt-*.sfi + ibt-*.ddc, legacy bootloader only (experimental)
+    /// ibt-*.sfi + ibt-*.ddc, legacy and TLV bootloaders (experimental)
     Intel,
     /// optional *.hcd PatchRAM (experimental)
     Broadcom,

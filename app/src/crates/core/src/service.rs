@@ -706,9 +706,6 @@ impl Inner {
 
     pub fn saved_volume(&self, addr: &str) -> Option<u8> {
         let s = self.settings.lock().unwrap_or_else(|e| e.into_inner());
-        if !s.remember_volume {
-            return None;
-        }
         s.saved_volumes.get(&addr.to_uppercase()).and_then(|&v| u8::try_from(v).ok())
     }
 
@@ -717,9 +714,6 @@ impl Inner {
     pub fn remember_volume(&self, addr: &str, volume: Option<u8>) {
         let Some(v) = volume else { return };
         let mut s = self.settings.lock().unwrap_or_else(|e| e.into_inner());
-        if !s.remember_volume {
-            return;
-        }
         let key = addr.to_uppercase();
         if s.saved_volumes.get(&key) == Some(&(v as i32)) {
             return;
@@ -1459,16 +1453,22 @@ mod tests {
     }
 
     #[test]
-    fn only_system_loopback_mutes_the_output() {
+    fn the_output_mute_takes_developer_mode_and_spares_the_test_tone() {
+        let settings =
+            |debug_mode, mute_output| crate::settings::Settings { debug_mode, mute_output, ..Default::default() };
+        assert!(settings(true, true).mutes_output());
+        assert!(!settings(true, false).mutes_output());
+        assert!(!settings(false, true).mutes_output());
+
         let req = StreamRequest { mute_output: true, ..request() };
         let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: false };
         let app = SourceRequest::Application { exe: "a.exe".into() };
         assert!(req.mutes_output(&SourceRequest::SystemLoopback));
-        for other in [virt, app, SourceRequest::TestTone] {
-            assert!(!req.mutes_output(&other), "{other}");
-        }
+        assert!(req.mutes_output(&virt) && req.mutes_output(&app));
+        assert!(!req.mutes_output(&SourceRequest::TestTone));
+
         let off = StreamRequest { mute_output: false, ..req };
-        assert!(!off.mutes_output(&SourceRequest::SystemLoopback));
+        assert!(!off.mutes_output(&SourceRequest::SystemLoopback) && !off.mutes_output(&virt));
     }
 
     fn request() -> StreamRequest {

@@ -457,7 +457,6 @@ function StepDevice() {
           // The stream waits for the scan to end
           if (snap().scanning) await app.core.request("device.scan_stop");
           await scanEnded(app);
-          if (running()) await app.core.request("stream.stop");
           await app.core.request("stream.start", { profile });
         }));
       if (!ok) setPaused(false);
@@ -465,8 +464,7 @@ function StepDevice() {
       setConnecting(null);
     }
   };
-  // Disconnect (or Cancel while it connects), or making room for another
-  // device: the scan resumes
+  // Add a device: the one connected makes room, the scan resumes
   const [stopping, setStopping] = createSignal(false);
   const disconnect = async () => {
     setStopping(true);
@@ -477,40 +475,23 @@ function StepDevice() {
     }
   };
 
-  // A saved device's state and its Connect or Disconnect
+  // A saved device's state, as a dot: connecting it is left to the main
+  // window (issue #86)
   const paired = (d: Device) => {
     const key = deviceKey(d);
     const state = () => {
       const entry = entries().find((e) => e.key === key);
       return entry ? entryState(snap(), entry) : "idle";
     };
-    const live = () => state() !== "idle" && state() !== "error";
-    return {
-      state: (
-        <span class={`status-line st-${state()}`} role="status" aria-live="polite">
-          {state() === "idle" ? t("status.ready") : statusText({ state: state(), message: stream().message })}
+    const label = () => (state() === "idle" ? t("status.ready") : statusText({ state: state(), message: stream().message }));
+    return (
+      <>
+        <span class={`dot st-${state()}`} aria-hidden="true" title={label()} />
+        <span class="sr-only" role="status" aria-live="polite">
+          {label()}
         </span>
-      ),
-      action: (
-        <Show
-          when={live()}
-          fallback={
-            <Button
-              icon="power"
-              busy={connecting() === d.address}
-              disabled={!!connecting() || snap().v1_running}
-              onClick={() => void connect(d.address, d.name)}
-            >
-              {t("connection.connect")}
-            </Button>
-          }
-        >
-          <Button icon="plug_disconnected" busy={stopping()} onClick={disconnect}>
-            {state() === "streaming" ? t("connection.disconnect") : t("modal.cancel")}
-          </Button>
-        </Show>
-      ),
-    };
+      </>
+    );
   };
 
   return (

@@ -28,9 +28,11 @@ Tried BlueCaster with other hardware? Please tell us in an [issue](https://githu
 | ASUS BT400 | Broadcom BCM20702 | 0B05:17CB | USB dongle | ✅ Experimental | Runs on its ROM firmware, no files needed. Reported on v1 (1.0.12–1.0.17) | [#18](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/18), [#27](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/27), [#30](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/30) |
 | "Realtek Bluetooth 6.0" dongle | Realtek RTL8761B | 0BDA:A760 | USB dongle | ✅ | Not detected automatically yet (LMP subversion 0x8761). No LE Audio | [#208](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/208) |
 | CSR8510 A10 dongle | CSR8510 | 0A12:0001 | USB dongle | ✅ | No firmware files needed | [#32](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/32) |
+| Intel AX211 (built-in Wi-Fi / Bluetooth card) | Intel AX211 (TLV bootloader) | 8087:0033 | Built in | ✅ Experimental | Firmware from linux-firmware `intel/`, loaded from the bootloader in 1.5–1.7 s: `ibt-0180-0041` (variant 0x1B) or `ibt-1040-0041` (variant 0x19), the log names the file. Pairing, AAC and LDAC work. Windows has no Bluetooth of its own while BlueCaster uses it | [#261](https://github.com/SeiyaFunaokaJP/BlueCaster/pull/261) |
 | "MA530" adapter | Not given | – | USB dongle | ✅ | Reported on v1.0.9 | [#3](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/3), [#9](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/9) |
+| UGREEN Bluetooth 5.4 and 6.0 dongles | Not given | – | USB dongle | ✅ | Reported on 2.0.1 | [#11](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/11#issuecomment-6563908711) |
 
-Intel, MediaTek and Qualcomm adapters have no reports yet: see [Recommended Adapters](setup#adapters) for what is expected of them.
+MediaTek and Qualcomm adapters have no reports yet: see [Recommended Adapters](setup#adapters) for what is expected of them.
 
 ## Headphones
 
@@ -42,11 +44,13 @@ Intel, MediaTek and Qualcomm adapters have no reports yet: see [Recommended Adap
 | EarFun Air Pro 4+ | RTL8761B (0BDA:A729) | ✅ LDAC · ✅ AAC · ✅ SBC · ✅ SBC XQ · ✅ aptX · ✅ aptX Adaptive | | 2.0.2-beta.1, 2.0.2-beta.6 | [#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86) |
 | Grado GW100x | "MA530" | ✅ aptX | Offers aptX Adaptive too; 1.0.9 had no aptX Adaptive encoder and sent classic aptX (aptX Adaptive is not tried on it yet) | 1.0.9 | [#9](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/9) |
 | LHDC V5 headphones (model not given) | RTL8761B | ✅ LHDC V5 1000 kbps / 192 kHz | Set the headphones' app to its 192 kHz mode; in 96 kHz mode they accept only 400 kbps | 1.1.1-beta.1 | [#50](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/50) |
+| OPPO Enco Free4 | Intel AX200 | ⚠️ LHDC V5 400 kbps | They offered BlueCaster 48 kHz and 400 kbps at most, also with Hi-Res on in their app. With LHDC V5 chosen (Auto-select off), BlueCaster now asks them for Hi-Res and connects again; not confirmed on these earbuds yet | 2.0.1 | [#237](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/237) |
 | JBL Tune 510BT | TP-Link UB500 | ✅ SBC · ⚠️ AAC (silent) | The AAC fix ([#89](https://github.com/SeiyaFunaokaJP/BlueCaster/pull/89)) is not confirmed on this model yet | 2.0.1 | [#43](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/43), [#84](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/84), [#87](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/87) |
 | Huawei FreeBuds Pro 4 | ASUS BT400 | ✅ AAC 256 kbps · ❓ LDAC | They offered only SBC and AAC on 1.0.16. With LDAC chosen (Auto-select off), BlueCaster now sets their "sound quality first" mode and connects again, and sets the mode back if LDAC does not come of it; not confirmed on these earbuds yet. L2HC is proprietary | 1.0.16 | [#30](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/30) |
 | Huawei FreeBuds 5i | RTL8761B (0BDA:A760) | ✅ LDAC 990 / 660 kbps · ✅ AAC 256 kbps · ✅ SBC | Offered LDAC on some connections only. Also offers a Huawei codec (0x027D/0x4C36) that BlueCaster does not support | 2.0.1 | [#208](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/208) |
 | Huawei FreeBuds Neo | RTL8761B (0BDA:A760) | ✅ LDAC 990 kbps · ✅ AAC 256 kbps · ✅ SBC | On 2.0.1 they offered only SBC and AAC. On 2.0.2-beta.13 LDAC works once LDAC is chosen in the profile (Auto-select off). On a busy 2.4 GHz Wi-Fi it dropped out until AFH was set to Manual on the router's channel | 2.0.2-beta.13 | [#208](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/208), [#30](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/30) |
 | EDIFIER W820NB (dual gold label) | CSR8510 A10 | ✅ SBC · ❓ LDAC | LDAC failed on 1.0.16 and was fixed in 1.0.17; not confirmed since | 1.0.16 | [#32](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/32) |
+| ROSESELSA Ceramics Ultra | UGREEN Bluetooth 5.4 / 6.0 | ✅ LDAC · ⚠️ LHDC V5 · ✅ AAC · ✅ SBC | LDAC had the steadiest link quality and bitrate. LHDC V5 can drop out at random | 2.0.1 | [#11](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/11#issuecomment-6563908711) |
 
 ## Test equipment
 

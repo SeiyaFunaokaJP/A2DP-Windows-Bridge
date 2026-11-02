@@ -41,11 +41,10 @@ The codec of each saved audio device, one section per device (a dot that is gree
 - **Show only supported codecs** (on by default; turn it off to show both supported and unsupported codecs): the codecs a device did not offer are left out. Before a device's first connection, all of them are shown
 - **...** on a card opens that codec's settings. A change applies at once: for the codec in use it is saved and the device connects again with it, except the **Bitpool**, which changes while you listen; for another codec it is kept for when that codec is chosen. Each codec keeps its own settings: choosing another codec and coming back brings them back. Only what that codec can do, and what the device listed at its last connection, is offered:
   - **Quality**: LDAC **High** / **Medium** / **Low** (990 / 660 / 330 kbps), LHDC V5 **High** / **Medium-High** / **Medium** / **Low** (1000 / 900 / 500 / 400 kbps, Android's four levels); aptX Adaptive **High** / **Low Latency** (see [aptX Adaptive](#aptx-adaptive)). AAC, Opus, Opus 05, SBC and SBC XQ have one, **High**, shown rather than chosen: the highest bit rate the device takes (ABR or VBR, where offered, still varies it; SBC and SBC XQ show the bit rate their bitpool and frame setup give). aptX, aptX HD, aptX LL and FastStream have a bit rate fixed by the codec. A quality saved by an earlier version that the codec no longer has (aptX Adaptive's Standard / Mobile, AAC's lower levels, ...) loads as High
-  - **Frame setup** (SBC and SBC XQ): blocks, subbands, bit allocation and channel mode. Auto keeps 16 blocks, 8 subbands, Loudness and Joint stereo (SBC XQ: dual channel). A value the device does not take falls back to Auto when connecting
   - **Adaptive Bit Rate (ABR)**: for LDAC, LHDC V5, aptX Adaptive, SBC and SBC XQ (see [ABR](#abr)); **VBR** for AAC
   - **Sample Rate**: Auto is 48 kHz, or the best rate the device lists if it has no 48 kHz (96 kHz adds latency and is less compatible, with no audible gain, and Windows mixes at 48 kHz); choose 96 kHz here to use it. Only the rates the device lists are offered (aptX Adaptive's 96 kHz only to a device that lists it, see [aptX Adaptive](#aptx-adaptive))
   - **Bit Depth**: 16 or 24 bit for LDAC and LHDC V5 (Auto: 24 bit), as far as the device lists them; 16 bit for the others
-  - **Bitpool** (SBC, SBC XQ): one slider with two handles, the minimum and the maximum bitpool, within the range the device lists. The maximum is the bitpool used; the minimum is the lowest one used (the bottom of the range the connection is set up with, and how far ABR may go down). **Auto** sets both back: the maximum by quality, the minimum the device's and ABR's own. AAC's and LHDC V5's bit rates stay within the maximum the device lists
+  - **Bitpool** (SBC, SBC XQ): one slider with two handles, the minimum and the maximum bitpool, within the range the device lists. The maximum is the bitpool used; the minimum is the lowest one used (the bottom of the range the connection is set up with, and how far ABR may go down). **Auto** sets both back: the maximum by quality, the minimum the device's and ABR's own. The line below it shows the channel mode, fixed for each codec: joint stereo for SBC, dual channel for SBC XQ. AAC's and LHDC V5's bit rates stay within the maximum the device lists
 
 The defaults give the best sound; most devices need nothing but **Auto**. An LE Audio device (experimental) has one card, LC3, and **Low latency for gaming audio devices (experimental)** (see [LE Audio](#le-audio)).
 
@@ -58,7 +57,7 @@ The headphones and speakers BlueCaster can stream to, each with its own settings
 - **Output Source**: System Loopback (a new device's default), Virtual Device or Application (see [Capture Modes](#capture-modes)). Beside it, the format Windows mixes the captured device in (sample rate and bit depth, read only), in amber when the device's codec settings ask for another one, with a line below saying which (it still streams, converted); below it, what the source does
 - **Set as Windows default output while connected**, with a virtual device
 
-**All audio devices**, above the list, has the switches that apply to every device: **Windows Volume Sync** (see [Volume](#volume)), **Control playback with the audio device's buttons**, **Remember each audio device's volume** and **Reconnect automatically**. Each device's **Max media packet size** is on the **Developer** screen (see [Max Media Packet Size](#max-packet)).
+**All audio devices**, above the list, has the switches that apply to every device: **Windows Volume Sync** (see [Volume](#volume)), **Control playback with the audio device's buttons** and **Reconnect automatically**. Each device's **Max media packet size** is on the **Developer** screen (see [Max Media Packet Size](#max-packet)).
 
 ### Diagnostics
 
@@ -101,7 +100,7 @@ Shown while **Settings > Developer mode** is on; most users never need it. Three
 | Section | Settings |
 |:--------|:---------|
 | Appearance | Language, theme (System / Light / Dark) |
-| Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray**, **Clicking the tray icon opens the full app window** and **Show the tray window above Quick Settings (the volume button)** (see [Tray and Flyout](#tray)) |
+| Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray** and **Open the tray window from** (see [Tray and Flyout](#tray)) |
 | Notifications | **Notify when a device connects** (the device, its battery, the codec and what it runs with; on by default), **Notify when the battery is low**: **Below 20%** (the default), **Below 10%**, **Below 5%** or **Never**, once per connection (again only after the battery was back 5 points above) |
 | Updates | **Check for Updates**, **Check for Updates on Startup**, **Include Pre-releases in Update Checks** (also offer beta releases), **Update now** (see [Updates](#updates)) |
 | Advanced | **Developer mode** (adds the [Developer](#developer) screen with codec overrides, each device's **Max media packet size**, logging options and the peer receiver test, and more details to the log; no restart needed), **Settings folder** with **Open Config Folder**, **Run setup** |
@@ -116,7 +115,7 @@ The first start (no audio device yet, or no adapter with WinUSB) opens **Set up 
 BlueCaster keeps running in the system tray, with or without the window:
 
 - **Left-click** the tray icon for the flyout: the device and its state, **Connect** / **Disconnect**, the volume, the device switcher, the codec (a list to choose it, as on Home), the link quality and **Open app**. It is just as tall as what it shows. Esc or a click elsewhere hides it. If an error needs a screen of the main window (Codecs, Audio Devices, the adapter), its button opens the window there. With **Settings > Clicking the tray icon opens the full app window** on (off by default), a left-click opens the main window instead
-- On Windows 11, with **Settings > Show the tray window above Quick Settings (the volume button)** on (off by default), the flyout also opens with Quick Settings, on top of the panels there, and closes with them. It works there without closing them. If the screen is too short, it opens to their left
+- On Windows 11, with **Settings > Open the tray window from** set to **Quick Settings** (**Tray icon** by default), the tray icon opens the main window and the flyout opens with Quick Settings instead, on top of the panels there, and closes with them. It works there without closing them. If the screen is too short, it opens to their left With **Nowhere**, no flyout opens and the tray icon opens the main window.
 - **Right-click** for the menu: **Open BlueCaster**, the first 10 devices by name (an LE Audio entry tagged "(LE Audio)"; the one streaming checked; click one to connect it), **Disconnect** and **Exit**. The menu opens at once, without starting the window
 - The tooltip says whether BlueCaster is idle or connected
 
@@ -234,7 +233,11 @@ BlueCaster supports three audio capture modes. Each records a different point in
 
 **Audio Devices** shows the same explanation under **Output Source**. A new device captures System Loopback, which works with nothing else installed; choose Virtual Device or Application for it there.
 
-System Loopback copies the audio; it does not take it away from the default output device. So that the audio does not play there (speakers, wired headphones, an HDMI TV, ...) as well as on the Bluetooth headphones, **Mute Windows default output while connected** (on **Audio Devices**, for every device; on by default) mutes that device while streaming and unmutes it when streaming stops. This does not affect what BlueCaster captures. A device you had muted stays muted, and if BlueCaster exits unexpectedly, the device stays muted: unmute it in Windows. Turn the setting off to keep the audio playing on the PC too.
+System Loopback copies the audio; it does not take it away from the default output device, so the audio also plays there (speakers, wired headphones, an HDMI TV, ...). To hear it only on the Bluetooth headphones, use a virtual device such as VB-CABLE.
+
+In developer mode, **Mute Windows default output while connected** (on the **Volume Mixer** screen; off by default) mutes that device while streaming and unmutes it when streaming stops, for every capture source but the test tone. This does not affect what BlueCaster captures. Moving the Windows volume slider breaks the mute. A device you had muted stays muted, and if BlueCaster exits unexpectedly, the device stays muted: unmute it in Windows. With developer mode off, the mute stays off whatever this setting says.
+
+In developer mode, the **Volume Mixer** screen and the flyout set each app's volume, with or without that mute. They work while the output is muted, when the Windows mixer may cut the sound. If the Windows default output is a virtual device, muting it can silence the stream too: turn the mute off.
 
 In Virtual Device mode, **Set as Windows default output while connected** makes the selected device the Windows default output while streaming, so apps play to it without changing Windows settings. When streaming stops, BlueCaster switches back to the previous default device.
 
@@ -267,7 +270,7 @@ While streaming, Home and the tray flyout show a **Volume** slider when the head
 
 Earlier versions let a device follow another output device's volume (in developer mode); that choice is no longer used.
 
-**Remember each audio device's volume** (on **Audio Devices**, for every device; on by default) saves each audio device's own volume and sets it again as soon as it connects, before any audio is sent, so one device's volume does not carry over to another. Turn it off to let each device start at its own last volume, which may be much louder than the volume used last time with BlueCaster (e.g., after using it with a phone).
+BlueCaster saves each audio device's own volume and sets it again as soon as it connects, before any audio is sent, so one device's volume does not carry over to another.
 
 ### Headphone buttons {#headphone-buttons}
 

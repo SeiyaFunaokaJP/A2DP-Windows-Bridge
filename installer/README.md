@@ -24,7 +24,7 @@ pre-release). The version comes from `version` in `Cargo.toml` (`[workspace.pack
 
 Prerequisites: Rust with the target (`rustup target add aarch64-pc-windows-msvc`), pnpm and
 `pnpm install` in `app/src/ui`, the submodules (`git submodule update --init --recursive`),
-`cargo install cargo-about`, and Inno Setup 6.5 or later (`winget install JRSoftware.InnoSetup`;
+`cargo install cargo-about`, and Inno Setup 7.1.0 (`winget install JRSoftware.InnoSetup.7 --version 7.1.0`;
 the script looks in its default folders, on PATH and in `$env:ISCC`). The WebView2 bootstrapper
 is downloaded once into `target/installer-cache` and must carry Microsoft's signature. Build from
 a clean checkout of
@@ -151,8 +151,6 @@ earlier versions first, and the app takes their settings over at its first start
   the old Run value, mutexes and registry keys, the old shortcuts and data folders (the `Old*`,
   `Nsis*` and `V1*` names in `[Code]`, the `A2DP Windows Bridge` entries of `[InstallDelete]`).
   They can go 6 to 12 months after 3.0.0, once nobody updates from 2.0.x any more.
-- `languages/`: the Chinese (Simplified, Traditional) messages, which Inno Setup 6 does not ship
-  (its unofficial translations from `jrsoftware/issrc`, tag `is-6_7_3`, saved with a BOM).
 
 ## Portable copy
 

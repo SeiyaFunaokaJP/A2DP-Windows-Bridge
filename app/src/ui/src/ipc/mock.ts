@@ -17,6 +17,7 @@ import type { ConnStatus, Transport, UpdatePhase, WindowKind } from "./transport
 import type {
   AdapterInfo,
   AudioApp,
+  MixerApp,
   AudioDevice,
   CaptureState,
   CodecDetails,
@@ -140,10 +141,6 @@ export function sampleProfile(over: Partial<Profile> = {}): Profile {
     sbcxq_bitpool: 0,
     sbc_min_bitpool: 0,
     sbcxq_min_bitpool: 0,
-    sbc_blocks: 0,
-    sbc_subbands: 0,
-    sbc_allocation: "",
-    sbc_channel_mode: "",
     ...over,
     codec_settings: over.codec_settings ?? {},
     codec_order: over.codec_order ?? [],
@@ -164,10 +161,9 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     check_updates_on_startup: true,
     include_prereleases: false,
     media_keys: true,
-    remember_volume: true,
     auto_reconnect: true,
     volume_sync: true,
-    mute_output: true,
+    mute_output: false,
     developer_mode: false,
     dev_overrides: {
       rtp_marker: false,
@@ -393,6 +389,12 @@ const AUDIO_DEVICES: AudioDevice[] = [
   { id: "{0.0.0.00000000}.{voicemeeter}", name: "Voicemeeter Input (VB-Audio Voicemeeter VAIO)", is_default: false, is_virtual: true, mix_rate: 48000, mix_channels: 8, mix_bits: 32 },
 ];
 
+const MIXER_APPS: MixerApp[] = [
+  { key: "player.exe", name: "Music Player", volume: 80, muted: false },
+  { key: "browser.exe", name: "Web Browser", volume: 100, muted: false },
+  { key: "*system", name: "", volume: 60, muted: false },
+];
+
 const AUDIO_APPS: AudioApp[] = [
   { exe: "Spotify.exe", name: "Spotify" },
   { exe: "chrome.exe", name: "Google Chrome" },
@@ -578,6 +580,7 @@ function sourceOf(mode: string, id: string, name: string): SourceInfo {
 }
 
 export class MockCore implements Transport {
+  private mixer = MIXER_APPS;
   readonly window: WindowKind;
   readonly mica = false;
   readonly version = "2.0.0-alpha.1";
@@ -785,6 +788,19 @@ export class MockCore implements Transport {
         return this.noVirtual ? AUDIO_DEVICES.filter((d) => !d.is_virtual) : AUDIO_DEVICES;
       case "audio.apps":
         return AUDIO_APPS;
+      case "audio.mixer":
+        return this.mixer;
+      case "audio.mixer_set":
+        this.mixer = this.mixer.map((a) =>
+          a.key === p.app
+            ? {
+                ...a,
+                volume: p.volume === null ? a.volume : Number(p.volume),
+                muted: p.muted === null ? a.muted : Boolean(p.muted),
+              }
+            : a,
+        );
+        return null;
       case "diag.subscribe":
         this.subscribe((p.logs as LogLevel | null) ?? null, Boolean(p.link), Boolean(p.receiver));
         return null;

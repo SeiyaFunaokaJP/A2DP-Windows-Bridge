@@ -59,7 +59,7 @@ Los auriculares y altavoces a los que BlueCaster puede transmitir, cada uno con 
 - **Origen de salida**: Loopback del sistema (el predeterminado de un dispositivo nuevo), Dispositivo virtual o Aplicación (consulte [Modos de captura](#capture-modes)). A su lado, el formato en que Windows mezcla el dispositivo capturado (frecuencia de muestreo y profundidad de bits, de solo lectura), en ámbar cuando los ajustes de códec del dispositivo piden otro, con una línea debajo que indica cuál (sigue transmitiendo, convertido); debajo, lo que hace el origen
 - **Usar como salida predeterminada de Windows mientras hay conexión**, con un dispositivo virtual
 
-**Todos los dispositivos de audio**, encima de la lista, tiene los interruptores que se aplican a todos los dispositivos: **Sincronizar volumen de Windows** (consulte [Volumen](#volume)), **Controlar la reproducción con los botones del dispositivo de audio** y **Recordar el volumen de cada dispositivo de audio**. El **Tamaño máx. de paquete multimedia** de cada dispositivo está en la pantalla **Desarrollador** (consulte [Tamaño máximo del paquete multimedia](#max-packet)).
+**Todos los dispositivos de audio**, encima de la lista, tiene los interruptores que se aplican a todos los dispositivos: **Sincronizar volumen de Windows** (consulte [Volumen](#volume)) y **Controlar la reproducción con los botones del dispositivo de audio**. El **Tamaño máx. de paquete multimedia** de cada dispositivo está en la pantalla **Desarrollador** (consulte [Tamaño máximo del paquete multimedia](#max-packet)).
 
 ### Diagnóstico
 
@@ -85,7 +85,7 @@ Con **Configuración > Modo de desarrollador**, la pantalla **Desarrollador** ti
 | Sección | Ajustes |
 |:--------|:---------|
 | Apariencia | Idioma, tema (Sistema / Claro / Oscuro) |
-| Inicio | **Iniciar con Windows** e **Iniciar en la bandeja** (consulte [Iniciar con Windows](#autostart)), **Minimizar en la bandeja del sistema** y **Al hacer clic en el icono de la bandeja se abre la ventana principal** (consulte [Bandeja y panel desplegable](#tray)) |
+| Inicio | **Iniciar con Windows** e **Iniciar en la bandeja** (consulte [Iniciar con Windows](#autostart)), **Minimizar en la bandeja del sistema** y **Abrir la ventana de la bandeja desde** (consulte [Bandeja y panel desplegable](#tray)) |
 | Notificaciones | **Notificar cuando se conecta un dispositivo** (el dispositivo, su batería, el códec y con qué funciona; activado de forma predeterminada), **Avisar cuando la batería esté baja**: **Por debajo del 20%** (el predeterminado), **Por debajo del 10%**, **Por debajo del 5%** o **Nunca**, una vez por conexión (de nuevo solo después de que la batería haya vuelto a estar 5 puntos por encima) |
 | Actualizaciones | **Buscar actualizaciones**, **Buscar actualizaciones al iniciar**, **Incluir versiones preliminares al buscar actualizaciones** (también ofrece versiones beta), **Actualizar ahora** (consulte [Actualizaciones](#updates)) |
 | Avanzado | **Modo de desarrollador** (añade la pantalla **Desarrollador** con el **Tamaño máx. de paquete multimedia** de cada dispositivo y la prueba con receptor par, y más detalles al registro; no requiere reiniciar), **Carpeta de configuración** con **Abrir carpeta de configuración**, **Ejecutar la configuración inicial** |
@@ -99,7 +99,7 @@ El primer inicio (aún sin perfil, o sin ningún adaptador con WinUSB) abre **Co
 
 BlueCaster sigue ejecutándose en la bandeja del sistema, con o sin la ventana:
 
-- **Clic izquierdo** en el icono de la bandeja abre el panel desplegable: el dispositivo y su estado, **Conectar** / **Desconectar**, el volumen, el selector de dispositivos, el códec (una lista para elegirlo, como en Inicio), la calidad del enlace y **Abrir la aplicación**. Su altura se ajusta exactamente a lo que muestra. Esc o un clic en otro sitio lo ocultan. Si un error requiere una pantalla de la ventana principal (Códecs, Dispositivos de audio, el adaptador), su botón abre la ventana en esa pantalla. Con **Configuración > Al hacer clic en el icono de la bandeja se abre la ventana principal** activado (desactivado de forma predeterminada), un clic izquierdo abre en su lugar la ventana principal
+- **Clic izquierdo** en el icono de la bandeja abre el panel desplegable: el dispositivo y su estado, **Conectar** / **Desconectar**, el volumen, el selector de dispositivos, el códec (una lista para elegirlo, como en Inicio), la calidad del enlace y **Abrir la aplicación**. Su altura se ajusta exactamente a lo que muestra. Esc o un clic en otro sitio lo ocultan. Si un error requiere una pantalla de la ventana principal (Códecs, Dispositivos de audio, el adaptador), su botón abre la ventana en esa pantalla. Con **Configuración > Al hacer clic en el icono de la bandeja se abre la ventana principal** activado (desactivado de forma predeterminada), un clic izquierdo abre en su lugar la ventana principal Con **Ningún sitio** en **Abrir la ventana de la bandeja desde** no se abre el panel y el icono abre la ventana principal.
 - **Clic derecho** abre el menú: **Abrir BlueCaster**, los 10 primeros dispositivos por su nombre (una entrada LE Audio marcada con «(LE Audio)»; el que transmite, marcado; haga clic en uno para conectarlo), **Desconectar** y **Salir**. El menú se abre al instante, sin iniciar la ventana
 - La información sobre herramientas indica si BlueCaster está inactivo o conectado
 
@@ -210,7 +210,9 @@ BlueCaster admite tres modos de captura de audio. Cada uno graba un punto distin
 
 **Dispositivos de audio** muestra la misma explicación en **Origen de salida**. Un dispositivo nuevo captura con Loopback del sistema, que funciona sin instalar nada más; elija allí Dispositivo virtual o Aplicación para él.
 
-El Loopback del sistema copia el audio; no se lo quita al dispositivo de salida predeterminado. Para que el audio no suene allí (altavoces, auriculares con cable, un televisor HDMI, ...) además de en los auriculares Bluetooth, **Silenciar la salida predeterminada de Windows mientras hay conexión** (en **Dispositivos de audio**, para todos los dispositivos; activado por defecto) silencia ese dispositivo durante la transmisión y lo restablece al terminar. Esto no afecta a lo que captura BlueCaster. Un dispositivo que ya estaba silenciado sigue así. Si BlueCaster se cierra de forma inesperada, el dispositivo queda silenciado: reactívelo en Windows. Desactive el ajuste para que el audio siga sonando también en el PC.
+El Loopback del sistema copia el audio; no se lo quita al dispositivo de salida predeterminado. Para que el audio no suene allí (altavoces, auriculares con cable, un televisor HDMI, ...) además de en los auriculares Bluetooth, **Silenciar la salida predeterminada de Windows mientras hay conexión** (en la pantalla **Mezclador de volumen**; desactivado por defecto) silencia ese dispositivo durante la transmisión y lo restablece al terminar. Esto no afecta a lo que captura BlueCaster. Un dispositivo que ya estaba silenciado sigue así. Si BlueCaster se cierra de forma inesperada, el dispositivo queda silenciado: reactívelo en Windows. Desactive el ajuste para que el audio siga sonando también en el PC.
+
+Mientras se usa un perfil de Loopback del sistema, **Mezclador de volumen** en el menú izquierdo y el panel desplegable ajustan el volumen de cada aplicación. Con el modo desarrollador activado están disponibles para cualquier fuente de captura, y el silencio también se aplica a ellas. Funcionan con la salida silenciada, cuando el mezclador de Windows puede cortar el sonido. Si la salida predeterminada es un dispositivo virtual, silenciarla puede dejar mudo también el flujo: en ese caso, desactívelo.
 
 En el modo Dispositivo virtual, **Usar como salida predeterminada de Windows mientras hay conexión** convierte el dispositivo seleccionado en la salida predeterminada de Windows durante la transmisión, de modo que las aplicaciones reproducen en él sin cambiar la configuración de Windows. Al detener la transmisión, BlueCaster vuelve al dispositivo predeterminado anterior.
 
@@ -243,7 +245,7 @@ Durante la transmisión, Inicio y el panel desplegable de la bandeja muestran un
 
 Las versiones anteriores permitían que un dispositivo siguiera el volumen de otro dispositivo de salida (en modo de desarrollador); esa opción ya no se usa.
 
-**Recordar el volumen de cada dispositivo de audio** (en **Dispositivos de audio**, para todos los dispositivos; activado de forma predeterminada) guarda el volumen propio de cada dispositivo de audio y lo vuelve a aplicar en cuanto se conecta, antes de enviar audio, así que el volumen de un dispositivo no pasa a otro. Desactívelo si quiere que cada dispositivo empiece con su propio último volumen, que puede ser mucho más alto que el usado la última vez con BlueCaster (p. ej., después de usarlo con un teléfono).
+BlueCaster guarda el volumen propio de cada dispositivo de audio y lo vuelve a aplicar en cuanto se conecta, antes de enviar audio, así que el volumen de un dispositivo no pasa a otro.
 
 ### Botones de los auriculares {#headphone-buttons}
 

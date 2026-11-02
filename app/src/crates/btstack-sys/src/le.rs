@@ -799,7 +799,7 @@ impl Stack {
     /// call would)
     #[doc(hidden)]
     pub fn test_process_incoming_now(&self) {
-        transport::pump();
+        transport::pump(|_, _| {});
     }
 
     /// LE teardown (crate::run, through Stack::deinit)

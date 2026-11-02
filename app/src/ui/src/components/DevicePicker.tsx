@@ -103,8 +103,8 @@ export function DevicePicker(props: {
   /** With onConnect: no connection now (another BlueCaster holds the adapter) */
   connectDisabled?: boolean;
   /** With onConnect: the saved devices stand in a list of their own, each
-   *  with its state and what can be done with it (issue #86) */
-  paired?: (d: Device) => { state: JSX.Element; action: JSX.Element };
+   *  with its state before its icon (issue #86) */
+  paired?: (d: Device) => JSX.Element;
   /** With paired: what the scan shows while it runs */
   scanText?: string;
   /** With paired: no scan part now (a device is connected) */
@@ -160,6 +160,28 @@ export function DevicePicker(props: {
   const stopScan = () => {
     stopped = true;
     return app.run(() => app.core.request("device.scan_stop"));
+  };
+  // A device in use: the scan asks to disconnect it first (issue #86)
+  const inUse = () => ["connecting", "reconnecting", "streaming"].includes(snap().stream.state);
+  const inUseName = () => {
+    const profile = snap().stream.profile;
+    return snap().profiles.find((p) => p.name === profile)?.device_name || profile || "";
+  };
+  const [askDisconnect, setAskDisconnect] = createSignal(false);
+  const [disconnecting, setDisconnecting] = createSignal(false);
+  const disconnectAndScan = async () => {
+    setDisconnecting(true);
+    try {
+      await app.run(() => app.core.request("stream.stop"));
+      await new Promise<void>((resolve) => {
+        const check = () => (inUse() ? setTimeout(check, 100) : resolve());
+        check();
+      });
+    } finally {
+      setDisconnecting(false);
+      setAskDisconnect(false);
+    }
+    void scan();
   };
   onMount(() => {
     if (props.continuous && !scanning()) void scan();
@@ -260,12 +282,12 @@ export function DevicePicker(props: {
             onChange={() => pick(d.address, d.name, d.le_audio)}
           />
         </Show>
+        {paired}
         <Icon name={d.audio ? "headphones" : "bluetooth"} />
         <span class="device-row-text" id={nameId()}>
           <span class="device-row-name">{label()}</span>{" "}
           <span class="mono muted">{d.address}</span>
         </span>
-        {paired?.state}
         <span class="tags">
           <Show when={d.saved}>
             <span class="tag">{t("device.tag_saved")}</span>
@@ -290,9 +312,6 @@ export function DevicePicker(props: {
             <span class="tag num">{d.rssi} dBm</span>
           </Show>
         </span>
-        <Show when={paired}>
-          <span class="inline device-row-actions">{paired!.action}</span>
-        </Show>
         <Show when={!paired && props.onConnect}>
           {(connect) => (
             <span class="inline device-row-actions">
@@ -369,7 +388,11 @@ export function DevicePicker(props: {
       >
         <Button
           icon={scanning() ? "stop" : "search"}
-          onClick={() => void (scanning() ? stopScan() : scan())}
+          onClick={() => {
+            if (scanning()) void stopScan();
+            else if (inUse()) setAskDisconnect(true);
+            else void scan();
+          }}
         >
           {scanning() ? t("connection.scan_stop") : t("connection.scan")}
         </Button>
@@ -519,6 +542,17 @@ export function DevicePicker(props: {
         </Show>
         <Show when={!props.savedOnly}>{manualField()}</Show>
       </Show>
+      <Dialog
+        open={askDisconnect()}
+        title={t("modal.confirm_title")}
+        confirm={t("connection.disconnect")}
+        cancel={t("modal.cancel")}
+        busy={disconnecting()}
+        onConfirm={() => void disconnectAndScan()}
+        onCancel={() => setAskDisconnect(false)}
+      >
+        <p>{t("ui.devices.scan_disconnect", inUseName())}</p>
+      </Dialog>
       <Dialog
         open={renaming() !== null}
         title={t("device.edit_name_title")}

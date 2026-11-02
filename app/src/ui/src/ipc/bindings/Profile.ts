@@ -62,23 +62,6 @@ sbc_min_bitpool: number,
  */
 sbcxq_min_bitpool: number, 
 /**
- * SBC / SBC XQ: block length 4, 8, 12, 16 (0 = auto: 16)
- */
-sbc_blocks: number, 
-/**
- * SBC / SBC XQ: subbands 4, 8 (0 = auto: 8)
- */
-sbc_subbands: number, 
-/**
- * SBC / SBC XQ: "loudness", "snr" ("" = auto: loudness)
- */
-sbc_allocation: string, 
-/**
- * SBC: "joint_stereo", "stereo", "dual_channel", "mono" ("" = auto:
- * joint stereo; SBC XQ is always dual channel)
- */
-sbc_channel_mode: string, 
-/**
  * The settings of the codecs the profile is not using, by codec key,
  * as they were last chosen (the Codecs screen brings them back when
  * that codec is chosen again)

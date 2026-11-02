@@ -500,19 +500,6 @@ pub struct Profile {
     /// The same for SBC XQ
     #[serde(default)]
     pub sbcxq_min_bitpool: u8,
-    /// SBC / SBC XQ: block length 4, 8, 12, 16 (0 = auto: 16)
-    #[serde(default)]
-    pub sbc_blocks: u8,
-    /// SBC / SBC XQ: subbands 4, 8 (0 = auto: 8)
-    #[serde(default)]
-    pub sbc_subbands: u8,
-    /// SBC / SBC XQ: "loudness", "snr" ("" = auto: loudness)
-    #[serde(default)]
-    pub sbc_allocation: String,
-    /// SBC: "joint_stereo", "stereo", "dual_channel", "mono" ("" = auto:
-    /// joint stereo; SBC XQ is always dual channel)
-    #[serde(default)]
-    pub sbc_channel_mode: String,
     /// The settings of the codecs the profile is not using, by codec key,
     /// as they were last chosen (the Codecs screen brings them back when
     /// that codec is chosen again)
@@ -539,10 +526,6 @@ pub struct CodecValues {
     pub sbcxq_bitpool: u8,
     pub sbc_min_bitpool: u8,
     pub sbcxq_min_bitpool: u8,
-    pub sbc_blocks: u8,
-    pub sbc_subbands: u8,
-    pub sbc_allocation: String,
-    pub sbc_channel_mode: String,
 }
 
 impl Default for CodecValues {
@@ -556,10 +539,6 @@ impl Default for CodecValues {
             sbcxq_bitpool: 0,
             sbc_min_bitpool: 0,
             sbcxq_min_bitpool: 0,
-            sbc_blocks: 0,
-            sbc_subbands: 0,
-            sbc_allocation: String::new(),
-            sbc_channel_mode: String::new(),
         }
     }
 }
@@ -625,7 +604,8 @@ pub struct Settings {
     /// A click on the tray icon opens the main window, not the flyout
     #[serde(default)]
     pub tray_click_opens_window: bool,
-    /// The flyout opens above Windows 11's Quick Settings, along with them
+    /// The flyout opens above Windows 11's Quick Settings, along with them,
+    /// and a click on the tray icon opens the main window, not the flyout
     #[serde(default)]
     pub flyout_with_quick_settings: bool,
     /// A notification when a device connects: its codec, what the codec
@@ -639,8 +619,6 @@ pub struct Settings {
     pub include_prereleases: bool,
     /// The headphones' buttons act as Windows media keys (every device)
     pub media_keys: bool,
-    /// Remember each device's volume (one switch for every device)
-    pub remember_volume: bool,
     /// Connect a device that went away again by itself (on by default).
     /// Off: the session ends and the adapter is released.
     #[serde(default = "yes")]
@@ -651,10 +629,10 @@ pub struct Settings {
     /// again.
     #[serde(default = "yes")]
     pub volume_sync: bool,
-    /// System Loopback mutes the default output device while streaming (on
-    /// by default), so only the audio device plays. A change starts the
-    /// profile in use again.
-    #[serde(default = "yes")]
+    /// The default output device is muted while streaming, so only the
+    /// audio device plays (developer mode; off by default). A change
+    /// starts the profile in use again.
+    #[serde(default)]
     pub mute_output: bool,
     /// Developer mode: receiver test, HCI capture, debug details
     pub developer_mode: bool,
@@ -1167,6 +1145,12 @@ pub enum Method {
     /// -> AudioApp[]
     #[serde(rename = "audio.apps")]
     AudioApps,
+    /// -> MixerApp[]
+    #[serde(rename = "audio.mixer")]
+    AudioMixer,
+    /// Sets an app's volume (0-100) and / or mute
+    #[serde(rename = "audio.mixer_set")]
+    AudioMixerSet { app: String, volume: Option<u8>, muted: Option<bool> },
     /// Log lines at `logs` level and above (None: off), link samples, the
     /// receiver test's state (absent: off)
     #[serde(rename = "diag.subscribe")]
@@ -1303,6 +1287,18 @@ pub struct AudioDevice {
 pub struct AudioApp {
     pub exe: String,
     pub name: String,
+}
+
+/// An app on the default output device
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct MixerApp {
+    /// What audio.mixer_set takes; "*system" for the system sounds
+    pub key: String,
+    pub name: String,
+    /// 0-100
+    pub volume: u8,
+    pub muted: bool,
 }
 
 /// What settings.set did besides saving the settings
@@ -1691,7 +1687,7 @@ mod tests {
         let settings: Settings = serde_json::from_value(serde_json::json!({
             "language": "en", "theme": "system", "start_with_windows": false, "start_minimized": false,
             "minimize_to_tray": true, "check_updates_on_startup": true, "include_prereleases": false,
-            "media_keys": true, "remember_volume": true, "developer_mode": false, "bt_chip_pid": 0,
+            "media_keys": true, "developer_mode": false, "bt_chip_pid": 0,
             "bt_chip_fw_stem": "", "afh": "auto", "remote_sink": ""}))
         .unwrap();
         assert!(!settings.le_audio_experimental && !settings.le_audio_low_latency);

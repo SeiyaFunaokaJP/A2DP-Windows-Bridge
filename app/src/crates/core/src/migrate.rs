@@ -26,8 +26,7 @@
 //! `le_audio_experimental` turned on once (2.0.0 wrote it off for everyone).
 //!
 //! Schema 4 (2.0.2): each device's volume is remembered by default (issue
-//! #86), so a folder of schema 3 or older gets `remember_volume` turned on
-//! once.
+//! #86). Always on now, so nothing is left of this step.
 //!
 //! Schema 5 (issue #86): "Auto-select the codec with the highest quality"
 //! is one setting for every device (`auto_codec`) instead of each profile's
@@ -58,8 +57,7 @@
 //! At every start, the profiles are folded into one per device
 //! ([`profiles::consolidate`]: the Codecs screen keeps one); the
 //! first time that changes anything, profiles.json is copied as it was to
-//! `backup\profiles-before-codecs.json`. A profile that chose dual channel for
-//! plain SBC gets joint stereo (2.0.2, issue #86: dual channel is SBC XQ's).
+//! `backup\profiles-before-codecs.json`.
 
 use std::path::Path;
 
@@ -203,15 +201,9 @@ fn consolidate_profiles(dir: &Path) -> usize {
     if !profiles::path(dir).is_file() {
         return 0;
     }
-    let (mut list, _, dual) = profiles::load_fixed(dir);
+    let mut list = profiles::load(dir);
     let folded = profiles::consolidate(&mut list, &Settings::load(dir).last_profile);
     if folded.is_empty() {
-        // SBC's dual channel dropped (issue #86) is written at once
-        if dual > 0
-            && let Err(e) = profiles::save(dir, &list)
-        {
-            tracing::error!("profiles: cannot save {}: {e}", profiles::path(dir).display());
-        }
         return 0;
     }
     let backup = paths::profiles_backup_file(dir);
@@ -407,11 +399,6 @@ fn upgrade_v2(dir: &Path, report: &mut Report) {
     if report.schema_before.is_some_and(|n| n < 3) && !settings.le_audio_experimental {
         settings.le_audio_experimental = true;
         tracing::info!("settings: LE Audio (experimental) turned on, as it now is by default");
-    }
-    // 4: each device's volume remembered by default
-    if report.schema_before.is_some_and(|n| n < 4) && !settings.remember_volume {
-        settings.remember_volume = true;
-        tracing::info!("settings: remembering each device's volume, as it now is by default");
     }
     // 5: one Auto-select for every device
     if report.schema_before.is_some_and(|n| n < 5) {
@@ -697,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    fn v2_settings_remember_each_volume_once() {
+    fn v2_settings_keep_each_volume() {
         let t = TempDir::new("schema4");
         let dir = &t.0;
         std::fs::write(
@@ -710,18 +697,11 @@ mod tests {
         assert_eq!(r, Report { schema_before: Some(3), schema_written: true, relaid_out: true, ..Report::default() });
         let s = Settings::load(dir);
         assert_eq!(s.schema_version, SCHEMA_VERSION);
-        assert!(s.remember_volume);
         assert_eq!(s.saved_volumes["AA:BB:CC:DD:EE:FF"], 40);
         // A device's own value gave way to the one for every device (schema 6)
         assert!(s.device_options.is_none());
         assert!(read_json(&Settings::path(dir)).get("device_options").is_none());
-
-        // Turned off again by the user: stays off
-        let mut off = s;
-        off.remember_volume = false;
-        off.save(dir).unwrap();
-        assert_eq!(prepare(dir), Report { schema_before: Some(SCHEMA_VERSION), ..Report::default() });
-        assert!(!Settings::load(dir).remember_volume);
+        assert!(read_json(&Settings::path(dir)).get("remember_volume").is_none());
     }
 
     #[test]
@@ -1167,27 +1147,5 @@ mod tests {
         std::fs::write(profiles::path(dir), again).unwrap();
         assert_eq!(prepare(dir).profiles_folded, 1);
         assert_eq!(std::fs::read_to_string(paths::profiles_backup_file(dir)).unwrap(), text);
-    }
-
-    #[test]
-    fn sbc_dual_channel_becomes_joint_stereo_in_the_file() {
-        let t = TempDir::new("sbcdual");
-        let dir = &t.0;
-        std::fs::write(Settings::path(dir), r#"{"schema_version":4}"#).unwrap();
-        let text = r#"{"profiles":[{"name":"Moto","device_address":"00:A2:D0:00:00:02","codec":"sbc",
-            "sbc_channel_mode":"dual_channel","sbc_blocks":8,
-            "codec_settings":{"sbcxq":{"sbc_channel_mode":"dual_channel","abr":true}}},
-            {"name":"WH","device_address":"00:A2:D0:00:00:03","codec":"sbc","sbc_channel_mode":"stereo"}]}"#;
-        std::fs::write(profiles::path(dir), text).unwrap();
-        assert_eq!(prepare(dir).profiles_folded, 0);
-        let saved = read_json(&profiles::path(dir));
-        let moto = &saved["profiles"][0];
-        assert!(moto.get("sbc_channel_mode").is_none(), "{moto}");
-        assert_eq!(moto["sbc_blocks"], 8);
-        assert!(moto["codec_settings"]["sbcxq"].get("sbc_channel_mode").is_none(), "{moto}");
-        assert_eq!(moto["codec_settings"]["sbcxq"]["abr"], true);
-        assert_eq!(saved["profiles"][1]["sbc_channel_mode"], "stereo");
-        // No backup: nothing was folded
-        assert!(!paths::profiles_backup_file(dir).exists());
     }
 }

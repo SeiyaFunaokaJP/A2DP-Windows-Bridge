@@ -16,6 +16,7 @@ use crate::health::{CaptureReading, StreamHealth};
 use crate::messages::Msg;
 use crate::mute_output::OutputMute;
 use crate::service::Inner;
+use crate::vendor;
 
 /// What to stream (from a profile, or the command line)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,8 +53,8 @@ pub struct StreamRequest {
     pub bit_depth: Option<u8>,
     pub source: SourceRequest,
     pub volume_sync: VolumeSync,
-    /// System Loopback mutes the default output device while streaming
-    /// (settings `mute_output`)
+    /// The default output device is muted while streaming
+    /// (`Settings::mutes_output`)
     pub mute_output: bool,
     pub max_media_payload: u16,
     /// LE Audio (experimental) instead of A2DP: the le_stream session
@@ -91,10 +92,9 @@ impl StreamRequest {
         codec::sbc::SbcParams { min_bitpool, ..self.sbc }
     }
 
-    /// Whether a session capturing `source` mutes the default output device.
-    /// Not Application capture: other apps may play there on purpose.
+    /// Whether a session capturing `source` mutes the default output device
     pub fn mutes_output(&self, source: &SourceRequest) -> bool {
-        self.mute_output && *source == SourceRequest::SystemLoopback
+        self.mute_output && *source != SourceRequest::TestTone
     }
 }
 
@@ -1228,32 +1228,61 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     };
     // However the session ends, the next one starts on a new stack
     let _streamed = StreamedMark(inner, req.device);
+    let connect_again = || {
+        host.disconnect();
+        for _ in 0..10 {
+            if !stopped() {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+        inner.notify(StreamState::Connecting, Msg::new("status.connecting_device"));
+        connect(&host)
+    };
     // Huawei earbuds that do not list LDAC: asked for, not for Auto, as the
     // mode stays set on them and trades connection stability for it. No LDAC
     // from it: earbuds that had it off get it back, and a connection after it.
     if req.codec == Some(CodecKind::Ldac)
         && !remote.has(CodecKind::Ldac)
         && remote.audio_sinks_in_use == 0
-        && crate::huawei::is_huawei(&req.device_name)
+        && vendor::huawei::is_huawei(&req.device_name)
         && !stopped()
     {
         inner.notify(StreamState::Connecting, Msg::new("status.huawei_ldac"));
-        if let Some(before) = crate::huawei::ask_for_ldac(&host, req.device) {
-            let connect_again = || {
-                host.disconnect();
-                for _ in 0..10 {
-                    if !stopped() {
-                        std::thread::sleep(Duration::from_millis(100));
-                    }
-                }
-                inner.notify(StreamState::Connecting, Msg::new("status.connecting_device"));
-                connect(&host)
-            };
+        if let Some(before) = vendor::huawei::ask_for_ldac(&host, req.device) {
             let mut result = connect_again();
             if before == 0
                 && result.as_ref().is_ok_and(|caps| !caps.has(CodecKind::Ldac))
                 && !stopped()
-                && crate::huawei::set_connection_first(&host, req.device)
+                && vendor::huawei::set_connection_first(&host, req.device)
+            {
+                result = connect_again();
+            }
+            remote = match result {
+                Ok(caps) => caps,
+                Err(_) if stopped() => return inner.notify(StreamState::Idle, Msg::new("status.ready")),
+                Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
+            };
+        }
+    }
+    // OPPO earbuds that cap LHDC V5: asked for, not for Auto, and only when
+    // the profile wants more than the 400 kbps they may give anyway. Nothing
+    // gained: earbuds that had Hi-Res off get it back, and a connection after it.
+    if req.codec == Some(CodecKind::LhdcV5)
+        && req.quality != Quality::Mobile
+        && !req.abr
+        && remote.listed_max_bitrate(CodecKind::LhdcV5) != 0
+        && remote.audio_sinks_in_use == 0
+        && vendor::oppo::is_oppo(&req.device_name)
+        && !stopped()
+    {
+        inner.notify(StreamState::Connecting, Msg::new("status.oppo_hi_res"));
+        if let Some(before) = vendor::oppo::ask_for_hi_res(&host, req.device) {
+            let listed = remote.listed_max_bitrate(CodecKind::LhdcV5);
+            let mut result = connect_again();
+            if before == 0
+                && result.as_ref().is_ok_and(|caps| caps.listed_max_bitrate(CodecKind::LhdcV5) == listed)
+                && !stopped()
+                && vendor::oppo::set_hi_res_off(&host, req.device)
             {
                 result = connect_again();
             }

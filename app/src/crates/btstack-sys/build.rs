@@ -93,7 +93,6 @@ fn main() {
         .include(btstack.join("platform/posix"))
         .include(btstack.join("chipset/realtek"))
         .include(btstack.join("chipset/bcm"))
-        .include(btstack.join("chipset/intel"))
         .include(btstack.join("3rd-party/tinydir"))
         .include(btstack.join("3rd-party/rijndael"))
         .include(btstack.join("3rd-party/micro-ecc"))
@@ -145,7 +144,6 @@ fn main() {
     // Software P-256 for LE Secure Connections (ENABLE_MICRO_ECC_P256)
     build.file(btstack.join("3rd-party/micro-ecc/uECC.c"));
     build.file(btstack.join("chipset/bcm/btstack_chipset_bcm.c"));
-    build.file(btstack.join("chipset/intel/btstack_chipset_intel_firmware.c"));
     build.file(btstack.join("3rd-party/rijndael/rijndael.c"));
     build.file(csrc.join("shim.c"));
 

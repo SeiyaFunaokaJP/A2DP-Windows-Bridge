@@ -844,12 +844,12 @@ option {
 }
 .dialog-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--s3);
 }
-.dialog-subtitle {
-  margin: 0;
+.dialog-heading {
+  align-self: center;
 }
 .dialog-body {
   display: flex;
@@ -1377,6 +1377,28 @@ option {
 .volume.disabled {
   opacity: 0.55;
 }
+.mixer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.mixer-app {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-top: var(--s1);
+  font-size: var(--fs-12);
+}
+.mixer-notes {
+  margin: 0;
+  padding-left: var(--s5);
+  font-size: var(--fs-12);
+  color: var(--text-2);
+}
+.fly-mixer {
+  max-height: 11rem;
+  overflow-y: auto;
+}
 /* The speaker mutes and unmutes (issue #86) */
 .volume-mute {
   display: inline-flex;
@@ -1487,6 +1509,9 @@ option {
   font-size: var(--fs-12);
   font-weight: 400;
   color: var(--text-2);
+}
+.live-bitpool {
+  flex-basis: 100%;
 }
 .codec-line {
   display: flex;
@@ -1942,24 +1967,6 @@ option {
   display: flex;
   flex-direction: column;
   gap: var(--s3);
-}
-/* SBC's blocks, subbands, allocation and channel mode, two per row */
-.sbc-frame {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: var(--s3);
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-}
-.sbc-frame legend,
-.sbc-frame .hint {
-  grid-column: 1 / -1;
-}
-.sbc-frame legend {
-  padding: 0;
-  margin-bottom: var(--s2);
 }
 .sbc-bitrate {
   margin: 0;
@@ -2886,11 +2893,18 @@ option {
   gap: var(--s4);
   padding: var(--s5);
 }
+/* One size for every step's headings (issue #86) */
+.setup-body h2 {
+  font-size: var(--fs-14);
+}
 .setup-body h2:focus {
   outline: none;
 }
 .sub {
   color: var(--text-2);
+}
+.device-note {
+  padding: var(--s4);
 }
 .setup-note {
   display: flex;
@@ -2902,9 +2916,6 @@ option {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-}
-.paired-devices .status-line {
-  flex: none;
 }
 .setup-foot {
   display: flex;
@@ -3004,7 +3015,7 @@ html.win-flyout body {
 }
 
 /* ---------------------------------------------------------------- */
-/* Narrow main window (min 720 px)                                   */
+/* Narrow window (the setup; the main window stays wider)            */
 /* ---------------------------------------------------------------- */
 
 @media (max-width: 760px) {

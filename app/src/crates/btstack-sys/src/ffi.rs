@@ -18,7 +18,6 @@ unsafe extern "C" {
     pub fn bluecaster_hci_init(is_async: c_int);
     pub fn bluecaster_transport_deliver(packet_type: u8, packet: *const u8, size: u16) -> c_int;
     pub fn bluecaster_transport_packet_sent();
-    pub fn bluecaster_intel_download_firmware(is_async: c_int, firmware_path: *const c_char);
     pub fn bluecaster_hci_dump_init();
     pub fn bluecaster_set_link_key_db(rust_store: c_int);
     pub fn bluecaster_add_hci_event_handler();

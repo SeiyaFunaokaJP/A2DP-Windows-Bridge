@@ -19,6 +19,7 @@ import { Flyout } from "../screens/Flyout";
 import { entryState, Home } from "../screens/Home";
 import { audioEntries, entryByKey, type AudioEntry } from "../lib/profile";
 import { Settings } from "../screens/Settings";
+import { Mixer } from "../screens/Mixer";
 import { Setup, needsSetup } from "../screens/Setup";
 import { applyTheme } from "../theme";
 import { AppProvider, useApp, type RouteName } from "./context";
@@ -92,6 +93,7 @@ const NAV: { name: RouteName; icon: IconName; label: string }[] = [
   { name: "codecs", icon: "headphones", label: "ui.nav.codecs" },
   { name: "devices", icon: "bluetooth", label: "ui.nav.devices" },
   { name: "adapter", icon: "usb_stick", label: "ui.nav.adapter" },
+  { name: "mixer", icon: "speaker_2", label: "ui.nav.mixer" },
   { name: "diagnostics", icon: "pulse", label: "ui.nav.diagnostics" },
   { name: "settings", icon: "settings", label: "ui.nav.settings" },
   { name: "about", icon: "info", label: "ui.nav.about" },
@@ -102,6 +104,9 @@ const NAV: { name: RouteName; icon: IconName; label: string }[] = [
 function MainWindow() {
   const app = useApp();
   const { core, route } = app;
+  const shown = (n: { name: RouteName }) => {
+    return (n.name !== "developer" && n.name !== "mixer") || core.state.snap?.settings.developer_mode;
+  };
   const [collapsed, setCollapsed] = createSignal<boolean | null>(null);
 
   // The first-run setup: decided once when the state first arrives (and
@@ -170,7 +175,7 @@ function MainWindow() {
               </button>
             </div>
             <ul class="nav-list">
-              <For each={NAV.filter((n) => n.name !== "developer" || core.state.snap?.settings.developer_mode)}>
+              <For each={NAV.filter(shown)}>
                 {(item) => (
                   <li>
                     <a
@@ -207,6 +212,9 @@ function MainWindow() {
               </Match>
               <Match when={route().name === "diagnostics"}>
                 <Diagnostics />
+              </Match>
+              <Match when={route().name === "mixer" && core.state.snap?.settings.developer_mode}>
+                <Mixer />
               </Match>
               <Match when={route().name === "developer" && core.state.snap?.settings.developer_mode}>
                 <Developer />

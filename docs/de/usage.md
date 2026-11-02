@@ -59,7 +59,7 @@ Die Kopfhörer und Lautsprecher, an die BlueCaster streamen kann, jeweils mit ei
 - **Ausgabequelle**: System-Loopback (Standard für ein neues Gerät), Virtuelles Gerät oder Anwendung (siehe [Aufnahmemodi](#capture-modes)). Daneben das Format, in dem Windows das aufgenommene Gerät mischt (Abtastrate und Bittiefe, schreibgeschützt), in Bernstein, wenn die Codec-Einstellungen des Geräts ein anderes verlangen, mit einer Zeile darunter, welches (es streamt trotzdem, umgerechnet); darunter, was die Quelle tut
 - **Bei Verbindung als Windows-Standardausgabe festlegen**, mit einem virtuellen Gerät
 
-**Alle Audiogeräte** über der Liste enthält die Schalter, die für jedes Gerät gelten: **Windows-Lautstärke-Sync** (siehe [Lautstärke](#volume)), **Wiedergabe über die Tasten des Audiogeräts steuern** und **Lautstärke jedes Audiogeräts merken**. Die **Max. Mediapaketgröße** jedes Geräts befindet sich auf der Seite **Entwickler** (siehe [Max. Mediapaketgröße](#max-packet)).
+**Alle Audiogeräte** über der Liste enthält die Schalter, die für jedes Gerät gelten: **Windows-Lautstärke-Sync** (siehe [Lautstärke](#volume)) und **Wiedergabe über die Tasten des Audiogeräts steuern**. Die **Max. Mediapaketgröße** jedes Geräts befindet sich auf der Seite **Entwickler** (siehe [Max. Mediapaketgröße](#max-packet)).
 
 ### Diagnose
 
@@ -85,7 +85,7 @@ Mit **Einstellungen > Entwicklermodus** hat die Seite **Entwickler** eine Regist
 | Abschnitt | Einstellungen |
 |:----------|:--------------|
 | Darstellung | Sprache, Design (System / Hell / Dunkel) |
-| Start | **Mit Windows starten** und **Im Infobereich starten** (siehe [Mit Windows starten](#autostart)), **In den Infobereich minimieren** und **Klick auf das Infobereich-Symbol öffnet das Hauptfenster** (siehe [Infobereich und Flyout](#tray)) |
+| Start | **Mit Windows starten** und **Im Infobereich starten** (siehe [Mit Windows starten](#autostart)), **In den Infobereich minimieren** und **Kleines Fenster öffnen über** (siehe [Infobereich und Flyout](#tray)) |
 | Benachrichtigungen | **Benachrichtigen, wenn ein Gerät verbunden wird** (das Gerät, sein Akkustand, der Codec und womit er läuft; standardmäßig aktiviert), **Bei niedrigem Akkustand benachrichtigen**: **Unter 20%** (Standard), **Unter 10%**, **Unter 5%** oder **Nie**, einmal pro Verbindung (erneut erst, nachdem der Akkustand wieder 5 Punkte darüber lag) |
 | Updates | **Nach Updates suchen**, **Beim Start nach Updates suchen**, **Vorabversionen bei der Updatesuche einbeziehen** (bietet auch Betaversionen an), **Jetzt aktualisieren** (siehe [Updates](#updates)) |
 | Erweitert | **Entwicklermodus** (fügt die Seite **Entwickler** mit der **Max. Mediapaketgröße** jedes Geräts und dem Peer-Empfängertest sowie dem Protokoll mehr Details hinzu; kein Neustart nötig), **Einstellungsordner** mit **Konfigurationsordner öffnen**, **Einrichtung ausführen** |
@@ -99,7 +99,7 @@ Der erste Start (noch kein Profil oder kein Adapter mit WinUSB) öffnet **BlueCa
 
 BlueCaster läuft im Infobereich weiter, mit oder ohne Fenster:
 
-- **Linksklick** auf das Symbol im Infobereich öffnet das Flyout: das Gerät und sein Zustand, **Verbinden** / **Trennen**, die Lautstärke, die Geräteauswahl, der Codec (eine Liste zum Wählen, wie auf Start), die Verbindungsqualität und **App öffnen**. Es ist genau so hoch wie sein Inhalt. Esc oder ein Klick an eine andere Stelle blendet es aus. Braucht ein Fehler eine Seite des Hauptfensters (Codecs, Audiogeräte, den Adapter), öffnet seine Schaltfläche das Fenster an dieser Stelle. Ist **Einstellungen > Klick auf das Infobereich-Symbol öffnet das Hauptfenster** eingeschaltet (standardmäßig aus), öffnet ein Linksklick stattdessen das Hauptfenster
+- **Linksklick** auf das Symbol im Infobereich öffnet das Flyout: das Gerät und sein Zustand, **Verbinden** / **Trennen**, die Lautstärke, die Geräteauswahl, der Codec (eine Liste zum Wählen, wie auf Start), die Verbindungsqualität und **App öffnen**. Es ist genau so hoch wie sein Inhalt. Esc oder ein Klick an eine andere Stelle blendet es aus. Braucht ein Fehler eine Seite des Hauptfensters (Codecs, Audiogeräte, den Adapter), öffnet seine Schaltfläche das Fenster an dieser Stelle. Ist **Einstellungen > Klick auf das Infobereich-Symbol öffnet das Hauptfenster** eingeschaltet (standardmäßig aus), öffnet ein Linksklick stattdessen das Hauptfenster Mit **Gar nicht** unter **Kleines Fenster öffnen über** öffnet sich kein Flyout, und das Symbol öffnet das Hauptfenster.
 - **Rechtsklick** öffnet das Menü: **BlueCaster öffnen**, die ersten 10 Geräte nach Namen (ein LE-Audio-Eintrag mit „(LE Audio)“ markiert; das streamende mit Häkchen; ein Klick verbindet es), **Trennen** und **Beenden**. Das Menü öffnet sich sofort, ohne das Fenster zu starten
 - Der Tooltip zeigt, ob BlueCaster inaktiv oder verbunden ist
 
@@ -210,7 +210,9 @@ BlueCaster unterstützt drei Aufnahmemodi. Jeder nimmt an einer anderen Stelle d
 
 **Audiogeräte** zeigt dieselbe Erklärung unter **Ausgabequelle**. Ein neues Gerät nimmt mit System-Loopback auf, das ohne weitere Installation funktioniert; wählen Sie dort Virtuelles Gerät oder Anwendung dafür.
 
-System-Loopback kopiert das Audio; es nimmt es dem Standardausgabegerät nicht weg. Damit das Audio dort (Lautsprecher, kabelgebundene Kopfhörer, ein HDMI-Fernseher, ...) nicht zusätzlich zu den Bluetooth-Kopfhörern wiedergegeben wird, schaltet **Bei Verbindung die Windows-Standardausgabe stummschalten** (unter **Audiogeräte**, für jedes Gerät; standardmäßig an) dieses Gerät während des Streamings stumm und hebt das am Ende wieder auf. Das ändert nichts an dem, was BlueCaster aufnimmt. Ein bereits stummgeschaltetes Gerät bleibt stumm. Beendet sich BlueCaster unerwartet, bleibt das Gerät stumm: Heben Sie das in Windows auf. Schalten Sie die Einstellung aus, damit das Audio auch auf dem PC weiterläuft.
+System-Loopback kopiert das Audio; es nimmt es dem Standardausgabegerät nicht weg. Damit das Audio dort (Lautsprecher, kabelgebundene Kopfhörer, ein HDMI-Fernseher, ...) nicht zusätzlich zu den Bluetooth-Kopfhörern wiedergegeben wird, schaltet **Bei Verbindung die Windows-Standardausgabe stummschalten** (auf der Seite **Lautstärkemixer**; standardmäßig aus) dieses Gerät während des Streamings stumm und hebt das am Ende wieder auf. Das ändert nichts an dem, was BlueCaster aufnimmt. Ein bereits stummgeschaltetes Gerät bleibt stumm. Beendet sich BlueCaster unerwartet, bleibt das Gerät stumm: Heben Sie das in Windows auf. Schalten Sie die Einstellung aus, damit das Audio auch auf dem PC weiterläuft.
+
+Im Entwicklermodus stellen **Lautstärkemixer** im linken Menü und das Flyout die Lautstärke jeder App ein, mit oder ohne Stummschaltung. Das funktioniert auch bei stummgeschalteter Ausgabe, wenn der Windows-Mixer den Ton unterbrechen kann. Ist ein virtuelles Gerät die Standardausgabe, kann die Stummschaltung auch den Stream stumm machen: Schalten Sie sie dann aus.
 
 Im Modus Virtuelles Gerät macht **Bei Verbindung als Windows-Standardausgabe festlegen** das ausgewählte Gerät während des Streamings zur Windows-Standardausgabe, sodass Apps darauf wiedergeben, ohne dass Sie Windows-Einstellungen ändern müssen. Endet das Streaming, wechselt BlueCaster zurück zum vorherigen Standardgerät.
 
@@ -243,7 +245,7 @@ Während des Streamings zeigen die Seite Start und das Flyout im Infobereich ein
 
 In früheren Versionen konnte ein Gerät der Lautstärke eines anderen Ausgabegeräts folgen (im Entwicklermodus); diese Auswahl wird nicht mehr verwendet.
 
-**Lautstärke jedes Audiogeräts merken** (unter **Audiogeräte**, für jedes Gerät; standardmäßig an) speichert die eigene Lautstärke jedes Audiogeräts und stellt sie gleich beim Verbinden wieder ein, bevor Audio gesendet wird, sodass die Lautstärke eines Geräts nicht auf ein anderes übergeht. Schalten Sie es aus, damit jedes Gerät mit seiner eigenen zuletzt verwendeten Lautstärke startet, die viel lauter sein kann als die zuletzt mit BlueCaster verwendete (z. B. nach der Nutzung mit einem Smartphone).
+BlueCaster speichert die eigene Lautstärke jedes Audiogeräts und stellt sie gleich beim Verbinden wieder ein, bevor Audio gesendet wird, sodass die Lautstärke eines Geräts nicht auf ein anderes übergeht.
 
 ### Kopfhörertasten {#headphone-buttons}
 
