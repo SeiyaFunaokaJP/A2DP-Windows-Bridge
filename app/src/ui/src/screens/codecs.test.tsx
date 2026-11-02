@@ -689,6 +689,7 @@ describe("codec settings within what the device lists (issue #86: moto buds+)", 
     // Auto: where the quality puts it, the device's largest here
     expect(bitpool).toHaveValue("39");
     expect(bitpool).toHaveAttribute("aria-valuetext", t("ui.profile.sbc_bitpool_auto", 39));
+    expect(dialog).toHaveTextContent(t("ui.profile.sbc_channel_mode", t("ui.diag.cd_mode.joint_stereo")));
     // Never past the device's largest
     fireEvent.input(bitpool, { target: { value: "53" } });
     expect(bitpool).toHaveValue("39");
@@ -811,6 +812,7 @@ describe("SBC settings", () => {
     const high = within(dialog).getByRole("slider", { name: t("ui.profile.sbc_bitpool_max") });
     // Auto at 48 kHz: 43 per channel
     expect(high).toHaveAttribute("aria-valuetext", t("ui.profile.sbc_bitpool_auto", 43));
+    expect(dialog).toHaveTextContent(t("ui.profile.sbc_channel_mode", t("ui.diag.cd_mode.dual_channel")));
     // With the highest on Auto, the lowest stops where Auto's highest is
     fireEvent.input(low, { target: { value: "47" } });
     expect(low).toHaveValue("43");

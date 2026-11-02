@@ -740,6 +740,7 @@
   "ui.profile.sbc_bitpool_max": "Maximum bitpool",
   "ui.profile.sbc_bitpool_auto": "Auto (%d)",
   "ui.profile.sbc_bitpool_auto_high": "(%d) Auto",
+  "ui.profile.sbc_channel_mode": "Channel mode: %s",
   "status.device_off": "Disconnected",
   "status.device_unreachable": "Disconnected (off or out of range)",
   "status.device_back": "The audio device is back on, connecting...",
