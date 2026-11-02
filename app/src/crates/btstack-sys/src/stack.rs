@@ -102,7 +102,7 @@ impl Stack {
     }
 
     /// Installs the transport without initializing HCI (for a firmware
-    /// loader that runs first, see [`Stack::intel_download_firmware`])
+    /// loader that runs first, see [`Stack::raw_begin`])
     pub fn install_transport(&self, backend: Box<dyn crate::HciBackend>) {
         transport::install(backend);
         log_le_hidden();
@@ -324,13 +324,47 @@ impl Stack {
         }
     }
 
-    /// Intel bootloader firmware download on the installed transport, before
-    /// hci_init; ends with [`crate::App::on_intel_firmware`]
-    pub fn intel_download_firmware(&self, firmware_folder: &str) {
-        tracing::debug!(target: "btstack", "intel firmware download: folder {firmware_folder}, async {}", transport::is_async());
-        let p = keep_path(firmware_folder);
-        // SAFETY: on the BTstack thread; transport installed; p outlives it.
-        unsafe { ffi::a2dpwb_intel_download_firmware(transport::is_async() as c_int, p) };
+    // ---- Raw transport: a firmware loader before HCI init ----
+
+    /// Opens the transport installed with [`Stack::install_transport`] for a
+    /// firmware loader in the app: until [`Stack::raw_end`], the
+    /// controller's packets go to [`crate::App::on_raw_packet`], not to
+    /// BTstack. False if the transport could not be opened.
+    pub fn raw_begin(&self) -> bool {
+        transport::set_raw(true);
+        let opened = transport::open();
+        if !opened {
+            transport::set_raw(false);
+        }
+        tracing::debug!(target: "hci", "raw transport begin: opened {opened}");
+        opened
+    }
+
+    /// Sends a packet as it is (H4 packet type, packet without type byte):
+    /// no LE hidden. Logged to the HCI capture.
+    pub fn raw_send(&self, packet_type: u8, packet: &[u8]) -> bool {
+        crate::callbacks::log_packet(packet_type, false, packet);
+        transport::send_raw(packet_type, packet)
+    }
+
+    /// Sends an HCI command on the ACL data pipe, where an Intel bootloader
+    /// takes Secure Send; logged to the HCI capture as the command it is
+    pub fn raw_send_bulk_command(&self, command: &[u8]) -> bool {
+        crate::callbacks::log_packet(crate::consts::HCI_COMMAND_DATA_PACKET, false, command);
+        transport::send_raw(crate::consts::HCI_ACL_DATA_PACKET, command)
+    }
+
+    /// The controller runs its bootloader, see
+    /// [`crate::HciBackend::set_bootloader`]
+    pub fn set_bootloader(&self, on: bool) {
+        transport::set_bootloader(on);
+    }
+
+    /// Ends raw mode: packets go to BTstack again. The transport stays open;
+    /// [`Stack::hci_init_installed`] and [`Stack::power_on`] follow.
+    pub fn raw_end(&self) {
+        tracing::debug!(target: "hci", "raw transport end");
+        transport::set_raw(false);
     }
 
     // ---- HCI ----

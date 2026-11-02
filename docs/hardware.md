@@ -28,10 +28,11 @@ Tried A2DPWB with other hardware? Please tell us in an [issue](https://github.co
 | ASUS BT400 | Broadcom BCM20702 | 0B05:17CB | USB dongle | ✅ Experimental | Runs on its ROM firmware, no files needed. Reported on v1 (1.0.12–1.0.17) | [#18](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/18), [#27](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/27), [#30](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/30) |
 | "Realtek Bluetooth 6.0" dongle | Realtek RTL8761B | 0BDA:A760 | USB dongle | ✅ | Not detected automatically yet (LMP subversion 0x8761). No LE Audio | [#208](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/208) |
 | CSR8510 A10 dongle | CSR8510 | 0A12:0001 | USB dongle | ✅ | No firmware files needed | [#32](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/32) |
+| Intel AX211 (built-in Wi-Fi / Bluetooth card) | Intel AX211 (TLV bootloader) | 8087:0033 | Built in | ✅ Experimental | Firmware from linux-firmware `intel/`, loaded from the bootloader in 1.5–1.7 s: `ibt-0180-0041` (variant 0x1B) or `ibt-1040-0041` (variant 0x19), the log names the file. Pairing, AAC and LDAC work. Windows has no Bluetooth of its own while A2DPWB uses it | Contributor test |
 | "MA530" adapter | Not given | – | USB dongle | ✅ | Reported on v1.0.9 | [#3](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/3), [#9](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/9) |
 | UGREEN Bluetooth 5.4 and 6.0 dongles | Not given | – | USB dongle | ✅ | Reported on 2.0.1 | [#11](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/11#issuecomment-6563908711) |
 
-Intel, MediaTek and Qualcomm adapters have no reports yet: see [Recommended Adapters](setup#adapters) for what is expected of them.
+MediaTek and Qualcomm adapters have no reports yet: see [Recommended Adapters](setup#adapters) for what is expected of them.
 
 ## Headphones
 

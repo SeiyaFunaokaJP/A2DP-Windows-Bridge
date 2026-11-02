@@ -14,6 +14,7 @@ mod app;
 pub mod capture;
 pub mod chips;
 pub mod events;
+pub mod intel;
 mod le;
 pub mod link_keys;
 pub mod media;
@@ -442,15 +443,10 @@ impl BtHost {
                         let backend = backend(&transport);
                         if intel_loader && !tcp {
                             // Intel controllers boot into a bootloader and
-                            // need ibt-*.sfi/.ddc before regular HCI init;
-                            // the loader finishes at once if the controller
-                            // is operational already
+                            // need ibt-*.sfi / .ddc before HCI init; the
+                            // loader is done at once if the firmware runs
                             stack.install_transport(backend);
-                            tracing::info!(
-                                "Intel adapter: checking bootloader firmware (experimental), folder {}",
-                                app.setup.firmware_dir.display()
-                            );
-                            stack.intel_download_firmware(&app.setup.firmware_dir.to_string_lossy());
+                            app.start_intel_loader(stack);
                         } else {
                             app.setup_hci_and_power_on(stack, Some(backend));
                         }

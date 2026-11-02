@@ -114,7 +114,7 @@
   "firmware.detected_adapters": "偵測到的介面卡",
   "firmware.no_adapters": "未偵測到 USB 藍牙介面卡。",
   "firmware.manual_instructions": "1. 按一下「開啟下載頁面」以開啟 kernel.org\n2. 下載 fw 與 config 檔案\n3. 按一下「開啟設定資料夾」並將檔案放入其中",
-  "firmware.vendor_intel": "Intel 介面卡 (實驗性)。不支援 AX210 及更新的型號。若以開機載入程式模式啟動，請參閱設定指南。",
+  "firmware.vendor_intel": "Intel 介面卡 (實驗性)。若以開機載入程式模式啟動，請參閱設定指南。",
   "firmware.vendor_broadcom": "Broadcom 介面卡 (實驗性): 不需要 Realtek 檔案。",
   "firmware.vendor_csr": "CSR 介面卡: 不需要韌體檔案。",
   "firmware.chip_auto": "自動 (%s)",

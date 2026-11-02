@@ -18,7 +18,6 @@ unsafe extern "C" {
     pub fn a2dpwb_hci_init(is_async: c_int);
     pub fn a2dpwb_transport_deliver(packet_type: u8, packet: *const u8, size: u16) -> c_int;
     pub fn a2dpwb_transport_packet_sent();
-    pub fn a2dpwb_intel_download_firmware(is_async: c_int, firmware_path: *const c_char);
     pub fn a2dpwb_hci_dump_init();
     pub fn a2dpwb_set_link_key_db(rust_store: c_int);
     pub fn a2dpwb_add_hci_event_handler();

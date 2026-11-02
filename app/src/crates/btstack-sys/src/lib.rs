@@ -113,9 +113,9 @@ pub trait App {
     fn on_wake(&mut self, stack: &Stack);
     /// A timer started with [`Stack::timer_start`] fired
     fn on_timer(&mut self, stack: &Stack, id: u32);
-    /// The Intel bootloader firmware download started with
-    /// [`Stack::intel_download_firmware`] finished (0 = success)
-    fn on_intel_firmware(&mut self, _stack: &Stack, _result: i32) {}
+    /// A packet from the controller while a firmware loader drives the
+    /// transport, before HCI init ([`Stack::raw_begin`] .. [`Stack::raw_end`])
+    fn on_raw_packet(&mut self, _stack: &Stack, _packet_type: u8, _packet: &[u8]) {}
     /// The run loop has stopped; HCI is still initialized
     fn on_exit(&mut self, _stack: &Stack) {}
     /// A GATT client reads attribute `handle` of the PC's GATT database (a

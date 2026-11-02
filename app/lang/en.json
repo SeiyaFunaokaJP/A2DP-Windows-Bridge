@@ -114,7 +114,7 @@
   "firmware.detected_adapters": "Detected Adapter",
   "firmware.no_adapters": "No USB Bluetooth adapters detected.",
   "firmware.manual_instructions": "1. Click 'Open Download Page' to open kernel.org\n2. Download the fw and config files\n3. Click 'Open Firmware Folder' and place the files there",
-  "firmware.vendor_intel": "Intel adapter (experimental). AX210 and newer are not supported. If it starts in bootloader mode, see the setup guide.",
+  "firmware.vendor_intel": "Intel adapter (experimental). If it starts in bootloader mode, see the setup guide.",
   "firmware.vendor_broadcom": "Broadcom adapter (experimental): no Realtek files needed.",
   "firmware.vendor_csr": "CSR adapter: no firmware files needed.",
   "firmware.chip_auto": "Auto (%s)",

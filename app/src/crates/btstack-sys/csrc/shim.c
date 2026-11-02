@@ -49,7 +49,6 @@
 #include "classic/sdp_client_rfcomm.h"
 #include "classic/sdp_server.h"
 #include "classic/sdp_util.h"
-#include "btstack_chipset_intel_firmware.h"
 #include "btstack_tlv.h"
 #include "btstack_tlv_windows.h"
 #include "ble/att_db.h"
@@ -74,7 +73,6 @@ int a2dpwb_rs_lk_get(const uint8_t *addr, uint8_t *key, int *type);
 void a2dpwb_rs_lk_put(const uint8_t *addr, const uint8_t *key, int type);
 void a2dpwb_rs_lk_delete(const uint8_t *addr);
 int a2dpwb_rs_lk_at(int index, uint8_t *addr, uint8_t *key, int *type);
-void a2dpwb_rs_intel_done(int result);
 uint16_t a2dpwb_rs_att_read(uint16_t con, uint16_t handle, uint16_t offset, uint8_t *buffer, uint16_t buffer_size);
 int a2dpwb_rs_att_write(uint16_t con, uint16_t handle, uint16_t mode, uint16_t offset, const uint8_t *buffer,
                         uint16_t size);
@@ -199,14 +197,6 @@ void a2dpwb_transport_packet_sent(void) {
 void a2dpwb_hci_init(int async) {
     transport_packet_handler = NULL;
     hci_init(a2dpwb_transport_instance(async), NULL);
-}
-
-/* Intel bootloader firmware download: runs on the transport before hci_init */
-static void intel_done(int result) { a2dpwb_rs_intel_done(result); }
-
-void a2dpwb_intel_download_firmware(int async, const char *firmware_path) {
-    btstack_chipset_intel_set_firmware_path(firmware_path);
-    btstack_chipset_intel_download_firmware(a2dpwb_transport_instance(async), &intel_done);
 }
 
 /* ======================================================================== */

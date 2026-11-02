@@ -114,7 +114,7 @@
   "firmware.detected_adapters": "检测到的适配器",
   "firmware.no_adapters": "未检测到 USB Bluetooth 适配器。",
   "firmware.manual_instructions": "1. 单击“打开下载页面”以打开 kernel.org\n2. 下载 fw 和 config 文件\n3. 单击“打开配置文件夹”并将文件放入其中",
-  "firmware.vendor_intel": "Intel 适配器（实验性）。暂不支持 AX210 及更新型号。如果它以引导加载程序模式启动，请参阅设置指南。",
+  "firmware.vendor_intel": "Intel 适配器（实验性）。如果它以引导加载程序模式启动，请参阅设置指南。",
   "firmware.vendor_broadcom": "Broadcom 适配器（实验性）：无需 Realtek 文件。",
   "firmware.vendor_csr": "CSR 适配器：无需固件文件。",
   "firmware.chip_auto": "自动（%s）",
