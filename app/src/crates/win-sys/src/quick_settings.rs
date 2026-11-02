@@ -10,7 +10,7 @@ use std::cell::Cell;
 use std::mem::ManuallyDrop;
 use std::sync::OnceLock;
 
-use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::Threading::GetCurrentProcessId;
@@ -19,10 +19,11 @@ use windows::Win32::UI::Accessibility::{
     CUIAutomation, HWINEVENTHOOK, IUIAutomation, IUIAutomationCondition, SetWinEventHook, TreeScope_Descendants,
     UIA_AutomationIdPropertyId,
 };
+use windows::Win32::UI::Input::KeyboardAndMouse::SetActiveWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    EVENT_SYSTEM_FOREGROUND, EnumWindows, GWL_EXSTYLE, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW,
-    GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
-    WS_EX_TOPMOST, WS_EX_TRANSPARENT,
+    EVENT_SYSTEM_FOREGROUND, EnumWindows, GWL_EXSTYLE, GetClassNameW, GetCursorPos, GetForegroundWindow,
+    GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_SHOWNOACTIVATE,
+    ShowWindow, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
 };
 use windows::core::{BOOL, BSTR};
 
@@ -146,6 +147,30 @@ impl Reader {
         };
         union(&rects)
     }
+}
+
+/// Shows `hwnd` without activating it. WS_EX_NOACTIVATE only covers clicks: a
+/// plain show still reports the window as the new foreground, and EncoDeck
+/// takes that for Quick Settings closing and removes its card.
+pub fn show_inactive(hwnd: isize) {
+    // SAFETY: only changes whether the window shows; an invalid handle fails
+    let _ = unsafe { ShowWindow(HWND(hwnd as *mut _), SW_SHOWNOACTIVATE) };
+}
+
+/// Makes `hwnd` the active window of its thread, the caller, while Quick
+/// Settings stay the foreground. A click on a window that is not active takes
+/// the foreground, closing them, but this too reads as foreground to EncoDeck.
+pub fn set_active(hwnd: isize) {
+    // SAFETY: an invalid handle fails
+    let _ = unsafe { SetActiveWindow(HWND(hwnd as *mut _)) };
+}
+
+/// Whether the pointer is over `hwnd`
+pub fn pointer_over(hwnd: isize) -> bool {
+    let (mut at, mut r) = (POINT::default(), RECT::default());
+    // SAFETY: a POINT and a RECT to fill in; an invalid handle fails
+    let read = unsafe { GetCursorPos(&mut at).is_ok() && GetWindowRect(HWND(hwnd as *mut _), &mut r).is_ok() };
+    read && (r.left..r.right).contains(&at.x) && (r.top..r.bottom).contains(&at.y)
 }
 
 /// `panels` taken up to the cards other apps keep on top of them (issue #86:
