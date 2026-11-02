@@ -649,8 +649,8 @@ pub struct Settings {
     /// again.
     #[serde(default = "yes")]
     pub volume_sync: bool,
-    /// System Loopback mutes the default output device while streaming, so
-    /// only the audio device plays (developer mode; off by default). A change
+    /// The default output device is muted while streaming, so only the
+    /// audio device plays (developer mode; off by default). A change
     /// starts the profile in use again.
     #[serde(default)]
     pub mute_output: bool,
@@ -1165,6 +1165,12 @@ pub enum Method {
     /// -> AudioApp[]
     #[serde(rename = "audio.apps")]
     AudioApps,
+    /// -> MixerApp[]
+    #[serde(rename = "audio.mixer")]
+    AudioMixer,
+    /// Sets an app's volume (0-100) and / or mute
+    #[serde(rename = "audio.mixer_set")]
+    AudioMixerSet { app: String, volume: Option<u8>, muted: Option<bool> },
     /// Log lines at `logs` level and above (None: off), link samples, the
     /// receiver test's state (absent: off)
     #[serde(rename = "diag.subscribe")]
@@ -1301,6 +1307,18 @@ pub struct AudioDevice {
 pub struct AudioApp {
     pub exe: String,
     pub name: String,
+}
+
+/// An app on the default output device
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct MixerApp {
+    /// What audio.mixer_set takes; "*system" for the system sounds
+    pub key: String,
+    pub name: String,
+    /// 0-100
+    pub volume: u8,
+    pub muted: bool,
 }
 
 /// What settings.set did besides saving the settings

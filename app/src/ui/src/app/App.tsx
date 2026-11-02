@@ -19,6 +19,7 @@ import { Flyout } from "../screens/Flyout";
 import { entryState, Home } from "../screens/Home";
 import { audioEntries, entryByKey, type AudioEntry } from "../lib/profile";
 import { Settings } from "../screens/Settings";
+import { Mixer } from "../screens/Mixer";
 import { Setup, needsSetup } from "../screens/Setup";
 import { applyTheme } from "../theme";
 import { AppProvider, useApp, type RouteName } from "./context";
@@ -96,8 +97,10 @@ const NAV: { name: RouteName; icon: IconName; label: string }[] = [
   { name: "settings", icon: "settings", label: "ui.nav.settings" },
   { name: "about", icon: "info", label: "ui.nav.about" },
   // Shown in developer mode only: last, out of the way
+  { name: "mixer", icon: "speaker_2", label: "ui.nav.mixer" },
   { name: "developer", icon: "wrench", label: "ui.nav.developer" },
 ];
+const DEVELOPER_ONLY: RouteName[] = ["mixer", "developer"];
 
 function MainWindow() {
   const app = useApp();
@@ -170,7 +173,7 @@ function MainWindow() {
               </button>
             </div>
             <ul class="nav-list">
-              <For each={NAV.filter((n) => n.name !== "developer" || core.state.snap?.settings.developer_mode)}>
+              <For each={NAV.filter((n) => !DEVELOPER_ONLY.includes(n.name) || core.state.snap?.settings.developer_mode)}>
                 {(item) => (
                   <li>
                     <a
@@ -207,6 +210,9 @@ function MainWindow() {
               </Match>
               <Match when={route().name === "diagnostics"}>
                 <Diagnostics />
+              </Match>
+              <Match when={route().name === "mixer" && core.state.snap?.settings.developer_mode}>
+                <Mixer />
               </Match>
               <Match when={route().name === "developer" && core.state.snap?.settings.developer_mode}>
                 <Developer />

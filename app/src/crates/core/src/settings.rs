@@ -144,8 +144,8 @@ pub struct Settings {
     /// another device, set in developer mode); off for every stream
     #[serde(default = "default_true")]
     pub volume_sync: bool,
-    /// System Loopback mutes the default output device while streaming; in
-    /// force only while debug_mode is on (issue #86). A key of its own: the
+    /// The default output device is muted while streaming; in force only
+    /// while debug_mode is on (issue #86). A key of its own: the
     /// `mute_output` of earlier versions was on by default.
     #[serde(rename = "dev_mute_output")]
     pub mute_output: bool,
@@ -315,7 +315,7 @@ impl Settings {
         if self.debug_mode { self.dev_log.clamped() } else { DevLog::default() }
     }
 
-    /// Whether System Loopback mutes the default output device
+    /// Whether a stream mutes the default output device
     pub fn mutes_output(&self) -> bool {
         self.debug_mode && self.mute_output
     }

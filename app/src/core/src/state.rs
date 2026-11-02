@@ -20,9 +20,9 @@ use bt_host::LinkStats;
 use bt_host::chips::{self, ChipVendor};
 use ipc::{
     AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, DevLog, DevOverrides, Device,
-    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, Msg, OtherRadio, Profile,
-    ReceiverConnection, ReceiverState, Settings, SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus,
-    UpdateState,
+    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, MixerApp, Msg, OtherRadio,
+    Profile, ReceiverConnection, ReceiverState, Settings, SettingsApplied, Snapshot, SourceInfo, StreamState,
+    StreamStatus, UpdateState,
 };
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -2257,6 +2257,23 @@ impl CoreState {
                         .map(|a| AudioApp { exe: a.exe, name: a.name })
                         .collect();
                     Ok(json(&list))
+                }))
+                .await
+            }
+            Method::AudioMixer => {
+                blocking(Box::new(|_| {
+                    let list: Vec<MixerApp> = audio_capture::mixer_apps()
+                        .into_iter()
+                        .map(|a| MixerApp { key: a.key, name: a.name, volume: a.volume, muted: a.muted })
+                        .collect();
+                    Ok(json(&list))
+                }))
+                .await
+            }
+            Method::AudioMixerSet { app, volume, muted } => {
+                blocking(Box::new(move |_| {
+                    audio_capture::set_mixer_app(&app, volume, muted);
+                    Ok(Value::Null)
                 }))
                 .await
             }

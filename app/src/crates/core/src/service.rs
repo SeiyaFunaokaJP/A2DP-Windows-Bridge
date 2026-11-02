@@ -1173,7 +1173,7 @@ impl Service {
         // The running session leaves Windows' default output switched when
         // this one switches it to the same device (issue #203)
         stream::expect_default_switch(req.source.default_switch());
-        crate::mute_output::expect_session(req.mutes_output(&req.source));
+        crate::mute_output::expect_session(req.mute_output);
         self.stop_session();
         stream::expect_default_switch(None);
         crate::mute_output::expect_session(false);
@@ -1455,19 +1455,6 @@ mod tests {
         };
         let (tx, _rx) = std::sync::mpsc::channel();
         Service::new(opts, tx)
-    }
-
-    #[test]
-    fn only_system_loopback_mutes_the_output() {
-        let req = StreamRequest { mute_output: true, ..request() };
-        let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: false };
-        let app = SourceRequest::Application { exe: "a.exe".into() };
-        assert!(req.mutes_output(&SourceRequest::SystemLoopback));
-        for other in [virt, app, SourceRequest::TestTone] {
-            assert!(!req.mutes_output(&other), "{other}");
-        }
-        let off = StreamRequest { mute_output: false, ..req };
-        assert!(!off.mutes_output(&SourceRequest::SystemLoopback));
     }
 
     fn request() -> StreamRequest {

@@ -90,12 +90,6 @@ impl StreamRequest {
         };
         codec::sbc::SbcParams { min_bitpool, ..self.sbc }
     }
-
-    /// Whether a session capturing `source` mutes the default output device.
-    /// Not Application capture: other apps may play there on purpose.
-    pub fn mutes_output(&self, source: &SourceRequest) -> bool {
-        self.mute_output && *source == SourceRequest::SystemLoopback
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1567,7 +1561,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let mut volume_choice = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &source);
     let mut volume = volume_choice.clone().map(crate::volume_sync::VolumeSyncer::new);
     let mut output_mute = OutputMute::new();
-    output_mute.tick(req.mutes_output(&source));
+    output_mute.tick(req.mute_output);
 
     // A reconnect builds the configuration anew from what the device lists
     // then (v1 read its capabilities again)
@@ -1607,7 +1601,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         if let Some(v) = volume.as_mut() {
             v.tick(true, &*host);
         }
-        output_mute.tick(req.mutes_output(&current_source));
+        output_mute.tick(req.mute_output);
         inner.remember_volume(&addr, host.remote_volume());
 
         // Another source chosen: only the capture changes, the encoder (at

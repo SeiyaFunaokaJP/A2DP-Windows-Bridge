@@ -6,6 +6,7 @@
 import type { AdapterInfo as BAdapterInfo } from "./bindings/AdapterInfo";
 import type { AdapterState as BAdapterState } from "./bindings/AdapterState";
 import type { AudioApp as BAudioApp } from "./bindings/AudioApp";
+import type { MixerApp as BMixerApp } from "./bindings/MixerApp";
 import type { AudioDevice as BAudioDevice } from "./bindings/AudioDevice";
 import type { CaptureState as BCaptureState } from "./bindings/CaptureState";
 import type { CodecDetails as BCodecDetails } from "./bindings/CodecDetails";
@@ -63,6 +64,7 @@ export type SourceInfo = Wire<BSourceInfo>;
 export type AdapterInfo = Wire<BAdapterInfo>;
 export type AdapterState = Wire<BAdapterState>;
 export type AudioApp = Wire<BAudioApp>;
+export type MixerApp = Wire<BMixerApp>;
 export type AudioDevice = Wire<BAudioDevice>;
 export type CaptureState = Wire<BCaptureState>;
 export type CodecDetails = Wire<BCodecDetails>;
@@ -113,6 +115,7 @@ interface Results {
   "adapter.download_firmware": AdapterInfo[];
   "audio.devices": AudioDevice[];
   "audio.apps": AudioApp[];
+  "audio.mixer": MixerApp[];
   "diag.capture_start": string;
   "diag.capture_stop": CaptureState | null;
   "diag.info": DiagInfo;
