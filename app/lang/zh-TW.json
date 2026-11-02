@@ -740,6 +740,7 @@
   "ui.profile.sbc_bitpool_max": "最大 bitpool",
   "ui.profile.sbc_bitpool_auto": "自動 (%d)",
   "ui.profile.sbc_bitpool_auto_high": "(%d) 自動",
+  "ui.profile.sbc_channel_mode": "聲道模式：%s",
   "status.device_off": "已中斷連線",
   "status.device_unreachable": "已中斷連線(已關機或超出範圍)",
   "ui.profile.codec_supported": "支援",

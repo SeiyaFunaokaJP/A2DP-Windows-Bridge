@@ -740,6 +740,7 @@
   "ui.profile.sbc_bitpool_max": "Bitpool máximo",
   "ui.profile.sbc_bitpool_auto": "Automático (%d)",
   "ui.profile.sbc_bitpool_auto_high": "(%d) Auto",
+  "ui.profile.sbc_channel_mode": "Modo de canal: %s",
   "status.device_off": "Desconectado",
   "status.device_unreachable": "Desconectado (apagado o fuera de alcance)",
   "ui.profile.codec_supported": "Compatible",

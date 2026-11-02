@@ -740,6 +740,7 @@
   "ui.profile.sbc_bitpool_max": "최대 비트풀",
   "ui.profile.sbc_bitpool_auto": "자동 (%d)",
   "ui.profile.sbc_bitpool_auto_high": "(%d) 자동",
+  "ui.profile.sbc_channel_mode": "채널 모드: %s",
   "status.device_off": "연결 끊김",
   "status.device_unreachable": "연결 끊김 (꺼짐 또는 범위 밖)",
   "ui.profile.codec_supported": "지원",

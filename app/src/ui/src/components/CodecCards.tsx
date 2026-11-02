@@ -366,6 +366,7 @@ export function CodecSettings(props: {
   };
   // The bit rate it gives, as the core works it out (one figure, issue #86)
   const sbcBitrate = () => (bitpoolError() ? "" : sbcKbpsText(v, props.sbcCaps));
+  const sbcMode = () => sbcSetup(v, sbcRate(v, props.sbcCaps), props.sbcCaps).mode;
   const changed = () => {
     if (!bitpoolError()) props.onChange({ ...v });
   };
@@ -502,6 +503,8 @@ export function CodecSettings(props: {
               </div>
             )}
           </Field>
+          {/* Fixed for each codec, not a setting (issue #86) */}
+          <span class="hint">{t("ui.profile.sbc_channel_mode", t(`ui.diag.cd_mode.${sbcMode()}`))}</span>
         </Show>
       </div>
     </Dialog>

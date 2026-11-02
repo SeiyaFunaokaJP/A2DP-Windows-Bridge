@@ -740,6 +740,7 @@
   "ui.profile.sbc_bitpool_max": "最大ビットプール",
   "ui.profile.sbc_bitpool_auto": "自動 (%d)",
   "ui.profile.sbc_bitpool_auto_high": "(%d) 自動",
+  "ui.profile.sbc_channel_mode": "チャンネルモード: %s",
   "status.device_off": "切断されました",
   "status.device_unreachable": "切断されました(電源オフまたは範囲外)",
   "status.device_back": "オーディオデバイスの電源が戻りました。接続しています...",
