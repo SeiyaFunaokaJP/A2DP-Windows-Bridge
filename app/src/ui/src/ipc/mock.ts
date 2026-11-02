@@ -157,7 +157,6 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     start_with_windows: true,
     start_minimized: false,
     minimize_to_tray: true,
-    tray_click_opens_window: false,
     flyout_with_quick_settings: false,
     notify_connected: true,
     battery_low_percent: 20,
@@ -167,7 +166,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     remember_volume: true,
     auto_reconnect: true,
     volume_sync: true,
-    mute_output: true,
+    mute_output: false,
     developer_mode: false,
     dev_overrides: {
       rtp_marker: false,

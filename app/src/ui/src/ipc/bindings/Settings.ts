@@ -11,11 +11,8 @@ export type Settings = { language: string,
  */
 theme: string, start_with_windows: boolean, start_minimized: boolean, minimize_to_tray: boolean, 
 /**
- * A click on the tray icon opens the main window, not the flyout
- */
-tray_click_opens_window: boolean, 
-/**
- * The flyout opens above Windows 11's Quick Settings, along with them
+ * The flyout opens above Windows 11's Quick Settings, along with them,
+ * and a click on the tray icon opens the main window, not the flyout
  */
 flyout_with_quick_settings: boolean, 
 /**
@@ -48,9 +45,9 @@ auto_reconnect: boolean,
  */
 volume_sync: boolean, 
 /**
- * System Loopback mutes the default output device while streaming (on
- * by default), so only the audio device plays. A change starts the
- * profile in use again.
+ * System Loopback mutes the default output device while streaming, so
+ * only the audio device plays (developer mode; off by default). A change
+ * starts the profile in use again.
  */
 mute_output: boolean, 
 /**

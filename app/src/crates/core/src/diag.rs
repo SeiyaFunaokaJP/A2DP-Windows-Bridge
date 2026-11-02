@@ -1387,7 +1387,7 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
         on_off(s.remember_volume),
         on_off(s.auto_reconnect),
         on_off(s.volume_sync),
-        on_off(s.mute_output),
+        on_off(s.mutes_output()),
         on_off(s.auto_codec),
         s.afh,
         on_off(s.check_updates_on_startup),

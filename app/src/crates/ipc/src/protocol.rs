@@ -622,10 +622,8 @@ pub struct Settings {
     pub start_with_windows: bool,
     pub start_minimized: bool,
     pub minimize_to_tray: bool,
-    /// A click on the tray icon opens the main window, not the flyout
-    #[serde(default)]
-    pub tray_click_opens_window: bool,
-    /// The flyout opens above Windows 11's Quick Settings, along with them
+    /// The flyout opens above Windows 11's Quick Settings, along with them,
+    /// and a click on the tray icon opens the main window, not the flyout
     #[serde(default)]
     pub flyout_with_quick_settings: bool,
     /// A notification when a device connects: its codec, what the codec
@@ -651,10 +649,10 @@ pub struct Settings {
     /// again.
     #[serde(default = "yes")]
     pub volume_sync: bool,
-    /// System Loopback mutes the default output device while streaming (on
-    /// by default), so only the audio device plays. A change starts the
-    /// profile in use again.
-    #[serde(default = "yes")]
+    /// System Loopback mutes the default output device while streaming, so
+    /// only the audio device plays (developer mode; off by default). A change
+    /// starts the profile in use again.
+    #[serde(default)]
     pub mute_output: bool,
     /// Developer mode: receiver test, HCI capture, debug details
     pub developer_mode: bool,

@@ -93,11 +93,9 @@ pub struct Settings {
     pub start_minimized: bool,
     #[serde(default = "default_true")]
     pub minimize_to_tray: bool,
-    /// A click on the tray icon opens the main window instead of the tray
-    /// flyout (issue #86; off by default)
-    pub tray_click_opens_window: bool,
-    /// The flyout opens above Windows 11's Quick Settings, along with them
-    /// (off by default)
+    /// The flyout opens above Windows 11's Quick Settings, along with them,
+    /// and a click on the tray icon opens the main window; otherwise that
+    /// click opens the flyout (issue #86; off by default)
     pub flyout_with_quick_settings: bool,
     /// A notification when a device connects (issue #86): its name, codec,
     /// what the codec runs with and the battery. On by default.
@@ -146,8 +144,10 @@ pub struct Settings {
     /// another device, set in developer mode); off for every stream
     #[serde(default = "default_true")]
     pub volume_sync: bool,
-    /// System Loopback mutes the default output device while streaming
-    #[serde(default = "default_true")]
+    /// System Loopback mutes the default output device while streaming; in
+    /// force only while debug_mode is on (issue #86). A key of its own: the
+    /// `mute_output` of earlier versions was on by default.
+    #[serde(rename = "dev_mute_output")]
     pub mute_output: bool,
 
     pub debug_mode: bool,
@@ -277,7 +277,6 @@ impl Default for Settings {
             start_with_windows: false,
             start_minimized: false,
             minimize_to_tray: true,
-            tray_click_opens_window: false,
             flyout_with_quick_settings: false,
             notify_connected: true,
             battery_low_percent: default_battery_low(),
@@ -291,7 +290,7 @@ impl Default for Settings {
             saved_volumes: BTreeMap::new(),
             device_options: None,
             volume_sync: true,
-            mute_output: true,
+            mute_output: false,
             debug_mode: false,
             dev_overrides: codec::dev::DevOverrides::default(),
             dev_log: DevLog::default(),
@@ -314,6 +313,11 @@ impl Settings {
     /// The logging in force: developer mode's, else the defaults
     pub fn log(&self) -> DevLog {
         if self.debug_mode { self.dev_log.clamped() } else { DevLog::default() }
+    }
+
+    /// Whether System Loopback mutes the default output device
+    pub fn mutes_output(&self) -> bool {
+        self.debug_mode && self.mute_output
     }
 
     pub fn path(dir: &Path) -> PathBuf {
@@ -341,6 +345,12 @@ impl Settings {
                     );
                 }
                 s.theme = normalize_theme(&s.theme).into();
+                s.other.remove("mute_output");
+                // Now the one choice of where the flyout opens (issue #86):
+                // the click that opened the main window still does
+                if s.other.remove("tray_click_opens_window").is_some_and(|v| v == true) {
+                    s.flyout_with_quick_settings = true;
+                }
                 // No longer a choice (issue #86): a file with it off uses
                 // every codec too
                 s.experimental_codecs = true;
@@ -507,6 +517,20 @@ mod tests {
     fn experimental_codecs_off_loads_as_on() {
         let dir = std::env::temp_dir().join(format!("a2dpwb-experimental-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            Settings::path(&dir),
+            r#"{"schema_version":7,"mute_output":true,"tray_click_opens_window":true,"debug_mode":true}"#,
+        )
+        .unwrap();
+        // The old mute (on by default) does not carry over; the click that
+        // opened the main window does
+        let s = Settings::load(&dir);
+        assert!(!s.mute_output && !s.mutes_output());
+        assert!(s.flyout_with_quick_settings);
+        assert!(s.other.is_empty());
+        assert!(Settings { mute_output: true, ..s.clone() }.mutes_output());
+        assert!(!Settings { mute_output: true, debug_mode: false, ..s }.mutes_output());
+
         std::fs::write(Settings::path(&dir), r#"{"schema_version":5,"experimental_codecs":false}"#).unwrap();
         assert!(Settings::load(&dir).experimental_codecs);
         let _ = std::fs::remove_dir_all(&dir);

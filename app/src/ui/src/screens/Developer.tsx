@@ -95,6 +95,7 @@ export function Developer() {
 }
 
 function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Promise<boolean> }) {
+  const app = useApp();
   const set = (patch: Partial<DevOverrides>) => void props.save({ ...props.value, ...patch });
   const active = () => JSON.stringify(props.value) !== JSON.stringify(NO_OVERRIDES);
   // The bit rate commits when the field is left, so typing does not restart anything
@@ -123,6 +124,12 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
           hint={t("ui.dev.packet_dump_hint")}
           checked={props.value.packet_dump}
           onChange={(v) => set({ packet_dump: v })}
+        />
+        <Toggle
+          label={t("capture.mute_output")}
+          hint={t("capture.mute_output_hint")}
+          checked={app.core.state.snap!.settings.mute_output}
+          onChange={(v) => void saveSettings(app, { mute_output: v })}
         />
       </Section>
       <PacketSizes />

@@ -1,4 +1,4 @@
-//! The two windows: the main window (960×640, 760×720 for the setup) and the tray flyout (360 wide, as tall as its page,
+//! The two windows: the main window (960×640, 760×640 for the setup) and the tray flyout (360 wide, as tall as its page,
 //! frameless, near the notification area), and the rule that ends the UI
 //! process: closing a window only hides it, so that reopening it from the
 //! tray is instant, and the process exits after everything was hidden for
@@ -35,7 +35,10 @@ const FLYOUT_MIN_HEIGHT: f64 = 160.0;
 const FLYOUT_MAX_HEIGHT: f64 = 560.0;
 /// The main window's size during the first-run setup (logical pixels)
 const SETUP_WIDTH: f64 = 760.0;
-const SETUP_HEIGHT: f64 = 720.0;
+/// The main window's minimum: Home keeps two columns of devices (issue #86)
+const MAIN_MIN_WIDTH: f64 = 960.0;
+const MAIN_MIN_HEIGHT: f64 = 520.0;
+const SETUP_HEIGHT: f64 = 640.0;
 /// How long the flyout counts as opening after it was shown (or its page
 /// appeared) (#140). Meanwhile another click on the tray icon (a double
 /// click, or a second click while a cold start is still loading the page)
@@ -107,7 +110,8 @@ fn main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let Some(w) = app.get_webview_window(MAIN) {
         return Ok(w);
     }
-    let w = builder(app, MAIN).inner_size(960.0, 640.0).min_inner_size(720.0, 520.0).center().build()?;
+    let w =
+        builder(app, MAIN).inner_size(960.0, 640.0).min_inner_size(MAIN_MIN_WIDTH, MAIN_MIN_HEIGHT).center().build()?;
     crate::recovery::watch(&w);
     Ok(w)
 }
@@ -285,11 +289,13 @@ pub fn setup_window(w: &WebviewWindow, active: bool) -> tauri::Result<()> {
         if maximized {
             w.unmaximize()?;
         }
+        w.set_min_size(Some(LogicalSize::new(SETUP_WIDTH, MAIN_MIN_HEIGHT)))?;
         w.set_size(LogicalSize::new(SETUP_WIDTH, SETUP_HEIGHT))?;
     } else {
         let Some((size, maximized)) = before.take() else {
             return Ok(());
         };
+        w.set_min_size(Some(LogicalSize::new(MAIN_MIN_WIDTH, MAIN_MIN_HEIGHT)))?;
         w.set_size(size)?;
         if maximized {
             w.maximize()?;

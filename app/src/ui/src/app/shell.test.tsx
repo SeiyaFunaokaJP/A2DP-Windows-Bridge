@@ -127,14 +127,14 @@ describe("tray", () => {
     await waitFor(() => expect(toggle).toBeDisabled());
   });
 
-  it("a click on the tray icon can open the main window instead of the flyout (issue #86)", async () => {
+  it("the tray window opens from the tray icon or from Quick Settings (issue #86)", async () => {
     const { core, calls } = start("#/settings");
-    const toggle = await screen.findByRole("switch", { name: new RegExp(t("ui.settings.tray_click_opens_window")) });
-    expect(toggle).not.toBeChecked();
-    fireEvent.click(toggle);
-    await waitFor(() => expect(core.state.snap!.settings.tray_click_opens_window).toBe(true));
-    const set = calls.filter((c) => c.method === "settings.set").at(-1)!.params as { settings: { tray_click_opens_window: boolean } };
-    expect(set.settings.tray_click_opens_window).toBe(true);
+    const select = (await screen.findByLabelText(t("ui.settings.flyout_from"))) as HTMLSelectElement;
+    expect(select.value).toBe("tray");
+    fireEvent.change(select, { target: { value: "other" } });
+    await waitFor(() => expect(core.state.snap!.settings.flyout_with_quick_settings).toBe(true));
+    const set = calls.filter((c) => c.method === "settings.set").at(-1)!.params as { settings: { flyout_with_quick_settings: boolean } };
+    expect(set.settings.flyout_with_quick_settings).toBe(true);
   });
 
   it("turns the notification of a connection off and on (issue #86)", async () => {

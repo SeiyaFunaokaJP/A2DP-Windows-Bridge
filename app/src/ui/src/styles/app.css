@@ -1488,6 +1488,9 @@ option {
   font-weight: 400;
   color: var(--text-2);
 }
+.live-bitpool {
+  flex-basis: 100%;
+}
 .codec-line {
   display: flex;
   flex-wrap: wrap;
@@ -3004,7 +3007,7 @@ html.win-flyout body {
 }
 
 /* ---------------------------------------------------------------- */
-/* Narrow main window (min 720 px)                                   */
+/* Narrow window (the setup; the main window stays wider)            */
 /* ---------------------------------------------------------------- */
 
 @media (max-width: 760px) {
