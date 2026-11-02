@@ -116,6 +116,8 @@ NO_DECODER = {'ldac', 'ldac-96k', 'ldac-48k', 'lhdcv5', 'aptxad', 'aptxad-r2', '
 APTXAD_SINK = ['--codecs', 'sbc', 'aac', 'aptx', 'aptxad']
 HUAWEI_SINK = ['--codecs', 'sbc', 'aac', '--log-level', 'INFO']  # LOG_CHECKS read its log
 HUAWEI_NAME = ['--device-name', 'HUAWEI FreeBuds Pro 4']
+OPPO_SINK = ['--codecs', 'sbc', 'aac', 'lhdcv5', '--log-level', 'INFO']
+OPPO_NAME = ['--device-name', 'OPPO Enco Free4']
 # Further cases: name -> (A2DPWB -c, emu_sink.py arguments, the codec expected,
 # more A2DPWB arguments)
 NEGOTIATION = {
@@ -217,8 +219,25 @@ NEGOTIATION = {
     # The serial port on a channel of its own, which SDP does not list
     'huawei-channel-1': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-channel', '1'], 'ldac', HUAWEI_NAME),
     'huawei-channel-16': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-channel', '16'], 'ldac', HUAWEI_NAME),
+    # Enco Free4 earbuds that cap LHDC V5 until asked for Hi-Res (issue #237):
+    # LHDC V5 connects again and gets 1000 kbps, with the mode off or on
+    # already, by whichever write they advertise, or when they end the link at
+    # the write
+    'oppo-hi-res': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_NAME),
+    'oppo-hi-res-on': ('lhdcv5', OPPO_SINK + ['--oppo', 'on'], 'lhdcv5', OPPO_NAME),
+    'oppo-codec-write': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-codec-write'], 'lhdcv5', OPPO_NAME),
+    'oppo-drop': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-drop'], 'lhdcv5', OPPO_NAME),
+    # Nothing gained: Hi-Res back off when it was off, as it was when it was on
+    'oppo-no-change': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-change'], 'lhdcv5', OPPO_NAME),
+    'oppo-no-change-on': ('lhdcv5', OPPO_SINK + ['--oppo', 'on', '--oppo-no-change'], 'lhdcv5', OPPO_NAME),
+    # Left alone: other models, spatial audio on, another name
+    'oppo-other-product': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-product', '123456'], 'lhdcv5', OPPO_NAME),
+    'oppo-spatial': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-spatial'], 'lhdcv5', OPPO_NAME),
+    'oppo-other-name': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', []),
 }
 QUALITY_ON, QUALITY_OFF = 'Huawei control: 2BA2 010101', 'Huawei control: 2BA2 010100'
+HI_RES_ON, HI_RES_OFF, HI_RES_CODEC = 'OPPO control: 0403 1801', 'OPPO control: 0403 1800', 'OPPO control: 041A 080100'
+ENCODED_1000, ENCODED_400 = 'encoder ready: LHDC V5 1000 kbps', 'encoder ready: LHDC V5 400 kbps'
 # What these cases' logs must, and must not, have: name -> (log, text, whether
 # it is there)
 LOG_CHECKS = {
@@ -229,6 +248,18 @@ LOG_CHECKS = {
     'huawei-no-ldac': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
     'huawei-no-ldac-drop': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
     'huawei-no-ldac-mode-on': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, False)],
+    'oppo-hi-res': [('sink.log', HI_RES_ON, True), ('a2dpwb.log', ENCODED_1000, True)],
+    'oppo-hi-res-on': [('sink.log', HI_RES_ON, True), ('a2dpwb.log', ENCODED_1000, True)],
+    'oppo-codec-write': [('sink.log', HI_RES_CODEC, True), ('sink.log', HI_RES_ON, False),
+                         ('a2dpwb.log', ENCODED_1000, True)],
+    'oppo-drop': [('sink.log', HI_RES_ON, True), ('a2dpwb.log', ENCODED_1000, True)],
+    'oppo-no-change': [('sink.log', HI_RES_ON, True), ('sink.log', HI_RES_OFF, True),
+                       ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-no-change-on': [('sink.log', HI_RES_ON, True), ('sink.log', HI_RES_OFF, False),
+                          ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-other-product': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-spatial': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-other-name': [('sink.log', 'OPPO control', False), ('a2dpwb.log', ENCODED_400, True)],
 }
 TONES = ((1000.0, 0.5), (1500.0, 0.5))  # (frequency, amplitude) per channel, as --test-tone
 LATE_SDU_FAILURE = 'reached the controller after their SDU interval began'  # LE Audio cases run once more

@@ -81,6 +81,7 @@
   "error.btstack_crash_stream": "Bluetooth가 예기치 않게 중단되었습니다. 앱을 다시 시작하십시오.",
   "status.connecting_retry": "연결에 실패하여 다시 시도하는 중(%d/%d)...",
   "status.huawei_ldac": "이어버드에 LDAC 사용을 요청하는 중...",
+  "status.oppo_hi_res": "이어버드에 Hi-Res 사용을 요청하는 중...",
   "error.connect_no_answer": "장치가 응답하지 않았습니다. 장치가 켜져 있고 연결 가능한 상태(새 장치는 페어링 모드)이며 범위 내에 있는지 확인하십시오.",
   "error.connect_link_lost": "연결이 바로 끊겼습니다. 다시 시도하거나 어댑터를 장치에 더 가깝게 두십시오.",
   "error.connect_refused": "장치가 연결을 종료했습니다. 전원이 꺼지는 중이거나 충전 중이거나 다른 장치에 연결되어 있을 수 있습니다. 장치를 확인한 후 다시 시도하십시오.",

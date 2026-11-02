@@ -81,6 +81,7 @@
   "error.btstack_crash_stream": "Le Bluetooth s'est arrêté de façon inattendue. Redémarrez l'application.",
   "status.connecting_retry": "Échec de la connexion, nouvelle tentative (%d/%d)...",
   "status.huawei_ldac": "Demande d'activation du LDAC aux écouteurs...",
+  "status.oppo_hi_res": "Demande d'activation du Hi-Res aux écouteurs...",
   "error.connect_no_answer": "L'appareil n'a pas répondu. Vérifiez qu'il est allumé, connectable (mode d'association pour un nouvel appareil) et à portée.",
   "error.connect_link_lost": "La connexion s'est coupée aussitôt. Réessayez, ou rapprochez l'adaptateur de l'appareil.",
   "error.connect_refused": "L'appareil a mis fin à la connexion. Il s'éteint peut-être, se recharge ou est connecté à un autre appareil. Vérifiez-le et réessayez.",

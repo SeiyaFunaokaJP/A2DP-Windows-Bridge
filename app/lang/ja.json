@@ -81,6 +81,7 @@
   "error.btstack_crash_stream": "Bluetooth が突然停止しました。アプリを再起動してください。",
   "status.connecting_retry": "接続に失敗したため再試行しています（%d/%d）...",
   "status.huawei_ldac": "イヤホンに LDAC の有効化を要求しています...",
+  "status.oppo_hi_res": "イヤホンに Hi-Res の有効化を要求しています...",
   "error.connect_no_answer": "デバイスが応答しません。電源が入っていて接続できる状態か（新しいデバイスはペアリングモード）、距離が離れすぎていないか確認してください。",
   "error.connect_link_lost": "接続がすぐに切れました。もう一度試すか、アダプターをデバイスに近づけてください。",
   "error.connect_refused": "デバイスから接続を切られました。電源を切る途中・充電中・別の機器と接続中の可能性があります。確認して、もう一度試してください。",
