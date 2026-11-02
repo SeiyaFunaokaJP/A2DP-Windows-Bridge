@@ -844,12 +844,12 @@ option {
 }
 .dialog-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--s3);
 }
-.dialog-subtitle {
-  margin: 0;
+.dialog-heading {
+  align-self: center;
 }
 .dialog-body {
   display: flex;
