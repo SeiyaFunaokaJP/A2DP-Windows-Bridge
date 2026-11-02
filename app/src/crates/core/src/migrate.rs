@@ -47,8 +47,7 @@
 //! At every start, the profiles are folded into one per device
 //! ([`profiles::consolidate`]: the Codecs screen keeps one); the
 //! first time that changes anything, profiles.json is copied as it was to
-//! `profiles-before-codecs.json`. A profile that chose dual channel for
-//! plain SBC gets joint stereo (2.0.2, issue #86: dual channel is SBC XQ's).
+//! `profiles-before-codecs.json`.
 
 use std::path::Path;
 
@@ -167,15 +166,9 @@ fn consolidate_profiles(dir: &Path) -> usize {
     if !profiles::path(dir).is_file() {
         return 0;
     }
-    let (mut list, _, dual) = profiles::load_fixed(dir);
+    let mut list = profiles::load(dir);
     let folded = profiles::consolidate(&mut list, &Settings::load(dir).last_profile);
     if folded.is_empty() {
-        // SBC's dual channel dropped (issue #86) is written at once
-        if dual > 0
-            && let Err(e) = profiles::save(dir, &list)
-        {
-            tracing::error!("profiles: cannot save {}: {e}", profiles::path(dir).display());
-        }
         return 0;
     }
     let backup = dir.join(PROFILES_BACKUP);
@@ -735,27 +728,5 @@ mod tests {
         std::fs::write(profiles::path(dir), again).unwrap();
         assert_eq!(prepare(dir).profiles_folded, 1);
         assert_eq!(std::fs::read_to_string(dir.join(PROFILES_BACKUP)).unwrap(), text);
-    }
-
-    #[test]
-    fn sbc_dual_channel_becomes_joint_stereo_in_the_file() {
-        let t = TempDir::new("sbcdual");
-        let dir = &t.0;
-        std::fs::write(Settings::path(dir), r#"{"schema_version":4}"#).unwrap();
-        let text = r#"{"profiles":[{"name":"Moto","device_address":"00:A2:D0:00:00:02","codec":"sbc",
-            "sbc_channel_mode":"dual_channel","sbc_blocks":8,
-            "codec_settings":{"sbcxq":{"sbc_channel_mode":"dual_channel","abr":true}}},
-            {"name":"WH","device_address":"00:A2:D0:00:00:03","codec":"sbc","sbc_channel_mode":"stereo"}]}"#;
-        std::fs::write(profiles::path(dir), text).unwrap();
-        assert_eq!(prepare(dir).profiles_folded, 0);
-        let saved = read_json(&profiles::path(dir));
-        let moto = &saved["profiles"][0];
-        assert!(moto.get("sbc_channel_mode").is_none(), "{moto}");
-        assert_eq!(moto["sbc_blocks"], 8);
-        assert!(moto["codec_settings"]["sbcxq"].get("sbc_channel_mode").is_none(), "{moto}");
-        assert_eq!(moto["codec_settings"]["sbcxq"]["abr"], true);
-        assert_eq!(saved["profiles"][1]["sbc_channel_mode"], "stereo");
-        // No backup: nothing was folded
-        assert!(!dir.join(PROFILES_BACKUP).exists());
     }
 }

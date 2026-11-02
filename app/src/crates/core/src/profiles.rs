@@ -99,19 +99,6 @@ pub struct Profile {
     /// The same for SBC XQ
     #[serde(skip_serializing_if = "is_zero")]
     pub sbcxq_min_bitpool: u8,
-    /// SBC / SBC XQ: block length 4, 8, 12, 16 (0 = 16)
-    #[serde(skip_serializing_if = "is_zero")]
-    pub sbc_blocks: u8,
-    /// SBC / SBC XQ: subbands 4, 8 (0 = 8)
-    #[serde(skip_serializing_if = "is_zero")]
-    pub sbc_subbands: u8,
-    /// SBC / SBC XQ: loudness, snr ("" = loudness)
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub sbc_allocation: String,
-    /// SBC: joint_stereo, stereo, mono ("" = joint stereo; dual channel is
-    /// SBC XQ's, which is always dual channel)
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub sbc_channel_mode: String,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub le_audio: bool,
     /// LE Audio: GMAP low-latency presets with a gaming headset. On by
@@ -161,10 +148,6 @@ impl Default for Profile {
             sbcxq_bitpool: 0,
             sbc_min_bitpool: 0,
             sbcxq_min_bitpool: 0,
-            sbc_blocks: 0,
-            sbc_subbands: 0,
-            sbc_allocation: String::new(),
-            sbc_channel_mode: String::new(),
             le_audio: false,
             le_low_latency: true,
             codec_settings: BTreeMap::new(),
@@ -191,14 +174,6 @@ pub struct CodecValues {
     pub sbc_min_bitpool: u8,
     #[serde(skip_serializing_if = "is_zero")]
     pub sbcxq_min_bitpool: u8,
-    #[serde(skip_serializing_if = "is_zero")]
-    pub sbc_blocks: u8,
-    #[serde(skip_serializing_if = "is_zero")]
-    pub sbc_subbands: u8,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub sbc_allocation: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub sbc_channel_mode: String,
 }
 
 impl Default for CodecValues {
@@ -212,10 +187,6 @@ impl Default for CodecValues {
             sbcxq_bitpool: 0,
             sbc_min_bitpool: 0,
             sbcxq_min_bitpool: 0,
-            sbc_blocks: 0,
-            sbc_subbands: 0,
-            sbc_allocation: String::new(),
-            sbc_channel_mode: String::new(),
         }
     }
 }
@@ -238,10 +209,6 @@ impl Profile {
             sbcxq_bitpool: self.sbcxq_bitpool,
             sbc_min_bitpool: self.sbc_min_bitpool,
             sbcxq_min_bitpool: self.sbcxq_min_bitpool,
-            sbc_blocks: self.sbc_blocks,
-            sbc_subbands: self.sbc_subbands,
-            sbc_allocation: self.sbc_allocation.clone(),
-            sbc_channel_mode: self.sbc_channel_mode.clone(),
         }
     }
 
@@ -265,10 +232,6 @@ impl Profile {
             sbcxq_bitpool: d.sbcxq_bitpool,
             sbc_min_bitpool: d.sbc_min_bitpool,
             sbcxq_min_bitpool: d.sbcxq_min_bitpool,
-            sbc_blocks: d.sbc_blocks,
-            sbc_subbands: d.sbc_subbands,
-            sbc_allocation: d.sbc_allocation,
-            sbc_channel_mode: d.sbc_channel_mode,
             // Auto-select's order is the default one
             codec_order: Vec::new(),
             ..self.clone()
@@ -377,13 +340,7 @@ impl Profile {
             sbcxq_bitpool: self.sbcxq_bitpool,
             sbc_min_bitpool: self.sbc_min_bitpool,
             sbcxq_min_bitpool: self.sbcxq_min_bitpool,
-            sbc: codec::sbc::SbcParams {
-                blocks: self.sbc_blocks,
-                subbands: self.sbc_subbands,
-                allocation: codec::sbc::Allocation::from_key(&self.sbc_allocation),
-                channel_mode: codec::sbc::ChannelMode::from_key(&self.sbc_channel_mode),
-                min_bitpool: 0,
-            },
+            sbc: codec::sbc::SbcParams::default(),
             sample_rate: (self.sample_rate != 0).then_some(self.sample_rate),
             bit_depth: match self.bit_depth {
                 16 => Some(16),
@@ -508,35 +465,6 @@ pub fn consolidate(list: &mut Vec<Profile>, last_profile: &str) -> Vec<String> {
     folded
 }
 
-/// Plain SBC no longer offers dual channel (issue #86: SBC XQ is SBC's dual
-/// channel): a profile that chose it, for the codec in use or kept in
-/// `codec_settings`, gets joint stereo (""). Returns how many profiles
-/// changed.
-pub fn drop_sbc_dual_channel(list: &mut [Profile]) -> usize {
-    let dual = |m: &mut String| {
-        let was = m == "dual_channel";
-        if was {
-            m.clear();
-        }
-        was
-    };
-    let mut changed = 0;
-    for p in list {
-        let mut any = dual(&mut p.sbc_channel_mode);
-        for v in p.codec_settings.values_mut() {
-            any |= dual(&mut v.sbc_channel_mode);
-        }
-        if any {
-            tracing::info!("profiles: \"{}\": SBC dual channel is now SBC XQ's, joint stereo instead", p.name);
-            changed += 1;
-        }
-    }
-    changed
-}
-
-/// The saved profiles, names made unique and SBC's dual channel dropped in
-/// memory (see make_names_unique, drop_sbc_dual_channel; written at the next
-/// save)
 /// The profiles that capture System Loopback capture this virtual device
 /// instead, and make it the Windows default output while connected. How many
 /// changed.
@@ -558,34 +486,26 @@ pub fn load(dir: &Path) -> Vec<Profile> {
 
 /// [`load`], and how many profiles it renamed
 pub fn load_counted(dir: &Path) -> (Vec<Profile>, usize) {
-    let (list, renamed, _) = load_fixed(dir);
-    (list, renamed)
-}
-
-/// [`load`], how many profiles it renamed and how many lost SBC's dual
-/// channel
-pub fn load_fixed(dir: &Path) -> (Vec<Profile>, usize, usize) {
     let text = match std::fs::read_to_string(path(dir)) {
         Ok(t) => t,
         Err(e) => {
             tracing::debug!("profiles: {} not read ({e}), no profiles", path(dir).display());
-            return (Vec::new(), 0, 0);
+            return (Vec::new(), 0);
         }
     };
     match serde_json::from_str::<ProfilesFile>(&text) {
         Ok(mut f) => {
             let renamed = make_names_unique(&mut f.profiles);
-            let dual = drop_sbc_dual_channel(&mut f.profiles);
             tracing::debug!(
-                "profiles: loaded {} profile(s) from {}, {renamed} renamed, {dual} off SBC dual channel",
+                "profiles: loaded {} profile(s) from {}, {renamed} renamed",
                 f.profiles.len(),
                 path(dir).display()
             );
-            (f.profiles, renamed, dual)
+            (f.profiles, renamed)
         }
         Err(e) => {
             tracing::warn!("profiles: {} is not valid ({e})", path(dir).display());
-            (Vec::new(), 0, 0)
+            (Vec::new(), 0)
         }
     }
 }
@@ -694,23 +614,15 @@ mod tests {
 
     #[test]
     fn sbc_setup_in_the_request_and_written_only_when_set() {
-        use codec::sbc::{Allocation, ChannelMode, SbcParams};
+        use codec::sbc::SbcParams;
+        // The frame setup an earlier version saved is no longer used (issue #86)
         let text = r#"{"name":"WH","device_address":"00:A2:D0:00:00:02","codec":"sbc","sbc_bitpool":40,
             "sbc_min_bitpool":20,"sbcxq_min_bitpool":30,
             "sbc_blocks":8,"sbc_subbands":4,"sbc_allocation":"snr","sbc_channel_mode":"stereo"}"#;
         let p: Profile = serde_json::from_str(text).unwrap();
         let r = p.to_request(1023).unwrap();
         assert_eq!(r.sbc_bitpool, 40);
-        assert_eq!(
-            r.sbc,
-            SbcParams {
-                blocks: 8,
-                subbands: 4,
-                allocation: Some(Allocation::Snr),
-                channel_mode: Some(ChannelMode::Stereo),
-                min_bitpool: 0,
-            }
-        );
+        assert!(r.sbc.is_default(), "{:?}", r.sbc);
         // Each codec its own minimum bitpool
         assert_eq!(r.sbc_params(CodecKind::Sbc), SbcParams { min_bitpool: 20, ..r.sbc });
         assert_eq!(r.sbc_params(CodecKind::SbcXq).min_bitpool, 30);
@@ -721,9 +633,6 @@ mod tests {
         let json = serde_json::to_string(&plain).unwrap();
         assert!(!json.contains("sbc_"), "{json}");
         assert!(plain.to_request(1023).unwrap().sbc.is_default());
-        // Unknown values are Auto
-        let odd = Profile { sbc_allocation: "max".into(), sbc_channel_mode: "auto".into(), ..plain };
-        assert!(odd.to_request(1023).unwrap().sbc.is_default());
     }
 
     fn named(names: &[&str]) -> Vec<Profile> {
