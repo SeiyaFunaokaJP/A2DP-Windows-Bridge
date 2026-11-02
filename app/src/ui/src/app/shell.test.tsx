@@ -438,7 +438,7 @@ describe("setup device step", () => {
   it("a wrong device is forgotten right there: back in the list", async () => {
     const { calls } = await toDeviceStep({ scenario: "normal" });
     await connectNew(calls, "Galaxy Buds2 Pro");
-    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: t("ui.home.add_device") }));
     fireEvent.click(await screen.findByRole("button", { name: `${t("ui.device.forget")}: Galaxy Buds2 Pro` }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: t("ui.device.forget") }));
@@ -446,22 +446,35 @@ describe("setup device step", () => {
     await waitFor(() => expect(screen.queryByText("Galaxy Buds2 Pro", { selector: ".paired-devices *" })).toBeNull());
   });
 
-  it("Disconnect before the stream has started stops it too", async () => {
+  it("Add a device before the stream has started stops it too", async () => {
     const { calls } = await toDeviceStep({ scenario: "normal" });
     const row = (await screen.findByText("Galaxy Buds2 Pro")).closest(".device-row") as HTMLElement;
     fireEvent.click(within(row).getByRole("button", { name: "Connect" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    fireEvent.click(await screen.findByRole("button", { name: t("ui.home.add_device") }));
     await waitFor(() => expect(calls.some((c) => c.method === "stream.stop")).toBe(true));
     expect(calls.findIndex((c) => c.method === "stream.start")).toBeLessThan(
       calls.findIndex((c) => c.method === "stream.stop"),
     );
   });
 
+  it("a saved device has a dot for its state, and no Connect or Disconnect (issue #86)", async () => {
+    const { calls } = await toDeviceStep({ scenario: "normal" });
+    await connectNew(calls, "Galaxy Buds2 Pro");
+    const row = (await screen.findByText("Galaxy Buds2 Pro", { selector: ".paired-devices *" })).closest(".device-row") as HTMLElement;
+    await waitFor(() => expect(row.querySelector(".dot")).toHaveClass("st-streaming"));
+    const other = (await screen.findByText("WH-1000XM5", { selector: ".paired-devices *" })).closest(".device-row") as HTMLElement;
+    expect(other.querySelector(".dot")).toHaveClass("st-idle");
+    for (const r of [row, other]) {
+      expect(within(r).queryByRole("button", { name: "Connect" })).toBeNull();
+      expect(within(r).queryByRole("button", { name: "Disconnect" })).toBeNull();
+    }
+  });
+
   it("a device with a profile connects with that one", async () => {
     const { calls, core } = await toDeviceStep();
     const before = core.state.snap!.profiles.length;
-    const row = (await screen.findByText("WH-1000XM5", { selector: ".paired-devices *" })).closest(".device-row") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Connect" }));
+    fireEvent.input(screen.getByRole("textbox", { name: "Manual:" }), { target: { value: "AC:80:0A:12:34:56" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use" }));
     await waitFor(() => expect(calls.some((c) => c.method === "stream.start")).toBe(true));
     expect(calls.find((c) => c.method === "stream.start")!.params).toEqual({ profile: "WH-1000XM5 (LDAC)" });
     expect(core.state.snap!.profiles.length).toBe(before);
