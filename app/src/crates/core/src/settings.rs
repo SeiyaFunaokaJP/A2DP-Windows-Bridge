@@ -98,8 +98,8 @@ pub struct Settings {
     /// A click on the tray icon opens the main window instead of the tray
     /// flyout (issue #86; off by default)
     pub tray_click_opens_window: bool,
-    /// The flyout opens above Windows 11's Quick Settings, along with them
-    /// (off by default)
+    /// The flyout opens above Windows 11's Quick Settings, along with them,
+    /// and a click on the tray icon opens the main window (off by default)
     pub flyout_with_quick_settings: bool,
     /// A notification when a device connects (issue #86): its name, codec,
     /// what the codec runs with and the battery. On by default.
@@ -122,12 +122,6 @@ pub struct Settings {
     /// The headphones' buttons act as Windows media keys (every device)
     #[serde(default = "default_true")]
     pub media_keys: bool,
-    /// Remember the headphones' volume per device (address -> AVRCP volume
-    /// 0..127) and set it again when they connect; on by default (issue
-    /// #86: one device's volume must not carry over to another). One switch
-    /// for every device.
-    #[serde(default = "default_true")]
-    pub remember_volume: bool,
     /// A session whose device went away connects it again by itself, and
     /// takes it when it comes back. Off: the session ends and the adapter is
     /// released, so headphones turned off can go to a phone instead.
@@ -136,10 +130,13 @@ pub struct Settings {
     /// No VB-Cable when last looked: once it is there, the profiles that
     /// capture System Loopback take it, one time (issue #86)
     pub awaiting_vb_cable: bool,
+    /// Each device's volume (address -> AVRCP volume 0..127), set again when
+    /// it connects (issue #86: one device's volume must not carry over to
+    /// another)
     pub saved_volumes: BTreeMap<String, i32>,
-    /// Before schema 6: per-device overrides of media_keys and
-    /// remember_volume. Those are one setting for every device now (issue
-    /// #86); read (and ignored), not written.
+    /// Before schema 6: per-device overrides of media_keys and of remembering
+    /// the volume. The first is one setting for every device now, the second
+    /// always on (issue #86); read (and ignored), not written.
     #[serde(skip_serializing)]
     pub device_options: Option<serde_json::Value>,
     /// Windows Volume Sync for every device (issue #86; each profile had its
@@ -148,8 +145,10 @@ pub struct Settings {
     /// another device, set in developer mode); off for every stream
     #[serde(default = "default_true")]
     pub volume_sync: bool,
-    /// System Loopback mutes the default output device while streaming
-    #[serde(default = "default_true")]
+    /// The default output device is muted while streaming, while debug_mode
+    /// is on too (issues #86, #223). A key of its own: the `mute_output` of
+    /// earlier versions was on by default.
+    #[serde(rename = "output_mute")]
     pub mute_output: bool,
 
     pub debug_mode: bool,
@@ -287,13 +286,12 @@ impl Default for Settings {
             last_update_check: String::new(),
             include_prereleases: default_prereleases(),
             media_keys: true,
-            remember_volume: true,
             auto_reconnect: true,
             awaiting_vb_cable: false,
             saved_volumes: BTreeMap::new(),
             device_options: None,
             volume_sync: true,
-            mute_output: true,
+            mute_output: false,
             debug_mode: false,
             dev_overrides: codec::dev::DevOverrides::default(),
             dev_log: DevLog::default(),
@@ -343,6 +341,9 @@ impl Settings {
                     );
                 }
                 s.theme = normalize_theme(&s.theme).into();
+                s.other.remove("mute_output");
+                // No longer a choice (issue #86)
+                s.other.remove("remember_volume");
                 // No longer a choice (issue #86): a file with it off uses
                 // every codec too
                 s.experimental_codecs = true;
@@ -373,6 +374,11 @@ impl Settings {
         let r = std::fs::rename(&tmp, &path);
         tracing::debug!("settings: saved {}: {r:?}", path.display());
         r
+    }
+
+    /// Whether a stream mutes the default output device
+    pub fn mutes_output(&self) -> bool {
+        self.mute_output && self.debug_mode
     }
 
     /// The media packet size limit of a settings file from before v1.1, for
@@ -462,7 +468,7 @@ mod tests {
     #[test]
     fn old_device_options_are_read_but_not_written() {
         let s: Settings = serde_json::from_str("{}").unwrap();
-        assert!(s.volume_sync && s.media_keys && s.remember_volume);
+        assert!(s.volume_sync && s.media_keys);
         // Schema 5's per-device overrides: read without error, never in force
         // nor written back (nor kept as an unknown key)
         let s: Settings = serde_json::from_str(
@@ -509,6 +515,17 @@ mod tests {
     fn experimental_codecs_off_loads_as_on() {
         let dir = std::env::temp_dir().join(format!("bluecaster-experimental-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            Settings::path(&dir),
+            r#"{"schema_version":7,"mute_output":true,"remember_volume":false,"debug_mode":true}"#,
+        )
+        .unwrap();
+        // The old mute (on by default) does not carry over; neither does
+        // turning the remembered volume off
+        let s = Settings::load(&dir);
+        assert!(!s.mute_output);
+        assert!(s.other.is_empty());
+
         std::fs::write(Settings::path(&dir), r#"{"schema_version":5,"experimental_codecs":false}"#).unwrap();
         assert!(Settings::load(&dir).experimental_codecs);
         let _ = std::fs::remove_dir_all(&dir);

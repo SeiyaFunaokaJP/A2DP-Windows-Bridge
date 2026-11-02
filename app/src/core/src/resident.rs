@@ -454,8 +454,7 @@ pub fn run(args: &[String]) -> i32 {
             }
             TaoEvent::UserEvent(UserEvent::Click) => {
                 win_sys::notify::allow_foreground_for_click();
-                // The flyout, or the main window when Settings say so
-                launch_ui((!state.tray_click_opens_window()).then_some("--flyout"));
+                launch_ui(state.tray_click_opens_flyout().then_some("--flyout"));
             }
             TaoEvent::UserEvent(UserEvent::QuickSettingsOpened) => {
                 if state.flyout_with_quick_settings() {

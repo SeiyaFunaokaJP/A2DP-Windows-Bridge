@@ -1,17 +1,13 @@
-// The SBC frame setup a profile may ask for (blocks, subbands, allocation,
-// channel mode, bitpool) and the bit rate it gives, as the core works it out
-// (crates/codec/src/sbc/mod.rs, caps.rs RemoteCaps::sbc_params): a value the
-// headphones do not list falls back to the default when connecting, Auto
-// takes the default, the bitpool stays within the headphones' range.
+// The SBC bitpool a profile streams with and the bit rate it gives, as the
+// core works it out (crates/codec/src/sbc/mod.rs): 16 blocks, 8 subbands,
+// joint stereo (SBC XQ: dual channel), the bitpool within the headphones'
+// range.
 
 import type { Device, Profile } from "../ipc/types";
 import { parseAddress } from "./format";
 
-export const SBC_BLOCKS = [4, 8, 12, 16];
-export const SBC_SUBBANDS = [4, 8];
-export const SBC_ALLOCATIONS = ["loudness", "snr"];
-/** SBC only: dual channel is SBC XQ's, which is always that (issue #86) */
-export const SBC_CHANNEL_MODES = ["joint_stereo", "stereo", "mono"];
+const BLOCKS = 16;
+const SUBBANDS = 8;
 
 /** What a device's SBC endpoint offers (Device.sbc, CodecDetails' SbcDeviceCaps) */
 export type SbcCaps = NonNullable<Device["sbc"]>;
@@ -23,10 +19,6 @@ export type SbcFields = Pick<
   | "sample_rate"
   | "sbc_bitpool"
   | "sbcxq_bitpool"
-  | "sbc_blocks"
-  | "sbc_subbands"
-  | "sbc_allocation"
-  | "sbc_channel_mode"
 > &
   Partial<Pick<Profile, "sbc_min_bitpool" | "sbcxq_min_bitpool">>;
 
@@ -35,11 +27,6 @@ export function knownSbcCaps(devices: readonly Device[], address: string): SbcCa
   const a = parseAddress(address);
   if (!a) return null;
   return devices.find((d) => !d.le_audio && d.address.toUpperCase() === a)?.sbc ?? null;
-}
-
-/** Whether the device lists a value (anything goes while not known) */
-export function sbcOffered(caps: SbcCaps | null, field: "blocks" | "subbands" | "allocations" | "channel_modes", value: number | string): boolean {
-  return !caps || (caps[field] as (number | string)[]).includes(value);
 }
 
 /** The joint stereo bitpool of a quality (mono and stereo the same) */
@@ -71,29 +58,16 @@ export function sbcKbps(len: number, rate: number, blocks: number, subbands: num
 }
 
 export interface SbcSetup {
-  blocks: number;
-  subbands: number;
-  allocation: string;
   mode: string;
   bitpool: number;
   frameBytes: number;
   kbps: number;
 }
 
-/**
- * The setup a profile streams SBC / SBC XQ with at a rate (stereo input):
- * what the device does not list taken as the default
- */
+/** The setup a profile streams SBC / SBC XQ with at a rate (stereo input) */
 export function sbcSetup(p: SbcFields, rate: number, caps: SbcCaps | null): SbcSetup {
   const xq = p.codec === "sbcxq";
-  const blocks = p.sbc_blocks && sbcOffered(caps, "blocks", p.sbc_blocks) ? p.sbc_blocks : 16;
-  const subbands = p.sbc_subbands && sbcOffered(caps, "subbands", p.sbc_subbands) ? p.sbc_subbands : 8;
-  const allocation = p.sbc_allocation && sbcOffered(caps, "allocations", p.sbc_allocation) ? p.sbc_allocation : "loudness";
-  const mode = xq
-    ? "dual_channel"
-    : SBC_CHANNEL_MODES.includes(p.sbc_channel_mode) && sbcOffered(caps, "channel_modes", p.sbc_channel_mode)
-      ? p.sbc_channel_mode
-      : "joint_stereo";
+  const mode = xq ? "dual_channel" : "joint_stereo";
   const max = xq ? xqBitpool("hq", rate) : 53;
   const asked = xq ? p.sbcxq_bitpool : p.sbc_bitpool;
   const auto = xq ? xqBitpool(p.quality, rate) : qualityBitpool(p.quality);
@@ -101,8 +75,8 @@ export function sbcSetup(p: SbcFields, rate: number, caps: SbcCaps | null): SbcS
   const min = (xq ? p.sbcxq_min_bitpool : p.sbc_min_bitpool) ?? 0;
   let bitpool = Math.min(Math.max(asked || auto, min), max);
   if (caps && caps.max_bitpool >= 2) bitpool = Math.max(Math.min(bitpool, caps.max_bitpool), Math.min(caps.min_bitpool, caps.max_bitpool), 2);
-  const frameBytes = sbcFrameLength(mode, blocks, subbands, bitpool);
-  return { blocks, subbands, allocation, mode, bitpool, frameBytes, kbps: sbcKbps(frameBytes, rate, blocks, subbands) };
+  const frameBytes = sbcFrameLength(mode, BLOCKS, SUBBANDS, bitpool);
+  return { mode, bitpool, frameBytes, kbps: sbcKbps(frameBytes, rate, BLOCKS, SUBBANDS) };
 }
 
 /** The rate the bit rate is shown at: the profile's, or on Auto 48 kHz,

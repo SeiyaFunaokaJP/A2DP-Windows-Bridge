@@ -65,6 +65,11 @@ export function Settings() {
   const snap = () => core.state.snap!;
   const s = () => snap().settings;
   const set = (patch: Parameters<typeof saveSettings>[1]) => void saveSettings(app, patch);
+  const flyoutFrom = () => (s().flyout_with_quick_settings ? "quick" : s().tray_click_opens_window ? "none" : "tray");
+  const flyoutHint = () =>
+    [flyoutFrom() !== "tray" && t("ui.settings.flyout_from_hint"), !core.transport.mica && t("ui.settings.flyout_from_win11")]
+      .filter(Boolean)
+      .join(" ") || undefined;
   const [quitting, setQuitting] = createSignal(false);
   const update = () => snap().update;
   // The in-app update (installed copies); otherwise the release page
@@ -120,20 +125,23 @@ export function Settings() {
           onChange={(v) => set({ start_minimized: v })}
         />
         <Toggle label={t("settings.minimize_to_tray")} checked={s().minimize_to_tray} onChange={(v) => set({ minimize_to_tray: v })} />
-        <Toggle
-          label={t("ui.settings.tray_click_opens_window")}
-          hint={t("ui.settings.tray_click_opens_window_hint")}
-          checked={s().tray_click_opens_window}
-          onChange={(v) => set({ tray_click_opens_window: v })}
-        />
-        {/* Quick Settings are Windows 11's, as Mica is */}
-        <Show when={core.transport.mica}>
-          <Toggle
-            label={t("ui.settings.flyout_with_quick_settings")}
-            checked={s().flyout_with_quick_settings}
-            onChange={(v) => set({ flyout_with_quick_settings: v })}
-          />
-        </Show>
+        {/* Off the tray icon, the icon's click opens the main window.
+            Quick Settings are Windows 11's, as Mica is */}
+        <Field label={t("ui.settings.flyout_from")} hint={flyoutHint()}>
+          {(id, describedBy) => (
+            <Select
+              id={id}
+              describedBy={describedBy}
+              value={flyoutFrom()}
+              options={[
+                { value: "none", label: t("ui.settings.flyout_from_none") },
+                { value: "tray", label: t("ui.settings.flyout_from_tray") },
+                { value: "quick", label: t("ui.settings.flyout_from_quick"), disabled: !core.transport.mica },
+              ]}
+              onChange={(v) => set({ tray_click_opens_window: v !== "tray", flyout_with_quick_settings: v === "quick" })}
+            />
+          )}
+        </Field>
       </Section>
 
       <Section title={t("ui.settings.notifications")}>

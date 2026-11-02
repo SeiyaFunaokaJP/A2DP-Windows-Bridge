@@ -8,6 +8,8 @@
 //!   (IAudioEndpointVolume), the primitives of volume sync.
 //! - [`session_process_ids`]: the processes that have an audio session, for
 //!   the Application capture app picker (IAudioSessionControl2).
+//! - [`output_sessions`], [`set_output_sessions`]: the sessions on the default
+//!   output device, with their volume and mute (the app volume mixer).
 //! - [`ComApartment`]: per-thread COM initialisation (MTA).
 
 use core::ffi::c_void;
@@ -19,8 +21,8 @@ use windows::Win32::Foundation::{RPC_E_CHANGED_MODE, S_OK};
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::PKEY_AudioEndpoint_FormFactor;
 use windows::Win32::Media::Audio::{
-    DEVICE_STATE_ACTIVE, ERole, IAudioSessionControl2, IAudioSessionManager2, IMMDevice, IMMDeviceEnumerator,
-    MMDeviceEnumerator, WAVEFORMATEX, eConsole, eMultimedia, eRender,
+    AudioSessionStateExpired, DEVICE_STATE_ACTIVE, ERole, IAudioSessionControl2, IAudioSessionManager2, IMMDevice,
+    IMMDeviceEnumerator, ISimpleAudioVolume, MMDeviceEnumerator, WAVEFORMATEX, eConsole, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::StructuredStorage::{
     PROPVARIANT, PropVariantClear, PropVariantToGUID, PropVariantToUInt32,
@@ -325,6 +327,88 @@ pub fn endpoint_hints(device_id: &str) -> windows::core::Result<EndpointHints> {
 // ---------------------------------------------------------------------------
 // Audio sessions
 // ---------------------------------------------------------------------------
+
+/// A session on the default output device
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OutputSession {
+    pub process_id: u32,
+    pub system_sounds: bool,
+    /// 0.0-1.0
+    pub volume: f32,
+    pub muted: bool,
+}
+
+/// The sessions on the default output device, without expired ones. COM must
+/// be initialised on the calling thread.
+fn default_output_sessions() -> windows::core::Result<Vec<(OutputSession, ISimpleAudioVolume)>> {
+    let enumerator = enumerator()?;
+    // SAFETY: plain call on a live enumerator.
+    let device = unsafe { enumerator.GetDefaultAudioEndpoint(eRender, eConsole)? };
+    // SAFETY: activating a documented endpoint service on a live device.
+    let manager = unsafe { device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None)? };
+    // SAFETY: plain call on a live session manager.
+    let sessions = unsafe { manager.GetSessionEnumerator()? };
+    // SAFETY: plain call on a live session enumerator.
+    let n = unsafe { sessions.GetCount()? };
+    let mut out = Vec::new();
+    for s in 0..n {
+        // SAFETY: `s` is within the enumerator's count.
+        let Ok(control) = (unsafe { sessions.GetSession(s) }) else {
+            continue;
+        };
+        // SAFETY: plain call on a live session control.
+        if unsafe { control.GetState() }.is_ok_and(|state| state == AudioSessionStateExpired) {
+            continue;
+        }
+        let (Ok(control2), Ok(simple)) =
+            (control.cast::<IAudioSessionControl2>(), control.cast::<ISimpleAudioVolume>())
+        else {
+            continue;
+        };
+        // SAFETY: plain calls on live session interfaces.
+        let session = unsafe {
+            OutputSession {
+                process_id: control2.GetProcessId().unwrap_or(0),
+                system_sounds: control2.IsSystemSoundsSession() == S_OK,
+                volume: simple.GetMasterVolume().unwrap_or(1.0),
+                muted: simple.GetMute().is_ok_and(|m| m.as_bool()),
+            }
+        };
+        out.push((session, simple));
+    }
+    Ok(out)
+}
+
+/// The sessions on the default output device. COM must be initialised on the
+/// calling thread.
+pub fn output_sessions() -> windows::core::Result<Vec<OutputSession>> {
+    Ok(default_output_sessions()?.into_iter().map(|(s, _)| s).collect())
+}
+
+/// Sets the volume (0.0-1.0) and / or the mute of the sessions `which` picks;
+/// returns how many. COM must be initialised on the calling thread.
+pub fn set_output_sessions(
+    which: impl Fn(&OutputSession) -> bool,
+    volume: Option<f32>,
+    muted: Option<bool>,
+) -> windows::core::Result<usize> {
+    let mut count = 0;
+    for (session, simple) in default_output_sessions()? {
+        if !which(&session) {
+            continue;
+        }
+        if let Some(v) = volume {
+            // SAFETY: plain call on a live interface; no event context.
+            unsafe { simple.SetMasterVolume(v, core::ptr::null())? };
+        }
+        if let Some(m) = muted {
+            // SAFETY: plain call on a live interface; no event context.
+            unsafe { simple.SetMute(m, core::ptr::null())? };
+        }
+        count += 1;
+    }
+    Ok(count)
+}
 
 /// Process IDs of the app audio sessions on all active output devices, in
 /// enumeration order, with duplicates (one per session). Leaves out the

@@ -59,7 +59,7 @@ Les casques et enceintes vers lesquels BlueCaster peut diffuser, chacun avec ses
 - **Source de sortie** : Bouclage système (par défaut pour un nouvel appareil), Périphérique virtuel ou Application (voir [Modes de capture](#capture-modes)). À côté, le format dans lequel Windows mixe le périphérique capturé (fréquence d'échantillonnage et profondeur de bits, en lecture seule), en ambre lorsque les réglages de codec de l'appareil en demandent un autre, avec une ligne en dessous indiquant lequel (la diffusion continue, convertie) ; en dessous, ce que fait la source
 - **Définir comme sortie par défaut de Windows pendant la connexion**, avec un périphérique virtuel
 
-**Tous les appareils audio**, au-dessus de la liste, regroupe les interrupteurs qui s'appliquent à tous les appareils : **Synchro du volume Windows** (voir [Volume](#volume)), **Contrôler la lecture avec les boutons de l'appareil audio** et **Mémoriser le volume de chaque appareil audio**. La **Taille max. des paquets média** de chaque appareil se trouve sur l'écran **Développeur** (voir [Taille max. des paquets média](#max-packet)).
+**Tous les appareils audio**, au-dessus de la liste, regroupe les interrupteurs qui s'appliquent à tous les appareils : **Synchro du volume Windows** (voir [Volume](#volume)) et **Contrôler la lecture avec les boutons de l'appareil audio**. La **Taille max. des paquets média** de chaque appareil se trouve sur l'écran **Développeur** (voir [Taille max. des paquets média](#max-packet)).
 
 ### Diagnostic
 
@@ -85,7 +85,7 @@ Avec **Paramètres > Mode développeur**, l'écran **Développeur** comporte un 
 | Section | Paramètres |
 |:--------|:---------|
 | Apparence | Langue, thème (Système / Clair / Sombre) |
-| Démarrage | **Démarrer avec Windows** et **Démarrer dans la zone de notification** (voir [Démarrer avec Windows](#autostart)), **Réduire dans la zone de notification** et **Un clic sur l'icône de la zone de notification ouvre la fenêtre principale** (voir [Zone de notification et volet](#tray)) |
+| Démarrage | **Démarrer avec Windows** et **Démarrer dans la zone de notification** (voir [Démarrer avec Windows](#autostart)), **Réduire dans la zone de notification** et **Ouvrir la petite fenêtre depuis** (voir [Zone de notification et volet](#tray)) |
 | Notifications | **Notifier lorsqu'un appareil se connecte** (l'appareil, sa batterie, le codec et ses paramètres ; activé par défaut), **Prévenir quand la batterie est faible** : **Sous 20%** (par défaut), **Sous 10%**, **Sous 5%** ou **Jamais**, une fois par connexion (de nouveau seulement après que la batterie est remontée 5 points au-dessus) |
 | Mises à jour | **Rechercher des mises à jour**, **Rechercher les mises à jour au démarrage**, **Inclure les préversions dans les mises à jour** (propose aussi les versions bêta), **Mettre à jour maintenant** (voir [Mises à jour](#updates)) |
 | Avancé | **Mode développeur** (ajoute l'écran **Développeur** avec la **Taille max. des paquets média** de chaque appareil et le test avec récepteur pair, et plus de détails au journal ; aucun redémarrage nécessaire), **Dossier des paramètres** avec **Ouvrir le dossier de configuration**, **Lancer la configuration** |
@@ -99,7 +99,7 @@ Au premier démarrage (aucun profil, ou aucun adaptateur avec WinUSB), BlueCaste
 
 BlueCaster continue de s'exécuter dans la zone de notification, avec ou sans la fenêtre :
 
-- **Clic gauche** sur l'icône pour ouvrir le volet : l'appareil et son état, **Connecter** / **Déconnecter**, le volume, le sélecteur d'appareil, le codec (une liste pour le choisir, comme dans Accueil), la qualité de liaison et **Ouvrir l'application**. Sa hauteur correspond exactement à son contenu. Échap ou un clic ailleurs le masque. Si une erreur nécessite un écran de la fenêtre principale (Codecs, Périphériques audio, l'adaptateur), son bouton ouvre la fenêtre à cet endroit. Avec **Paramètres > Un clic sur l'icône de la zone de notification ouvre la fenêtre principale** activé (désactivé par défaut), un clic gauche ouvre plutôt la fenêtre principale
+- **Clic gauche** sur l'icône pour ouvrir le volet : l'appareil et son état, **Connecter** / **Déconnecter**, le volume, le sélecteur d'appareil, le codec (une liste pour le choisir, comme dans Accueil), la qualité de liaison et **Ouvrir l'application**. Sa hauteur correspond exactement à son contenu. Échap ou un clic ailleurs le masque. Si une erreur nécessite un écran de la fenêtre principale (Codecs, Périphériques audio, l'adaptateur), son bouton ouvre la fenêtre à cet endroit. Avec **Paramètres > Un clic sur l'icône de la zone de notification ouvre la fenêtre principale** activé (désactivé par défaut), un clic gauche ouvre plutôt la fenêtre principale Avec **Nulle part** dans **Ouvrir la petite fenêtre depuis**, aucun volet ne s'ouvre et l'icône ouvre la fenêtre principale.
 - **Clic droit** pour le menu : **Ouvrir BlueCaster**, les 10 premiers appareils par leur nom (une entrée LE Audio marquée « (LE Audio) » ; celui qui diffuse est coché ; cliquez sur l'un d'eux pour le connecter), **Déconnecter** et **Quitter**. Le menu s'ouvre immédiatement, sans démarrer la fenêtre
 - L'info-bulle indique si BlueCaster est inactif ou connecté
 
@@ -210,7 +210,9 @@ BlueCaster propose trois modes de capture audio. Chacun enregistre à un endroit
 
 **Périphériques audio** affiche la même explication sous **Source de sortie**. Un nouvel appareil capture en Bouclage système, qui fonctionne sans rien installer d'autre ; choisissez-y Périphérique virtuel ou Application pour lui.
 
-Le bouclage système copie l'audio ; il ne le retire pas du périphérique de sortie par défaut. Pour que le son ne soit pas aussi joué sur ce périphérique (haut-parleurs, casque filaire, téléviseur HDMI, ...) en plus du casque Bluetooth, **Couper le son de la sortie par défaut de Windows pendant la connexion** (dans **Périphériques audio**, pour tous les périphériques ; activé par défaut) coupe ce périphérique pendant le streaming et le rétablit à la fin. Cela ne change rien à ce que capture BlueCaster. Un périphérique déjà coupé le reste. Si BlueCaster se ferme de manière inattendue, le périphérique reste coupé : rétablissez le son dans Windows. Désactivez ce réglage pour que le son continue aussi sur le PC.
+Le bouclage système copie l'audio ; il ne le retire pas du périphérique de sortie par défaut. Pour que le son ne soit pas aussi joué sur ce périphérique (haut-parleurs, casque filaire, téléviseur HDMI, ...) en plus du casque Bluetooth, **Couper le son de la sortie par défaut de Windows pendant la connexion** (sur l'écran **Mélangeur de volume** ; désactivé par défaut) coupe ce périphérique pendant le streaming et le rétablit à la fin. Cela ne change rien à ce que capture BlueCaster. Un périphérique déjà coupé le reste. Si BlueCaster se ferme de manière inattendue, le périphérique reste coupé : rétablissez le son dans Windows. Désactivez ce réglage pour que le son continue aussi sur le PC.
+
+Tant qu'un profil de bouclage système est utilisé, **Mélangeur de volume** dans le menu de gauche et le volet règlent le volume de chaque application. En mode développeur, ils sont disponibles pour toutes les sources de capture, et la coupure du son s'y applique aussi. Cela fonctionne quand la sortie est coupée, alors que le mélangeur de Windows peut interrompre le son. Si la sortie par défaut est un périphérique virtuel, couper le son peut aussi rendre le flux muet : désactivez alors ce réglage.
 
 En mode Périphérique virtuel, **Définir comme sortie par défaut de Windows pendant la connexion** fait du périphérique choisi la sortie par défaut de Windows pendant la diffusion, si bien que les applications jouent vers lui sans modifier les paramètres de Windows. À l'arrêt de la diffusion, BlueCaster rétablit le périphérique par défaut précédent.
 
@@ -243,7 +245,7 @@ Pendant la diffusion, Accueil et le volet de la zone de notification affichent u
 
 Les versions précédentes permettaient à un appareil de suivre le volume d'un autre périphérique de sortie (en mode développeur) ; ce choix n'est plus utilisé.
 
-**Mémoriser le volume de chaque appareil audio** (dans **Périphériques audio**, pour tous les appareils ; activé par défaut) enregistre le volume propre à chaque appareil audio et le réapplique dès la connexion, avant tout envoi d'audio : le volume d'un appareil ne se reporte donc pas sur un autre. Désactivez-le pour que chaque appareil démarre à son propre dernier volume, qui peut être bien plus fort que celui utilisé la dernière fois avec BlueCaster (p. ex. après une utilisation avec un téléphone).
+BlueCaster enregistre le volume propre à chaque appareil audio et le réapplique dès la connexion, avant tout envoi d'audio : le volume d'un appareil ne se reporte donc pas sur un autre.
 
 ### Boutons du casque {#headphone-buttons}
 

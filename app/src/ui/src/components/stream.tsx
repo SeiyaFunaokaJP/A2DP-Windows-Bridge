@@ -241,14 +241,13 @@ export function bitpoolText(info: StreamInfo): string | null {
 }
 
 /** What the codec runs with, in short: "990 kbps", "48 kHz", "24-bit",
- *  "ABR"; SBC under ABR "328 kbps", "bitpool 53/53", ... as it moves */
+ *  "ABR"; SBC under ABR "bitpool 53/53" after them, as it moves */
 export function codecDetails(info: StreamInfo): string[] {
-  const out = [`${info.bitrate_kbps} kbps`];
-  const bp = bitpoolText(info);
-  if (bp) out.push(bp);
-  out.push(`${khz(info.sample_rate)} kHz`);
+  const out = [`${info.bitrate_kbps} kbps`, `${khz(info.sample_rate)} kHz`];
   if (info.bits > 0) out.push(t(`bitdepth.${info.bits}`));
   if (info.abr) out.push(abrLabel(info));
+  const bp = bitpoolText(info);
+  if (bp) out.push(bp);
   return out;
 }
 
@@ -332,13 +331,6 @@ export function CodecBadge(props: { compact?: boolean; aside?: JSX.Element; pick
               <span class="num" title={bitrateNote(i())}>
                 {i().bitrate_kbps} kbps
               </span>
-              <Show when={liveBitpool(i())}>
-                {(bp) => (
-                  <span class="num live-bitpool" title={t("tooltip.sbc_bitpool_live", bp().min, bp().max)}>
-                    {bitpoolText(i())}
-                  </span>
-                )}
-              </Show>
               <Show when={!props.compact}>
                 <span class="num">{khz(i().sample_rate)} kHz</span>
                 <Show when={i().bits > 0}>
@@ -350,6 +342,14 @@ export function CodecBadge(props: { compact?: boolean; aside?: JSX.Element; pick
                 <span class="muted" title={t(abrTooltipKey(i()))}>
                   {abrLabel(i())}
                 </span>
+              </Show>
+              {/* A line of its own: the others read the same for every codec (issue #86) */}
+              <Show when={liveBitpool(i())}>
+                {(bp) => (
+                  <span class="num live-bitpool" title={t("tooltip.sbc_bitpool_live", bp().min, bp().max)}>
+                    {bitpoolText(i())}
+                  </span>
+                )}
               </Show>
             </span>
             {props.aside}

@@ -15,6 +15,7 @@ mod apps;
 mod devices;
 mod format;
 mod loopback;
+mod mixer;
 mod silence;
 mod tone;
 
@@ -30,6 +31,7 @@ pub use devices::{
     set_default_render_device,
 };
 pub use format::{DEFAULT_RATE, Format, SampleFormat};
+pub use mixer::{MixerApp, SYSTEM_SOUNDS, mixer_apps, set_mixer_app};
 pub use tone::RIGHT_HZ as TEST_TONE_RIGHT_HZ;
 pub use tone::{AMPLITUDE as TEST_TONE_AMPLITUDE, LEFT_HZ as TEST_TONE_LEFT_HZ};
 

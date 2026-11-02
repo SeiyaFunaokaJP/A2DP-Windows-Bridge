@@ -7,7 +7,7 @@ import type { Core } from "../ipc/store";
 import { IpcError } from "../ipc/types";
 import { t, tm } from "../i18n";
 
-export type RouteName = "home" | "codecs" | "devices" | "diagnostics" | "developer" | "adapter" | "settings" | "about" | "setup";
+export type RouteName = "home" | "codecs" | "devices" | "diagnostics" | "mixer" | "developer" | "adapter" | "settings" | "about" | "setup";
 
 export interface Route {
   name: RouteName;
@@ -18,7 +18,7 @@ export interface Route {
 
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/");
-  const names: RouteName[] = ["home", "codecs", "devices", "diagnostics", "developer", "adapter", "settings", "about", "setup"];
+  const names: RouteName[] = ["home", "codecs", "devices", "diagnostics", "mixer", "developer", "adapter", "settings", "about", "setup"];
   // Profiles became Codecs (issue #86): its links still lead there
   const name = parts[0] === "profiles" ? "codecs" : (names.find((n) => n === parts[0]) ?? "home");
   if (name === "adapter" && (parts[1] === "afh" || parts[1] === "firmware")) return { name, arg: parts[1] };

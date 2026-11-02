@@ -137,9 +137,10 @@ pub const OPUS05_BITRATE_UNIT: u32 = 1024;
 //   8..13: target latencies (LL0, LL1 in ms; HQ, TWS in 2 ms units)
 //   14: reserved; R1: 15 0x00, 16 0xAA (end marker); R2: 15 the capability
 //      extension version 1, 16..19 the features word (LE), 20..23 setup
-//      preferences, 24..25 the end marker 00 AA
+//      preferences, 24..25 the end marker 00 AA, then in a configuration
+//      26 the bits per sample (0x02: 24)
 // BTstack reports at most 30 bytes of a remote's codec information, enough
-// for all of it (bytes 26..39 are reserved).
+// for all of it (bytes 27..39 are reserved).
 const APTXAD_INFO_LEN: usize = 40;
 /// The R1 layout's end (its end marker), the least a usable SEP reports
 const APTXAD_R1_LEN: usize = 17;
@@ -163,9 +164,10 @@ const APTXAD_R1_DATA: [u8; 9] = [0x50, 0x64, 0x64, 0x64, 0xFF, 0xFF, 0x00, 0x00,
 /// What a source sends to an R2 sink from byte 8 on: its own target
 /// latencies, extension version 1, features 0x0F000092 (R2.0's word with the
 /// low byte a Snapdragon phone sends: a zero low byte makes a Bose QC Ultra 2
-/// restart), setup preferences 02 03 03 03, the end marker
-const APTXAD_R2_DATA: [u8; 18] =
-    [0x50, 0x64, 0x64, 0x64, 0xFF, 0xFF, 0x00, 0x01, 0x92, 0x00, 0x00, 0x0F, 0x02, 0x03, 0x03, 0x03, 0x00, 0xAA];
+/// restart), setup preferences 02 03 03 03, the end marker, 24 bits per
+/// sample (left at 0, a Bose QC Ultra decoder clips)
+const APTXAD_R2_DATA: [u8; 19] =
+    [0x50, 0x64, 0x64, 0x64, 0xFF, 0xFF, 0x00, 0x01, 0x92, 0x00, 0x00, 0x0F, 0x02, 0x03, 0x03, 0x03, 0x00, 0xAA, 0x02];
 
 /// aptX Adaptive codec information: the vendor header, `rate`,
 /// `channel_mode`, then `data` from byte 8 on
@@ -2508,8 +2510,8 @@ mod tests {
             };
             assert_eq!(info.len(), 40);
             assert_eq!(info[6..8], [0x12, 0x02]);
-            assert_eq!(info[8..26], APTXAD_R2_DATA);
-            assert!(info[26..].iter().all(|&b| b == 0));
+            assert_eq!(info[8..27], APTXAD_R2_DATA);
+            assert!(info[27..].iter().all(|&b| b == 0));
         }
 
         // 96 kHz: an R2 sink that lists it, asked for by the profile, high
@@ -2529,7 +2531,7 @@ mod tests {
             panic!("not a vendor configuration")
         };
         assert_eq!(info[6..8], [0xA2, 0x02]);
-        assert_eq!(info[8..26], APTXAD_R2_DATA);
+        assert_eq!(info[8..27], APTXAD_R2_DATA);
         // Real sinks (issue #86): an EarFun Air Pro 4+ lists 0xD1 (0x80
         // only), a MOMENTUM 5 0x71 (0x20 only): both take 96 kHz, configured
         // 0xA2 either way, as Android does

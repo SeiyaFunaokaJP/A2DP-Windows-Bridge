@@ -34,7 +34,7 @@ export function Devices() {
         <h1>{t("ui.nav.devices")}</h1>
       </header>
       <Show when={noCable()}>
-        <section class="card">
+        <section class="card device-note">
           <VbCableNote />
         </section>
       </Show>
@@ -61,20 +61,9 @@ function AllDevices() {
         onChange={(v) => void saveSettings(app, { volume_sync: v })}
       />
       <Toggle
-        label={t("capture.mute_output")}
-        hint={t("capture.mute_output_hint")}
-        checked={s().mute_output}
-        onChange={(v) => void saveSettings(app, { mute_output: v })}
-      />
-      <Toggle
         label={t("settings.media_keys")}
         checked={s().media_keys}
         onChange={(v) => void saveSettings(app, { media_keys: v })}
-      />
-      <Toggle
-        label={t("settings.remember_volume")}
-        checked={s().remember_volume}
-        onChange={(v) => void saveSettings(app, { remember_volume: v })}
       />
       <Toggle
         label={t("settings.auto_reconnect")}
