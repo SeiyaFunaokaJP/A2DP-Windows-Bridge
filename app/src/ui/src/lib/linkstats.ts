@@ -110,9 +110,9 @@ export function dropsPerSample(samples: readonly LinkSample[]): number[] {
     if (x.counters && p.counters) {
       const a = x.counters.total;
       const b = p.counters.total;
-      return Math.max(0, a.dropped - b.dropped) + Math.max(0, a.capture_dropped - b.capture_dropped);
+      return Math.max(0, a.dropped - b.dropped);
     }
-    return Math.max(0, x.dropped - p.dropped) + Math.max(0, x.capture_dropped - p.capture_dropped);
+    return Math.max(0, x.dropped - p.dropped);
   });
 }
 

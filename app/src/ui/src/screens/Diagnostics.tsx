@@ -11,7 +11,7 @@ import { Gauge, LineChart } from "../components/charts";
 import { CodecDetailsCard } from "../components/CodecDetails";
 import { Banner, Button, Check, Dialog, IconButton, Section, Select } from "../components/controls";
 import { Icon } from "../components/Icon";
-import { bugReportFor } from "../components/stream";
+import { bugReportFor, QUALITY_QUEUE_BACKLOG_MS } from "../components/stream";
 import type { IconName } from "../components/icons";
 import { t } from "../i18n";
 import type { CaptureState, DiagBundle, FlowStepView, LogLevel, LogLine } from "../ipc/types";
@@ -471,7 +471,7 @@ function LinkPanel() {
   const queueClass = () => {
     const s = live();
     if (!s) return "";
-    const f = s.queue_depth / (s.queue_capacity || 64);
+    const f = s.queue_ms != null ? s.queue_ms / (2 * QUALITY_QUEUE_BACKLOG_MS) : s.queue_depth / (s.queue_capacity || 64);
     return f < 0.25 ? "st-good" : f < 0.5 ? "st-warn" : "st-bad";
   };
   const queueText = () => {

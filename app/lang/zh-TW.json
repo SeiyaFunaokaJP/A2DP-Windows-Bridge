@@ -440,6 +440,7 @@
   "ui.quality.good": "良好",
   "ui.quality.fair": "普通",
   "ui.quality.poor": "不佳",
+  "ui.quality.pc_busy": "電腦忙碌",
   "ui.quality.unknown": "無資料",
   "ui.fix.retry": "重試",
   "ui.error.copy": "複製記錄",

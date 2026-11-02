@@ -440,6 +440,7 @@
   "ui.quality.good": "良好",
   "ui.quality.fair": "やや不安定",
   "ui.quality.poor": "不安定",
+  "ui.quality.pc_busy": "PC処理落ち",
   "ui.quality.unknown": "データなし",
   "ui.fix.retry": "もう一度試す",
   "ui.error.copy": "ログをコピー",

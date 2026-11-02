@@ -440,6 +440,7 @@
   "ui.quality.good": "좋음",
   "ui.quality.fair": "보통",
   "ui.quality.poor": "나쁨",
+  "ui.quality.pc_busy": "PC 과부하",
   "ui.quality.unknown": "데이터 없음",
   "ui.fix.retry": "다시 시도",
   "ui.error.copy": "로그 복사",
