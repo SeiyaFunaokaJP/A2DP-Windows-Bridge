@@ -14,7 +14,8 @@ use crate::{
 pub(crate) enum Pending {
     Packet(Source, u8, u16, Vec<u8>),
     Timer(u32),
-    Intel(i32),
+    /// A controller packet for a firmware loader (transport in raw mode)
+    Raw(u8, Vec<u8>),
     /// An ATT request of this connection was answered "pending" while the
     /// app was busy (crate::att)
     AttRetry(u16),
@@ -69,7 +70,7 @@ fn deliver(app: &mut dyn App, stack: &Stack, event: Pending) {
             app.on_packet(stack, source, packet_type, channel, &data)
         }
         Pending::Timer(id) => app.on_timer(stack, id),
-        Pending::Intel(result) => app.on_intel_firmware(stack, result),
+        Pending::Raw(packet_type, data) => app.on_raw_packet(stack, packet_type, &data),
         // Not for the app (drain_pending handles it without a borrow)
         Pending::AttRetry(_) => {}
     }
@@ -127,7 +128,13 @@ pub(crate) fn with_app<R>(stack: &Stack, f: impl FnOnce(&mut dyn App, &Stack) ->
 extern "C" fn a2dpwb_rs_on_wake() {
     guard((), || {
         let stack = Stack::new();
-        transport::pump();
+        transport::pump(|packet_type, packet| {
+            // Raw mode: a firmware loader in the app, not BTstack, reads it
+            log_packet(packet_type, true, packet);
+            if dispatch(&stack, Pending::Raw(packet_type, packet.to_vec())) {
+                drain_pending(&stack);
+            }
+        });
         let flags = WAKE_FLAGS.swap(0, Ordering::AcqRel);
         if flags & WAKE_APP != 0 {
             with_app(&stack, |app, s| app.on_wake(s));
@@ -182,17 +189,6 @@ extern "C" fn a2dpwb_rs_on_packet(source: u8, packet_type: u8, channel: u16, pac
     })
 }
 
-#[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_intel_done(result: c_int) {
-    guard((), || {
-        let stack = Stack::new();
-        tracing::debug!(target: "btstack", "intel firmware loader done: {result}");
-        if dispatch(&stack, Pending::Intel(result)) {
-            drain_pending(&stack);
-        }
-    })
-}
-
 // ---- HCI transport ----
 
 #[unsafe(no_mangle)]
@@ -236,14 +232,20 @@ extern "C" fn a2dpwb_rs_log_packet(packet_type: u8, incoming: u8, packet: *const
         }
         // SAFETY: HCI dump passes a buffer of `len` bytes valid during the call.
         let data = unsafe { std::slice::from_raw_parts(packet, len as usize) };
-        LOGGER.with(|l| {
-            if let Ok(mut l) = l.try_borrow_mut()
-                && let Some(logger) = l.as_mut()
-            {
-                logger(packet_type, incoming != 0, data);
-            }
-        });
+        log_packet(packet_type, incoming != 0, data);
     })
+}
+
+/// To the packet logger (HCI capture), as HCI dump does for BTstack's
+/// packets; also for those of a firmware loader in raw mode
+pub(crate) fn log_packet(packet_type: u8, incoming: bool, data: &[u8]) {
+    LOGGER.with(|l| {
+        if let Ok(mut l) = l.try_borrow_mut()
+            && let Some(logger) = l.as_mut()
+        {
+            logger(packet_type, incoming, data);
+        }
+    });
 }
 
 #[unsafe(no_mangle)]

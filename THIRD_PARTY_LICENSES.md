@@ -241,8 +241,8 @@ the NOTICE, or from the patent owners) is the user's responsibility.
   SLIP and UART transport files), the classic profiles A2DP / AVDTP / AVRCP / SDP
   from `src/classic/`, the LE part `src/ble/` (SM, ATT / GATT client and server,
   LE device database; for the experimental LE Audio support), the Windows run
-  loop and TLV store (`platform/windows/btstack_tlv_windows.c`), the Realtek,
-  Broadcom and Intel chipset drivers, and `3rd-party/rijndael` (§6),
+  loop and TLV store (`platform/windows/btstack_tlv_windows.c`), the Realtek
+  and Broadcom chipset drivers, and `3rd-party/rijndael` (§6),
   `3rd-party/tinydir` (§7) and `3rd-party/micro-ecc` (§18).
   `btstack_config.h` and the C glue `csrc/shim.c` in that crate are A2DPWB's own.
   BTstack's HCI transport is A2DPWB's own Rust crate `hci-transport` (USB through

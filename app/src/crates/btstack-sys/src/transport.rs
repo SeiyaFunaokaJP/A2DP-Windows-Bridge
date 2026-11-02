@@ -59,6 +59,13 @@ pub trait HciBackend: Send {
     }
     /// Sends one packet (H4 packet type, packet without type byte)
     fn send(&mut self, packet_type: u8, packet: &[u8]) -> bool;
+    /// The controller runs its bootloader (an Intel controller before its
+    /// firmware download): events also arrive on the ACL data pipe (an
+    /// Intel bootloader answers there), and close sends no HCI Reset (a
+    /// bootloader does not know it; one was seen to answer nothing after
+    /// it). Off again at every open. Transports that tell packet types
+    /// apart and have no reset on close (H4) ignore it.
+    fn set_bootloader(&mut self, _on: bool) {}
 }
 
 /// The way back from a backend's I/O threads into BTstack. Belongs to one
@@ -87,6 +94,9 @@ thread_local! {
     static OPEN: Cell<bool> = const { Cell::new(false) };
     /// The controller's LE support is hidden from BTstack (module docs)
     static LE_HIDDEN: Cell<bool> = const { Cell::new(true) };
+    /// A firmware loader in the app drives the transport (before HCI init):
+    /// received packets go to it, not to BTstack
+    static RAW: Cell<bool> = const { Cell::new(false) };
 }
 
 // ---- LE hidden: pure functions ----
@@ -249,6 +259,7 @@ pub(crate) fn reset() {
     FAILED.store(false, Ordering::Release);
     CONTROLLER_ISO.store(0, Ordering::Release);
     LE_HIDDEN.with(|h| h.set(true));
+    RAW.with(|r| r.set(false));
 }
 
 pub(crate) fn failed() -> bool {
@@ -301,6 +312,31 @@ pub(crate) fn uninstall() {
     BACKEND.with(|b| b.borrow_mut().take());
 }
 
+/// Raw mode on or off ([`crate::Stack::raw_begin`])
+pub(crate) fn set_raw(on: bool) {
+    RAW.with(|r| r.set(on));
+    if !on {
+        // The loader's "packet sent" reports are not BTstack's: HCI would
+        // take one for its first command
+        SENT.store(0, Ordering::Release);
+    }
+}
+
+/// Sends without LE hidden (raw mode)
+pub(crate) fn send_raw(packet_type: u8, packet: &[u8]) -> bool {
+    let ok = BACKEND.with(|b| b.borrow_mut().as_mut().is_some_and(|b| b.send(packet_type, packet)));
+    tracing::trace!(target: "hci", "raw send type 0x{packet_type:02X}, {} bytes: {ok}", packet.len());
+    ok
+}
+
+pub(crate) fn set_bootloader(on: bool) {
+    BACKEND.with(|b| {
+        if let Some(backend) = b.borrow_mut().as_mut() {
+            backend.set_bootloader(on);
+        }
+    });
+}
+
 pub(crate) fn can_send(packet_type: u8) -> bool {
     BACKEND.with(|b| b.borrow_mut().as_mut().is_some_and(|b| b.can_send(packet_type)))
 }
@@ -335,42 +371,56 @@ fn answer_locally(opcode: u16) {
     post_wake();
 }
 
-/// On the run loop: hands queued completions and packets to BTstack
-pub(crate) fn pump() {
+/// On the run loop: hands queued completions and packets to BTstack, or
+/// in raw mode the packets to `raw` (the app's firmware loader)
+pub(crate) fn pump(mut raw: impl FnMut(u8, &[u8])) {
     let sent = SENT.swap(0, Ordering::AcqRel);
     if sent > 0 {
         tracing::trace!(target: "hci", "{sent} packet(s) sent");
     }
-    for _ in 0..sent {
-        // SAFETY: on the run loop thread; the shim checks for a handler.
-        unsafe { crate::ffi::a2dpwb_transport_packet_sent() };
+    if !RAW.with(|r| r.get()) {
+        for _ in 0..sent {
+            // SAFETY: on the run loop thread; the shim checks for a handler.
+            unsafe { crate::ffi::a2dpwb_transport_packet_sent() };
+        }
     }
-    let hidden = le_hidden();
     loop {
         let next = RX.lock().unwrap_or_else(|e| e.into_inner()).packets.pop_front();
         let Some((packet_type, mut buf)) = next else { break };
-        if packet_type == HCI_EVENT_PACKET {
-            // As the controller sent it, before LE hidden clears its LE bits
-            if let Some(iso) = iso_commands_in(&buf) {
-                tracing::debug!(target: "hci", "supported commands: ISO {}", if iso { "yes" } else { "no" });
-                CONTROLLER_ISO.store(if iso { 2 } else { 1 }, Ordering::Release);
-            }
-            if hidden {
-                le_hidden_patch_event(&mut buf);
-            }
-        }
-        tracing::trace!(target: "hci", "deliver type 0x{packet_type:02X}, {} bytes", buf.len());
-        if buf.len() <= u16::MAX as usize {
-            // SAFETY: on the run loop thread; buf is valid for its length;
-            // the shim copies it and checks the size.
-            let ok = unsafe { crate::ffi::a2dpwb_transport_deliver(packet_type, buf.as_ptr(), buf.len() as u16) };
-            if ok == 0 {
-                tracing::warn!(target: "hci", "dropped an incoming HCI packet of {} bytes", buf.len());
-            }
+        // Checked per packet: the loader may end raw mode, and HCI init
+        // start, in between
+        if RAW.with(|r| r.get()) {
+            tracing::trace!(target: "hci", "raw deliver type 0x{packet_type:02X}, {} bytes", buf.len());
+            raw(packet_type, &buf);
+        } else {
+            deliver(packet_type, &mut buf, le_hidden());
         }
         let mut q = RX.lock().unwrap_or_else(|e| e.into_inner());
         if q.free.len() < 64 {
             q.free.push(buf);
+        }
+    }
+}
+
+/// One received packet to BTstack
+fn deliver(packet_type: u8, buf: &mut [u8], hidden: bool) {
+    if packet_type == HCI_EVENT_PACKET {
+        // As the controller sent it, before LE hidden clears its LE bits
+        if let Some(iso) = iso_commands_in(buf) {
+            tracing::debug!(target: "hci", "supported commands: ISO {}", if iso { "yes" } else { "no" });
+            CONTROLLER_ISO.store(if iso { 2 } else { 1 }, Ordering::Release);
+        }
+        if hidden {
+            le_hidden_patch_event(buf);
+        }
+    }
+    tracing::trace!(target: "hci", "deliver type 0x{packet_type:02X}, {} bytes", buf.len());
+    if buf.len() <= u16::MAX as usize {
+        // SAFETY: on the run loop thread; buf is valid for its length;
+        // the shim copies it and checks the size.
+        let ok = unsafe { crate::ffi::a2dpwb_transport_deliver(packet_type, buf.as_ptr(), buf.len() as u16) };
+        if ok == 0 {
+            tracing::warn!(target: "hci", "dropped an incoming HCI packet of {} bytes", buf.len());
         }
     }
 }

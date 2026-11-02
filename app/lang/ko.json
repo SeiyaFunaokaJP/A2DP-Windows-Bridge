@@ -114,7 +114,7 @@
   "firmware.detected_adapters": "감지된 어댑터",
   "firmware.no_adapters": "USB Bluetooth 어댑터가 감지되지 않았습니다.",
   "firmware.manual_instructions": "1. '다운로드 페이지 열기'를 클릭하여 kernel.org를 엽니다\n2. fw 파일과 config 파일을 다운로드합니다\n3. '설정 폴더 열기'를 클릭하고 파일을 그 폴더에 넣습니다",
-  "firmware.vendor_intel": "Intel 어댑터(실험적). AX210 이후 모델은 지원되지 않습니다. 부트로더 모드로 시작되는 경우 설정 안내를 참고하세요.",
+  "firmware.vendor_intel": "Intel 어댑터(실험적). 부트로더 모드로 시작되는 경우 설정 안내를 참고하세요.",
   "firmware.vendor_broadcom": "Broadcom 어댑터(실험적): Realtek 파일이 필요 없습니다.",
   "firmware.vendor_csr": "CSR 어댑터: 펌웨어 파일이 필요 없습니다.",
   "firmware.chip_auto": "자동(%s)",

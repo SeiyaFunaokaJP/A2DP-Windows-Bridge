@@ -114,7 +114,7 @@
   "firmware.detected_adapters": "Erkannter Adapter",
   "firmware.no_adapters": "Keine USB-Bluetooth-Adapter erkannt.",
   "firmware.manual_instructions": "1. Auf 'Downloadseite öffnen' klicken, um kernel.org zu öffnen\n2. Die fw- und config-Dateien herunterladen\n3. Auf 'Konfigurationsordner öffnen' klicken und die Dateien dort ablegen",
-  "firmware.vendor_intel": "Intel-Adapter (experimentell). AX210 und neuer werden nicht unterstützt. Startet er im Bootloader-Modus, siehe Einrichtungsanleitung.",
+  "firmware.vendor_intel": "Intel-Adapter (experimentell). Startet er im Bootloader-Modus, siehe Einrichtungsanleitung.",
   "firmware.vendor_broadcom": "Broadcom-Adapter (experimentell): keine Realtek-Dateien nötig.",
   "firmware.vendor_csr": "CSR-Adapter: keine Firmwaredateien nötig.",
   "firmware.chip_auto": "Automatisch (%s)",
