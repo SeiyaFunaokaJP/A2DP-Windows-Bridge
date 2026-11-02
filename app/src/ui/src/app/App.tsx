@@ -19,7 +19,6 @@ import { Flyout } from "../screens/Flyout";
 import { entryState, Home } from "../screens/Home";
 import { audioEntries, entryByKey, type AudioEntry } from "../lib/profile";
 import { Settings } from "../screens/Settings";
-import { mixerAvailable } from "../components/Mixer";
 import { Mixer } from "../screens/Mixer";
 import { Setup, needsSetup } from "../screens/Setup";
 import { applyTheme } from "../theme";
@@ -106,9 +105,7 @@ function MainWindow() {
   const app = useApp();
   const { core, route } = app;
   const shown = (n: { name: RouteName }) => {
-    const snap = core.state.snap;
-    if (n.name === "mixer") return !!snap && mixerAvailable(snap);
-    return n.name !== "developer" || snap?.settings.developer_mode;
+    return (n.name !== "developer" && n.name !== "mixer") || core.state.snap?.settings.developer_mode;
   };
   const [collapsed, setCollapsed] = createSignal<boolean | null>(null);
 
@@ -216,7 +213,7 @@ function MainWindow() {
               <Match when={route().name === "diagnostics"}>
                 <Diagnostics />
               </Match>
-              <Match when={route().name === "mixer" && core.state.snap && mixerAvailable(core.state.snap)}>
+              <Match when={route().name === "mixer" && core.state.snap?.settings.developer_mode}>
                 <Mixer />
               </Match>
               <Match when={route().name === "developer" && core.state.snap?.settings.developer_mode}>

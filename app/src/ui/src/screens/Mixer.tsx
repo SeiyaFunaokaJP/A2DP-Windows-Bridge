@@ -1,10 +1,11 @@
-// Volume Mixer (shown while developer mode is on, issue #223): the output's
-// mute, and each app's volume, which still works under that mute.
+// Volume Mixer (in developer mode, issue #223): the output's mute, and while
+// it is on each app's volume, which still works under that mute.
 
+import { Show } from "solid-js";
 import { useApp } from "../app/context";
 import { saveSettings } from "../app/settings";
 import { Section, Toggle } from "../components/controls";
-import { MixerList } from "../components/Mixer";
+import { MixerList, mixerAvailable } from "../components/Mixer";
 import { t } from "../i18n";
 
 export function Mixer() {
@@ -27,9 +28,11 @@ export function Mixer() {
           <li>{t("ui.mixer.note_virtual")}</li>
         </ul>
       </Section>
-      <Section title={t("ui.mixer.apps")}>
-        <MixerList />
-      </Section>
+      <Show when={mixerAvailable(app.core.state.snap!)}>
+        <Section title={t("ui.mixer.apps")}>
+          <MixerList />
+        </Section>
+      </Show>
     </div>
   );
 }

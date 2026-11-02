@@ -1,20 +1,19 @@
 // The apps on the default output device, each with its own volume (issue
-// #223): on the Volume Mixer screen and in the flyout, in developer mode.
+// #223): on the Volume Mixer screen and in the flyout, while the output's mute
+// is on in developer mode.
 
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { useApp } from "../app/context";
 import { t } from "../i18n";
-import type { MixerApp, Profile, Snapshot } from "../ipc/types";
+import type { MixerApp, Snapshot } from "../ipc/types";
 import { Icon } from "./Icon";
 
 /** Sessions come and go without an event */
 const REFRESH_MS = 2000;
 
-/** System Loopback plays on the default output too; developer mode opens it to every source */
+/** Developer mode only (issue #86): the Windows volume slider breaks the mute */
 export function mixerAvailable(snap: Snapshot): boolean {
-  const loopback = (p: Profile) => p.capture_mode === "loopback";
-  const active = snap.profiles.find((p) => p.name === snap.active_profile);
-  return snap.settings.developer_mode || (active ? loopback(active) : snap.profiles.some(loopback));
+  return snap.settings.developer_mode && snap.settings.mute_output;
 }
 
 const appName = (a: MixerApp) => (a.key === "*system" ? t("ui.mixer.system") : a.name);

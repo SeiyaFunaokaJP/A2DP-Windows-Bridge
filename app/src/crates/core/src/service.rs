@@ -1452,19 +1452,21 @@ mod tests {
     }
 
     #[test]
-    fn developer_mode_mutes_the_output_for_other_sources() {
+    fn the_output_mute_takes_developer_mode_and_spares_the_test_tone() {
+        let settings =
+            |debug_mode, mute_output| crate::settings::Settings { debug_mode, mute_output, ..Default::default() };
+        assert!(settings(true, true).mutes_output());
+        assert!(!settings(true, false).mutes_output());
+        assert!(!settings(false, true).mutes_output());
+
         let req = StreamRequest { mute_output: true, ..request() };
         let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: false };
         let app = SourceRequest::Application { exe: "a.exe".into() };
         assert!(req.mutes_output(&SourceRequest::SystemLoopback));
+        assert!(req.mutes_output(&virt) && req.mutes_output(&app));
         assert!(!req.mutes_output(&SourceRequest::TestTone));
-        assert!(!req.mutes_output(&virt) && !req.mutes_output(&app));
 
-        let every = StreamRequest { mute_every_source: true, ..req };
-        assert!(every.mutes_output(&virt) && every.mutes_output(&app));
-        assert!(!every.mutes_output(&SourceRequest::TestTone));
-
-        let off = StreamRequest { mute_output: false, ..every };
+        let off = StreamRequest { mute_output: false, ..req };
         assert!(!off.mutes_output(&SourceRequest::SystemLoopback) && !off.mutes_output(&virt));
     }
 
