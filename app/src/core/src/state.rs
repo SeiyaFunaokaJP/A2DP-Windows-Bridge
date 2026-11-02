@@ -20,9 +20,9 @@ use bt_host::LinkStats;
 use bt_host::chips::{self, ChipVendor};
 use ipc::{
     AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, DevLog, DevOverrides, Device,
-    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, Msg, OtherRadio, Profile,
-    ReceiverConnection, ReceiverState, Settings, SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus,
-    UpdateState,
+    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, MixerApp, Msg, OtherRadio,
+    Profile, ReceiverConnection, ReceiverState, Settings, SettingsApplied, Snapshot, SourceInfo, StreamState,
+    StreamStatus, UpdateState,
 };
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -1582,7 +1582,8 @@ impl CoreState {
             .map_err(|_| err("profile.invalid_address", "error.invalid_address"))?;
         req.experimental_codecs = settings.experimental_codecs;
         req.volume_sync = effective_volume_sync(settings.volume_sync, req.volume_sync);
-        req.mute_output = settings.mutes_output();
+        req.mute_output = settings.mute_output;
+        req.mute_every_source = settings.debug_mode;
         self.set_active_profile(Some(name.to_string()));
         self.begin_stream(req, Some(name.to_string()));
         Ok(())
@@ -1593,7 +1594,8 @@ impl CoreState {
         let settings = self.service.settings();
         let mut req = custom_request(c, settings.legacy_max_media_payload())?;
         req.experimental_codecs = settings.experimental_codecs;
-        req.mute_output = settings.mutes_output();
+        req.mute_output = settings.mute_output;
+        req.mute_every_source = settings.debug_mode;
         tracing::info!("custom stream to {}: codec {}, source {}", c.device, c.codec, req.source);
         self.begin_stream(req, None);
         Ok(())
@@ -2126,8 +2128,9 @@ impl CoreState {
                     let chip = chip_changed(&base, &merged);
                     let le_toggled = base.le_audio_experimental != merged.le_audio_experimental;
                     let auto_toggled = base.auto_codec != merged.auto_codec;
-                    let sync_toggled =
-                        base.volume_sync != merged.volume_sync || base.mutes_output() != merged.mutes_output();
+                    let sync_toggled = base.volume_sync != merged.volume_sync
+                        || base.mute_output != merged.mute_output
+                        || (merged.mute_output && base.debug_mode != merged.debug_mode);
                     me.save_settings(merged)?;
                     if chip {
                         me.reload_adapter();
@@ -2149,7 +2152,7 @@ impl CoreState {
                                 "Auto-select {}, volume sync {}, output mute {}: profile {} starts again",
                                 if settings.auto_codec { "on" } else { "off" },
                                 if settings.volume_sync { "on" } else { "off" },
-                                if settings.developer_mode && settings.mute_output { "on" } else { "off" },
+                                if settings.mute_output { "on" } else { "off" },
                                 a2dpwb_core::diag::quoted(&p.name)
                             );
                             me.restart_profile(&p.name.clone())?;
@@ -2257,6 +2260,23 @@ impl CoreState {
                         .map(|a| AudioApp { exe: a.exe, name: a.name })
                         .collect();
                     Ok(json(&list))
+                }))
+                .await
+            }
+            Method::AudioMixer => {
+                blocking(Box::new(|_| {
+                    let list: Vec<MixerApp> = audio_capture::mixer_apps()
+                        .into_iter()
+                        .map(|a| MixerApp { key: a.key, name: a.name, volume: a.volume, muted: a.muted })
+                        .collect();
+                    Ok(json(&list))
+                }))
+                .await
+            }
+            Method::AudioMixerSet { app, volume, muted } => {
+                blocking(Box::new(move |_| {
+                    audio_capture::set_mixer_app(&app, volume, muted);
+                    Ok(Value::Null)
                 }))
                 .await
             }
@@ -3229,13 +3249,10 @@ mod tests {
         assert!(!merged.le_audio_experimental && merged.le_audio_low_latency);
         assert_eq!(to_ipc_settings(&merged), off);
 
-        // The output mute under System Loopback: off by default, and only
-        // in developer mode
+        // The output mute: off by default
         assert!(!to_ipc_settings(&base).mute_output);
         let mute = Settings { mute_output: true, ..off.clone() };
-        let merged = merge_settings(&base, &mute);
-        assert!(merged.mute_output && !merged.mutes_output());
-        assert!(merge_settings(&base, &Settings { developer_mode: true, ..mute }).mutes_output());
+        assert!(merge_settings(&base, &mute).mute_output);
 
         // Windows Volume Sync for every device: on by default
         assert!(to_ipc_settings(&base).volume_sync);

@@ -1377,6 +1377,28 @@ option {
 .volume.disabled {
   opacity: 0.55;
 }
+.mixer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.mixer-app {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-top: var(--s1);
+  font-size: var(--fs-12);
+}
+.mixer-notes {
+  margin: 0;
+  padding-left: var(--s5);
+  font-size: var(--fs-12);
+  color: var(--text-2);
+}
+.fly-mixer {
+  max-height: 11rem;
+  overflow-y: auto;
+}
 /* The speaker mutes and unmutes (issue #86) */
 .volume-mute {
   display: inline-flex;

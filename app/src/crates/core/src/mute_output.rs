@@ -1,6 +1,6 @@
-//! Keeps the PC silent while System Loopback streams (issue #223): the
-//! capture copies what the default output device plays, so that device would
-//! play along with the headphones. Its mute does not reach the capture (see
+//! Keeps the PC silent while streaming (issue #223): System Loopback copies
+//! what the default output device plays, so that device would play along
+//! with the headphones. Its mute does not reach the capture (see
 //! volume_sync.rs), so a session mutes it and unmutes it at the end.
 //!
 //! Only a device this session muted is unmuted: one the user had muted stays

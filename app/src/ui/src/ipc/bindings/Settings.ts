@@ -45,8 +45,8 @@ auto_reconnect: boolean,
  */
 volume_sync: boolean, 
 /**
- * System Loopback mutes the default output device while streaming, so
- * only the audio device plays (developer mode; off by default). A change
+ * The default output device is muted while streaming, so only the
+ * audio device plays (developer mode; off by default). A change
  * starts the profile in use again.
  */
 mute_output: boolean, 

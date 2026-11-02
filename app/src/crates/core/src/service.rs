@@ -1458,16 +1458,20 @@ mod tests {
     }
 
     #[test]
-    fn only_system_loopback_mutes_the_output() {
+    fn developer_mode_mutes_the_output_for_other_sources() {
         let req = StreamRequest { mute_output: true, ..request() };
         let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: false };
         let app = SourceRequest::Application { exe: "a.exe".into() };
         assert!(req.mutes_output(&SourceRequest::SystemLoopback));
-        for other in [virt, app, SourceRequest::TestTone] {
-            assert!(!req.mutes_output(&other), "{other}");
-        }
-        let off = StreamRequest { mute_output: false, ..req };
-        assert!(!off.mutes_output(&SourceRequest::SystemLoopback));
+        assert!(!req.mutes_output(&SourceRequest::TestTone));
+        assert!(!req.mutes_output(&virt) && !req.mutes_output(&app));
+
+        let every = StreamRequest { mute_every_source: true, ..req };
+        assert!(every.mutes_output(&virt) && every.mutes_output(&app));
+        assert!(!every.mutes_output(&SourceRequest::TestTone));
+
+        let off = StreamRequest { mute_output: false, ..every };
+        assert!(!off.mutes_output(&SourceRequest::SystemLoopback) && !off.mutes_output(&virt));
     }
 
     fn request() -> StreamRequest {

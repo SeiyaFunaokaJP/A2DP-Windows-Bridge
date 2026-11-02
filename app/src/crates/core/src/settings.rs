@@ -144,10 +144,10 @@ pub struct Settings {
     /// another device, set in developer mode); off for every stream
     #[serde(default = "default_true")]
     pub volume_sync: bool,
-    /// System Loopback mutes the default output device while streaming; in
-    /// force only while debug_mode is on (issue #86). A key of its own: the
-    /// `mute_output` of earlier versions was on by default.
-    #[serde(rename = "dev_mute_output")]
+    /// The default output device is muted while streaming System Loopback,
+    /// and any source while debug_mode is on (issues #86, #223). A key of its
+    /// own: the `mute_output` of earlier versions was on by default.
+    #[serde(rename = "output_mute")]
     pub mute_output: bool,
 
     pub debug_mode: bool,
@@ -313,11 +313,6 @@ impl Settings {
     /// The logging in force: developer mode's, else the defaults
     pub fn log(&self) -> DevLog {
         if self.debug_mode { self.dev_log.clamped() } else { DevLog::default() }
-    }
-
-    /// Whether System Loopback mutes the default output device
-    pub fn mutes_output(&self) -> bool {
-        self.debug_mode && self.mute_output
     }
 
     pub fn path(dir: &Path) -> PathBuf {
@@ -525,11 +520,9 @@ mod tests {
         // The old mute (on by default) does not carry over; the click that
         // opened the main window does
         let s = Settings::load(&dir);
-        assert!(!s.mute_output && !s.mutes_output());
+        assert!(!s.mute_output);
         assert!(s.flyout_with_quick_settings);
         assert!(s.other.is_empty());
-        assert!(Settings { mute_output: true, ..s.clone() }.mutes_output());
-        assert!(!Settings { mute_output: true, debug_mode: false, ..s }.mutes_output());
 
         std::fs::write(Settings::path(&dir), r#"{"schema_version":5,"experimental_codecs":false}"#).unwrap();
         assert!(Settings::load(&dir).experimental_codecs);
