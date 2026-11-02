@@ -11,6 +11,10 @@ export type Settings = { language: string,
  */
 theme: string, start_with_windows: boolean, start_minimized: boolean, minimize_to_tray: boolean, 
 /**
+ * A click on the tray icon opens the main window, not the flyout
+ */
+tray_click_opens_window: boolean, 
+/**
  * The flyout opens above Windows 11's Quick Settings, along with them,
  * and a click on the tray icon opens the main window, not the flyout
  */
@@ -28,10 +32,6 @@ battery_low_percent: number, check_updates_on_startup: boolean, include_prerelea
  * The headphones' buttons act as Windows media keys (every device)
  */
 media_keys: boolean, 
-/**
- * Remember each device's volume (one switch for every device)
- */
-remember_volume: boolean, 
 /**
  * Connect a device that went away again by itself (on by default).
  * Off: the session ends and the adapter is released.

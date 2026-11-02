@@ -705,9 +705,6 @@ impl Inner {
 
     pub fn saved_volume(&self, addr: &str) -> Option<u8> {
         let s = self.settings.lock().unwrap_or_else(|e| e.into_inner());
-        if !s.remember_volume {
-            return None;
-        }
         s.saved_volumes.get(&addr.to_uppercase()).and_then(|&v| u8::try_from(v).ok())
     }
 
@@ -716,9 +713,6 @@ impl Inner {
     pub fn remember_volume(&self, addr: &str, volume: Option<u8>) {
         let Some(v) = volume else { return };
         let mut s = self.settings.lock().unwrap_or_else(|e| e.into_inner());
-        if !s.remember_volume {
-            return;
-        }
         let key = addr.to_uppercase();
         if s.saved_volumes.get(&key) == Some(&(v as i32)) {
             return;

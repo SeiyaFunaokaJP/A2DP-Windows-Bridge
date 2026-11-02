@@ -59,7 +59,7 @@ Los auriculares y altavoces a los que A2DPWB puede transmitir, cada uno con sus 
 - **Origen de salida**: Loopback del sistema (el predeterminado de un dispositivo nuevo), Dispositivo virtual o Aplicación (consulte [Modos de captura](#capture-modes)). A su lado, el formato en que Windows mezcla el dispositivo capturado (frecuencia de muestreo y profundidad de bits, de solo lectura), en ámbar cuando los ajustes de códec del dispositivo piden otro, con una línea debajo que indica cuál (sigue transmitiendo, convertido); debajo, lo que hace el origen
 - **Usar como salida predeterminada de Windows mientras hay conexión**, con un dispositivo virtual
 
-**Todos los dispositivos de audio**, encima de la lista, tiene los interruptores que se aplican a todos los dispositivos: **Sincronizar volumen de Windows** (consulte [Volumen](#volume)), **Controlar la reproducción con los botones del dispositivo de audio** y **Recordar el volumen de cada dispositivo de audio**. El **Tamaño máx. de paquete multimedia** de cada dispositivo está en la pantalla **Desarrollador** (consulte [Tamaño máximo del paquete multimedia](#max-packet)).
+**Todos los dispositivos de audio**, encima de la lista, tiene los interruptores que se aplican a todos los dispositivos: **Sincronizar volumen de Windows** (consulte [Volumen](#volume)) y **Controlar la reproducción con los botones del dispositivo de audio**. El **Tamaño máx. de paquete multimedia** de cada dispositivo está en la pantalla **Desarrollador** (consulte [Tamaño máximo del paquete multimedia](#max-packet)).
 
 ### Diagnóstico
 
@@ -99,7 +99,7 @@ El primer inicio (aún sin perfil, o sin ningún adaptador con WinUSB) abre **Co
 
 A2DPWB sigue ejecutándose en la bandeja del sistema, con o sin la ventana:
 
-- **Clic izquierdo** en el icono de la bandeja abre el panel desplegable: el dispositivo y su estado, **Conectar** / **Desconectar**, el volumen, el selector de dispositivos, el códec (una lista para elegirlo, como en Inicio), la calidad del enlace y **Abrir la aplicación**. Su altura se ajusta exactamente a lo que muestra. Esc o un clic en otro sitio lo ocultan. Si un error requiere una pantalla de la ventana principal (Códecs, Dispositivos de audio, el adaptador), su botón abre la ventana en esa pantalla. Con **Configuración > Al hacer clic en el icono de la bandeja se abre la ventana principal** activado (desactivado de forma predeterminada), un clic izquierdo abre en su lugar la ventana principal
+- **Clic izquierdo** en el icono de la bandeja abre el panel desplegable: el dispositivo y su estado, **Conectar** / **Desconectar**, el volumen, el selector de dispositivos, el códec (una lista para elegirlo, como en Inicio), la calidad del enlace y **Abrir la aplicación**. Su altura se ajusta exactamente a lo que muestra. Esc o un clic en otro sitio lo ocultan. Si un error requiere una pantalla de la ventana principal (Códecs, Dispositivos de audio, el adaptador), su botón abre la ventana en esa pantalla. Con **Configuración > Al hacer clic en el icono de la bandeja se abre la ventana principal** activado (desactivado de forma predeterminada), un clic izquierdo abre en su lugar la ventana principal Con **Ningún sitio** en **Abrir la ventana de la bandeja desde** no se abre el panel y el icono abre la ventana principal.
 - **Clic derecho** abre el menú: **Abrir A2DPWB**, los 10 primeros dispositivos por su nombre (una entrada LE Audio marcada con «(LE Audio)»; el que transmite, marcado; haga clic en uno para conectarlo), **Desconectar** y **Salir**. El menú se abre al instante, sin iniciar la ventana
 - La información sobre herramientas indica si A2DPWB está inactivo o conectado
 
@@ -245,7 +245,7 @@ Durante la transmisión, Inicio y el panel desplegable de la bandeja muestran un
 
 Las versiones anteriores permitían que un dispositivo siguiera el volumen de otro dispositivo de salida (en modo de desarrollador); esa opción ya no se usa.
 
-**Recordar el volumen de cada dispositivo de audio** (en **Dispositivos de audio**, para todos los dispositivos; activado de forma predeterminada) guarda el volumen propio de cada dispositivo de audio y lo vuelve a aplicar en cuanto se conecta, antes de enviar audio, así que el volumen de un dispositivo no pasa a otro. Desactívelo si quiere que cada dispositivo empiece con su propio último volumen, que puede ser mucho más alto que el usado la última vez con A2DPWB (p. ej., después de usarlo con un teléfono).
+A2DPWB guarda el volumen propio de cada dispositivo de audio y lo vuelve a aplicar en cuanto se conecta, antes de enviar audio, así que el volumen de un dispositivo no pasa a otro.
 
 ### Botones de los auriculares {#headphone-buttons}
 

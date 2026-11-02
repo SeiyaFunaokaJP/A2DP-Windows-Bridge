@@ -59,7 +59,7 @@ Die Kopfhörer und Lautsprecher, an die A2DPWB streamen kann, jeweils mit eigene
 - **Ausgabequelle**: System-Loopback (Standard für ein neues Gerät), Virtuelles Gerät oder Anwendung (siehe [Aufnahmemodi](#capture-modes)). Daneben das Format, in dem Windows das aufgenommene Gerät mischt (Abtastrate und Bittiefe, schreibgeschützt), in Bernstein, wenn die Codec-Einstellungen des Geräts ein anderes verlangen, mit einer Zeile darunter, welches (es streamt trotzdem, umgerechnet); darunter, was die Quelle tut
 - **Bei Verbindung als Windows-Standardausgabe festlegen**, mit einem virtuellen Gerät
 
-**Alle Audiogeräte** über der Liste enthält die Schalter, die für jedes Gerät gelten: **Windows-Lautstärke-Sync** (siehe [Lautstärke](#volume)), **Wiedergabe über die Tasten des Audiogeräts steuern** und **Lautstärke jedes Audiogeräts merken**. Die **Max. Mediapaketgröße** jedes Geräts befindet sich auf der Seite **Entwickler** (siehe [Max. Mediapaketgröße](#max-packet)).
+**Alle Audiogeräte** über der Liste enthält die Schalter, die für jedes Gerät gelten: **Windows-Lautstärke-Sync** (siehe [Lautstärke](#volume)) und **Wiedergabe über die Tasten des Audiogeräts steuern**. Die **Max. Mediapaketgröße** jedes Geräts befindet sich auf der Seite **Entwickler** (siehe [Max. Mediapaketgröße](#max-packet)).
 
 ### Diagnose
 
@@ -99,7 +99,7 @@ Der erste Start (noch kein Profil oder kein Adapter mit WinUSB) öffnet **A2DPWB
 
 A2DPWB läuft im Infobereich weiter, mit oder ohne Fenster:
 
-- **Linksklick** auf das Symbol im Infobereich öffnet das Flyout: das Gerät und sein Zustand, **Verbinden** / **Trennen**, die Lautstärke, die Geräteauswahl, der Codec (eine Liste zum Wählen, wie auf Start), die Verbindungsqualität und **App öffnen**. Es ist genau so hoch wie sein Inhalt. Esc oder ein Klick an eine andere Stelle blendet es aus. Braucht ein Fehler eine Seite des Hauptfensters (Codecs, Audiogeräte, den Adapter), öffnet seine Schaltfläche das Fenster an dieser Stelle. Ist **Einstellungen > Klick auf das Infobereich-Symbol öffnet das Hauptfenster** eingeschaltet (standardmäßig aus), öffnet ein Linksklick stattdessen das Hauptfenster
+- **Linksklick** auf das Symbol im Infobereich öffnet das Flyout: das Gerät und sein Zustand, **Verbinden** / **Trennen**, die Lautstärke, die Geräteauswahl, der Codec (eine Liste zum Wählen, wie auf Start), die Verbindungsqualität und **App öffnen**. Es ist genau so hoch wie sein Inhalt. Esc oder ein Klick an eine andere Stelle blendet es aus. Braucht ein Fehler eine Seite des Hauptfensters (Codecs, Audiogeräte, den Adapter), öffnet seine Schaltfläche das Fenster an dieser Stelle. Ist **Einstellungen > Klick auf das Infobereich-Symbol öffnet das Hauptfenster** eingeschaltet (standardmäßig aus), öffnet ein Linksklick stattdessen das Hauptfenster Mit **Gar nicht** unter **Kleines Fenster öffnen über** öffnet sich kein Flyout, und das Symbol öffnet das Hauptfenster.
 - **Rechtsklick** öffnet das Menü: **A2DPWB öffnen**, die ersten 10 Geräte nach Namen (ein LE-Audio-Eintrag mit „(LE Audio)“ markiert; das streamende mit Häkchen; ein Klick verbindet es), **Trennen** und **Beenden**. Das Menü öffnet sich sofort, ohne das Fenster zu starten
 - Der Tooltip zeigt, ob A2DPWB inaktiv oder verbunden ist
 
@@ -245,7 +245,7 @@ Während des Streamings zeigen die Seite Start und das Flyout im Infobereich ein
 
 In früheren Versionen konnte ein Gerät der Lautstärke eines anderen Ausgabegeräts folgen (im Entwicklermodus); diese Auswahl wird nicht mehr verwendet.
 
-**Lautstärke jedes Audiogeräts merken** (unter **Audiogeräte**, für jedes Gerät; standardmäßig an) speichert die eigene Lautstärke jedes Audiogeräts und stellt sie gleich beim Verbinden wieder ein, bevor Audio gesendet wird, sodass die Lautstärke eines Geräts nicht auf ein anderes übergeht. Schalten Sie es aus, damit jedes Gerät mit seiner eigenen zuletzt verwendeten Lautstärke startet, die viel lauter sein kann als die zuletzt mit A2DPWB verwendete (z. B. nach der Nutzung mit einem Smartphone).
+A2DPWB speichert die eigene Lautstärke jedes Audiogeräts und stellt sie gleich beim Verbinden wieder ein, bevor Audio gesendet wird, sodass die Lautstärke eines Geräts nicht auf ein anderes übergeht.
 
 ### Kopfhörertasten {#headphone-buttons}
 

@@ -127,14 +127,18 @@ describe("tray", () => {
     await waitFor(() => expect(toggle).toBeDisabled());
   });
 
-  it("the tray window opens from the tray icon or from Quick Settings (issue #86)", async () => {
-    const { core, calls } = start("#/settings");
+  it("the tray window opens from nowhere, the tray icon or Quick Settings (issue #86)", async () => {
+    const { core } = start("#/settings");
     const select = (await screen.findByLabelText(t("ui.settings.flyout_from"))) as HTMLSelectElement;
     expect(select.value).toBe("tray");
-    fireEvent.change(select, { target: { value: "other" } });
-    await waitFor(() => expect(core.state.snap!.settings.flyout_with_quick_settings).toBe(true));
-    const set = calls.filter((c) => c.method === "settings.set").at(-1)!.params as { settings: { flyout_with_quick_settings: boolean } };
-    expect(set.settings.flyout_with_quick_settings).toBe(true);
+    // Not on Windows 10, and it says why
+    expect((screen.getByRole("option", { name: t("ui.settings.flyout_from_quick") }) as HTMLOptionElement).disabled).toBe(true);
+    expect(screen.getByText(t("ui.settings.flyout_from_win11"))).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "none" } });
+    await waitFor(() => expect(core.state.snap!.settings.tray_click_opens_window).toBe(true));
+    expect(core.state.snap!.settings.flyout_with_quick_settings).toBe(false);
+    expect(select.value).toBe("none");
+    expect(await screen.findByText(new RegExp(t("ui.settings.flyout_from_hint")))).toBeInTheDocument();
   });
 
   it("turns the notification of a connection off and on (issue #86)", async () => {
