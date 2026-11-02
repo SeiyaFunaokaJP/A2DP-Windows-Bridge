@@ -375,14 +375,16 @@ export function Dialog(props: {
         <div class="backdrop" onClick={(e) => e.target === e.currentTarget && cancel()}>
           <div class="dialog card" role="dialog" aria-modal="true" aria-labelledby={id} ref={box} onKeyDown={onKey}>
             <div class="dialog-head">
-              <h2 id={id}>{props.title}</h2>
+              <div class="dialog-heading">
+                <h2 id={id}>{props.title}</h2>
+                <Show when={props.subtitle}>
+                  <p class="hint">{props.subtitle}</p>
+                </Show>
+              </div>
               <Show when={!props.confirm}>
                 <IconButton icon="dismiss" label={t("modal.close")} onClick={cancel} data-autofocus />
               </Show>
             </div>
-            <Show when={props.subtitle}>
-              <p class="hint dialog-subtitle">{props.subtitle}</p>
-            </Show>
             <div class="dialog-body">{props.children}</div>
             <Show when={props.confirm}>
               <div class="dialog-actions">
