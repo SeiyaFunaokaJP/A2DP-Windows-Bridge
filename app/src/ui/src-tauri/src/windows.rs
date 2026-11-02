@@ -47,11 +47,17 @@ const SETUP_HEIGHT: f64 = 640.0;
 const FLYOUT_OPENING: Duration = Duration::from_millis(800);
 /// How often the flyout checks on Quick Settings while it goes with them
 const FOLLOW_EVERY: Duration = Duration::from_millis(150);
+/// How often it looks for the pointer meanwhile
+const POINTER_EVERY: Duration = Duration::from_millis(30);
 
 /// When the flyout was last shown or its page appeared
 static FLYOUT_OPENED: Mutex<Option<Instant>> = Mutex::new(None);
 /// The flyout goes with Quick Settings, which are here
 static QUICK_SETTINGS: Mutex<Option<Panels>> = Mutex::new(None);
+/// The top of the panels and the cards on them, kept while the flyout is in
+/// use: a card leaving then must not move the flyout under the pointer
+static CARDS_TOP: Mutex<Option<i32>> = Mutex::new(None);
+static FLYOUT_IN_USE: AtomicBool = AtomicBool::new(false);
 /// The main window's size and whether it was maximized, while the setup has it
 static BEFORE_SETUP: Mutex<Option<(LogicalSize<f64>, bool)>> = Mutex::new(None);
 
@@ -116,11 +122,14 @@ fn main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     Ok(w)
 }
 
-fn flyout_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+/// `focus`: its webview takes the focus as it is created, even in a hidden
+/// window, which counts as `quick_settings::show_inactive` says
+fn flyout_window(app: &AppHandle, focus: bool) -> tauri::Result<WebviewWindow> {
     if let Some(w) = app.get_webview_window(FLYOUT) {
         return Ok(w);
     }
     let w = builder(app, FLYOUT)
+        .focused(focus)
         .inner_size(FLYOUT_WIDTH, FLYOUT_HEIGHT)
         .decorations(false)
         .resizable(false)
@@ -156,7 +165,7 @@ pub fn show_main(app: &AppHandle, route: Option<String>) -> tauri::Result<()> {
 /// Shows the flyout above the notification area (bottom right of the work
 /// area, where the taskbar's tray is in the default layout)
 pub fn show_flyout(app: &AppHandle) -> tauri::Result<()> {
-    let w = flyout_window(app)?;
+    let w = flyout_window(app, true)?;
     w.set_focusable(true)?;
     place_flyout(&w)?;
     flyout_opened_now();
@@ -190,20 +199,34 @@ fn follow_quick_settings(app: &AppHandle) -> Result<(), Box<dyn std::error::Erro
     let reader = win_sys::quick_settings::Reader::new()?;
     // Closed again: a first start can take longer than they stay open
     let Some(panels) = reader.read() else { return Ok(()) };
-    let w = flyout_window(app)?;
+    let w = flyout_window(app, false)?;
     set_quick_settings(Some(panels));
     w.set_focusable(false)?;
     place_flyout(&w)?;
-    w.show()?;
+    // Not w.show(), which activates it. On the main thread, to stay behind
+    // the move queued above. w.hide() still works, tao hides unconditionally
+    let hwnd = w.hwnd()?.0 as isize;
+    w.run_on_main_thread(move || win_sys::quick_settings::show_inactive(hwnd))?;
     tracing::info!("[{FLYOUT}] shown above Quick Settings");
     crate::logging::probe(app, &w);
     // The panels change height as a list unfolds in them
+    let mut read = Instant::now();
     loop {
-        std::thread::sleep(FOLLOW_EVERY);
+        std::thread::sleep(POINTER_EVERY);
+        // Before a click can come. Only now, as it costs other apps' cards
+        if !FLYOUT_IN_USE.load(Ordering::Relaxed) && win_sys::quick_settings::pointer_over(hwnd) {
+            FLYOUT_IN_USE.store(true, Ordering::Relaxed);
+            w.run_on_main_thread(move || win_sys::quick_settings::set_active(hwnd))?;
+        }
+        if read.elapsed() < FOLLOW_EVERY {
+            continue;
+        }
+        read = Instant::now();
         let Some(panels) = reader.read() else { break };
         set_quick_settings(Some(panels));
         place_flyout(&w)?;
     }
+    FLYOUT_IN_USE.store(false, Ordering::Relaxed);
     // A list open in the page is a window of its own, and without the focus
     // to lose it would stay on the screen
     w.eval("document.activeElement?.blur()")?;
@@ -236,7 +259,13 @@ fn place_by_panels(w: &WebviewWindow, panels: Panels) -> tauri::Result<()> {
     };
     let size = w.inner_size()?;
     let margin = (FLYOUT_MARGIN * m.scale_factor()).round() as i32;
-    let panels = win_sys::quick_settings::with_other_cards(panels, 2 * margin);
+    let panels = {
+        let mut top = CARDS_TOP.lock().unwrap_or_else(|e| e.into_inner());
+        let held = top.filter(|_| FLYOUT_IN_USE.load(Ordering::Relaxed)).map(|t| t.min(panels.top));
+        let now = held.unwrap_or_else(|| win_sys::quick_settings::with_other_cards(panels, 2 * margin).top);
+        *top = Some(now);
+        Panels { top: now, ..panels }
+    };
     let (x, y) = by_panels(panels, size.width as i32, size.height as i32, margin, m.work_area().position.y);
     // The window's frame is its transparent shadow: the page lines up
     let (outer, inner) = (w.outer_position()?, w.inner_position()?);
