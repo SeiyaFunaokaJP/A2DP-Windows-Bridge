@@ -2,7 +2,6 @@
 title: Adding Chip Support
 layout: default
 nav_order: 4.5
-english_only: true
 ---
 
 # Adding Chip Support

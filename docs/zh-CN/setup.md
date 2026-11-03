@@ -156,7 +156,7 @@ A2DPWB 会检测适配器的芯片组，并显示需要哪些固件文件。
 | CSR | 通用 CSR8510 适配器 | 开箱即用，无需固件 |
 | Broadcom | ASUS BT400 (BCM20702) | *实验性。* 报告厂商类 `FF/01/01` 而非 Bluetooth 类 `E0/01/01` 的适配器（BCM20702 OEM 适配器）也能被检测到。使用 ROM 固件运行；如果配置文件夹中有可选的 PatchRAM `.hcd` 文件（如 `BCM20702A1-0b05-17cb.hcd`），会在启动时上传 |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *实验性。* 处于 bootloader 模式时（如冷启动后），需要将 linux-firmware `intel/` 中对应的 `ibt-*.sfi` + `ibt-*.ddc` 放入配置文件夹，所需文件名会写在日志里（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上测试过 |
-| MediaTek、Qualcomm | MT7921/MT7922、QCA61x4 | 不支持：需要 A2DPWB 所没有的固件加载程序（[帮助添加支持](../chip-support)） |
+| MediaTek、Qualcomm | MT7921/MT7922、QCA61x4 | 不支持：需要 A2DPWB 所没有的固件加载程序（[帮助添加支持](chip-support)） |
 
 对于 LDAC 等高比特率编解码器，USB Bluetooth 5.0+ 适配器通常效果最好。
 

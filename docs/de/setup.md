@@ -156,7 +156,7 @@ Diese Firmwaredateien sind proprietäre Realtek-Binärdateien, die über das Pro
 | CSR | Generische CSR8510-Dongles | Funktioniert sofort, keine Firmware nötig |
 | Broadcom | ASUS BT400 (BCM20702) | *Experimentell.* Adapter, die statt der Bluetooth-Klasse `E0/01/01` die Herstellerklasse `FF/01/01` melden (OEM-Dongles mit BCM20702), werden ebenfalls erkannt. Läuft mit der ROM-Firmware; eine optionale PatchRAM-Datei `.hcd` (z. B. `BCM20702A1-0b05-17cb.hcd`) im Konfigurationsordner wird beim Start hochgeladen |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimentell.* Im Bootloader-Modus (z. B. nach einem Kaltstart) werden die passenden Dateien `ibt-*.sfi` + `ibt-*.ddc` aus linux-firmware `intel/` im Konfigurationsordner benötigt; das Protokoll nennt sie (z. B. `ibt-0180-0041.sfi`). Bisher nur mit dem AX211 getestet |
-| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | Nicht unterstützt: benötigen Firmware-Loader, die A2DPWB nicht hat ([beim Hinzufügen helfen](../chip-support)) |
+| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | Nicht unterstützt: benötigen Firmware-Loader, die A2DPWB nicht hat ([beim Hinzufügen helfen](chip-support)) |
 
 USB-Bluetooth-Adapter ab Version 5.0 eignen sich im Allgemeinen am besten für Codecs mit hoher Bitrate wie LDAC.
 
