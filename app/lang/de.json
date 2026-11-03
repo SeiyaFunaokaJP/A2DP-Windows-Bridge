@@ -622,6 +622,7 @@
   "ui.adapter.restore_short": "Gibt den Adapter an das Bluetooth von Windows zurück",
   "ui.adapter.probe": "Chip-Infos lesen",
   "ui.adapter.probe_saved": "Chip-Infos gespeichert: %s",
+  "ui.adapter.probe_report": "Auf GitHub melden",
   "ui.adapter.uac_note": "Windows fragt nach Administratorrechten.",
   "ui.adapter.assigned": "%s verwendet jetzt den WinUSB-Treiber",
   "ui.adapter.assigned_restart": "%s verwendet jetzt den WinUSB-Treiber. Ziehe ihn vor dem Verbinden ab und stecke ihn wieder ein (eingebauter Adapter: Windows neu starten).",

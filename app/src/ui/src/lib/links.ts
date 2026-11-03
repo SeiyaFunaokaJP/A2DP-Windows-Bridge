@@ -91,6 +91,39 @@ export function bugReportUrl(r: BugReport): string {
   return `${REPO}/issues/new?${q.toString()}`;
 }
 
+/** "a.zip" of "C:\x\a.zip": the file a report asks to attach */
+export function baseName(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/")) + 1);
+}
+
+/** What a chip report is prefilled with (.github/ISSUE_TEMPLATE/chip_report.yml) */
+export interface ChipReport {
+  version: string;
+  /** "MediaTek (0x0E8D:0x0608) [unsupported]": the user adds where it came from */
+  adapter: string;
+  /** The probe's summary line */
+  summary: string;
+  /** "copy diagnostic info" text: only the Windows build is taken from it */
+  info: string;
+  /** The probe report's file name */
+  file: string;
+}
+
+/** A new chip report with what the probe read; the user attaches the file */
+export function chipReportUrl(r: ChipReport): string {
+  const q = new URLSearchParams({
+    template: "chip_report.yml",
+    title: `Chip report: ${r.summary.split(",")[0]}`,
+    version: r.version,
+    adapter: r.adapter,
+    chip: r.summary,
+    probe: `${r.file}\n(drag the file here from the Explorer window A2DP Windows Bridge opened)`,
+  });
+  const os = /OS\s*:\s*Windows build (\d+) \(([^)]+)\)/.exec(r.info);
+  if (os) q.set("windows", `Windows build ${os[1]} (${os[2]})`);
+  return `${REPO}/issues/new?${q.toString()}`;
+}
+
 /** The firmware download page for an adapter's vendor */
 export function firmwareUrl(vendor: string): string {
   const v = vendor.toLowerCase();

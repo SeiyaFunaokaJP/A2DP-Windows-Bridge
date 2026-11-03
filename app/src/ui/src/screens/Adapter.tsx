@@ -8,7 +8,7 @@ import { Banner, Button, Field, Section, Segmented, Select } from "../components
 import { Icon } from "../components/Icon";
 import { ErrorPanel, FirmwareDownload, openFirmwareFolder, WinusbDialog } from "../components/stream";
 import { t, tm } from "../i18n";
-import type { AdapterInfo, DriverKind, FirmwareFile } from "../ipc/types";
+import type { AdapterInfo, DriverKind, FirmwareFile, ProbeResult } from "../ipc/types";
 import {
   adapterFirmwareTag,
   buildChipOptions,
@@ -17,7 +17,7 @@ import {
   chipTargetIndex,
   isAutoChip,
 } from "../lib/chips";
-import { LINKS, vendorFirmwareUrl } from "../lib/links";
+import { baseName, chipReportUrl, LINKS, vendorFirmwareUrl } from "../lib/links";
 
 /** The adapters A2DPWB can use first (WinUSB), the ones without a driver
  *  and then the ones it cannot use at all last */
@@ -117,16 +117,35 @@ export function Adapter() {
   // chip probe (read commands only) for whoever adds its loader
   const developer = () => snap().settings.developer_mode;
   const [probing, setProbing] = createSignal(false);
+  // The last probe of each adapter (instance ID): its summary and the
+  // report to send stay on the card
+  const [probed, setProbed] = createSignal<Record<string, ProbeResult>>({});
   const probe = (a: AdapterInfo) => {
     setProbing(true);
     void app
       .run(async () => {
         const r = await core.request("adapter.probe", { instance_id: a.instance_id });
+        setProbed((p) => ({ ...p, [a.instance_id]: r }));
         app.notify(t("ui.adapter.probe_saved", r.summary));
         await core.transport.revealPath(r.path);
       })
       .finally(() => setProbing(false));
   };
+  /** A prefilled chip report in the browser, the file shown in Explorer to
+   *  drag into it */
+  const reportChip = (a: AdapterInfo, r: ProbeResult) =>
+    void app.run(async () => {
+      const info = (await core.request("diag.info", { mask: true })).text;
+      const url = chipReportUrl({
+        version: snap().update.current_version,
+        adapter: a.display_name,
+        summary: r.summary,
+        info,
+        file: baseName(r.path),
+      });
+      await core.transport.revealPath(r.path);
+      await core.transport.openUrl(url);
+    });
   // The *_fw.bin files in the settings folder: chips the table lacks
   const [files, setFiles] = createSignal<FirmwareFile[]>([]);
   const loadFiles = async () => {
@@ -290,6 +309,16 @@ export function Adapter() {
                       <Button icon="search" disabled={probing()} onClick={() => probe(a)}>
                         {t("ui.adapter.probe")}
                       </Button>
+                      <Show when={probed()[a.instance_id]}>
+                        {(r) => (
+                          <>
+                            <p class="hint">{r().summary}</p>
+                            <Button icon="open" onClick={() => reportChip(a, r())}>
+                              {t("ui.adapter.probe_report")}
+                            </Button>
+                          </>
+                        )}
+                      </Show>
                     </Show>
                   </div>
                 </div>

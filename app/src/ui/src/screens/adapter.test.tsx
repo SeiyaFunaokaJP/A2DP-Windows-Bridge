@@ -277,5 +277,17 @@ describe("Chip probe (developer mode)", () => {
     expect(await screen.findByText(/^Chip info saved: Intel, Bluetooth 5\.3/)).toBeInTheDocument();
     expect(calls.find((c) => c.method === "adapter.probe")?.params).toEqual({ instance_id: realtek.instance_id });
     expect(reveal).toHaveBeenCalledWith(expect.stringMatching(/probe-\d{8}_\d{6}\.json$/));
+    // The summary stays on the card, with a prefilled chip report
+    expect(within(rtl).getByText(/^Intel, Bluetooth 5\.3/)).toBeInTheDocument();
+    const open = vi.spyOn(mock, "openUrl");
+    reveal.mockClear();
+    fireEvent.click(within(rtl).getByRole("button", { name: "Report on GitHub" }));
+    await waitFor(() => expect(open).toHaveBeenCalled());
+    const url = new URL(open.mock.calls[0][0] as string);
+    expect(url.searchParams.get("template")).toBe("chip_report.yml");
+    expect(url.searchParams.get("chip")).toMatch(/^Intel, Bluetooth 5\.3/);
+    expect(url.searchParams.get("title")).toBe("Chip report: Intel");
+    expect(url.searchParams.get("probe")).toMatch(/^probe-\d{8}_\d{6}\.json\n/);
+    expect(reveal).toHaveBeenCalledWith(expect.stringMatching(/probe-\d{8}_\d{6}\.json$/));
   });
 });

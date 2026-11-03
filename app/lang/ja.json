@@ -622,6 +622,7 @@
   "ui.adapter.restore_short": "アダプタを Windows の Bluetooth に戻します",
   "ui.adapter.probe": "チップ情報を読む",
   "ui.adapter.probe_saved": "チップ情報を保存しました: %s",
+  "ui.adapter.probe_report": "GitHub で報告",
   "ui.adapter.uac_note": "Windows が管理者の許可を求めます。",
   "ui.adapter.assigned": "%s を WinUSB ドライバにしました",
   "ui.adapter.assigned_restart": "%s を WinUSB ドライバにしました。接続する前に、アダプタを抜いて差し直してください（内蔵アダプタは Windows を再起動）。",

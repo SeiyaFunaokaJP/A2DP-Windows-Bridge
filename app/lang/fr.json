@@ -622,6 +622,7 @@
   "ui.adapter.restore_short": "Rend l'adaptateur au Bluetooth de Windows",
   "ui.adapter.probe": "Lire les infos de la puce",
   "ui.adapter.probe_saved": "Infos de la puce enregistrées : %s",
+  "ui.adapter.probe_report": "Signaler sur GitHub",
   "ui.adapter.uac_note": "Windows demande l'autorisation de l'administrateur.",
   "ui.adapter.assigned": "%s utilise maintenant le pilote WinUSB",
   "ui.adapter.assigned_restart": "%s utilise maintenant le pilote WinUSB. Débranchez-le et rebranchez-le (adaptateur intégré : redémarrez Windows) avant de vous connecter.",

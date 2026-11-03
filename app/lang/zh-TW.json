@@ -622,6 +622,7 @@
   "ui.adapter.restore_short": "將介面卡交還給 Windows 的藍牙",
   "ui.adapter.probe": "讀取晶片資訊",
   "ui.adapter.probe_saved": "已儲存晶片資訊：%s",
+  "ui.adapter.probe_report": "在 GitHub 回報",
   "ui.adapter.uac_note": "Windows 會要求系統管理員權限。",
   "ui.adapter.assigned": "%s 現在使用 WinUSB 驅動程式",
   "ui.adapter.assigned_restart": "%s 現在使用 WinUSB 驅動程式。連線前請拔下後重新插入（內建介面卡：重新啟動 Windows）。",
