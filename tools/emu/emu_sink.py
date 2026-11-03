@@ -39,11 +39,12 @@ from bumble.avdtp import (
     EndPointInfo,
     Listener,
     MediaCodecCapabilities,
+    Protocol,
     Set_Configuration_Reject,
 )
 from bumble.controller import Controller
 from bumble.device import Device
-from bumble.core import UUID
+from bumble.core import BT_BR_EDR_TRANSPORT, UUID
 from bumble.host import Host
 from bumble.link import LocalLink
 from bumble.rfcomm import Server, make_service_sdp_records
@@ -114,6 +115,14 @@ class EmuController(Controller):
     # gets it)
     eir_name = True
     inquiry_task = None
+
+    def on_hci_read_afh_channel_map_command(self, command):
+        # Bumble does not answer it, and BTstack then sends no other command
+        self.send_hci_packet(hci.HCI_Command_Complete_Event(
+            num_hci_command_packets=1,
+            command_opcode=command.op_code,
+            return_parameters=hci.HCI_StatusReturnParameters(hci.HCI_ErrorCode.UNKNOWN_HCI_COMMAND_ERROR),
+        ))
 
     def on_hci_write_class_of_device_command(self, command):
         self.class_of_device = command.class_of_device
@@ -541,8 +550,35 @@ async def main(args):
             # no RTP header, so the parser is bypassed.
             sink.on_avdtp_packet = lambda packet: None
 
-    Listener.for_device(device).on('connection', on_avdtp_connection)
-    device.on('connection', lambda c: log.info('ACL connection from %s', c.peer_address))
+    listener = Listener.for_device(device)
+    listener.on('connection', on_avdtp_connection)
+
+    async def turn_off_and_on(connection):
+        """Headphones switched off and on: they drop the link and page the PC,
+        and open A2DP themselves with --opens-a2dp."""
+        await asyncio.sleep(args.turn_off_after)
+        print('turned off', flush=True)
+        await connection.disconnect(hci.HCI_REMOTE_DEVICE_TERMINATED_CONNECTION_DUE_TO_POWER_OFF_ERROR)
+        await asyncio.sleep(2)
+        connection = await device.connect(A2DPWB_ADDRESS, transport=BT_BR_EDR_TRANSPORT)
+        print('turned on', flush=True)
+        if args.opens_a2dp:
+            await asyncio.sleep(0.5)
+            protocol = await Protocol.connect(connection)
+            protocol.l2cap_channel.on('close', lambda: print('A2DP closed', flush=True))
+            listener.set_server(connection, protocol)
+            on_avdtp_connection(protocol)
+            print('A2DP opened', flush=True)
+
+    def on_connection(connection):
+        log.info('ACL connection from %s', connection.peer_address)
+        connection.on('disconnection', lambda reason: print(f'link down (0x{reason:02X})', flush=True))
+        if args.turn_off_after and not on_connection.turned_off:
+            on_connection.turned_off = True
+            asyncio.ensure_future(turn_off_and_on(connection))
+    on_connection.turned_off = False
+
+    device.on('connection', on_connection)
     print(f'READY 127.0.0.1:{args.port} sink={SINK_ADDRESS}', flush=True)
     await asyncio.get_running_loop().create_future()
 
@@ -552,6 +588,9 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=9001, help='TCP port for A2DPWB (H4)')
     parser.add_argument('--capture', help='PacketLogger capture of the sink HCI traffic')
     parser.add_argument('--log-level', default='WARNING')
+    parser.add_argument('--turn-off-after', type=float, metavar='S',
+                        help='S seconds after the first connection, end the link as when turned off, then page A2DPWB')
+    parser.add_argument('--opens-a2dp', action='store_true', help='with --turn-off-after, open A2DP after paging')
     parser.add_argument('--no-eir-name', action='store_true',
                         help='answer inquiries without the name in the EIR (A2DPWB asks for it)')
     parser.add_argument('--dual-mode', action='store_true',

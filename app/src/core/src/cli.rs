@@ -76,6 +76,7 @@ Development / testing:
   --duration <seconds>  stop after this time (default: Ctrl+C)
   --sessions <n>        stream n times in a row with --duration each, as
                         Disconnect / Connect in the app (A2DP)
+  --wait-off            headphones turned off: wait for them, as the app does
   --restart             with --sessions: between sessions restart Bluetooth
                         as the Adapters page does, which connects again
   --le-sim-volume <level>[,<s>:<level>...]
@@ -126,6 +127,8 @@ struct Args {
     /// --restart: between sessions Bluetooth is restarted instead, as on
     /// the Adapters page, and the session connects again (issue #86)
     restart: bool,
+    /// --wait-off: headphones turned off do not end the run
+    wait_off: bool,
     le: LeArgs,
 }
 
@@ -193,6 +196,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
         duration: None,
         sessions: 1,
         restart: false,
+        wait_off: false,
         le: LeArgs::default(),
     };
     let mut it = args.iter().peekable();
@@ -288,6 +292,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
                 }
             }
             "--restart" => a.restart = true,
+            "--wait-off" => a.wait_off = true,
             "--le-audio" => a.le.on = true,
             "--le-device" => {
                 a.le.on = true;
@@ -620,6 +625,7 @@ fn stream_session(
                         *code = 1;
                         return false;
                     }
+                    StreamState::Idle if a.wait_off && service.is_running() => {}
                     StreamState::Idle if streaming_since.is_some() || !service.is_running() => return false,
                     _ => {}
                 }
