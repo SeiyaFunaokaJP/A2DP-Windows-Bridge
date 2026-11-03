@@ -1297,32 +1297,58 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         }
     }
     // OPPO earbuds that cap LHDC V5: asked for, not for Auto, and only when
-    // the profile wants more than the 400 kbps they may give anyway. Nothing
-    // gained: earbuds that had Hi-Res off get it back, and a connection after it.
+    // the profile wants more than the 400 kbps they may give anyway. Once a
+    // run per earbuds that took the write. They list what it brought only on
+    // a new connection, and none is made for it: this stream stays as it is,
+    // unless they ended the link at the write.
+    let mut written_now = false;
     if req.codec == Some(CodecKind::LhdcV5)
         && req.quality != Quality::Mobile
         && !req.abr
         && remote.listed_max_bitrate(CodecKind::LhdcV5) != 0
         && remote.audio_sinks_in_use == 0
         && vendor::oppo::is_oppo(&req.device_name)
+        && !vendor::oppo::asked(req.device)
         && !stopped()
     {
         inner.notify(StreamState::Connecting, Msg::new("status.oppo_hi_res"));
-        if let Some(before) = vendor::oppo::ask_for_hi_res(&host, req.device) {
+        if let Some((before, taken)) = vendor::oppo::ask_for_hi_res(&host, req.device) {
             let listed = remote.listed_max_bitrate(CodecKind::LhdcV5);
-            let mut result = connect_again();
-            if before == 0
-                && result.as_ref().is_ok_and(|caps| caps.listed_max_bitrate(CodecKind::LhdcV5) == listed)
-                && !stopped()
-                && vendor::oppo::set_hi_res_off(&host, req.device)
-            {
-                result = connect_again();
+            vendor::oppo::set_asked(req.device, Some(vendor::oppo::Pending { before, listed }));
+            if taken == vendor::oppo::Taken::LinkClosed {
+                remote = match connect_again() {
+                    Ok(caps) => caps,
+                    Err(_) if stopped() => return inner.notify(StreamState::Idle, Msg::new("status.ready")),
+                    Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
+                };
+            } else {
+                written_now = true;
+                tracing::info!("OPPO: Hi-Res shows from the next connection");
             }
-            remote = match result {
-                Ok(caps) => caps,
-                Err(_) if stopped() => return inner.notify(StreamState::Idle, Msg::new("status.ready")),
-                Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
-            };
+        }
+    }
+    // The connection after the write: nothing gained, earbuds that had Hi-Res
+    // off get it back (a new connection only when they end the link for it)
+    if !written_now
+        && remote.audio_sinks_in_use == 0
+        && !stopped()
+        && let Some(p) = vendor::oppo::pending(req.device)
+    {
+        vendor::oppo::set_asked(req.device, None);
+        let listed = remote.listed_max_bitrate(CodecKind::LhdcV5);
+        if listed != p.listed {
+            tracing::info!("OPPO: LHDC V5's maximum went from {} to {listed} bps with Hi-Res", p.listed);
+        } else if p.before == 0 {
+            tracing::info!("OPPO: Hi-Res changed nothing, setting it back off");
+            if vendor::oppo::set_hi_res_off(&host, req.device) == Some(vendor::oppo::Taken::LinkClosed) {
+                remote = match connect_again() {
+                    Ok(caps) => caps,
+                    Err(_) if stopped() => return inner.notify(StreamState::Idle, Msg::new("status.ready")),
+                    Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
+                };
+            }
+        } else {
+            tracing::info!("OPPO: Hi-Res changed nothing, it stays on as it was");
         }
     }
     inner.record_codecs(&addr, KnownCodecs::of(&remote));

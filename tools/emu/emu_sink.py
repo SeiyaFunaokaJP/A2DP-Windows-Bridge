@@ -426,16 +426,19 @@ class OppoEarbuds:
     Hi-Res, also when the read reported it on already (set from a phone, as
     issue #237's earbuds). drop: the earbuds end the link at the write.
     product: what they report. no_change: the write is taken, and the limit
-    stays. spatial: spatial audio is on."""
+    stays. spatial: spatial audio is on. no_write: the capabilities list
+    no feature write."""
 
     PRODUCT = 0x068C10
     # Writing features and reading the codec, and with codec_write the codec
     CAPABILITIES = 1 << 7 | 1 << 17
 
-    def __init__(self, device, hi_res, drop, product, no_change, spatial, codec_write):
+    def __init__(self, device, hi_res, drop, product, no_change, spatial, codec_write, no_write):
         self.hi_res, self.drop, self.no_change = int(hi_res), drop, no_change
         self.spatial, self.product = int(spatial), product or self.PRODUCT
         self.capabilities = self.CAPABILITIES | (1 << 37 if codec_write else 0)
+        if no_write:
+            self.capabilities &= ~(1 << 7)
         self.unlimited = False
         self.connection = None
         device.on('connection', self.on_connection)
@@ -525,7 +528,7 @@ async def main(args):
     oppo = None
     if args.oppo:
         oppo = OppoEarbuds(device, args.oppo == 'on', args.oppo_drop, args.oppo_product, args.oppo_no_change,
-                           args.oppo_spatial, args.oppo_codec_write)
+                           args.oppo_spatial, args.oppo_codec_write, args.oppo_no_write)
     await device.power_on()
     await device.set_discoverable(True)
     await device.set_connectable(True)
@@ -693,5 +696,6 @@ if __name__ == '__main__':
     parser.add_argument('--oppo-no-change', action='store_true', help='take writes and keep the limit')
     parser.add_argument('--oppo-spatial', action='store_true', help='report spatial audio on')
     parser.add_argument('--oppo-codec-write', action='store_true', help='advertise the codec write')
+    parser.add_argument('--oppo-no-write', action='store_true', help='advertise no feature write')
     bumble.logging.setup_basic_logging(parser.parse_known_args()[0].log_level)
     asyncio.run(main(parser.parse_args()))
