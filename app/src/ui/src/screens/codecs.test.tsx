@@ -1035,9 +1035,15 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     expect(entry.querySelector(".field-error")).toBeNull();
     const warning = entry.querySelector(".field-warn")!;
     expect(box).toHaveClass("st-warn");
-    expect(warning).toHaveTextContent(t("ui.profile.format_differs", t("connection.sample_rate")));
+    // Both formats in it (issue #86)
+    expect(warning).toHaveTextContent(t("ui.profile.format_differs", "96000 Hz", "48000 Hz / 32-bit"));
     // The device, not its profile by name (issue #86)
     expect(warning).not.toHaveTextContent("WH-1000XM5 (LDAC)");
+    // Auto-select streams Auto, not the profile's 96 kHz: no warning left
+    const settings = (await mock!.call("state.snapshot")) as { settings: Record<string, unknown> };
+    await mock!.call("settings.set", { settings: { ...settings.settings, auto_codec: true } });
+    await waitFor(() => expect(entry.querySelector(".field-warn")).toBeNull());
+    expect(box).not.toHaveClass("st-warn");
   });
 
   it("lists System Loopback, the virtual devices and the playing apps in one list", async () => {
