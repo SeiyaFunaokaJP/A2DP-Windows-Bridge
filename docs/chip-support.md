@@ -60,7 +60,7 @@ From the command line, with the adapter's VID:PID or instance ID (the adapter ca
 
 Quit A2DP Windows Bridge from the tray first, as both cannot use the adapter at once.
 
-**Sending a report**: open an issue with the chip's name, the probe's JSON file, and the adapter's product name and where it came from (built into a laptop: its model). The report contains the adapter's Bluetooth address and name; it does not contain anything about your headphones. A **diagnostic bundle** (Diagnostics screen) with HCI captures included also carries the probe reports, under `probe/`.
+**Sending a report**: after **Read chip info**, the adapter's card shows what was read and a **Report on GitHub** button. It opens a new issue with the version, the adapter, that summary and your Windows build filled in, and shows the report file in Explorer: drag it into the issue, and add where the adapter came from (built into a laptop: its model). The report contains the adapter's Bluetooth address and name; it does not contain anything about your headphones. A **diagnostic bundle** (Diagnostics screen) with HCI captures included also carries the probe reports, under `probe/`.
 
 ## Step 3: Record what Windows' driver does
 
@@ -83,6 +83,33 @@ Note any delay the driver keeps between steps (the capture's timestamps): a chip
 
 {: .warning }
 Work from captures, probe reports and vendor documentation. Do not copy or closely follow GPL code, such as the Linux kernel's `btmtk` or `btqca` drivers: A2DP Windows Bridge is MIT licensed, and a loader derived from them could not be included.
+
+## Try it without a build: chip scripts {#chip-scripts}
+
+Before writing a loader, try what the capture showed on the adapter: a **chip script** is the sequence as text, one request per line, run in place of the Bluetooth stack. Someone without the adapter can write one and send it to someone who has it; the result comes back as a report, with no new build.
+
+**Running one**: developer mode, **Developer > Chip**: choose the adapter (with WinUSB), type the script or open a file, **Run**. Each line's answer shows below, and **Show Report** opens `script-<date>_<time>.json` in `logs\probe\` (the script is in it). From the command line: `a2dpwb-core --cli -u <adapter> --script <file>`.
+
+```text
+# one request per line; numbers are hexadecimal (0x optional) except wait, timeout= and chunk=
+hci 1001                           # an HCI command: opcode, then parameter bytes
+hci fc05 ff
+bulk fc09 00 01 02                 # the same on the bulk OUT pipe
+usb in vendor device 63 0 0 4      # control IN: type, recipient, request, value, index, length
+usb out vendor device 64 0 0 01    # control OUT: ..., then the data bytes
+wait 100                           # milliseconds
+expect e4 02 01 timeout=5000       # an event: its code and its first parameter bytes
+bootloader off                     # bootloader mode (on from the start)
+upload mediatek/patch.bin fc6f 01 01 chunk=240 ack=event:e4:02,01
+upload-bulk patch.bin fc09 01      # the same on the bulk OUT pipe
+```
+
+- `hci` and `bulk` wait for the command's Command Complete or Command Status (2 s) and record it, whatever its status
+- `upload` sends a file of the firmware folder in commands of that opcode, each with the header bytes and up to `chunk` bytes of the file (default 240), and waits for each acknowledgment: `ack=complete` (default: a Command Complete or Command Status of the opcode with status 0) or `ack=event:<code>[:<bytes>]`. An error status stops it
+- The script stops at the first line that fails (no answer, an error, a missing file) and says which
+- Events that answer no line are kept in the report too
+
+**Safety**: only requests known to read run as they are: the standard HCI reads (informational and status parameters, Read Local Name, the LE reads), standard USB descriptor requests, `wait`, `expect` and `bootloader`. A script with any other line runs only when you allow it (**Run them** under the list of those lines; `--allow-writes` on the command line). Vendor commands that can write memory a chip keeps after a power cycle never run, whatever you allow (`denied_opcodes` in `app/src/crates/bt-host/src/chips.rs`: CSR's BCCMD so far). Bootloader mode is on from the start, so closing the adapter afterwards sends no HCI Reset. Firmware loaded into a chip's RAM is gone after a replug.
 
 ## Step 4: Write the loader
 
@@ -115,6 +142,7 @@ Everything is in `app/src/crates/bt-host/src/bringup.rs`.
 | `on_control(result)` | With the result of the last `UsbControl`: the bytes read, or why it failed |
 | `on_timeout()` | When the timer of the last `Timer` fires |
 | `missing_file_hint(file)` | For the log when the loader ended with `MissingFile`: what to put where ("x.bin from linux-firmware (mediatek/)") |
+| `step()`, `progress()` | After each batch of actions: the step's name ("download") and how far it is (commands sent of all), for the Adapters screen while the adapter starts |
 
 After `Done` the app drops the loader: a late answer never reaches it.
 
@@ -221,7 +249,7 @@ The log shows each step; `loader.pklg` opens in Wireshark with every command, ev
 {: .note }
 With several adapters on WinUSB, a Realtek one is preferred and its chip setup applied, even with `-u`. Set **Adapters > Bluetooth Chip** to **Not Realtek**, or test with only your adapter on WinUSB.
 
-Then stream to headphones for a while with the window, and check that **Restart Bluetooth** and a replug bring it back.
+Then stream to headphones for a while with the window, and check that **Restart Bluetooth** and a replug bring it back. While the adapter starts, the **Adapters** screen shows the loader under the Bluetooth status ("loading 42%", or that it failed); in developer mode also when it is ready, with your `step()` names and how it ended.
 
 ## Step 8: Open the pull request
 

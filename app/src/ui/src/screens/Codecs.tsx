@@ -58,6 +58,7 @@ import {
   codecSpec,
   codecSupport,
   effectiveCodec,
+  capsForSettings,
   forcesCodec,
   isDefaultOrder,
   moved,
@@ -709,7 +710,7 @@ function DeviceCodecs(props: {
           profile={shown()}
           kept={(id) => shown().codec_settings?.[id]}
           sbcCaps={knownSbcCaps(snap().devices, e().address)}
-          caps={knownCodecCaps(snap().devices, e().address)}
+          caps={capsForSettings(knownCodecCaps(snap().devices, e().address), snap().settings)}
           developer={snap().settings.developer_mode}
           matchSource={snap().settings.developer_mode && snap().settings.dev_overrides.match_source}
           deviceName={e().name}

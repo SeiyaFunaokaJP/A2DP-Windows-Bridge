@@ -232,6 +232,8 @@ pub enum ServiceEvent {
     /// saved device connected to the PC (its address): its session may
     /// start instead
     OtherDeviceBack([u8; 6]),
+    /// A firmware loader's step, percent or end while the adapter starts
+    Loader(bt_host::bringup::LoaderProgress),
 }
 
 pub struct ServiceOptions {
@@ -410,6 +412,13 @@ impl Inner {
         let cli = self.le_cli.lock().unwrap_or_else(|e| e.into_inner()).clone();
         c.le_audio = le_config(le_on, cli.as_ref(), &self.opts);
         c.battery = true;
+        // The Adapters screen shows a loader's progress while the adapter
+        // starts (the stack's handle comes only after)
+        let events = self.events.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let events = Mutex::new(events);
+        c.on_loader = Some(Arc::new(move |p| {
+            let _ = events.lock().unwrap_or_else(|e| e.into_inner()).send(ServiceEvent::Loader(p.clone()));
+        }));
         tracing::debug!(
             "host config: transport {:?}, firmware dir {:?}, realtek pid {:04x} files {:?}, intel loader {}, broadcom ids {}, LE {} (cli {:?})",
             c.transport,
@@ -687,6 +696,26 @@ impl Inner {
     /// [`Service::probe_adapter`]: holds the stack slot meanwhile, so no
     /// stack starts on the adapter during the probe
     fn probe(&self, instance_id: Option<String>) -> Result<bt_host::probe::ProbeReport, Msg> {
+        self.tool(instance_id, "chip probe", BtHost::probe)
+    }
+
+    /// [`Service::run_script`], as [`Inner::probe`]
+    fn script(
+        &self,
+        instance_id: Option<String>,
+        script: bt_host::script::Script,
+    ) -> Result<bt_host::probe::ProbeReport, Msg> {
+        self.tool(instance_id, "chip script", move |c| BtHost::run_script(c, script))
+    }
+
+    /// A tool in place of a stack on the adapter `instance_id` (None: the one
+    /// a stack would open), holding the stack slot meanwhile
+    fn tool(
+        &self,
+        instance_id: Option<String>,
+        what: &str,
+        run: impl FnOnce(HostConfig) -> Result<bt_host::probe::ProbeReport, InitFailure>,
+    ) -> Result<bt_host::probe::ProbeReport, Msg> {
         let mut slot = self.host.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(h) = slot.take() {
             h.shutdown();
@@ -697,9 +726,9 @@ impl Inner {
             sel.vid_pid = None;
             sel.preferred = None;
         }
-        tracing::info!("chip probe: transport {:?}", c.transport);
-        BtHost::probe(c).map_err(|f| {
-            tracing::error!("chip probe: no stack could run ({f:?})");
+        tracing::info!("{what}: transport {:?}", c.transport);
+        run(c).map_err(|f| {
+            tracing::error!("{what}: no stack could run ({f:?})");
             Msg::new("error.btstack_init")
         })
     }
@@ -1278,6 +1307,24 @@ impl Service {
             return Err(Msg::new("status.scanning_devices"));
         }
         self.inner.probe(instance_id)
+    }
+
+    /// A chip script (bt_host::script) on the adapter `instance_id`, as
+    /// [`Service::probe_adapter`]. The caller has checked it: written
+    /// requests allowed, no denied opcode.
+    pub fn run_script(
+        &self,
+        instance_id: Option<String>,
+        script: bt_host::script::Script,
+    ) -> Result<bt_host::probe::ProbeReport, Msg> {
+        self.end_wait_for_device();
+        if self.is_running() {
+            return Err(Msg::new("status.streaming"));
+        }
+        if self.is_scanning() {
+            return Err(Msg::new("status.scanning_devices"));
+        }
+        self.inner.script(instance_id, script)
     }
 
     /// Inquiry for nearby (classic) devices

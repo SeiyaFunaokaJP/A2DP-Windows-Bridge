@@ -145,6 +145,17 @@ pub fn chip_support_tag(vendor: ChipVendor, vid: u16, pid: u16) -> Option<&'stat
     tag_in(LOADER_CHIPS, vendor, vid, pid)
 }
 
+/// Vendor commands a chip script (crate::script) may never send to this
+/// vendor's chips, even when writes are allowed: they can write memory that
+/// survives a power cycle (flash, persistent store, OTP). CSR: BCCMD, whose
+/// persistent-store writes can change the adapter for good.
+pub fn denied_opcodes(vendor: ChipVendor) -> &'static [u16] {
+    match vendor {
+        ChipVendor::Csr => &[0xFC00],
+        _ => &[],
+    }
+}
+
 fn supported_in(table: &[(ChipVendor, u16, u16)], vendor: ChipVendor, vid: u16, pid: u16) -> bool {
     vendor.support_tag() != Some("unsupported") || table.contains(&(vendor, vid, pid))
 }

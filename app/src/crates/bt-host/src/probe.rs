@@ -57,12 +57,16 @@ pub enum StepKind {
     /// A USB control transfer; `command` is its SETUP packet, the answer
     /// the bytes read
     Usb,
+    /// A script's step that is no single request (crate::script): a wait,
+    /// an awaited event (its answer), bootloader mode, an upload (its last
+    /// command and answer)
+    Other,
 }
 
 /// One request and what came back
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeStep {
-    pub name: &'static str,
+    pub name: String,
     pub kind: StepKind,
     /// HCI: the command as sent (opcode, length, parameters); USB: the SETUP
     /// packet
@@ -241,7 +245,7 @@ impl Probe {
                 let [lo, hi] = opcode.to_le_bytes();
                 let command = vec![lo, hi, 0];
                 self.report.steps.push(ProbeStep {
-                    name,
+                    name: name.to_owned(),
                     kind: StepKind::Hci,
                     command: command.clone(),
                     answer: None,
@@ -252,7 +256,7 @@ impl Probe {
             }
             Planned::Usb(name, request) => {
                 self.report.steps.push(ProbeStep {
-                    name,
+                    name: name.to_owned(),
                     kind: StepKind::Usb,
                     command: request.setup_packet().to_vec(),
                     answer: None,

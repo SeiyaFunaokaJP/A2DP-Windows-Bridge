@@ -66,6 +66,8 @@ pub(crate) struct Setup {
     pub broadcom_ids: Vec<(u16, u16)>,
     /// HFP audio gateway for the headphones' battery level
     pub battery: bool,
+    /// Told where a loader is (HostConfig::on_loader)
+    pub on_loader: Option<crate::bringup::LoaderHook>,
     /// Run the chip probe instead of HCI init (BtHost::probe): its report
     pub probe: Option<mpsc::Sender<ProbeReport>>,
 }
@@ -136,6 +138,8 @@ pub(crate) struct HostApp {
     /// The chip bring-up before HCI init (raw transport): Intel's firmware
     /// download
     loader: Option<Box<dyn ChipLoader>>,
+    /// The step and percent last told to setup.on_loader
+    loader_shown: Option<(&'static str, Option<u8>)>,
 
     // ---- AVRCP ----
     volume_in_flight: Option<Instant>,
@@ -224,6 +228,7 @@ impl HostApp {
             rtk_verify_tries: 0,
             bcm_checked: false,
             loader: None,
+            loader_shown: None,
             volume_in_flight: None,
             playback_status: AVRCP_PLAYBACK_STATUS_STOPPED,
             playback_prev_frames: 0,
@@ -258,10 +263,11 @@ impl HostApp {
         self.start_loader(stack, Box::new(loader));
     }
 
-    /// The chip probe (crate::probe) on the transport installed already, in
-    /// place of HCI init: its report goes to `setup.probe`
-    pub fn start_probe(&mut self, stack: &Stack) {
-        self.start_loader(stack, Box::new(crate::probe::Probe::new()));
+    /// A tool (the chip probe, a chip script) on the transport installed
+    /// already, in place of HCI init: its report goes to `setup.probe`
+    pub fn start_tool(&mut self, stack: &Stack, make: crate::ToolLoader) {
+        let loader = make(&self.setup.firmware_dir);
+        self.start_loader(stack, loader);
     }
 
     /// A chip bring-up (crate::bringup) on the transport installed already,
@@ -319,6 +325,31 @@ impl HostApp {
                 return;
             }
         }
+        self.show_loader();
+    }
+
+    /// Tells HostConfig::on_loader where the loader is, when its step or
+    /// percent changed (not for the tools, whose reports say it)
+    fn show_loader(&mut self) {
+        let (Some(loader), Some(hook)) = (self.loader.as_ref(), self.setup.on_loader.as_ref()) else { return };
+        if self.setup.probe.is_some() || loader.step().is_empty() {
+            return;
+        }
+        let percent = loader.progress().filter(|(_, all)| *all > 0).map(|(n, all)| (n * 100 / all).min(100) as u8);
+        let now = (loader.step(), percent);
+        if self.loader_shown == Some(now) {
+            return;
+        }
+        self.loader_shown = Some(now);
+        hook(&bringup::LoaderProgress { vendor: loader.vendor(), step: now.0.to_owned(), percent, done: None });
+    }
+
+    /// The loader's end, for HostConfig::on_loader
+    fn show_loader_done(&mut self, vendor: &'static str, step: String, ok: bool) {
+        self.loader_shown = None;
+        if let (Some(hook), None) = (self.setup.on_loader.as_ref(), self.setup.probe.as_ref()) {
+            hook(&bringup::LoaderProgress { vendor, step, percent: None, done: Some(ok) });
+        }
     }
 
     fn loader_done(&mut self, stack: &Stack, result: Result<bringup::Outcome, bringup::LoadError>) {
@@ -339,18 +370,18 @@ impl HostApp {
         match result {
             Ok(outcome) => {
                 stack.raw_end();
-                match outcome {
-                    bringup::Outcome::AlreadyRunning => tracing::info!("{vendor} controller: firmware running already"),
+                let said = match outcome {
+                    bringup::Outcome::AlreadyRunning => "firmware running already".to_owned(),
                     bringup::Outcome::Loaded { firmware, detail: Some(detail) } => {
-                        tracing::info!("{vendor} controller: firmware {firmware} loaded ({detail})")
+                        format!("firmware {firmware} loaded ({detail})")
                     }
-                    bringup::Outcome::Loaded { firmware, detail: None } => {
-                        tracing::info!("{vendor} controller: firmware {firmware} loaded")
-                    }
-                    bringup::Outcome::Rom => tracing::info!("{vendor} controller: ROM firmware, nothing to load"),
+                    bringup::Outcome::Loaded { firmware, detail: None } => format!("firmware {firmware} loaded"),
+                    bringup::Outcome::Rom => "ROM firmware, nothing to load".to_owned(),
                     // Only from the probe, which returned above
-                    bringup::Outcome::Probed => {}
-                }
+                    bringup::Outcome::Probed => String::new(),
+                };
+                tracing::info!("{vendor} controller: {said}");
+                self.show_loader_done(vendor, said, true);
                 self.setup_hci_and_power_on(stack, None);
             }
             // Raw mode stays to the end of the run: hci_init has not run, so
@@ -369,6 +400,11 @@ impl HostApp {
                     }
                     e => tracing::error!("{vendor} firmware download failed: {e} (firmware folder {dir})"),
                 }
+                let said = match &e {
+                    bringup::LoadError::MissingFile(file) => format!("{} missing", loader.missing_file_hint(file)),
+                    e => e.to_string(),
+                };
+                self.show_loader_done(vendor, said, false);
                 self.init_failed(InitFailure::Failed);
             }
         }

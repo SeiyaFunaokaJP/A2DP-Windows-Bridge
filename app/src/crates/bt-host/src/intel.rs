@@ -1042,6 +1042,21 @@ impl ChipLoader for Loader {
         Loader::on_timeout(self)
     }
 
+    fn step(&self) -> &'static str {
+        match self.state {
+            State::Idle | State::Done => "",
+            ref s => s.step(),
+        }
+    }
+
+    /// Secure Send: the commands sent of the image's
+    fn progress(&self) -> Option<(usize, usize)> {
+        match &self.state {
+            State::Sending(d) => Some((d.next, d.commands.len())),
+            _ => None,
+        }
+    }
+
     /// An intermediate loader has no .ddc
     fn missing_file_hint(&self, file: &str) -> String {
         let stem = file.strip_suffix(".sfi").unwrap_or(file);
