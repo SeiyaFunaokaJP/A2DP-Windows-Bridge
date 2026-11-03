@@ -530,8 +530,24 @@ async def main(args):
     await device.set_discoverable(True)
     await device.set_connectable(True)
 
+    def same_codec(a, b):
+        """Capabilities of the same codec: type, and vendor and codec ID"""
+        if a.media_codec_type != b.media_codec_type:
+            return False
+        ids = lambda c: (getattr(c.media_codec_information, 'vendor_id', None),
+                         getattr(c.media_codec_information, 'codec_id', None))
+        return ids(a) == ids(b)
+
+    # The codec and configuration A2DPWB set last: headphones turned back on
+    # with --opens-stream set up that stream themselves
+    last_configuration = {}
+
+    def remember_configuration(name, sink):
+        last_configuration.update(name=name, configuration=list(sink.configuration))
+
     def on_avdtp_connection(server):
         log.info('AVDTP connection')
+        on_avdtp_connection.sinks = {}
         for _ in range(args.extra_seps):
             # A codec A2DPWB does not know, discovered before the real ones
             server.add_sink(MediaCodecCapabilities(
@@ -550,8 +566,10 @@ async def main(args):
             if not args.codecs and name == 'aptxad':
                 continue
             sink = server.add_sink(capabilities)
+            sink.on('configuration', lambda sink=sink, name=name: remember_configuration(name, sink))
             if name == 'sbc' and args.sbc_reject_dual:
                 refuse_dual_channel(sink)
+            on_avdtp_connection.sinks[name] = sink
             if name in args.in_use:
                 # As a multipoint headset streaming this codec to another
                 # device: listed by Discover with in_use = 1
@@ -587,6 +605,29 @@ async def main(args):
             listener.set_server(connection, protocol)
             on_avdtp_connection(protocol)
             print('A2DP opened', flush=True)
+            if args.opens_stream:
+                await open_last_stream(protocol)
+
+    async def open_last_stream(protocol):
+        """Configure and open the stream A2DPWB set up last, at once, as
+        headphones resuming it do: BTstack then discovers no capabilities."""
+        name = last_configuration.get('name')
+        sink = on_avdtp_connection.sinks.get(name)
+        if sink is None:
+            print('no earlier stream to open', flush=True)
+            return
+        codec = next(c for c in last_configuration['configuration'] if c.service_category == AVDTP_MEDIA_CODEC_SERVICE_CATEGORY)
+        for endpoint in await protocol.discover_remote_endpoints():
+            caps = next((c for c in endpoint.capabilities if c.service_category == AVDTP_MEDIA_CODEC_SERVICE_CATEGORY), None)
+            if caps and same_codec(caps, codec):
+                break
+        else:
+            print(f'A2DPWB has no {name} endpoint', flush=True)
+            return
+        sink.configuration = last_configuration['configuration']
+        stream = await protocol.create_stream(sink, endpoint)
+        await stream.open()
+        print(f'stream opened ({name})', flush=True)
 
     def on_connection(connection):
         log.info('ACL connection from %s', connection.peer_address)
@@ -609,6 +650,8 @@ if __name__ == '__main__':
     parser.add_argument('--turn-off-after', type=float, metavar='S',
                         help='S seconds after the first connection, end the link as when turned off, then page A2DPWB')
     parser.add_argument('--opens-a2dp', action='store_true', help='with --turn-off-after, open A2DP after paging')
+    parser.add_argument('--opens-stream', action='store_true',
+                        help='with --opens-a2dp, also configure and open the last stream')
     parser.add_argument('--disconnect-delay', type=float, default=0, metavar='S',
                         help="seconds until an HCI Disconnect from A2DPWB takes effect")
     parser.add_argument('--no-eir-name', action='store_true',

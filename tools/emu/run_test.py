@@ -736,6 +736,14 @@ LINK_CASES = {
         ('sink.log', r'A2DP opened', True),
         ('sink.log', r'A2DP closed.*turned off|turned on.*A2DP closed.*A2DP opened', False),
     ]),
+    # ...and set up the stream itself, a vendor codec (LHDC V5 headphones)
+    'device-stream': (['--turn-off-after', '4', '--opens-a2dp', '--opens-stream'],
+                      ['-c', 'ldac', '--duration', '16', '--wait-off'], [
+        ('a2dpwb.log', r'opened the stream itself, starting LDAC on it.*reconnected on attempt 1', True),
+        ('a2dpwb.log', r'closing a leftover AVDTP', False),
+        ('sink.log', r'stream opened \(ldac\)', True),
+        ('sink.log', r'A2DP closed.*stream opened', False),
+    ]),
     # A setting changed just after the link came up: the next connection
     # starts while that link goes down
     'restart-on-link': (['--disconnect-delay', '0.5'], ['--duration', '3', '--restart-on-link'], [
@@ -837,8 +845,9 @@ def run_link_case(args, case, port):
         with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8', errors='replace') as log:
             try:
                 rc = subprocess.run(
-                    [args.a2dpwb, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '-d', SINK_ADDRESS, '-c', 'sbc',
-                     '--test-tone', '--hci-capture', os.path.join(out, 'a2dpwb.pklg')] + a2dpwb_args,
+                    [args.a2dpwb, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '-d', SINK_ADDRESS]
+                    + ([] if '-c' in a2dpwb_args else ['-c', 'sbc'])
+                    + ['--test-tone', '--hci-capture', os.path.join(out, 'a2dpwb.pklg')] + a2dpwb_args,
                     stdout=log, stderr=subprocess.STDOUT, env=env, timeout=120).returncode
             except subprocess.TimeoutExpired:
                 rc = 'timeout'

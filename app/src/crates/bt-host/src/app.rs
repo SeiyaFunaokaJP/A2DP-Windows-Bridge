@@ -528,6 +528,25 @@ impl HostApp {
         state == AvdtpState::Open && cid == self.a2dp_cid
     }
 
+    /// Takes the stream the device configured and opened itself for
+    /// `config`: our endpoint for its codec, the same codec information
+    pub fn adopt_device_stream(&mut self, config: &Configuration, configured: &(u8, Option<Vec<u8>>)) -> bool {
+        let ours = self.endpoints.get(&codec::caps::endpoint_kind(config.kind)).copied();
+        let same = match &config.request {
+            ConfigRequest::Vendor(info) => configured.1.as_ref() == Some(info),
+            // The event has no codec information to compare
+            _ => false,
+        };
+        if ours != Some(configured.0) || !same {
+            return false;
+        }
+        self.stream_codec = Some(config.kind);
+        // Packets of a previous stream must not go out on this one
+        while self.media.pop().is_ok() {}
+        self.can_send_requested = false;
+        true
+    }
+
     /// Tears down a half-open or open AVDTP connection after a failed or
     /// cancelled connect, or for a disconnect. Returns whether a release
     /// event follows.
@@ -1412,7 +1431,12 @@ impl HostApp {
                     // Not done yet: the capability discovery follows, also
                     // on a connection the device opened
                     self.caps = Default::default();
-                    self.shared.update(|s| s.a2dp_con_handle = Some(handle & 0x0FFF));
+                    self.shared.update(|s| {
+                        s.a2dp_con_handle = Some(handle & 0x0FFF);
+                        // A device may configure and open the stream itself
+                        s.stream_config = None;
+                        s.stream_done = None;
+                    });
                 }
             }
             Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CAPABILITY) => {
@@ -1556,11 +1580,12 @@ impl HostApp {
             | Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_MPEG_AAC_CONFIGURATION)
             | Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CONFIGURATION) => {
                 tracing::debug!("codec configuration event: {:02X?}", p.get(2..));
-                tracing::info!(
-                    "codec configured (local {}, remote {})",
-                    u8_at(p, 5).unwrap_or(0),
-                    u8_at(p, 6).unwrap_or(0)
-                );
+                let local = u8_at(p, 5).unwrap_or(0);
+                tracing::info!("codec configured (local {local}, remote {})", u8_at(p, 6).unwrap_or(0));
+                let info = (subevent(p) == Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CONFIGURATION))
+                    .then(|| le16(p, 11).and_then(|n| p.get(13..13 + n as usize)).map(<[u8]>::to_vec))
+                    .flatten();
+                self.shared.update(|s| s.stream_config = Some((local, info)));
             }
             Some(A2DP_SUBEVENT_STREAM_ESTABLISHED) => {
                 let status = u8_at(p, 13).unwrap_or(0xFF);

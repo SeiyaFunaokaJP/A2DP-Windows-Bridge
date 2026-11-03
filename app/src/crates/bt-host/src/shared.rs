@@ -80,6 +80,10 @@ pub struct State {
     /// ACL handle of the A2DP signaling channel
     pub a2dp_con_handle: Option<u16>,
     pub remote_caps: RemoteCaps,
+    /// The last stream configuration: local SEID and the vendor codec
+    /// information (None for SBC and AAC). One the device set itself can be
+    /// streamed on as it is (issue #270).
+    pub stream_config: Option<(u8, Option<Vec<u8>>)>,
     /// The devices of the scan, one entry each ([`State::add_found`])
     pub discovered: Vec<DiscoveredDevice>,
     /// How to page each device found (page scan repetition mode, clock
