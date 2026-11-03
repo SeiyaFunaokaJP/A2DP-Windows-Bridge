@@ -378,6 +378,8 @@
   "ui.dev.active": "Overrides are on. Turn them off before reporting a problem.",
   "ui.dev.section_media": "Media packets (all codecs)",
   "ui.dev.reset": "Turn all off",
+  "ui.dev.force_codec": "Connect with unsupported codecs",
+  "ui.dev.force_codec_hint": "Lets you choose them on the Codecs screen. Most devices refuse them.",
   "ui.dev.rtp_marker": "RTP marker bit",
   "ui.dev.packet_dump": "Log the first packets",
   "ui.dev.packet_dump_hint": "Size, timestamp and first bytes, in the log.",

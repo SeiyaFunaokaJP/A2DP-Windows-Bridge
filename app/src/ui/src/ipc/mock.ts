@@ -173,6 +173,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
       aac_no_peak: false,
       aac_no_afterburner: false,
       aac_latm_v0: false,
+      force_codec: false,
     },
     dev_log: { keep_days: 7, day_cap_mb: 100, always_verbose: null, health_every_interval: false },
     bt_chip_pid: 0,

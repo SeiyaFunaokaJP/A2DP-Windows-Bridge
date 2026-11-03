@@ -14,7 +14,8 @@
 // back to the first card it offers in that order (lib/codecs.ts
 // effectiveCodec, as the core), which is also what Auto picks then: a profile
 // left with one shows that one chosen (issue #86: no note below the cards), and
-// a click on such a card changes nothing (issue #86). A codec it may offer
+// a click on such a card changes nothing (issue #86), unless developer
+// mode's override forces it: then it is chosen like any other. A codec it may offer
 // only once chosen (Device.codecs_on_request) stays a card of its own, chosen
 // also while another one streams instead (issue #30). The codec chosen
 // stays in the device's profile while Auto-select is on. The device is
@@ -56,6 +57,7 @@ import {
   codecSpec,
   codecSupport,
   effectiveCodec,
+  forcesCodec,
   isDefaultOrder,
   moved,
   type CodecId,
@@ -212,7 +214,9 @@ export function pickedCodec(
   // One it may offer once chosen stays chosen (issue #30)
   if (!autoAll && codecsOnRequest(snap.devices, entry.address).includes(codec)) return codec;
   // One the device does not offer: the one used instead (issue #86)
-  if (!autoAll && codec !== "auto") return effectiveCodec(codec, known, true, order) ?? codec;
+  if (!autoAll && codec !== "auto") {
+    return forcesCodec(snap.settings) ? codec : (effectiveCodec(codec, known, true, order) ?? codec);
+  }
   return streamingCodec(snap, entry) ?? effectiveCodec("auto", known, true, autoAll ? AUTO_ORDER : order);
 }
 
@@ -330,6 +334,7 @@ function DeviceCodecs(props: {
   const known = () => knownCodecs(snap().devices, e().address);
   const onRequest = () => codecsOnRequest(snap().devices, e().address);
   const support = (id: string) => codecSupport(id, known(), onRequest());
+  const refused = (id: string) => support(id) === "not_offered" && !forcesCodec(snap().settings);
   // The device's order while it is being dragged (null: the saved one)
   const [dragOrder, setDragOrder] = createSignal<CodecId[] | null>(null);
   // Its cards' order: Auto-select's is the default one (highest sound
@@ -361,7 +366,7 @@ function DeviceCodecs(props: {
     // A card the device does not offer: nothing changes (issue #86: the
     // stream keeps its codec). Settings made for it in its "..." are saved
     // as they are (the card shown chosen is still the one used).
-    if (!values && support(id) === "not_offered") {
+    if (!values && refused(id)) {
       showPicked();
       return;
     }
@@ -667,7 +672,7 @@ function DeviceCodecs(props: {
                 onPick={() => void choose(c.id)}
                 onReadOnly={(settings) => {
                   // No reason to turn Auto-select off for a card that changes nothing
-                  if (settings || support(c.id) !== "not_offered")
+                  if (settings || !refused(c.id))
                     props.onLocked(() => (settings ? setSettingsOf(c) : void choose(c.id)));
                 }}
                 onSettings={() => setSettingsOf(c)}

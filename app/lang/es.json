@@ -378,6 +378,8 @@
   "ui.dev.active": "Hay anulaciones activas. Desactívelas antes de informar de un problema.",
   "ui.dev.section_media": "Paquetes multimedia (todos los códecs)",
   "ui.dev.reset": "Desactivar todo",
+  "ui.dev.force_codec": "Conectar con códecs no compatibles",
+  "ui.dev.force_codec_hint": "Permite elegirlos en la pantalla Códecs. La mayoría de los dispositivos los rechazan.",
   "ui.dev.rtp_marker": "Bit marcador RTP",
   "ui.dev.packet_dump": "Registrar los primeros paquetes",
   "ui.dev.packet_dump_hint": "Tamaño, marca de tiempo y primeros bytes, en el registro.",

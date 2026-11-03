@@ -378,6 +378,8 @@
   "ui.dev.active": "覆寫設定已開啟。回報問題前請將其關閉。",
   "ui.dev.section_media": "媒體封包（所有編解碼器）",
   "ui.dev.reset": "全部關閉",
+  "ui.dev.force_codec": "強制使用不支援的編解碼器連線",
+  "ui.dev.force_codec_hint": "可在編解碼器畫面中選擇。多數裝置會拒絕。",
   "ui.dev.rtp_marker": "RTP 標記位元",
   "ui.dev.packet_dump": "記錄最初的封包",
   "ui.dev.packet_dump_hint": "大小、時間戳記和開頭位元組，寫入記錄。",

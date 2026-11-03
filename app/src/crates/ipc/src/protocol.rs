@@ -563,6 +563,7 @@ pub struct DevOverrides {
     pub aac_no_peak: bool,
     pub aac_no_afterburner: bool,
     pub aac_latm_v0: bool,
+    pub force_codec: bool,
 }
 
 /// Developer mode's logging (a2dpwb_core::settings::DevLog), in force while
