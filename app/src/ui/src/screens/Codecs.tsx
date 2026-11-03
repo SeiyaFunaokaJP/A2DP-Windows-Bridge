@@ -702,6 +702,7 @@ function DeviceCodecs(props: {
           kept={(id) => shown().codec_settings?.[id]}
           sbcCaps={knownSbcCaps(snap().devices, e().address)}
           caps={knownCodecCaps(snap().devices, e().address)}
+          developer={snap().settings.developer_mode}
           deviceName={e().name}
           onChange={(values) => {
             pending = values;
