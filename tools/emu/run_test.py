@@ -736,6 +736,12 @@ LINK_CASES = {
         ('sink.log', r'A2DP opened', True),
         ('sink.log', r'A2DP closed.*turned off|turned on.*A2DP closed.*A2DP opened', False),
     ]),
+    # A setting changed just after the link came up: the next connection
+    # starts while that link goes down
+    'restart-on-link': (['--disconnect-delay', '0.5'], ['--duration', '3', '--restart-on-link'], [
+        ('a2dpwb.log', r'Starting again.*HCI disconnection.*state Streaming', True),
+        ('a2dpwb.log', r'Bluetooth stack stalled', False),
+    ]),
 }
 LOG_TIME =re.compile(r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})')
 

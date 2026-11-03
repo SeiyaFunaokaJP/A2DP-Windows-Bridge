@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use btstack_sys::{HciBackend, Remote, Stack};
+use btstack_sys::{AclState, HciBackend, Remote, Stack};
 use codec::caps::{Configuration, RemoteCaps};
 use hci_transport::{TcpH4, UsbSelector, UsbTransport};
 
@@ -925,6 +925,10 @@ impl BtHost {
 
     fn establish_and_wait(&self, addr: [u8; 6]) -> Result<RemoteCaps, ConnectFailure> {
         let started = Instant::now();
+        if let Err(f) = self.wait_for_closing_link(addr) {
+            self.set_failure(f);
+            return Err(f);
+        }
         match self.call(JOB_TIMEOUT, move |app, s| app.establish(s, addr)) {
             Some(Ok(())) => {}
             r => {
@@ -938,7 +942,7 @@ impl BtHost {
             w => {
                 let cancelled = w == Wait::Cancelled;
                 tracing::warn!("connection {}", if cancelled { "cancelled" } else { "timed out" });
-                let stuck = !cancelled && self.check_stalled();
+                let stuck = !cancelled && self.check_stalled(addr);
                 if !stuck && !cancelled {
                     // An answer that never came (e.g. a lost SDP response)
                     self.set_failure(ConnectFailure::LinkLost);
@@ -981,6 +985,26 @@ impl BtHost {
         Ok(caps)
     }
 
+    /// Waits until a link to `addr` that is going down has gone. BTstack
+    /// drops a Create Connection meanwhile without a word: the SDP query
+    /// behind it then waits for a link nobody pages, every later connection
+    /// queues behind that query, and nothing moves until the device connects
+    /// by itself (a session restarted just after its link came up).
+    fn wait_for_closing_link(&self, addr: [u8; 6]) -> Result<(), ConnectFailure> {
+        let deadline = Instant::now() + DISCONNECT_TIMEOUT;
+        while self.call(Duration::from_secs(2), move |_, s| s.acl_state(&addr)) == Some(AclState::Closing) {
+            if self.shared.lock().cancel {
+                return Err(ConnectFailure::Cancelled);
+            }
+            if Instant::now() >= deadline {
+                tracing::warn!("the link to {} did not go down", addr_str(&addr));
+                return Err(ConnectFailure::LinkLost);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Ok(())
+    }
+
     /// LinkLost -> Refused when the device ended the link itself
     fn classify_link_lost(&self) {
         if self.last_connect_failure() != Some(ConnectFailure::LinkLost) {
@@ -1014,11 +1038,11 @@ impl BtHost {
 
     /// After a connect wait timed out: is the stack stuck rather than the
     /// remote silent? Sets stalled.
-    fn check_stalled(&self) -> bool {
+    fn check_stalled(&self, addr: [u8; 6]) -> bool {
         if self.stalled() {
             return true;
         }
-        let why = match self.call(Duration::from_secs(2), |app, s| app.still_paging(s)) {
+        let why = match self.call(Duration::from_secs(2), move |_, s| s.acl_state(&addr)) {
             None => Some("the BTstack run loop does not respond"),
             // A page can outrun the page timeout and still end (issue #86:
             // 27 s on an RTL8761B): the abort cancels it, and a retry needs
@@ -1026,6 +1050,10 @@ impl BtHost {
             Some(_) if !self.controller_responds(Duration::from_secs(2)) => {
                 Some("the controller does not answer HCI commands")
             }
+            // A failed page ends the wait: neither a link nor a page means
+            // the connection never paged (wait_for_closing_link), and only
+            // a new stack or the device itself moves it
+            Some(AclState::None) => Some("the connection never paged the device"),
             _ => None,
         };
         let Some(why) = why else {

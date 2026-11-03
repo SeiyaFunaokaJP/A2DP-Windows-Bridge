@@ -115,6 +115,9 @@ class EmuController(Controller):
     # gets it)
     eir_name = True
     inquiry_task = None
+    # Seconds between an HCI Disconnect and its Disconnection Complete: the
+    # link stays up meanwhile, as with headphones that take their time
+    disconnect_delay = 0
 
     def on_hci_read_afh_channel_map_command(self, command):
         # Bumble does not answer it, and BTstack then sends no other command
@@ -152,6 +155,20 @@ class EmuController(Controller):
             self.inquiry_task.cancel()
             self.inquiry_task = None
         return hci.HCI_StatusReturnParameters(hci.HCI_ErrorCode.SUCCESS)
+
+    def on_hci_disconnect_command(self, command):
+        if not self.disconnect_delay:
+            return super().on_hci_disconnect_command(command)
+        self._send_hci_command_status(hci.HCI_COMMAND_STATUS_PENDING, command.op_code)
+
+        def disconnect():
+            self._send_hci_command_status = lambda *_: None
+            try:
+                super(EmuController, self).on_hci_disconnect_command(command)
+            finally:
+                del self._send_hci_command_status
+
+        asyncio.get_running_loop().call_later(self.disconnect_delay, disconnect)
 
     async def run_inquiry(self, length):
         loop = asyncio.get_running_loop()
@@ -487,6 +504,7 @@ async def main(args):
         link=link,
         public_address=A2DPWB_ADDRESS,
     )
+    a2dpwb_controller.disconnect_delay = args.disconnect_delay
     if args.dual_mode:
         a2dpwb_controller.lmp_features = DUAL_MODE_FEATURES
     sink_controller = EmuController('SINK', link=link, public_address=SINK_ADDRESS)
@@ -591,6 +609,8 @@ if __name__ == '__main__':
     parser.add_argument('--turn-off-after', type=float, metavar='S',
                         help='S seconds after the first connection, end the link as when turned off, then page A2DPWB')
     parser.add_argument('--opens-a2dp', action='store_true', help='with --turn-off-after, open A2DP after paging')
+    parser.add_argument('--disconnect-delay', type=float, default=0, metavar='S',
+                        help="seconds until an HCI Disconnect from A2DPWB takes effect")
     parser.add_argument('--no-eir-name', action='store_true',
                         help='answer inquiries without the name in the EIR (A2DPWB asks for it)')
     parser.add_argument('--dual-mode', action='store_true',
