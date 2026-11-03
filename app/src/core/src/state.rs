@@ -21,8 +21,8 @@ use bt_host::chips::{self, ChipVendor};
 use ipc::{
     AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, DevLog, DevOverrides, Device,
     DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, MixerApp, Msg, OtherRadio,
-    Profile, ReceiverConnection, ReceiverState, Settings, SettingsApplied, Snapshot, SourceInfo, StreamState,
-    StreamStatus, UpdateState,
+    ProbeResult, Profile, ReceiverConnection, ReceiverState, Settings, SettingsApplied, Snapshot, SourceInfo,
+    StreamState, StreamStatus, UpdateState,
 };
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -2270,6 +2270,31 @@ impl CoreState {
                         me.begin_stream(req, profile);
                     }
                     Ok(Value::Null)
+                }))
+                .await
+            }
+            Method::AdapterProbe { instance_id } => {
+                blocking(Box::new(move |me| {
+                    let report = me
+                        .service
+                        .probe_adapter(Some(instance_id.clone()))
+                        .map_err(|m| ErrorInfo { code: "adapter.probe_failed".into(), message: msg(&m) })?;
+                    // The stack was stopped for it
+                    let (_, s) = me.snapshot();
+                    me.publish(Event::Adapter(AdapterState {
+                        status: AdapterStatus::Stopped,
+                        error: None,
+                        ..s.adapter
+                    }));
+                    let summary = a2dpwb_core::probe_report::summary_line(&report);
+                    tracing::info!("chip probe of {instance_id}: {summary}");
+                    let version = env!("CARGO_PKG_VERSION");
+                    let path = a2dpwb_core::probe_report::save(&me.config_dir(), &report, Some(&instance_id), version)
+                        .map_err(|e| {
+                            tracing::warn!("chip probe: the report could not be saved: {e}");
+                            err("adapter.probe_failed", "error.probe_save")
+                        })?;
+                    Ok(json(&ProbeResult { path: path.display().to_string(), summary }))
                 }))
                 .await
             }

@@ -71,7 +71,8 @@ export function adapterExperimental(a: Pick<AdapterInfo, "display_name">): boole
 /** A2DPWB can stream through it: not a chip whose firmware loader it lacks
  *  (MediaTek, Qualcomm). Those need their firmware loaded at every start
  *  before they answer as a Bluetooth controller, so they cannot work at all:
- *  neither WinUSB nor a firmware download is offered for them (issue #86) */
+ *  neither WinUSB nor a firmware download is offered for them (issue #86).
+ *  Developer mode offers WinUSB anyway, for the chip probe */
 export function adapterSupported(a: Pick<AdapterInfo, "vendor_note">): boolean {
   return a.vendor_note?.key !== "firmware.vendor_unsupported";
 }
@@ -112,6 +113,20 @@ export function Adapter() {
   };
   const [dialog, setDialog] = createSignal<{ adapter: AdapterInfo; mode: "assign" | "restore" } | null>(null);
   const [listing, setListing] = createSignal(false);
+  // Developer mode: WinUSB also for a chip A2DPWB cannot use yet, and the
+  // chip probe (read commands only) for whoever adds its loader
+  const developer = () => snap().settings.developer_mode;
+  const [probing, setProbing] = createSignal(false);
+  const probe = (a: AdapterInfo) => {
+    setProbing(true);
+    void app
+      .run(async () => {
+        const r = await core.request("adapter.probe", { instance_id: a.instance_id });
+        app.notify(t("ui.adapter.probe_saved", r.summary));
+        await core.transport.revealPath(r.path);
+      })
+      .finally(() => setProbing(false));
+  };
   // The *_fw.bin files in the settings folder: chips the table lacks
   const [files, setFiles] = createSignal<FirmwareFile[]>([]);
   const loadFiles = async () => {
@@ -224,13 +239,17 @@ export function Adapter() {
                           <Button
                             kind="strong"
                             icon="shield"
-                            disabled={!adapterSupported(a)}
+                            disabled={!adapterSupported(a) && !developer()}
                             onClick={() => setDialog({ adapter: a, mode: "assign" })}
                           >
                             {t("ui.adapter.assign_winusb")}
                           </Button>
                           <p class="hint">
-                            {t(adapterSupported(a) ? "ui.adapter.assign_short" : "ui.adapter.assign_unsupported")}
+                            {t(
+                              adapterSupported(a) || developer()
+                                ? "ui.adapter.assign_short"
+                                : "ui.adapter.assign_unsupported",
+                            )}
                           </p>
                         </>
                       }
@@ -266,6 +285,11 @@ export function Adapter() {
                         {t("ui.adapter.firmware_download_unavailable")}
                       </Button>
                       <p class="hint">{t("firmware.vendor_unsupported")}</p>
+                    </Show>
+                    <Show when={developer() && a.driver === "winusb"}>
+                      <Button icon="search" disabled={probing()} onClick={() => probe(a)}>
+                        {t("ui.adapter.probe")}
+                      </Button>
                     </Show>
                   </div>
                 </div>

@@ -803,6 +803,17 @@ pub struct VerboseState {
     pub until_ms: u64,
 }
 
+/// A chip probe's report (adapter.probe)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct ProbeResult {
+    /// The JSON report in logs\probe
+    pub path: String,
+    /// "Intel, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102, 8 of 8
+    /// commands answered"
+    pub summary: String,
+}
+
 /// A diagnostic bundle (diag.bundle)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 
@@ -1171,6 +1182,10 @@ pub enum Method {
     /// Restarts the Bluetooth stack
     #[serde(rename = "adapter.restart")]
     AdapterRestart,
+    /// Developer mode: the chip probe (read commands only) on this WinUSB
+    /// adapter; the stack stops first -> ProbeResult
+    #[serde(rename = "adapter.probe")]
+    AdapterProbe { instance_id: String },
     /// -> FirmwareFile[]: the Realtek firmware pairs in the settings folder
     #[serde(rename = "adapter.firmware_files")]
     AdapterFirmwareFiles,

@@ -31,6 +31,7 @@ pub use vendor::huawei::is_huawei;
 pub mod diag;
 pub mod firmware;
 pub mod mute_output;
+pub mod probe_report;
 pub mod receiver;
 pub mod update;
 pub mod volume_sync;

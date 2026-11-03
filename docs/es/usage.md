@@ -74,7 +74,7 @@ Con **Configuración > Modo de desarrollador**, la pantalla **Desarrollador** ti
 
 ### Adaptador
 
-- Los adaptadores Bluetooth USB detectados con su chip, **Controlador** y **Firmware**; la lista se actualiza sola al conectar o desconectar un adaptador. Un adaptador que A2DPWB no puede usar (MediaTek, Qualcomm) conserva su controlador: sus botones de WinUSB y de firmware están desactivados
+- Los adaptadores Bluetooth USB detectados con su chip, **Controlador** y **Firmware**; la lista se actualiza sola al conectar o desconectar un adaptador. Un adaptador que A2DPWB no puede usar (MediaTek, Qualcomm) conserva su controlador: sus botones de WinUSB y de firmware están desactivados. En el modo de desarrollador se le puede asignar WinUSB de todos modos, y **Leer datos del chip** en un adaptador con WinUSB guarda en `logs\probe\` lo que su chip responde a unos comandos de lectura, para quien quiera añadirle compatibilidad (Bluetooth se detiene para ello y vuelve a iniciarse en el siguiente uso)
 - **Reemplazar por el controlador WinUSB** / **Restaurar el controlador original** (consulte [Instalación](setup#winusb)); Windows solicita permiso de administrador cada vez
 - **Chip Bluetooth** para el firmware, con **Descargar firmware**, **Abrir página de descarga** y **Abrir carpeta de configuración** (consulte [Firmware](setup#firmware))
 - **Evitar canales Wi-Fi**: Automático, Desactivado o Manual, con los canales Wi-Fi al lado: los que Automático evita ahora y ninguno con Desactivado (ambos de solo lectura), los que escriba con Manual (consulte [Calidad del enlace y AFH](#link-quality))

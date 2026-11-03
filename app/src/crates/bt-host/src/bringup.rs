@@ -41,6 +41,9 @@ pub enum Outcome {
     Loaded { firmware: String, detail: Option<&'static str> },
     /// A ROM controller: runs without a download
     Rom,
+    /// The chip probe finished: no HCI init follows
+    /// ([`ChipLoader::take_report`] has what it read)
+    Probed,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,5 +112,10 @@ pub trait ChipLoader {
     /// ("x.sfi and x.ddc from linux-firmware (intel/)")
     fn missing_file_hint(&self, file: &str) -> String {
         file.to_owned()
+    }
+    /// The chip probe's record (crate::probe), also of a probe that stopped
+    /// early; None for a loader
+    fn take_report(&mut self) -> Option<crate::probe::ProbeReport> {
+        None
     }
 }

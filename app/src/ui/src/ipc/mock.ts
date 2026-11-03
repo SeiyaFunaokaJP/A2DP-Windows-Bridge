@@ -792,6 +792,12 @@ export class MockCore implements Transport {
         this.setAdapter("initializing");
         this.later(900, () => this.setAdapter("ready"));
         return null;
+      case "adapter.probe":
+        this.setAdapter("stopped");
+        return {
+          path: `${this.snap.log_dir}\\probe\\probe-20261103_161445.json`,
+          summary: "Intel, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102, 8 of 8 commands answered",
+        };
       case "adapter.firmware_files":
         return this.firmwareFolder();
       case "adapter.download_firmware":
