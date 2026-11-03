@@ -13,6 +13,7 @@ import type { CodecDetails as BCodecDetails } from "./bindings/CodecDetails";
 import type { Device as BDevice } from "./bindings/Device";
 import type { DevicePairing as BDevicePairing } from "./bindings/DevicePairing";
 import type { DeviceService as BDeviceService } from "./bindings/DeviceService";
+import type { ServiceList as BServiceList } from "./bindings/ServiceList";
 import type { DiagBundle as BDiagBundle } from "./bindings/DiagBundle";
 import type { ProbeResult as BProbeResult } from "./bindings/ProbeResult";
 import type { ScriptCheck as BScriptCheck } from "./bindings/ScriptCheck";
@@ -108,6 +109,7 @@ export type UpdateState = Wire<BUpdateState>;
 export type VerboseState = Wire<BVerboseState>;
 export type DevicePairing = Wire<BDevicePairing>;
 export type DeviceService = Wire<BDeviceService>;
+export type ServiceList = Wire<BServiceList>;
 export type WindowsImport = Wire<BWindowsImport>;
 
 export type MethodName = Method["method"];
@@ -122,7 +124,7 @@ interface Results {
   "device.scan": Device[];
   "device.windows_paired": string[];
   "device.pairing": DevicePairing;
-  "device.services": DeviceService[];
+  "device.services": ServiceList;
   "device.import_windows_pairings": WindowsImport;
   "adapter.list": AdapterInfo[];
   "adapter.assign_winusb": AdapterInfo[];

@@ -817,6 +817,11 @@
   "ui.pairing.services": "Services",
   "ui.pairing.services_loading": "Asking the device…",
   "ui.pairing.services_none": "The device lists no services",
+  "ui.pairing.key_title": "Pairing key",
+  "ui.pairing.unknown_service": "Unknown service",
+  "ui.pairing.services_last": "From its last connection",
+  "ui.pairing.no_le_keys": "No LE keys: the device was paired over classic Bluetooth.",
+  "ui.pairing.linux_file": "On Linux, save it as /var/lib/bluetooth/<adapter>/<device>/info and restart Bluetooth.",
   "ui.settings.open_config_folder": "Open Settings Folder",
   "ui.update.later": "Later",
   "ui.update.release_notes": "Full release notes"

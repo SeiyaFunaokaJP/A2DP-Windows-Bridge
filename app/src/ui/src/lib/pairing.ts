@@ -47,9 +47,33 @@ export function serviceName(uuid: string): string | null {
   return n === null ? null : (NAMES[n] ?? null);
 }
 
+/** A service as Windows' Bluetooth Services list names it: the SIG name,
+ *  with the device's own name in quotes ("Serial Port 'GAIA'"), else the
+ *  device's name, else null (an unknown service) */
+export function serviceLabel(s: { uuids: string[]; name: string | null }): string | null {
+  const sig = s.uuids.map((u) => serviceName(u)).find((n) => n) ?? null;
+  if (sig && s.name && s.name !== sig) return `${sig} '${s.name}'`;
+  return sig ?? s.name;
+}
+
 /** The [LinkKey] group of BlueZ' per-device info file
  *  (/var/lib/bluetooth/<adapter>/<device>/info): the key in the same byte
  *  order, upper case */
 export function bluezLinkKey(key: string, keyType: number): string {
   return `[LinkKey]\nKey=${key.toUpperCase()}\nType=${keyType}\nPINLength=0\n`;
+}
+
+/** BlueZ' whole info file for a classic device (issue #86: taken to Linux
+ *  as it is): its name, trusted, the services it lists (when known), then
+ *  the link key */
+export function bluezInfo(name: string, services: string[], key: string, keyType: number): string {
+  const general = [
+    "[General]",
+    `Name=${name}`,
+    "SupportedTechnologies=BR/EDR;",
+    "Trusted=true",
+    "Blocked=false",
+    ...(services.length ? [`Services=${services.map((u) => `${u.toLowerCase()};`).join("")}`] : []),
+  ];
+  return `${general.join("\n")}\n\n${bluezLinkKey(key, keyType)}`;
 }

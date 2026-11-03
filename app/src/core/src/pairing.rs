@@ -8,11 +8,12 @@
 //! prompt). A key A2DPWB has already is never replaced: the device was
 //! paired with A2DPWB later, so Windows' key is the old one.
 
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 use bt_host::ServicesError;
 use bt_host::link_keys::FileLinkKeyStore;
-use ipc::{DevicePairing, DeviceService, ErrorInfo, LinkKeyInfo, Msg, WindowsImport};
+use ipc::{DevicePairing, DeviceService, ErrorInfo, LinkKeyInfo, Msg, ServiceList, WindowsImport};
 use serde_json::Value;
 
 use crate::state::CoreState;
@@ -53,22 +54,43 @@ pub fn pairing(state: &CoreState, addr: &str) -> Result<Value, ErrorInfo> {
     Ok(serde_json::to_value(DevicePairing { link_key }).unwrap_or(Value::Null))
 }
 
-/// device.services: over the link the running stack has to the device
+/// Each device's services from its last answer since the core started (by
+/// address), shown while it is not connected (issue #86)
+static SEEN: Mutex<BTreeMap<[u8; 6], Vec<DeviceService>>> = Mutex::new(BTreeMap::new());
+
+fn seen() -> std::sync::MutexGuard<'static, BTreeMap<[u8; 6], Vec<DeviceService>>> {
+    SEEN.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn list(services: Vec<DeviceService>, from_last_connection: bool) -> Value {
+    serde_json::to_value(ServiceList { services, from_last_connection }).unwrap_or(Value::Null)
+}
+
+/// device.services: over the link the running stack has to the device; not
+/// connected, the list it gave last
 pub fn services(state: &CoreState, addr: &str) -> Result<Value, ErrorInfo> {
     developer(state)?;
     let addr = address(addr)?;
-    let host = state.service.host().ok_or_else(|| err("device.not_connected", "ipc.error.services_not_connected"))?;
-    let records = host.device_services(addr).map_err(|e| match e {
-        ServicesError::NotConnected => err("device.not_connected", "ipc.error.services_not_connected"),
-        ServicesError::Busy => err("device.busy", "ipc.error.services_busy"),
-        ServicesError::NoAnswer | ServicesError::Failed(_) => {
+    let not_connected = || match seen().get(&addr) {
+        Some(last) => Ok(list(last.clone(), true)),
+        None => Err(err("device.not_connected", "ipc.error.services_not_connected")),
+    };
+    let Some(host) = state.service.host() else {
+        return not_connected();
+    };
+    let records = match host.device_services(addr) {
+        Ok(r) => r,
+        Err(ServicesError::NotConnected) => return not_connected(),
+        Err(ServicesError::Busy) => return Err(err("device.busy", "ipc.error.services_busy")),
+        Err(e @ (ServicesError::NoAnswer | ServicesError::Failed(_))) => {
             tracing::info!("services of {}: {e:?}", bt_host::addr_str(&addr));
-            err("device.no_answer", "ipc.error.services_no_answer")
+            return Err(err("device.no_answer", "ipc.error.services_no_answer"));
         }
-    })?;
-    let list: Vec<DeviceService> =
+    };
+    let services: Vec<DeviceService> =
         records.into_iter().map(|r| DeviceService { uuids: r.classes, name: r.name }).collect();
-    Ok(serde_json::to_value(list).unwrap_or(Value::Null))
+    seen().insert(addr, services.clone());
+    Ok(list(services, false))
 }
 
 /// One key of the helper's answer

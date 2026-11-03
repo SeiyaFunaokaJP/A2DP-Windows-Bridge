@@ -702,11 +702,15 @@ export class MockCore implements Transport {
             : null,
         };
       case "device.services":
-        return [
-          { uuids: ["0000110b-0000-1000-8000-00805f9b34fb"], name: "Audio Sink" },
-          { uuids: ["0000110e-0000-1000-8000-00805f9b34fb", "0000110f-0000-1000-8000-00805f9b34fb"], name: null },
-          { uuids: ["df21fe2c-2515-4fdb-8886-f12c4d67927c"], name: "Vendor" },
-        ];
+        return {
+          services: [
+            { uuids: ["0000110b-0000-1000-8000-00805f9b34fb"], name: "Audio Sink" },
+            { uuids: ["0000110e-0000-1000-8000-00805f9b34fb", "0000110f-0000-1000-8000-00805f9b34fb"], name: null },
+            { uuids: ["00001101-0000-1000-8000-00805f9b34fb"], name: "GAIA" },
+            { uuids: ["df21fe2c-2515-4fdb-8886-f12c4d67927c"], name: null },
+          ],
+          from_last_connection: false,
+        };
       case "device.import_windows_pairings":
         return { adapter_found: true, imported: ["00:A2:D0:00:00:02"], kept: [] };
       case "device.scan_stop":

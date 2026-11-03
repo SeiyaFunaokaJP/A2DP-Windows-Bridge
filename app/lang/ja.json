@@ -817,6 +817,11 @@
   "ui.pairing.services": "サービス",
   "ui.pairing.services_loading": "デバイスに問い合わせています…",
   "ui.pairing.services_none": "デバイスはサービスを公開していません",
+  "ui.pairing.key_title": "ペアリングキー",
+  "ui.pairing.unknown_service": "不明なサービス",
+  "ui.pairing.services_last": "前回の接続時のものです",
+  "ui.pairing.no_le_keys": "LE のキーはありません（クラシック Bluetooth でペアリングしたため）。",
+  "ui.pairing.linux_file": "Linux では /var/lib/bluetooth/<アダプター>/<デバイス>/info として保存し、Bluetooth を再起動します。",
   "ui.settings.open_config_folder": "設定フォルダーを開く",
   "ui.update.later": "後で",
   "ui.update.release_notes": "リリースノート全文"
