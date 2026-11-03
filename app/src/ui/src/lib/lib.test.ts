@@ -277,7 +277,7 @@ describe("profiles", () => {
   });
 
   it("offers 192 kHz for LHDC V5 only, and no quality under its ABR", () => {
-    expect(sampleRates("lhdcv5")).toEqual([0, 44100, 48000, 88200, 96000, 192000]);
+    expect(sampleRates("lhdcv5")).toEqual([0, 44100, 48000, 96000, 192000]);
     expect(sampleRates("ldac")).not.toContain(192000);
     const p = { ...sampleProfile(), codec: "lhdcv5", sample_rate: 192000 };
     expect(fitToCodec(p).sample_rate).toBe(192000);
@@ -307,7 +307,8 @@ describe("profiles", () => {
     expect(offeredBitDepths("lhdcv5", lhdc)).toEqual([0, 16]);
     // Not known: everything; 88.2 kHz runs as 96 kHz on LHDC V5
     expect(offeredSampleRates("lhdcv5", null)).toEqual(sampleRates("lhdcv5"));
-    expect(offeredSampleRates("lhdcv5", { ...lhdc!, sample_rates: [48000, 96000] })).toEqual([0, 48000, 88200, 96000]);
+    // No 88.2 kHz standing in for 96 kHz (issue #86: Moto buds+)
+    expect(offeredSampleRates("lhdcv5", { ...lhdc!, sample_rates: [48000, 96000] })).toEqual([0, 48000, 96000]);
     // AAC's High at the device's largest bit rate
     expect(qualityKbps("aac", "hq", 0, capsOf(caps, "aac")!.max_bitrate)).toBe("131");
     expect(qualityKbps("aac", "hq", 0, 320000)).toBe("256");
@@ -552,7 +553,7 @@ describe("profile list", () => {
     expect(tag({ codec: "ldac", quality: "sq", sample_rate: 44100 })).toBe("Medium (606 kbps)");
     expect(tag({ codec: "ldac", quality: "mq", sample_rate: 88200 })).toBe("Low (303 kbps)");
     expect(tag({ codec: "lhdcv5", quality: "sq", sample_rate: 44100 })).toBe("Medium (480 kbps)");
-    expect(tag({ codec: "lhdcv5", quality: "sq", sample_rate: 88200 })).toBe("Medium (500 kbps)");
+    expect(tag({ codec: "lhdcv5", quality: "sq", sample_rate: 96000 })).toBe("Medium (500 kbps)");
     // LHDC V5's Medium-High is back (issue #203); a quality a codec does
     // not offer is High
     expect(tag({ codec: "lhdcv5", quality: "mhq" })).toBe("Medium-High (900 kbps)");
