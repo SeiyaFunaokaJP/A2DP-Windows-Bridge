@@ -64,12 +64,25 @@ describe("device pairing", () => {
     expect(within(dialog).getByRole("button", { name: t("ui.pairing.copy_linux") })).toBeInTheDocument();
   });
 
-  it("imports Windows' pairings of an adapter on WinUSB", async () => {
-    const { calls } = await open("#/adapter", true);
-    const buttons = await screen.findAllByRole("button", { name: t("ui.adapter.import_windows") });
-    fireEvent.click(buttons[0]);
+  it("imports Windows' pairings on Audio Devices, without developer mode (issue #86)", async () => {
+    const { calls } = await open("#/devices", false);
+    // Only while Windows lists a device A2DPWB has not saved
+    mock!.windowsPaired = ["11:22:33:44:55:66"];
+    await mock!.call("adapter.list");
+    const button = await screen.findByRole("button", { name: t("ui.adapter.import_windows") });
+    expect(screen.getByText(t("ui.devices.import_hint"))).toBeInTheDocument();
+    fireEvent.click(button);
     expect(await screen.findByText(t("ui.adapter.import_done", 1))).toBeInTheDocument();
     const sent = calls.find((c) => c.method === "device.import_windows_pairings")!.params as { adapter: string };
     expect(sent.adapter).toMatch(/^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/);
+  });
+
+  it("offers no import when Windows has nothing new, nor on the Adapter screen", async () => {
+    await open("#/devices", true);
+    await screen.findAllByText(t("device.tag_saved"));
+    expect(screen.queryByRole("button", { name: t("ui.adapter.import_windows") })).toBeNull();
+    location.hash = "#/adapter";
+    await screen.findByRole("heading", { level: 1, name: t("ui.nav.adapter") });
+    expect(screen.queryByRole("button", { name: t("ui.adapter.import_windows") })).toBeNull();
   });
 });

@@ -770,6 +770,7 @@
   "ui.devices.all_title": "すべてのオーディオデバイス",
   "ui.more_info": "%s の詳細",
   "ui.devices.add": "追加",
+  "ui.devices.import_hint": "Windows でこのアダプターとペアリングしたヘッドホンを、ペアリングし直さずに使えます。管理者の許可を求められます。",
   "ui.devices.windows_paired_title": "Windows でペアリング済み",
   "ui.devices.windows_paired_text": "%s は Windows の Bluetooth でペアリング済みです。接続の競合を防ぐため、先に Windows の Bluetooth から削除することをおすすめします。",
   "ui.devices.add_anyway": "このまま追加",

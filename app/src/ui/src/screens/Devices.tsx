@@ -9,6 +9,7 @@ import { useApp } from "../app/context";
 import { saveSettings } from "../app/settings";
 import { Toggle } from "../components/controls";
 import { DevicePicker } from "../components/DevicePicker";
+import { ImportPairings } from "../components/ImportPairings";
 import { DeviceSettings, VbCableNote } from "../components/DeviceSettings";
 import { t } from "../i18n";
 import { vbCable } from "../lib/profile";
@@ -39,6 +40,7 @@ export function Devices() {
         </section>
       </Show>
       <AllDevices />
+      <ImportPairings />
       <DevicePicker manage address="" onPick={() => {}} settings={(d) => <DeviceSettings device={d} />} />
     </div>
   );

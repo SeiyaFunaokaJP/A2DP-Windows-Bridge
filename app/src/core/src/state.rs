@@ -1487,7 +1487,7 @@ impl CoreState {
 
     /// The device list again (saved file, last scan, codecs); published if
     /// it changed
-    fn refresh_devices(&self) {
+    pub(crate) fn refresh_devices(&self) {
         let (_, s) = self.snapshot();
         let scanned: Vec<Device> = s.devices.iter().filter(|d| !d.saved).cloned().collect();
         let list = saved_devices(&self.config_dir(), &scanned, &self.service.device_codecs());

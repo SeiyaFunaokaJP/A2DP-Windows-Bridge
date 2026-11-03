@@ -770,6 +770,7 @@
   "ui.devices.all_title": "Alle Audiogeräte",
   "ui.more_info": "Mehr zu %s",
   "ui.devices.add": "Hinzufügen",
+  "ui.devices.import_hint": "Kopfhörer, die Windows über diesen Adapter gekoppelt hat, verbinden sich ohne neue Kopplung. Windows fragt nach Administratorrechten.",
   "ui.devices.windows_paired_title": "In Windows gekoppelt",
   "ui.devices.windows_paired_text": "%s ist bereits im Windows-Bluetooth gekoppelt. Um Verbindungskonflikte zu vermeiden, entferne es zuerst dort.",
   "ui.devices.add_anyway": "Trotzdem hinzufügen",
