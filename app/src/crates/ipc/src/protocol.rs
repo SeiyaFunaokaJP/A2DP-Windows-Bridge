@@ -814,6 +814,33 @@ pub struct ProbeResult {
     pub summary: String,
 }
 
+/// A chip script checked before it runs (adapter.check_script)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct ScriptCheck {
+    /// Lines that cannot be read ("line 3: ..."); empty: it can run
+    pub errors: Vec<String>,
+    /// Lines not known to only read ("line 2: hci fc05 ff"): the script runs
+    /// only with allow_writes
+    pub writes: Vec<String>,
+    /// Lines the adapter's vendor never takes from a script
+    pub denied: Vec<String>,
+}
+
+/// A chip script's run (adapter.run_script)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct ScriptResult {
+    /// The JSON report in logs\probe
+    pub path: String,
+    /// "9 of 9 lines done" or where it stopped
+    pub summary: String,
+    /// One per line run: "line 1: hci 1001  3 ms  0e0c..."
+    pub lines: Vec<String>,
+    /// Events that answered no line, in hex
+    pub other_events: Vec<String>,
+}
+
 /// A diagnostic bundle (diag.bundle)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 
@@ -1186,6 +1213,14 @@ pub enum Method {
     /// adapter; the stack stops first -> ProbeResult
     #[serde(rename = "adapter.probe")]
     AdapterProbe { instance_id: String },
+    /// Developer mode: reads a chip script for this adapter -> ScriptCheck
+    #[serde(rename = "adapter.check_script")]
+    AdapterCheckScript { instance_id: String, script: String },
+    /// Developer mode: runs a chip script on this WinUSB adapter; one with
+    /// lines that may change the chip only with allow_writes, never one
+    /// with denied lines -> ScriptResult
+    #[serde(rename = "adapter.run_script")]
+    AdapterRunScript { instance_id: String, script: String, allow_writes: bool },
     /// -> FirmwareFile[]: the Realtek firmware pairs in the settings folder
     #[serde(rename = "adapter.firmware_files")]
     AdapterFirmwareFiles,

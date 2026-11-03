@@ -798,6 +798,22 @@ export class MockCore implements Transport {
           path: `${this.snap.log_dir}\\probe\\probe-20261103_161445.json`,
           summary: "Intel, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102, 8 of 8 commands answered",
         };
+      case "adapter.check_script":
+        return mockCheckScript(String(p.script));
+      case "adapter.run_script": {
+        const check = mockCheckScript(String(p.script));
+        if (check.errors.length || check.denied.length || (check.writes.length && !p.allow_writes)) {
+          throw { code: "adapter.script_refused", message: { key: "error.script_writes", args: [check.writes.join("\n")] } };
+        }
+        this.setAdapter("stopped");
+        const lines = mockScriptLines(String(p.script));
+        return {
+          path: `${this.snap.log_dir}\\probe\\script-20261103_172001.json`,
+          summary: `${lines.length} of ${lines.length} lines done`,
+          lines: lines.map((l) => `${l}  2 ms  0e0c01011000000c0231`),
+          other_events: [],
+        };
+      }
       case "adapter.firmware_files":
         return this.firmwareFolder();
       case "adapter.download_firmware":
@@ -1661,6 +1677,34 @@ export class MockCore implements Transport {
         })
       : text;
   }
+}
+
+/** A chip script's lines as the core names them ("line 2: hci 1001") */
+function mockScriptLines(script: string): string[] {
+  return script
+    .split("\n")
+    .map((l, i) => [i + 1, l.split("#")[0].trim()] as const)
+    .filter(([, l]) => l)
+    .map(([n, l]) => `line ${n}: ${l}`);
+}
+
+/** The core's check, roughly: unknown words are errors, HCI reads of OGF
+ *  0x04 run freely, everything else asks; CSR's BCCMD (0xfc00) is denied */
+function mockCheckScript(script: string): { errors: string[]; writes: string[]; denied: string[] } {
+  const check = { errors: [] as string[], writes: [] as string[], denied: [] as string[] };
+  for (const line of mockScriptLines(script)) {
+    const [, words] = line.split(": ");
+    const [word, op] = words.split(/\s+/);
+    if (!["hci", "bulk", "usb", "wait", "expect", "bootloader", "upload", "upload-bulk"].includes(word)) {
+      check.errors.push(`${line.split(":")[0]}: '${word}' is not a request`);
+    } else if (word === "hci" && /^(0x)?10[0-9a-f]{2}$/i.test(op ?? "")) {
+      // a read
+    } else if (!["wait", "expect", "bootloader"].includes(word)) {
+      if (/^(0x)?fc00$/i.test(op ?? "")) check.denied.push(line);
+      else check.writes.push(line);
+    }
+  }
+  return check;
 }
 
 /** The mock as configured by the page URL (browser dev mode) */

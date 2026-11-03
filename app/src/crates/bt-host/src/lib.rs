@@ -21,6 +21,7 @@ pub mod link_keys;
 pub mod media;
 pub mod probe;
 pub mod rfcomm;
+pub mod script;
 mod shared;
 pub mod stats;
 
@@ -64,6 +65,26 @@ const DEVICE_A2DP_TIMEOUT: Duration = Duration::from_secs(2);
 const JOB_TIMEOUT: Duration = Duration::from_secs(5);
 /// The whole chip probe: every step timing out takes 8 s
 const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Makes a tool's loader on the BtHost thread, from the firmware folder
+/// (BtHost::probe, BtHost::run_script)
+pub(crate) type ToolLoader = Box<dyn FnOnce(&std::path::Path) -> Box<dyn bringup::ChipLoader> + Send>;
+
+/// How long a chip script may take: its waits and every step timing out,
+/// and 5 minutes per upload (thousands of acknowledged commands)
+fn script_timeout(script: &script::Script) -> Duration {
+    let ms: u64 = script
+        .lines
+        .iter()
+        .map(|l| match &l.step {
+            script::Step::Wait(ms) => *ms as u64,
+            script::Step::Expect { timeout, .. } => *timeout as u64,
+            script::Step::Upload { .. } => 300_000,
+            script::Step::Hci { .. } | script::Step::Usb(_) | script::Step::Bootloader(_) => 3_000,
+        })
+        .sum();
+    Duration::from_millis(10_000 + ms)
+}
 /// An RFCOMM channel open: the BTstack thread answers by its deadline
 /// (rfcomm::OPEN_DEADLINE); this only guards against a run loop that hangs
 const RFCOMM_OPEN_TIMEOUT: Duration = Duration::from_secs(22);
@@ -380,10 +401,31 @@ impl BtHost {
     /// of HCI init: read commands only. The stack is shut down afterwards,
     /// releasing the adapter. Err only when no stack could run at all.
     pub fn probe(config: HostConfig) -> Result<probe::ProbeReport, InitFailure> {
+        BtHost::run_tool(config, Box::new(|_| Box::new(probe::Probe::new())), PROBE_TIMEOUT)
+    }
+
+    /// A chip script (crate::script) on the adapter `config` opens, in place
+    /// of HCI init; its uploads read the firmware folder. Whether the script
+    /// may run (writes, denied opcodes) is the caller's to decide. The stack
+    /// is shut down afterwards.
+    pub fn run_script(config: HostConfig, script: script::Script) -> Result<probe::ProbeReport, InitFailure> {
+        let timeout = script_timeout(&script);
+        BtHost::run_tool(
+            config,
+            Box::new(move |dir| {
+                let dir = dir.to_path_buf();
+                let reader = Box::new(move |name: &str| std::fs::read(dir.join(name)).ok());
+                Box::new(script::ScriptLoader::new(script, reader))
+            }),
+            timeout,
+        )
+    }
+
+    fn run_tool(config: HostConfig, tool: ToolLoader, timeout: Duration) -> Result<probe::ProbeReport, InitFailure> {
         let (tx, rx) = mpsc::channel();
-        let host = BtHost::launch(config, Arc::new(LinkStats::default()), Some(tx))?;
-        let report = rx.recv_timeout(PROBE_TIMEOUT).unwrap_or_else(|_| probe::ProbeReport {
-            error: Some("the probe did not finish in time".into()),
+        let host = BtHost::launch(config, Arc::new(LinkStats::default()), Some((tx, tool)))?;
+        let report = rx.recv_timeout(timeout).unwrap_or_else(|_| probe::ProbeReport {
+            error: Some("it did not finish in time".into()),
             ..probe::ProbeReport::default()
         });
         drop(host);
@@ -391,12 +433,17 @@ impl BtHost {
     }
 
     /// BTstack on its thread with the transport: HCI init (or the Intel
-    /// loader first), or with `probe` the chip probe instead
+    /// loader first), or with `tool` that loader instead (the probe, a
+    /// script), its report to the sender
     fn launch(
         config: HostConfig,
         stats: Arc<LinkStats>,
-        probe: Option<mpsc::Sender<probe::ProbeReport>>,
+        tool: Option<(mpsc::Sender<probe::ProbeReport>, ToolLoader)>,
     ) -> Result<BtHost, InitFailure> {
+        let (probe, tool) = match tool {
+            Some((tx, make)) => (Some(tx), Some(make)),
+            None => (None, None),
+        };
         let shared = Arc::new(Shared::default());
         let controls = Arc::new(Controls {
             volume: AtomicI32::new(-1),
@@ -466,7 +513,6 @@ impl BtHost {
                             .set_packet_logger(Some(Box::new(move |t, incoming, p| logger.log_packet(t, incoming, p))));
                         let (sink, consumer, media_streaming) = media::queue(stats.clone(), remote);
                         let _ = remote_tx.send((remote, sink));
-                        let probe_mode = probe.is_some();
                         let setup = Setup {
                             tcp,
                             link_key_dir,
@@ -490,11 +536,11 @@ impl BtHost {
                             le,
                         );
                         let backend = backend(&transport);
-                        if probe_mode {
-                            // Read commands only, no HCI init (also over
-                            // TCP: the emulator's controller)
+                        if let Some(make) = tool {
+                            // A tool, no HCI init (also over TCP: the
+                            // emulator's controller)
                             stack.install_transport(backend);
-                            app.start_probe(stack);
+                            app.start_tool(stack, make);
                         } else if intel_loader && !tcp {
                             // Intel controllers boot into a bootloader and
                             // need ibt-*.sfi / .ddc before HCI init; the

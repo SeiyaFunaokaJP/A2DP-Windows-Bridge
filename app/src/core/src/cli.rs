@@ -64,6 +64,9 @@ Usage: a2dpwb-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
   --probe               read what the adapter answers (read commands only, no
                         HCI init; for adapters A2DPWB cannot use yet), save it
                         to logs\\probe and exit
+  --script <file>       run a chip script on the adapter in place of HCI init
+                        (docs/chip-support.md), save its report and exit
+  --allow-writes        let --script send requests that may change the chip
 
 LE Audio (experimental, LC3 over LE isochronous channels):
   --le-audio            stream to the LE Audio device -d (BAP unicast, LC3)
@@ -123,6 +126,8 @@ struct Args {
     remote_sink: Option<String>,
     scan: Option<u32>,
     probe: bool,
+    script: Option<PathBuf>,
+    allow_writes: bool,
     hci_tcp: Option<String>,
     hci_capture: Option<PathBuf>,
     test_tone: bool,
@@ -199,6 +204,8 @@ fn parse(args: &[String]) -> Result<Args, String> {
         remote_sink: None,
         scan: None,
         probe: false,
+        script: None,
+        allow_writes: false,
         hci_tcp: None,
         hci_capture: None,
         test_tone: false,
@@ -292,6 +299,8 @@ fn parse(args: &[String]) -> Result<Args, String> {
                 a.scan = Some(secs);
             }
             "--probe" => a.probe = true,
+            "--script" => a.script = Some(value(&mut it, "--script")?.into()),
+            "--allow-writes" => a.allow_writes = true,
             "--hci-tcp" => a.hci_tcp = Some(value(&mut it, "--hci-tcp")?),
             "--hci-capture" => a.hci_capture = Some(value(&mut it, "--hci-capture")?.into()),
             "--test-tone" => a.test_tone = true,
@@ -394,6 +403,13 @@ pub fn run(args: &[String]) -> i32 {
     if a.le.on {
         // LE Audio (experimental): its own flow (v1 le_audio_cli.cpp)
         let code = le_run(&a, &service, &running);
+        service.shutdown();
+        capture.stop();
+        return code;
+    }
+
+    if let Some(file) = &a.script {
+        let code = run_script(&service, file, a.allow_writes, a.usb.as_ref().map(|(u, _)| u.as_str()));
         service.shutdown();
         capture.stop();
         return code;
@@ -788,6 +804,78 @@ fn le_connect_group(
         }
     }
     Some(ids)
+}
+
+/// --script: checks the script as the window does (writes need
+/// --allow-writes, denied opcodes never run), runs it, prints each line and
+/// saves the report
+fn run_script(service: &Service, file: &std::path::Path, allow_writes: bool, adapter: Option<&str>) -> i32 {
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Cannot read {}: {e}", file.display());
+            return 1;
+        }
+    };
+    let script = match bt_host::script::parse(&text) {
+        Ok(s) => s,
+        Err(errors) => {
+            for e in errors {
+                eprintln!("{e}");
+            }
+            return 1;
+        }
+    };
+    let line = |l: &bt_host::script::ScriptLine| format!("line {}: {}", l.line, l.text);
+    // The vendor from -u VID:PID; a selector by instance ID or none gets no
+    // deny list (the window knows the adapter)
+    let vendor = adapter
+        .and_then(|u| UsbSelector::from_arg(u).ok())
+        .and_then(|s| s.vid_pid)
+        .map_or(bt_host::chips::ChipVendor::Unknown, |(vid, pid)| bt_host::chips::vendor_for_usb(vid, pid, None));
+    let denied = script.denied(bt_host::chips::denied_opcodes(vendor));
+    if !denied.is_empty() {
+        eprintln!("These lines could change the chip for good and never run on a {} adapter:", vendor.name());
+        for l in denied {
+            eprintln!("  {}", line(l));
+        }
+        return 1;
+    }
+    let writes = script.writes();
+    if !writes.is_empty() && !allow_writes {
+        eprintln!("These lines may change the chip; run with --allow-writes to send them:");
+        for l in writes {
+            eprintln!("  {}", line(l));
+        }
+        return 1;
+    }
+    let total = script.lines.len();
+    match service.run_script(None, script) {
+        Ok(report) => {
+            for l in bt_host::script::report_text(&report) {
+                println!("{l}");
+            }
+            match &report.error {
+                Some(e) => println!("\nStopped at {e}"),
+                None => println!("\n{} of {total} lines done", report.steps.len()),
+            }
+            match a2dpwb_core::probe_report::save_script(
+                &a2dpwb_core::paths::config_dir(),
+                &report,
+                &text,
+                adapter,
+                env!("CARGO_PKG_VERSION"),
+            ) {
+                Ok(path) => println!("Saved to {}", path.display()),
+                Err(e) => eprintln!("The report could not be saved: {e}"),
+            }
+            i32::from(report.error.is_some())
+        }
+        Err(m) => {
+            eprintln!("{m}");
+            1
+        }
+    }
 }
 
 /// v1's --le-scan listing line

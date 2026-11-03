@@ -254,10 +254,11 @@ impl HostApp {
         self.start_loader(stack, Box::new(loader));
     }
 
-    /// The chip probe (crate::probe) on the transport installed already, in
-    /// place of HCI init: its report goes to `setup.probe`
-    pub fn start_probe(&mut self, stack: &Stack) {
-        self.start_loader(stack, Box::new(crate::probe::Probe::new()));
+    /// A tool (the chip probe, a chip script) on the transport installed
+    /// already, in place of HCI init: its report goes to `setup.probe`
+    pub fn start_tool(&mut self, stack: &Stack, make: crate::ToolLoader) {
+        let loader = make(&self.setup.firmware_dir);
+        self.start_loader(stack, loader);
     }
 
     /// A chip bring-up (crate::bringup) on the transport installed already,

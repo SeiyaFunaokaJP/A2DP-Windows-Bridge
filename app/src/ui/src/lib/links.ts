@@ -5,6 +5,8 @@ const REPO = "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge";
 export const LINKS = {
   repo: REPO,
   setupGuide: `${REPO}/blob/main/docs/setup.md`,
+  /** The chip script format (docs/chip-support.md, published) */
+  chipScripts: "https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/chip-support#chip-scripts",
   /** Realtek firmware: linux-firmware rtl_bt (v1 wx_firmware_dialog.cpp) */
   firmwareRealtek: "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt",
   firmwareIntel: "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/intel",
