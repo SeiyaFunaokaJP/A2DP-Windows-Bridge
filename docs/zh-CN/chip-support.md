@@ -61,7 +61,7 @@ A2DP Windows Bridge 自己驱动 Bluetooth 适配器（WinUSB），因此在适�
 
 请先从托盘退出 A2DP Windows Bridge，两者不能同时使用适配器。
 
-**提交报告**：新建一个 issue，附上芯片名称、探测生成的 JSON 文件，以及适配器的产品名称和来源（笔记本电脑内置的请写明电脑型号）。报告中包含适配器的 Bluetooth 地址和名称，不包含任何关于你的耳机的信息。包含 HCI 抓包的**诊断包**（**诊断**页面）也会在 `probe/` 下附带探测报告。
+**提交报告**：单击**读取芯片信息**后，适配器卡片上会显示读到的内容和**在 GitHub 上报告**按钮。它会新建一个 issue，自动填入版本、适配器、这些摘要以及你的 Windows 版本号，并在资源管理器中显示报告文件：把它拖到 issue 中，再补充适配器的来源（笔记本电脑内置的请写明电脑型号）。报告中包含适配器的 Bluetooth 地址和名称，不包含任何关于你的耳机的信息。包含 HCI 抓包的**诊断包**（**诊断**页面）也会在 `probe/` 下附带探测报告。
 
 ## 第 3 步：记录 Windows 驱动程序的操作
 
@@ -84,6 +84,33 @@ A2DP Windows Bridge 自己驱动 Bluetooth 适配器（WinUSB），因此在适�
 
 {: .warning }
 请以抓包、探测报告和厂商文档为依据。不要复制或照搬 GPL 代码，例如 Linux 内核的 `btmtk` 或 `btqca` 驱动程序：A2DP Windows Bridge 采用 MIT 许可证，由它们派生的加载程序无法被收录。
+
+## 无需构建即可试用：芯片脚本 {#chip-scripts}
+
+在编写加载程序之前，先在适配器上试一试抓包中看到的操作：**芯片脚本**就是以文本形式写下的这串操作，每行一个请求，代替 Bluetooth 协议栈运行。没有该适配器的人也可以编写脚本，发给手上有适配器的人；结果以报告的形式返回，无需新的构建。
+
+**运行脚本**：开发者模式下打开**开发者 > 芯片**：选择适配器（使用 WinUSB），输入脚本或打开文件，然后单击**运行**。每一行的应答显示在下方，**显示报告**会打开 `logs\probe\` 中的 `script-<date>_<time>.json`（其中包含脚本本身）。在命令行中：`a2dpwb-core --cli -u <adapter> --script <file>`。
+
+```text
+# 每行一个请求；除 wait、timeout= 和 chunk= 外，数字均为十六进制（0x 可省略）
+hci 1001                           # 一条 HCI 命令：操作码，然后是参数字节
+hci fc05 ff
+bulk fc09 00 01 02                 # 同上，但在 bulk OUT 管道上发送
+usb in vendor device 63 0 0 4      # 控制 IN：类型、接收方、请求、value、index、长度
+usb out vendor device 64 0 0 01    # 控制 OUT：……，然后是数据字节
+wait 100                           # 毫秒
+expect e4 02 01 timeout=5000       # 一个事件：其代码和最前面的参数字节
+bootloader off                     # bootloader 模式（一开始即为开启）
+upload mediatek/patch.bin fc6f 01 01 chunk=240 ack=event:e4:02,01
+upload-bulk patch.bin fc09 01      # 同上，但在 bulk OUT 管道上发送
+```
+
+- `hci` 和 `bulk` 会等待该命令的 Command Complete 或 Command Status（2 秒）并记录下来，无论其状态如何
+- `upload` 把固件文件夹中的一个文件分成多条该操作码的命令发送，每条带有头部字节和最多 `chunk` 字节的文件内容（默认 240），并等待每一条的确认：`ack=complete`（默认：该操作码状态为 0 的 Command Complete 或 Command Status）或 `ack=event:<code>[:<bytes>]`。出现错误状态即停止
+- 脚本在第一个失败的行（无应答、出错、文件缺失）处停止，并指出是哪一行
+- 不对应任何一行的事件也会保存在报告中
+
+**安全**：只有已知为读取的请求会直接运行：标准 HCI 读取命令（信息参数和状态参数、Read Local Name、LE 读取命令）、标准 USB 描述符请求、`wait`、`expect` 和 `bootloader`。含有其他任何行的脚本，只有在你允许后才会运行（这些行的列表下方的**允许运行**；命令行中为 `--allow-writes`）。可能写入芯片在断电后仍会保留的存储器的厂商命令，无论是否允许都不会运行（`app/src/crates/bt-host/src/chips.rs` 中的 `denied_opcodes`：目前为 CSR 的 BCCMD）。bootloader 模式一开始即为开启，因此之后关闭适配器时不会发送 HCI Reset。加载到芯片 RAM 中的固件在重新插拔后就会消失。
 
 ## 第 4 步：编写加载程序
 
@@ -116,6 +143,7 @@ A2DP Windows Bridge 自己驱动 Bluetooth 适配器（WinUSB），因此在适�
 | `on_control(result)` | 上一个 `UsbControl` 的结果：读到的字节，或失败原因 |
 | `on_timeout()` | 上一个 `Timer` 的计时器到期时 |
 | `missing_file_hint(file)` | 加载程序以 `MissingFile` 结束时，用于日志：把什么文件放到哪里（"x.bin from linux-firmware (mediatek/)"） |
+| `step()`、`progress()` | 每批动作之后：当前步骤的名称（"download"）及其进度（已发送的命令数 / 总数），用于适配器启动期间的**适配器**页面 |
 
 `Done` 之后应用会丢弃加载程序：迟到的应答不会再到达它。
 
@@ -222,7 +250,7 @@ target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.
 {: .note }
 有多个适配器使用 WinUSB 时，即使指定了 `-u`，也会优先使用 Realtek 适配器并应用其芯片设置。请把**适配器 > Bluetooth 芯片**设为**非 Realtek**，或者测试时只让你的适配器使用 WinUSB。
 
-然后通过窗口向耳机串流一段时间，并确认**重新启动 Bluetooth**和重新插拔后都能恢复正常。
+然后通过窗口向耳机串流一段时间，并确认**重新启动 Bluetooth**和重新插拔后都能恢复正常。适配器启动期间，**适配器**页面会在 Bluetooth 状态下方显示加载程序的情况（“正在加载 42%”，或加载失败）；在开发者模式下，就绪后也会显示，包括你的 `step()` 名称以及结束方式。
 
 ## 第 8 步：创建 pull request
 

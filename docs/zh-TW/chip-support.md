@@ -61,7 +61,7 @@ A2DP Windows Bridge 會自行驅動藍牙介面卡（WinUSB），因此介面卡
 
 請先從系統匣結束 A2DP Windows Bridge，因為兩者無法同時使用介面卡。
 
-**傳送回報**：開一個 issue，附上晶片名稱、探測的 JSON 檔案，以及介面卡的產品名稱與來源（筆電內建時請註明筆電型號）。報告包含介面卡的藍牙位址與名稱，但不含任何與您耳機有關的資訊。包含 HCI 擷取的 **診斷套件**（**診斷** 畫面）也會在 `probe/` 下附上探測報告。
+**傳送回報**：按下 **讀取晶片資訊** 後，介面卡的卡片會顯示讀取到的內容，以及 **在 GitHub 回報** 按鈕。它會開啟一個新的 issue，預先填入版本、介面卡、該摘要與您的 Windows 組建，並在檔案總管中顯示報告檔案：請將檔案拖曳到 issue 中，並補充介面卡的來源（筆電內建時請註明筆電型號）。報告包含介面卡的藍牙位址與名稱，但不含任何與您耳機有關的資訊。包含 HCI 擷取的 **診斷套件**（**診斷** 畫面）也會在 `probe/` 下附上探測報告。
 
 ## 步驟 3：記錄 Windows 驅動程式的動作
 
@@ -84,6 +84,33 @@ A2DP Windows Bridge 會自行驅動藍牙介面卡（WinUSB），因此介面卡
 
 {: .warning }
 請以擷取檔、探測報告與廠商文件為依據。請勿複製或密切參照 GPL 程式碼，例如 Linux 核心的 `btmtk` 或 `btqca` 驅動程式：A2DP Windows Bridge 採用 MIT 授權，衍生自它們的載入程式無法被收錄。
+
+## 不必建置也能試：晶片指令碼 {#chip-scripts}
+
+撰寫載入程式之前，先在介面卡上試試擷取檔中看到的內容：**晶片指令碼** 是以文字寫成的序列，每行一個請求，取代藍牙堆疊來執行。沒有該介面卡的人可以撰寫指令碼，傳給擁有介面卡的人；結果會以報告的形式傳回，不需要新的建置。
+
+**執行方式**：在開發人員模式下開啟 **開發者 > 晶片**：選擇介面卡（使用 WinUSB），輸入指令碼或開啟檔案，然後按 **執行**。每一行的回應會顯示在下方，**顯示報告** 會開啟 `logs\probe\` 中的 `script-<date>_<time>.json`（其中包含指令碼）。從命令列執行：`a2dpwb-core --cli -u <adapter> --script <file>`。
+
+```text
+# 每行一個請求；數字為十六進位（0x 可省略），wait、timeout= 與 chunk= 除外
+hci 1001                           # HCI 命令：opcode，接著是參數位元組
+hci fc05 ff
+bulk fc09 00 01 02                 # 同上，但走 bulk OUT 管道
+usb in vendor device 63 0 0 4      # 控制 IN：類型、接收者、請求、value、index、長度
+usb out vendor device 64 0 0 01    # 控制 OUT：...，接著是資料位元組
+wait 100                           # 毫秒
+expect e4 02 01 timeout=5000       # 事件：其代碼與最前面的參數位元組
+bootloader off                     # bootloader 模式（從一開始就開啟）
+upload mediatek/patch.bin fc6f 01 01 chunk=240 ack=event:e4:02,01
+upload-bulk patch.bin fc09 01      # 同上，但走 bulk OUT 管道
+```
+
+- `hci` 與 `bulk` 會等待該命令的 Command Complete 或 Command Status（2 秒）並記錄下來，無論其狀態為何
+- `upload` 會將韌體資料夾中的檔案以該 opcode 的命令分段傳送，每個命令包含標頭位元組與檔案中最多 `chunk` 個位元組（預設 240），並等待每一段的確認：`ack=complete`（預設：該 opcode 狀態為 0 的 Command Complete 或 Command Status）或 `ack=event:<code>[:<bytes>]`。遇到錯誤狀態就會停止
+- 指令碼會在第一個失敗的行（沒有回應、錯誤、找不到檔案）停止，並指出是哪一行
+- 沒有對應任何一行的事件也會保留在報告中
+
+**安全性**：只有已知僅做讀取的請求會直接執行：標準 HCI 讀取（資訊參數與狀態參數、Read Local Name、LE 讀取）、標準 USB 描述元請求、`wait`、`expect` 與 `bootloader`。含有其他任何一行的指令碼，只有在您允許時才會執行（在這些行的清單下方按 **允許執行**；命令列則使用 `--allow-writes`）。可能寫入晶片斷電後仍保留之記憶體的廠商命令，無論您是否允許都不會執行（`app/src/crates/bt-host/src/chips.rs` 中的 `denied_opcodes`：目前為 CSR 的 BCCMD）。bootloader 模式從一開始就是開啟的，因此之後關閉介面卡時不會傳送 HCI Reset。載入到晶片 RAM 中的韌體，在重新插拔後就會消失。
 
 ## 步驟 4：撰寫載入程式
 
@@ -116,6 +143,7 @@ A2DP Windows Bridge 會自行驅動藍牙介面卡（WinUSB），因此介面卡
 | `on_control(result)` | 附上最後一個 `UsbControl` 的結果：讀到的位元組，或失敗原因 |
 | `on_timeout()` | 最後一個 `Timer` 的計時器到期時 |
 | `missing_file_hint(file)` | 載入程式以 `MissingFile` 結束時用於記錄：該把什麼放到哪裡（"x.bin from linux-firmware (mediatek/)"） |
+| `step()`, `progress()` | 每批動作之後：該步驟的名稱（"download"）與進度（已傳送的命令數 / 總數），用於介面卡啟動期間的介面卡畫面 |
 
 `Done` 之後應用程式會捨棄載入程式：遲到的回應不會再送到它手上。
 
@@ -222,7 +250,7 @@ target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.
 {: .note }
 若有多張介面卡使用 WinUSB，即使指定了 `-u`，也會優先使用 Realtek 介面卡並套用其晶片設定。請將 **介面卡 > 藍牙晶片** 設為 **非 Realtek**，或只讓您的介面卡使用 WinUSB 進行測試。
 
-接著透過視窗串流到耳機一段時間，並確認 **重新啟動藍牙** 與重新插拔都能讓它恢復運作。
+接著透過視窗串流到耳機一段時間，並確認 **重新啟動藍牙** 與重新插拔都能讓它恢復運作。介面卡啟動期間，**介面卡** 畫面會在藍牙狀態下方顯示載入程式的狀態（「正在載入 42%」，或載入失敗）；在開發人員模式下，就緒後也會顯示，並附上您的 `step()` 名稱與結束方式。
 
 ## 步驟 8：開啟 pull request
 

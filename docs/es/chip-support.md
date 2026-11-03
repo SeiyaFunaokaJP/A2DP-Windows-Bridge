@@ -61,7 +61,7 @@ Desde la línea de comandos, con el VID:PID o el ID de instancia del adaptador (
 
 Antes, cierre A2DP Windows Bridge desde la bandeja, ya que los dos no pueden usar el adaptador a la vez.
 
-**Enviar un informe**: abra una incidencia con el nombre del chip, el archivo JSON del sondeo y el nombre de producto del adaptador y su procedencia (si va integrado en un portátil: el modelo). El informe contiene la dirección Bluetooth y el nombre del adaptador; no contiene nada sobre sus auriculares. Un **Paquete de diagnóstico** (pantalla **Diagnóstico**) con las capturas HCI incluidas también lleva los informes de sondeo, en `probe/`.
+**Enviar un informe**: después de **Leer datos del chip**, la tarjeta del adaptador muestra lo que se leyó y un botón **Informar en GitHub**. Este abre una incidencia nueva con la versión, el adaptador, ese resumen y su compilación de Windows ya rellenados, y muestra el archivo del informe en el Explorador: arrástrelo a la incidencia y añada la procedencia del adaptador (si va integrado en un portátil: el modelo). El informe contiene la dirección Bluetooth y el nombre del adaptador; no contiene nada sobre sus auriculares. Un **Paquete de diagnóstico** (pantalla **Diagnóstico**) con las capturas HCI incluidas también lleva los informes de sondeo, en `probe/`.
 
 ## Paso 3: Grabar lo que hace el controlador de Windows
 
@@ -84,6 +84,33 @@ Anote cualquier espera que el controlador haga entre pasos (las marcas de tiempo
 
 {: .warning }
 Trabaje a partir de capturas, informes de sondeo y documentación del fabricante. No copie ni siga de cerca código GPL, como los controladores `btmtk` o `btqca` del kernel de Linux: A2DP Windows Bridge tiene licencia MIT, y un cargador derivado de ellos no podría incluirse.
+
+## Probarlo sin compilar: scripts de chip {#chip-scripts}
+
+Antes de escribir un cargador, pruebe en el adaptador lo que mostró la captura: un **script de chip** es la secuencia en forma de texto, una solicitud por línea, que se ejecuta en lugar de la pila Bluetooth. Alguien sin el adaptador puede escribir uno y enviárselo a quien lo tenga; el resultado vuelve como informe, sin una compilación nueva.
+
+**Ejecutar uno**: modo de desarrollador, **Desarrollador > Chip**: elija el adaptador (con WinUSB), escriba el script o abra un archivo, **Ejecutar**. La respuesta a cada línea se muestra debajo, y **Mostrar informe** abre `script-<date>_<time>.json` en `logs\probe\` (el script va incluido). Desde la línea de comandos: `a2dpwb-core --cli -u <adapter> --script <file>`.
+
+```text
+# una solicitud por línea; los números son hexadecimales (0x opcional) salvo wait, timeout= y chunk=
+hci 1001                           # un comando HCI: opcode y después los bytes de parámetros
+hci fc05 ff
+bulk fc09 00 01 02                 # lo mismo por la canalización bulk OUT
+usb in vendor device 63 0 0 4      # control IN: tipo, destinatario, solicitud, valor, índice, longitud
+usb out vendor device 64 0 0 01    # control OUT: ..., y después los bytes de datos
+wait 100                           # milisegundos
+expect e4 02 01 timeout=5000       # un evento: su código y sus primeros bytes de parámetros
+bootloader off                     # modo bootloader (activado desde el inicio)
+upload mediatek/patch.bin fc6f 01 01 chunk=240 ack=event:e4:02,01
+upload-bulk patch.bin fc09 01      # lo mismo por la canalización bulk OUT
+```
+
+- `hci` y `bulk` esperan el Command Complete o el Command Status del comando (2 s) y lo registran, sea cual sea su estado
+- `upload` envía un archivo de la carpeta de firmware en comandos de ese opcode, cada uno con los bytes de cabecera y hasta `chunk` bytes del archivo (240 de forma predeterminada), y espera cada confirmación: `ack=complete` (predeterminado: un Command Complete o Command Status del opcode con estado 0) o `ack=event:<code>[:<bytes>]`. Un estado de error lo detiene
+- El script se detiene en la primera línea que falla (sin respuesta, un error, un archivo que falta) e indica cuál
+- Los eventos que no responden a ninguna línea también quedan en el informe
+
+**Seguridad**: solo las solicitudes que se sabe que leen se ejecutan tal cual: las lecturas HCI estándar (parámetros informativos y de estado, Read Local Name, las lecturas LE), las solicitudes USB estándar de descriptores, `wait`, `expect` y `bootloader`. Un script con cualquier otra línea solo se ejecuta si usted lo permite (**Permitir ejecutarlas** debajo de la lista de esas líneas; `--allow-writes` en la línea de comandos). Los comandos de fabricante que pueden escribir en una memoria que el chip conserva tras apagarse y encenderse nunca se ejecutan, permita lo que permita (`denied_opcodes` en `app/src/crates/bt-host/src/chips.rs`: de momento, el BCCMD de CSR). El modo bootloader está activado desde el inicio, así que al cerrar después el adaptador no se envía ningún HCI Reset. El firmware cargado en la RAM de un chip desaparece al desconectar y volver a conectar el adaptador.
 
 ## Paso 4: Escribir el cargador
 
@@ -116,6 +143,7 @@ Todo está en `app/src/crates/bt-host/src/bringup.rs`.
 | `on_control(result)` | Con el resultado del último `UsbControl`: los bytes leídos, o por qué falló |
 | `on_timeout()` | Cuando vence el temporizador del último `Timer` |
 | `missing_file_hint(file)` | Para el registro cuando el cargador terminó con `MissingFile`: qué poner y dónde ("x.bin from linux-firmware (mediatek/)") |
+| `step()`, `progress()` | Tras cada lote de acciones: el nombre del paso ("download") y cuánto lleva (comandos enviados del total), para la pantalla Adaptador mientras se inicia el adaptador |
 
 Después de `Done`, la aplicación descarta el cargador: una respuesta tardía nunca le llega.
 
@@ -222,7 +250,7 @@ El registro muestra cada paso; `loader.pklg` se abre en Wireshark con cada coman
 {: .note }
 Con varios adaptadores en WinUSB, se prefiere uno Realtek y se aplica su configuración de chip, incluso con `-u`. Ponga **Adaptador > Chip Bluetooth** en **No Realtek**, o pruebe solo con su adaptador en WinUSB.
 
-Después, transmita un rato a unos auriculares desde la ventana y compruebe que **Reiniciar Bluetooth** y una reconexión del adaptador lo recuperan.
+Después, transmita un rato a unos auriculares desde la ventana y compruebe que **Reiniciar Bluetooth** y una reconexión del adaptador lo recuperan. Mientras se inicia el adaptador, la pantalla **Adaptador** muestra el cargador debajo del estado de Bluetooth ("cargando 42%", o que falló); en el modo de desarrollador también cuando está listo, con sus nombres de `step()` y cómo terminó.
 
 ## Paso 8: Abrir el pull request
 

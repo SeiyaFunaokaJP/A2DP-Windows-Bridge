@@ -61,7 +61,7 @@ Außerdem hält sie die USB-Konfiguration fest, die Windows meldet (Interfaces, 
 
 Beenden Sie A2DP Windows Bridge vorher über den Infobereich, da nicht beide gleichzeitig den Adapter nutzen können.
 
-**Einen Bericht senden**: Eröffnen Sie ein Issue mit dem Namen des Chips, der JSON-Datei der Abfrage und dem Produktnamen des Adapters samt Herkunft (bei einem im Notebook eingebauten Adapter: das Notebookmodell). Der Bericht enthält die Bluetooth-Adresse und den Namen des Adapters, aber nichts über Ihre Kopfhörer. Ein **Diagnosepaket** (Seite **Diagnose**) mit eingeschlossenen HCI-Mitschnitten enthält die Abfrageberichte ebenfalls, unter `probe/`.
+**Einen Bericht senden**: Nach **Chip-Infos lesen** zeigt die Karte des Adapters, was gelesen wurde, und eine Schaltfläche **Auf GitHub melden**. Sie eröffnet ein neues Issue, in dem Version, Adapter, diese Zusammenfassung und Ihr Windows-Build bereits eingetragen sind, und zeigt die Berichtsdatei im Explorer: Ziehen Sie sie in das Issue und ergänzen Sie, woher der Adapter stammt (bei einem im Notebook eingebauten Adapter: das Notebookmodell). Der Bericht enthält die Bluetooth-Adresse und den Namen des Adapters, aber nichts über Ihre Kopfhörer. Ein **Diagnosepaket** (Seite **Diagnose**) mit eingeschlossenen HCI-Mitschnitten enthält die Abfrageberichte ebenfalls, unter `probe/`.
 
 ## Schritt 3: Mitschneiden, was der Windows-Treiber tut
 
@@ -84,6 +84,33 @@ Notieren Sie jede Pause, die der Treiber zwischen den Schritten einhält (die Ze
 
 {: .warning }
 Arbeiten Sie mit Aufzeichnungen, Abfrageberichten und Herstellerdokumentation. Kopieren Sie keinen GPL-Code und folgen Sie ihm nicht eng, etwa den Linux-Kernel-Treibern `btmtk` oder `btqca`: A2DP Windows Bridge steht unter der MIT-Lizenz, und ein davon abgeleiteter Loader könnte nicht aufgenommen werden.
+
+## Ohne Build ausprobieren: Chip-Skripte {#chip-scripts}
+
+Probieren Sie, bevor Sie einen Loader schreiben, am Adapter aus, was die Aufzeichnung gezeigt hat: Ein **Chip-Skript** ist die Abfolge als Text, eine Anfrage pro Zeile, und läuft anstelle des Bluetooth-Stacks. Wer den Adapter nicht hat, kann eines schreiben und an jemanden schicken, der ihn hat; das Ergebnis kommt als Bericht zurück, ohne neuen Build.
+
+**Ein Skript ausführen**: Entwicklermodus, **Entwickler > Chip**: Adapter wählen (mit WinUSB), das Skript eingeben oder eine Datei öffnen, **Ausführen**. Die Antwort auf jede Zeile erscheint darunter, und **Bericht anzeigen** öffnet `script-<date>_<time>.json` in `logs\probe\` (das Skript ist darin enthalten). Über die Kommandozeile: `a2dpwb-core --cli -u <adapter> --script <file>`.
+
+```text
+# eine Anfrage pro Zeile; Zahlen sind hexadezimal (0x optional), außer bei wait, timeout= und chunk=
+hci 1001                           # ein HCI-Befehl: Opcode, dann Parameterbytes
+hci fc05 ff
+bulk fc09 00 01 02                 # dasselbe über die Bulk-OUT-Pipe
+usb in vendor device 63 0 0 4      # Control IN: Typ, Empfänger, Request, Wert, Index, Länge
+usb out vendor device 64 0 0 01    # Control OUT: ..., dann die Datenbytes
+wait 100                           # Millisekunden
+expect e4 02 01 timeout=5000       # ein Event: sein Code und seine ersten Parameterbytes
+bootloader off                     # Bootloader-Modus (von Anfang an ein)
+upload mediatek/patch.bin fc6f 01 01 chunk=240 ack=event:e4:02,01
+upload-bulk patch.bin fc09 01      # dasselbe über die Bulk-OUT-Pipe
+```
+
+- `hci` und `bulk` warten auf Command Complete oder Command Status des Befehls (2 s) und zeichnen es auf, unabhängig vom Status
+- `upload` sendet eine Datei aus dem Firmware-Ordner in Befehlen mit diesem Opcode, jeder mit den Header-Bytes und bis zu `chunk` Bytes der Datei (Standard 240), und wartet jeweils auf die Bestätigung: `ack=complete` (Standard: ein Command Complete oder Command Status des Opcodes mit Status 0) oder `ack=event:<code>[:<bytes>]`. Ein Fehlerstatus bricht ihn ab
+- Das Skript hält bei der ersten fehlgeschlagenen Zeile an (keine Antwort, ein Fehler, eine fehlende Datei) und nennt sie
+- Events, die zu keiner Zeile gehören, stehen ebenfalls im Bericht
+
+**Sicherheit**: Unverändert laufen nur Anfragen, die bekanntermaßen nur lesen: die Standard-HCI-Lesebefehle (informative und Statusparameter, Read Local Name, die LE-Lesebefehle), Standard-USB-Deskriptoranfragen, `wait`, `expect` und `bootloader`. Ein Skript mit einer anderen Zeile läuft nur, wenn Sie es erlauben (**Ausführen erlauben** unter der Liste dieser Zeilen; `--allow-writes` in der Kommandozeile). Herstellerbefehle, die Speicher beschreiben können, den ein Chip auch nach dem Aus- und Wiedereinschalten behält, laufen nie, was auch immer Sie erlauben (`denied_opcodes` in `app/src/crates/bt-host/src/chips.rs`: bisher BCCMD von CSR). Der Bootloader-Modus ist von Anfang an ein, daher sendet das Schließen des Adapters danach kein HCI Reset. In den RAM eines Chips geladene Firmware ist nach erneutem Einstecken weg.
 
 ## Schritt 4: Den Loader schreiben
 
@@ -116,6 +143,7 @@ Alles steht in `app/src/crates/bt-host/src/bringup.rs`.
 | `on_control(result)` | Mit dem Ergebnis des letzten `UsbControl`: die gelesenen Bytes oder der Grund des Fehlschlags |
 | `on_timeout()` | Wenn der Timer des letzten `Timer` abläuft |
 | `missing_file_hint(file)` | Für das Protokoll, wenn der Loader mit `MissingFile` endete: was wohin gehört („x.bin from linux-firmware (mediatek/)“) |
+| `step()`, `progress()` | Nach jedem Stapel von Aktionen: der Name des Schritts („download“) und wie weit er ist (gesendete von allen Befehlen), für die Seite Adapter, während der Adapter startet |
 
 Nach `Done` verwirft die App den Loader: Eine verspätete Antwort erreicht ihn nie.
 
@@ -222,7 +250,7 @@ Das Protokoll zeigt jeden Schritt; `loader.pklg` öffnet sich in Wireshark mit j
 {: .note }
 Sind mehrere Adapter auf WinUSB, wird ein Realtek-Adapter bevorzugt und seine Chip-Einrichtung angewendet, selbst mit `-u`. Stellen Sie **Adapter > Bluetooth-Chip** auf **Nicht Realtek** oder testen Sie nur mit Ihrem Adapter auf WinUSB.
 
-Streamen Sie danach eine Weile über das Fenster an Kopfhörer und prüfen Sie, dass **Bluetooth neu starten** und erneutes Einstecken ihn wieder zum Laufen bringen.
+Streamen Sie danach eine Weile über das Fenster an Kopfhörer und prüfen Sie, dass **Bluetooth neu starten** und erneutes Einstecken ihn wieder zum Laufen bringen. Während der Adapter startet, zeigt die Seite **Adapter** den Loader unter dem Bluetooth-Status („wird geladen 42 %“ oder dass er fehlgeschlagen ist); im Entwicklermodus auch, wenn er bereit ist, mit Ihren `step()`-Namen und wie er geendet hat.
 
 ## Schritt 8: Den Pull Request eröffnen
 
