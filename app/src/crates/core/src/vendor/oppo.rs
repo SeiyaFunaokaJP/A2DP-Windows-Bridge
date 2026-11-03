@@ -1,8 +1,9 @@
 //! OPPO Enco Free4 earbuds offered A2DPWB LHDC V5 at 48 kHz and 400 kbps while
 //! a phone got 192 kHz (issue #237). Their app sets Hi-Res over the HeyMelody
 //! protocol on their own RFCOMM service. A profile that asks for more of LHDC
-//! V5 sets it the same way: it can show on the next connection. Earbuds that
-//! had the mode off get it back when it changed nothing.
+//! V5 sets it the same way. The earbuds list the new limit only on a new
+//! connection, and no connection is ended for it: the next one shows it, and
+//! earbuds that had the mode off get it back when it changed nothing.
 //!
 //! The protocol as LHDC-Switch uses it (MIT, THIRD_PARTY_LICENSES.md). A packet
 //! is `AA | length (LEB128) | 00 00 | command (2 bytes, little endian) |
@@ -60,20 +61,43 @@ const ANSWER_TIMEOUT: Duration = Duration::from_millis(3500);
 /// Longest packet accepted (more: not a packet start)
 const MAX_LENGTH: usize = 4096;
 
-/// Earbuds that took a write in this run: they keep what it brought, or had
-/// it undone, so they are not asked again on each connection
-static ASKED: Mutex<Vec<[u8; 6]>> = Mutex::new(Vec::new());
+/// What a write leaves to the next connection to judge: the Hi-Res mode
+/// before it (0: off) and LHDC V5's maximum bit rate then (bps)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pending {
+    pub before: u8,
+    pub listed: u32,
+}
+
+/// How the earbuds took a write
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Taken {
+    /// The connection stays
+    Kept,
+    /// They ended the link for it: a new connection is due
+    LinkClosed,
+}
+
+/// Earbuds that took a write in this run, with what is left to judge (None:
+/// judged): they are not asked again on each connection
+static ASKED: Mutex<Vec<([u8; 6], Option<Pending>)>> = Mutex::new(Vec::new());
 
 /// Whether the earbuds took a write in this run already
 pub fn asked(addr: [u8; 6]) -> bool {
-    ASKED.lock().unwrap_or_else(|e| e.into_inner()).contains(&addr)
+    ASKED.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|(a, _)| *a == addr)
 }
 
-/// Marks the earbuds as having taken a write
-pub fn mark_asked(addr: [u8; 6]) {
+/// What a write to the earbuds left to judge
+pub fn pending(addr: [u8; 6]) -> Option<Pending> {
+    ASKED.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(a, _)| *a == addr).and_then(|(_, p)| *p)
+}
+
+/// Marks the earbuds as having taken a write, with what is left to judge
+pub fn set_asked(addr: [u8; 6], pending: Option<Pending>) {
     let mut asked = ASKED.lock().unwrap_or_else(|e| e.into_inner());
-    if !asked.contains(&addr) {
-        asked.push(addr);
+    match asked.iter_mut().find(|(a, _)| *a == addr) {
+        Some(entry) => entry.1 = pending,
+        None => asked.push((addr, pending)),
     }
 }
 
@@ -276,33 +300,33 @@ impl<'a> Link<'a> {
         })
     }
 
-    /// True when the earbuds took the write, also when they end the link for it
-    fn write(&mut self, command: u16, payload: &[u8]) -> bool {
+    /// How the earbuds took the write; None when they did not
+    fn write(&mut self, command: u16, payload: &[u8]) -> Option<Taken> {
         match self.request(command, payload) {
             Reply::Answer(answer) if answer.first() == Some(&0) => {
                 tracing::info!("OPPO: write {command:04X} {payload:02X?} taken");
-                true
+                Some(Taken::Kept)
             }
             Reply::Answer(answer) => {
                 tracing::warn!("OPPO: write {command:04X} refused ({:02X?})", answer.first());
-                false
+                None
             }
             Reply::NoAnswer => {
                 tracing::info!("OPPO: no answer to write {command:04X}");
-                false
+                None
             }
-            Reply::Closed => true,
+            Reply::Closed => Some(Taken::LinkClosed),
         }
     }
 }
 
 /// Asks the connected earbuds for LHDC with Hi-Res. The mode they were in (0:
-/// off) when they took the write: more of LHDC V5 can then come with a new
+/// off) and how they took the write: more of LHDC V5 can then come with a new
 /// connection. The write goes out also when they report Hi-Res on already, set
 /// from a phone: it is that mode and no more that A2DPWB was offered (issue
 /// #237). Spatial audio excludes Hi-Res and is the user's: then nothing is
 /// written.
-pub fn ask_for_hi_res(host: &BtHost, addr: [u8; 6]) -> Option<u8> {
+pub fn ask_for_hi_res(host: &BtHost, addr: [u8; 6]) -> Option<(u8, Taken)> {
     let mut link = Link::open(host, addr)?;
     let state = link.state()?;
     let (true, Some(before)) = (capability(&state.capabilities, CAN_WRITE_FEATURES), state.hi_res) else {
@@ -318,13 +342,12 @@ pub fn ask_for_hi_res(host: &BtHost, addr: [u8; 6]) -> Option<u8> {
     } else {
         link.write(FEATURE_WRITE, &[HI_RES, 1])
     };
-    taken.then_some(before)
+    taken.map(|t| (before, t))
 }
 
-/// Sets the connected earbuds' Hi-Res back off. True when a new connection is
-/// due: the write may end the audio connection.
-pub fn set_hi_res_off(host: &BtHost, addr: [u8; 6]) -> bool {
-    Link::open(host, addr).is_some_and(|mut link| link.write(FEATURE_WRITE, &[HI_RES, 0]))
+/// Sets the connected earbuds' Hi-Res back off; None when they did not take it
+pub fn set_hi_res_off(host: &BtHost, addr: [u8; 6]) -> Option<Taken> {
+    Link::open(host, addr)?.write(FEATURE_WRITE, &[HI_RES, 0])
 }
 
 #[cfg(test)]
@@ -338,11 +361,15 @@ mod tests {
     #[test]
     fn earbuds_are_asked_once_a_run() {
         let (a, b) = ([1, 2, 3, 4, 5, 6], [6, 5, 4, 3, 2, 1]);
-        assert!(!asked(a));
-        mark_asked(a);
-        mark_asked(a);
+        let p = Pending { before: 0, listed: 400_000 };
+        assert!(!asked(a) && pending(a).is_none());
+        set_asked(a, Some(p));
         assert!(asked(a) && !asked(b));
-        assert_eq!(ASKED.lock().unwrap().iter().filter(|&&x| x == a).count(), 1);
+        assert_eq!(pending(a), Some(p));
+        // Judged on the next connection: still asked, nothing left
+        set_asked(a, None);
+        assert!(asked(a) && pending(a).is_none());
+        assert_eq!(ASKED.lock().unwrap().iter().filter(|(x, _)| *x == a).count(), 1);
     }
 
     // The packet of LHDC-Switch's self test

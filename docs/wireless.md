@@ -83,7 +83,7 @@ The receiving side cannot be seen from the PC. To measure what actually arrives,
 Some "it only gives me 400 kbps" or "LDAC is missing" reports are not the link at all: the headphones tell A2DPWB which codecs and bit rates they accept, and A2DPWB follows that, as Android does. The log line `remote supports ...` shows what they offered.
 
 - **Huawei FreeBuds** offer LDAC to a PC only after their AI Life app has set "prioritize sound quality" with multi-connect off; otherwise they list SBC and AAC only. Since 2.0.2 A2DPWB asks for that mode itself when LDAC is chosen with Auto-select off.
-- **LHDC V5 headphones** advertise a maximum bit rate. In their app's 96 kHz mode one pair listed 400 kbps; in its 192 kHz mode, 1000 kbps. OPPO Enco Free4 and Enco X4 list 400 kbps and 48 kHz to a PC whatever the app says; 2.0.2 asks OPPO earbuds for Hi-Res over their own protocol, not yet confirmed on real earbuds.
+- **LHDC V5 headphones** advertise a maximum bit rate. In their app's 96 kHz mode one pair listed 400 kbps; in its 192 kHz mode, 1000 kbps. OPPO Enco Free4 and Enco X4 list 400 kbps and 48 kHz to a PC whatever the app says; 2.0.2 asks OPPO earbuds for Hi-Res over their own protocol, which shows from the next connection, not yet confirmed on real earbuds.
 - **ABR** keeps LHDC V5 at 400 kbps or below, as on Android.
 - A codec the headphones **hold for another device** is missing while that device is connected ([Codec missing while connected to another device](usage#sep-in-use)).
 
