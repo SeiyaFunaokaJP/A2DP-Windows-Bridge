@@ -457,6 +457,8 @@ A2DPWB consulte les GitHub Releases au plus une fois par jour (**Paramètres > R
 
 ## Dépannage
 
+Un son qui se coupe ou saccade, une connexion qui échoue, ou un débit plus bas que prévu : voir **[Coupures et problèmes de connexion](wireless)**, qui résume ce que les rapports reçus jusqu'ici se sont avérés être et ce qu'il faut vérifier d'abord.
+
 ### La fenêtre indique que le cœur ne fonctionne pas
 
 La fenêtre a besoin de `a2dpwb-core.exe` à côté d'elle et le démarre toute seule. « Le cœur d'A2DPWB n'est pas en cours d'exécution » signifie qu'il n'a pas pu être démarré : réinstallez A2DPWB (ou extrayez de nouveau le zip portable). « Le cœur est d'une autre version » signifie que les deux programmes proviennent de versions différentes : installez la même version des deux (la dernière version publiée le fait).
@@ -477,7 +479,7 @@ Pour éviter qu'un adaptateur ne reste bloqué, A2DPWB réinitialise ses pipes U
 
 A2DPWB s'associe en SSP (Just Works) avec **General Bonding**, et les clés de liaison sont enregistrées pour que le casque puisse se reconnecter sans nouvelle association (la v2 lit les clés de liaison de la v1). Si vous avez associé le casque avec une ancienne version d'A2DPWB et qu'il ne se connecte plus, supprimez l'association A2DPWB sur le casque (voir le manuel du casque pour effacer la liste d'association) et associez-le de nouveau.
 
-### Délais de connexion dépassés
+### Délais de connexion dépassés {#connection-timeouts}
 
 A2DPWB enregistre des enregistrements SDP (A2DP Source, AVRCP Controller / Target) afin que le casque puisse l'identifier comme source audio. Si une tentative de connexion dépasse le délai, la connexion à moitié ouverte est fermée : vous pouvez donc simplement réessayer sans redémarrer A2DPWB. Vérifiez que le casque est allumé, à portée et non connecté à un autre appareil.
 

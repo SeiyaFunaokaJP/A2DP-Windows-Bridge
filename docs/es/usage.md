@@ -457,6 +457,8 @@ A2DPWB consulta GitHub Releases como máximo una vez al día (**Configuración >
 
 ## Solución de problemas
 
+Un sonido que se corta o se entrecorta, una conexión que falla o una tasa de bits menor de la esperada: consulte **[Cortes y problemas de conexión](wireless)**, que resume en qué han resultado consistir los informes recibidos hasta ahora y qué comprobar primero.
+
 ### La ventana indica que el núcleo no se está ejecutando
 
 La ventana necesita `a2dpwb-core.exe` a su lado y lo inicia por sí misma. «El núcleo de A2DPWB no se está ejecutando» significa que no se pudo iniciar: reinstale A2DPWB (o vuelva a extraer el zip portable). «El núcleo es de otra versión» significa que los dos programas proceden de versiones distintas: instale la misma versión de ambos (la última versión publicada lo consigue).
@@ -477,7 +479,7 @@ Para evitar que un adaptador se quede bloqueado, A2DPWB restablece sus canalizac
 
 A2DPWB empareja mediante SSP (Just Works) con **General Bonding**, y las claves de enlace se guardan para que los auriculares puedan reconectarse sin volver a emparejar (la v2 lee las claves de enlace de la v1). Si emparejó los auriculares con una compilación antigua de A2DPWB y ya no se conectan, elimine el emparejamiento de A2DPWB en los auriculares (consulte el manual de los auriculares para borrar la lista de emparejamientos) y vuelva a emparejarlos.
 
-### Tiempos de espera de conexión
+### Tiempos de espera de conexión {#connection-timeouts}
 
 A2DPWB registra registros SDP (A2DP Source, AVRCP Controller / Target) para que los auriculares lo identifiquen como fuente de audio. Si un intento de conexión agota el tiempo de espera, la conexión semiabierta se cierra, de modo que puede volver a intentarlo sin reiniciar A2DPWB. Asegúrese de que los auriculares estén encendidos, dentro del alcance y no conectados a otro dispositivo.
 
