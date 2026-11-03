@@ -63,7 +63,7 @@ a2dpwb-core.exe --cli --scan                                  # Find nearby devi
 a2dpwb-core.exe --cli -h                                      # All options
 ```
 
-The sample rate is 48 kHz unless you choose another in a codec's settings on **Codecs** (96 kHz for LDAC, for example). Everything else — codecs, capture modes, volume sync, link quality and AFH, diagnostics, start with Windows, troubleshooting — is in the [Usage guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/usage).
+The sample rate is 48 kHz unless you choose another in a codec's settings on **Codecs** (96 kHz for LDAC, for example). Everything else — codecs, capture modes, volume sync, link quality and AFH, diagnostics, start with Windows, troubleshooting — is in the [Usage guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/usage). Sound that drops out, or a connection that fails: [Dropouts and Connection Problems](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/wireless).
 
 ## Features
 

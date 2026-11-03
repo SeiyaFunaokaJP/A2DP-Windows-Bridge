@@ -97,6 +97,10 @@ A2DPWB selbst läuft nur unter Windows (Windows 10 22H2 oder Windows 11), als Bu
 
 Getestet mit Sony WH-1000XM4 und WH-1000XM6, EarFun Air Pro 4+, Grado GW100x und weiteren, an TP-Link UB500, einem generischen RTL8761B, dem eingebauten RTL8852BE eines Notebooks, ASUS BT400 und CSR8510. Die vollständige Liste mit Codecs, Versionen und den zugrunde liegenden Berichten: **[Geprüfte Hardware](../hardware)** (Englisch).
 
+## Aussetzer und Verbindungsprobleme
+
+Was sich hinter den Berichten über Aussetzer und Verbindungsprobleme verbarg, die Prüfungen vor dem Melden und wie die Verbindungsqualität zu lesen ist: **[Aussetzer und Verbindungsprobleme](wireless)**.
+
 ## Zusammenarbeit mit anderen Tools
 
 Apps anderer Anbieter, die laut Berichten in den Issues mit A2DPWB zusammenarbeiten, etwa Apps zur Steuerung von Ohrhörern (nicht von A2DPWB erstellt oder unterstützt): **[Works With](../works-with)** (Englisch).
