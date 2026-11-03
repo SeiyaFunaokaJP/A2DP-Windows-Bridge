@@ -158,6 +158,9 @@ pub struct HostConfig {
     /// service level connection, where the headphones report it (and the LE
     /// Battery Service). Off: no HFP at all.
     pub battery: bool,
+    /// Told where a chip loader (Intel's download) is while the adapter
+    /// starts, for the Adapters screen
+    pub on_loader: Option<bringup::LoaderHook>,
 }
 
 impl HostConfig {
@@ -175,6 +178,7 @@ impl HostConfig {
             afh: None,
             le_audio: None,
             battery: false,
+            on_loader: None,
         }
     }
 }
@@ -495,6 +499,7 @@ impl BtHost {
                         afh,
                         le_audio,
                         battery,
+                        on_loader,
                     } = config;
                     let failed_shared = shared.clone();
                     let result = btstack_sys::run(move |stack, remote| {
@@ -521,6 +526,7 @@ impl BtHost {
                             realtek_files,
                             broadcom_ids,
                             battery,
+                            on_loader,
                             probe,
                         };
                         let mut app = HostApp::new(

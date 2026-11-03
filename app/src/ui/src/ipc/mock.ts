@@ -942,6 +942,9 @@ export class MockCore implements Transport {
   setOtherRadio(radio: Snapshot["adapter"]["other_radio"]) {
     this.snap.adapter.other_radio = radio;
   }
+  setLoader(loader: Snapshot["adapter"]["loader"]) {
+    this.snap.adapter.loader = loader;
+  }
   async setupWindow(_active: boolean) {}
   onNavigate(cb: (route: string) => void) {
     this.navigate = cb;
@@ -1716,6 +1719,17 @@ export function mockFromUrl(): MockCore {
   mock.noVirtual = q.has("novirtual");
   if (q.has("otherradio")) {
     mock.setOtherRadio({ name: "MediaTek Bluetooth Adapter", paired: q.get("otherradio") === "paired" });
+  }
+  // ?loader=running|ok|failed: an Intel firmware loader's status on Adapters
+  const loader = q.get("loader");
+  if (loader) {
+    mock.setLoader(
+      loader === "failed"
+        ? { vendor: "Intel", step: "ibt-0040-0041.sfi and ibt-0040-0041.ddc from linux-firmware (intel/) missing", ok: false }
+        : loader === "ok"
+          ? { vendor: "Intel", step: "firmware ibt-0040-0041.sfi loaded (DDC applied)", ok: true }
+          : { vendor: "Intel", step: "Secure Send", percent: 42 },
+    );
   }
   return mock;
 }

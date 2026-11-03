@@ -180,4 +180,31 @@ pub trait ChipLoader {
     fn take_report(&mut self) -> Option<crate::probe::ProbeReport> {
         None
     }
+    /// The step running, for the Adapters screen while the adapter starts
+    /// ("Secure Send"); empty: none to show
+    fn step(&self) -> &'static str {
+        ""
+    }
+    /// How far the running step is: commands acknowledged of all (a
+    /// download)
+    fn progress(&self) -> Option<(usize, usize)> {
+        None
+    }
 }
+
+/// Where a loader is while the adapter starts (HostConfig::on_loader)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoaderProgress {
+    pub vendor: &'static str,
+    /// [`ChipLoader::step`] while it runs; how it ended once done ("firmware
+    /// running already", the error)
+    pub step: String,
+    /// Percent of the running step, when the loader tells
+    pub percent: Option<u8>,
+    /// Finished: true when the adapter can start
+    pub done: Option<bool>,
+}
+
+/// Called on the BTstack thread when a loader's step, its percent or its
+/// end changes
+pub type LoaderHook = std::sync::Arc<dyn Fn(&LoaderProgress) + Send + Sync>;

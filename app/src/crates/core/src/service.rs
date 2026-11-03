@@ -232,6 +232,8 @@ pub enum ServiceEvent {
     /// saved device connected to the PC (its address): its session may
     /// start instead
     OtherDeviceBack([u8; 6]),
+    /// A firmware loader's step, percent or end while the adapter starts
+    Loader(bt_host::bringup::LoaderProgress),
 }
 
 pub struct ServiceOptions {
@@ -410,6 +412,13 @@ impl Inner {
         let cli = self.le_cli.lock().unwrap_or_else(|e| e.into_inner()).clone();
         c.le_audio = le_config(le_on, cli.as_ref(), &self.opts);
         c.battery = true;
+        // The Adapters screen shows a loader's progress while the adapter
+        // starts (the stack's handle comes only after)
+        let events = self.events.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let events = Mutex::new(events);
+        c.on_loader = Some(Arc::new(move |p| {
+            let _ = events.lock().unwrap_or_else(|e| e.into_inner()).send(ServiceEvent::Loader(p.clone()));
+        }));
         tracing::debug!(
             "host config: transport {:?}, firmware dir {:?}, realtek pid {:04x} files {:?}, intel loader {}, broadcom ids {}, LE {} (cli {:?})",
             c.transport,

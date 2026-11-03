@@ -200,6 +200,24 @@ export function Adapter() {
         <span class="dot" aria-hidden="true" />
         {t("ui.adapter.stack")}: {t(`ui.adapter.status_${adapter().status}`)}
       </p>
+      {/* A firmware loader while the adapter starts (Intel's download), and
+          how it ended: "ready" and its steps in developer mode only */}
+      <Show when={adapter().loader && (developer() || adapter().loader!.ok !== true) && adapter().loader}>
+        {(l) => (
+          <p class={`status-line st-${l().ok === false ? "error" : l().ok ? "ready" : "initializing"}`} role="status">
+            <span class="dot" aria-hidden="true" />
+            {l().ok === false
+              ? t("ui.adapter.loader_failed", l().vendor)
+              : l().ok
+                ? t("ui.adapter.loader_ok", l().vendor)
+                : t("ui.adapter.loader_running", l().vendor)}
+            {l().ok == null && l().percent != null ? ` ${l().percent}%` : ""}
+            <Show when={developer() && l().step}>
+              <span class="muted mono"> ({l().step})</span>
+            </Show>
+          </p>
+        )}
+      </Show>
       <Show when={adapter().status === "error" && adapter().error}>{(m) => <ErrorPanel message={m()} />}</Show>
 
       <Show

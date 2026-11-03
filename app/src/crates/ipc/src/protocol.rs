@@ -180,6 +180,28 @@ pub struct AdapterState {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub other_radio: Option<OtherRadio>,
+    /// A firmware loader's progress while the adapter starts (Intel's
+    /// download), then how it ended; None before any ran
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub loader: Option<LoaderStatus>,
+}
+
+/// Where a firmware loader is (AdapterState::loader)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct LoaderStatus {
+    /// "Intel"
+    pub vendor: String,
+    /// The step running ("Secure Send"), or how it ended ("firmware
+    /// running already", the error): technical, for developer mode
+    pub step: String,
+    /// Percent of the running step, when known
+    #[ts(optional = nullable)]
+    pub percent: Option<u8>,
+    /// Finished: true when the adapter could start; None while it runs
+    #[ts(optional = nullable)]
+    pub ok: Option<bool>,
 }
 
 /// A radio of Windows' own Bluetooth

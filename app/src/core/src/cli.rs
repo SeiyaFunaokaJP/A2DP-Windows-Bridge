@@ -720,6 +720,8 @@ fn stream_session(
             Ok(ServiceEvent::Battery(v)) => println!("Headphone battery: {v}%"),
             Ok(ServiceEvent::BatteryRefused) => println!("Headphone battery: unknown (HFP refused)"),
             Ok(ServiceEvent::OtherDeviceBack(a)) => println!("Another device connected: {}", bt_host::addr_str(&a)),
+            // The loader's own log lines say it
+            Ok(ServiceEvent::Loader(_)) => {}
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return false,
         }

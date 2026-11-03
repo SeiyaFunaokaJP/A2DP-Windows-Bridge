@@ -20,9 +20,9 @@ use bt_host::LinkStats;
 use bt_host::chips::{self, ChipVendor};
 use ipc::{
     AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, DevLog, DevOverrides, Device,
-    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, MixerApp, Msg, OtherRadio,
-    ProbeResult, Profile, ReceiverConnection, ReceiverState, ScriptCheck, ScriptResult, Settings, SettingsApplied,
-    Snapshot, SourceInfo, StreamState, StreamStatus, UpdateState,
+    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, LoaderStatus, Method, MixerApp,
+    Msg, OtherRadio, ProbeResult, Profile, ReceiverConnection, ReceiverState, ScriptCheck, ScriptResult, Settings,
+    SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus, UpdateState,
 };
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -1125,6 +1125,7 @@ impl CoreState {
                 adapters,
                 error: None,
                 rom_firmware: false,
+                loader: None,
             },
             devices: saved_devices(&dir, &[], &service.device_codecs()),
             scanning: false,
@@ -1409,6 +1410,19 @@ impl CoreState {
                 devices_changed = true;
             }
             ServiceEvent::Volume(v) => stream.volume = Some(v),
+            // The Adapters screen shows the loader while the adapter starts
+            ServiceEvent::Loader(p) => {
+                self.publish(Event::Adapter(AdapterState {
+                    loader: Some(LoaderStatus {
+                        vendor: p.vendor.to_owned(),
+                        step: p.step,
+                        percent: p.percent,
+                        ok: p.done,
+                    }),
+                    ..s.adapter
+                }));
+                return;
+            }
             // Another saved device connected while the one streamed was off
             // (issue #86): its own profile starts, as a connect on Home
             ServiceEvent::OtherDeviceBack(addr) => {

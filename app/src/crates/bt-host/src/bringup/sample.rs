@@ -260,6 +260,25 @@ impl ChipLoader for Loader {
     fn missing_file_hint(&self, file: &str) -> String {
         format!("{file} (the sample's made-up firmware)")
     }
+
+    /// For the Adapters screen while the adapter starts
+    fn step(&self) -> &'static str {
+        match self.state {
+            State::Version => "version",
+            State::ChipId => "chip ID",
+            State::Downloading { .. } => "download",
+            State::Launching { .. } | State::Starting { .. } => "start",
+            State::Idle | State::Done => "",
+        }
+    }
+
+    /// The download: commands sent of all
+    fn progress(&self) -> Option<(usize, usize)> {
+        match &self.state {
+            State::Downloading { chunks, next, .. } => Some((*next, chunks.len())),
+            _ => None,
+        }
+    }
 }
 
 /// The tests drive the loader with [`crate::bringup::sim::run`], which runs
@@ -408,5 +427,20 @@ mod tests {
         // Over H4 (the emulator) every control transfer fails like this
         let r = run(&mut Chip { chip_id: Err("not a USB transport".into()), ..Chip::new() }, firmware(10));
         assert!(matches!(r.result, Err(LoadError::Host(_))));
+    }
+
+    #[test]
+    fn tells_its_step_and_progress_for_the_adapters_screen() {
+        let files = firmware(600);
+        let mut loader = Loader::new(Box::new(move |name| files.get(name).cloned()));
+        loader.start();
+        assert_eq!((loader.step(), loader.progress()), ("version", None));
+        let sub = ROM_SUBVERSION.to_le_bytes();
+        loader.on_event(&command_complete(OP_READ_LOCAL_VERSION, 0, &[12, 0, 0, 12, 0xFF, 0xFF, sub[0], sub[1]]));
+        assert_eq!(loader.step(), "chip ID");
+        loader.on_control(Ok(0x7961u32.to_le_bytes().to_vec()));
+        assert_eq!((loader.step(), loader.progress()), ("download", Some((1, 3))));
+        loader.on_event(&command_complete(OP_DOWNLOAD, 0, &[]));
+        assert_eq!(loader.progress(), Some((2, 3)));
     }
 }

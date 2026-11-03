@@ -291,3 +291,26 @@ describe("Chip probe (developer mode)", () => {
     expect(reveal).toHaveBeenCalledWith(expect.stringMatching(/probe-\d{8}_\d{6}\.json$/));
   });
 });
+
+describe("Firmware loader progress", () => {
+  it("shows a loader while the adapter starts, its failure, and its steps in developer mode", async () => {
+    const { mock } = start();
+    await screen.findByRole("heading", { level: 1, name: "Adapters" });
+    const m = mock as any;
+    const show = (loader: unknown) => {
+      m.snap.adapter = { ...m.snap.adapter, loader };
+      m.emit({ kind: "adapter", value: m.snap.adapter });
+    };
+    show({ vendor: "Intel", step: "Secure Send", percent: 42 });
+    const line = await screen.findByText(/^Intel firmware: loading/);
+    expect(line).toHaveTextContent("Intel firmware: loading 42%");
+    expect(line).not.toHaveTextContent("Secure Send");
+    // Ready: only in developer mode, with the step
+    show({ vendor: "Intel", step: "firmware ibt-0040-0041.sfi loaded", ok: true });
+    await waitFor(() => expect(screen.queryByText(/^Intel firmware/)).toBeNull());
+    await mock.call("settings.set", { settings: { ...m.snap.settings, developer_mode: true } });
+    expect(await screen.findByText(/^Intel firmware: ready/)).toHaveTextContent("(firmware ibt-0040-0041.sfi loaded)");
+    show({ vendor: "Intel", step: "no answer from the controller (Read Version)", ok: false });
+    expect(await screen.findByText(/^Intel firmware could not be loaded/)).toHaveTextContent("(no answer");
+  });
+});
