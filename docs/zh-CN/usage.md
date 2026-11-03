@@ -376,6 +376,8 @@ capability discovery complete (LDAC=false ... , 1 of 6 audio sink SEP(s) in use)
 
 Sony 耳机（例如 WH-1000XM4）在开启**同时连接 2 台设备**（多点连接）时不提供 LDAC：请在 Sony Sound Connect 应用中将其关闭，然后重新连接。部分型号（例如 WH-1000XM6）支持 LDAC 与多点连接同时使用。
 
+耳机自带的应用（电量、降噪、EQ）需要一条到耳机的独立链路，来自手机或这台电脑的内置蓝牙。应用连接期间，耳机处于双设备连接状态，A2DPWB 切换编码可能变慢或失败。切换编码前请断开手机或关闭该应用。[EncoDeck](works-with) 改为通过 A2DPWB 自己的链路控制耳机，不会增加第二条连接。
+
 ### 采样率
 
 aptX、aptX HD 和 aptX LL 只支持 44.1 kHz 和 48 kHz（aptX Adaptive 为 48 kHz；选择 96 kHz 且耳机列出时为 96 kHz）。A2DPWB 会从耳机通告的采样率中选择一个（“自动”时为 48 kHz，没有则为 44.1 kHz），并由 WASAPI 对捕获的音频进行重采样。使用 aptX 时无需更改 Windows 声音设置。

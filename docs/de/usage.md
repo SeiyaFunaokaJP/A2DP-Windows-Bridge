@@ -376,6 +376,8 @@ und der Fehler besagt, dass Endpunkte von einem anderen Gerät genutzt werden. T
 
 Sony-Kopfhörer wie der WH-1000XM4 bieten kein LDAC an, solange **Gleichzeitig mit 2 Geräten verbinden** (Multipoint) eingeschaltet ist: In der App Sony Sound Connect ausschalten und erneut verbinden. Einige Modelle, etwa der WH-1000XM6, unterstützen LDAC zusammen mit Multipoint.
 
+Die App der Kopfhörer (Akku, Geräuschunterdrückung, EQ) braucht eine eigene Verbindung zu den Kopfhörern, vom Telefon oder vom eingebauten Bluetooth dieses PCs. Solange sie verbunden ist, sind die Kopfhörer mit zwei Geräten verbunden, und Codec-Wechsel in A2DPWB dauern länger oder schlagen fehl. Trennen Sie das Telefon oder schließen Sie die App, bevor Sie den Codec wechseln. [EncoDeck](works-with) steuert die Kopfhörer stattdessen über die Verbindung von A2DPWB und fügt keine zweite hinzu.
+
 ### Abtastrate
 
 aptX, aptX HD und aptX LL unterstützen nur 44,1 kHz und 48 kHz (aptX Adaptive 48 kHz, oder 96 kHz, wenn gewählt und von den Kopfhörern gemeldet). A2DPWB wählt eine der Raten, die die Kopfhörer melden (bei Automatisch 48 kHz, sonst 44,1 kHz), und lässt WASAPI die Aufnahme umrechnen. Für aptX müssen Sie die Windows-Soundeinstellungen nicht ändern.
