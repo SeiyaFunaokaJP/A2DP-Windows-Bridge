@@ -532,6 +532,8 @@ A2DPWB checks GitHub Releases at most once a day (**Settings > Check for Updates
 
 ## Troubleshooting
 
+Sound that drops out or stutters, a connection that fails, or a bit rate lower than expected: see **[Dropouts and Connection Problems](wireless)**, which sums up what the reports so far turned out to be and what to check first.
+
 ### The Window Says the Core Is Not Running
 
 The window needs `a2dpwb-core.exe` next to it and starts it by itself. "The A2DP Windows Bridge core is not running" means it could not be started: reinstall A2DPWB (or extract the portable zip again). "The core is a different version" means the two programs come from different versions: install the same version of both (the latest release does this).
