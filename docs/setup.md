@@ -116,9 +116,9 @@ Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) re
 
 ### In the App (Guided Download)
 
-The **Adapter** screen (and the setup's **Driver and firmware** step) shows the firmware of the adapter: **Firmware OK**, **No firmware files needed**, or **Firmware not found** with the required file names. Use the **Open Download Page** button to open the [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) page in your browser, then use **Open Config Folder** to open the destination folder. Download the required `.bin` files and place them in the config folder.
+The **Adapter** screen (and the setup's **Driver and firmware** step) shows the firmware of the adapter: **Firmware OK**, **No firmware files needed**, or **Firmware not found** with the required file names. Use the **Open Download Page** button to open the [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) page in your browser, then use **Open Firmware Folder** to open the destination folder. Download the required `.bin` files and place them in the firmware folder.
 
-For the chips in the **Bluetooth Chip** list, **Download Firmware** does this for you: after you confirm, A2DPWB downloads the files from linux-firmware (kernel.org), checks each one against the SHA-256 it expects and saves it in the config folder. A chip that linux-firmware has no config file for gets an empty `_config.bin` (the chip then uses its own settings). The files are not part of A2DPWB; they are downloaded only when you ask for them.
+For the chips in the **Bluetooth Chip** list, **Download Firmware** does this for you: after you confirm, A2DPWB downloads the files from linux-firmware (kernel.org), checks each one against the SHA-256 it expects and saves it in the firmware folder. A chip that linux-firmware has no config file for gets an empty `_config.bin` (the chip then uses its own settings). The files are not part of A2DPWB; they are downloaded only when you ask for them.
 
 A2DPWB detects the adapter's chipset and shows which firmware files are needed.
 
@@ -132,15 +132,15 @@ The **Bluetooth Chip** list on the **Adapter** screen decides whether A2DPWB run
 |:-------|:--------|
 | **Auto** (default) | Decided from the detected adapter each time A2DPWB starts. A known Realtek adapter gets its chip; any other adapter gets no Realtek initialization |
 | **Not Realtek** | Never run Realtek initialization. Use it for Intel, Broadcom, CSR and other adapters if Auto does not recognize yours |
-| **RTL8761BU**, **RTL8822CU**, ... | That Realtek chip. Needed for a Realtek-based adapter that Auto does not recognize (an OEM product under its own VID:PID). The status line shows whether its `.bin` files are in the config folder |
-| **Custom** | Uses `custom_fw.bin` and `custom_config.bin` from the config folder |
+| **RTL8761BU**, **RTL8822CU**, ... | That Realtek chip. Needed for a Realtek-based adapter that Auto does not recognize (an OEM product under its own VID:PID). The status line shows whether its `.bin` files are in the firmware folder |
+| **Custom** | Uses `custom_fw.bin` and `custom_config.bin` from the firmware folder |
 
 Do not choose a Realtek chip or Custom for a non-Realtek adapter: A2DPWB would try to upload Realtek firmware to it, and the adapter may fail to start.
 
 ### Manual Download
 
 1. Download the firmware and config `.bin` files for your chipset from [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (e.g., `rtl8761bu_fw.bin` and `rtl8761bu_config.bin`)
-2. Place both files in the A2DPWB config folder (`%APPDATA%\A2DPWB`, also under **Settings > Settings folder**)
+2. Place both files in the A2DPWB firmware folder (`%APPDATA%\A2DPWB\firmware`, also opened by **Open Firmware Folder**)
 
 {: .note }
 These firmware files are proprietary Realtek binaries distributed via the linux-firmware project. They are not included in this repository. See [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE) for redistribution terms.
@@ -155,8 +155,8 @@ Which adapters and headphones have actually been used with A2DPWB, with the code
 |:--------|:-----------------|:------|
 | Realtek | TP-Link UB500, RTL8761BU | Requires firmware download (see above). Best tested |
 | CSR | Generic CSR8510 dongles | Works out of the box, no firmware needed |
-| Broadcom | ASUS BT400 (BCM20702) | *Experimental.* Adapters that report the vendor class `FF/01/01` instead of Bluetooth `E0/01/01` (BCM20702 OEM dongles) are detected too. Runs on ROM firmware; an optional PatchRAM `.hcd` (e.g. `BCM20702A1-0b05-17cb.hcd`) in the config folder is uploaded at startup |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimental.* In bootloader mode (e.g. after a cold boot) needs the matching `ibt-*.sfi` + `ibt-*.ddc` from linux-firmware `intel/` in the config folder; the log names them (e.g. `ibt-0180-0041.sfi`). Only the AX211 has been tested so far |
+| Broadcom | ASUS BT400 (BCM20702) | *Experimental.* Adapters that report the vendor class `FF/01/01` instead of Bluetooth `E0/01/01` (BCM20702 OEM dongles) are detected too. Runs on ROM firmware; an optional PatchRAM `.hcd` (e.g. `BCM20702A1-0b05-17cb.hcd`) in the firmware folder is uploaded at startup |
+| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimental.* In bootloader mode (e.g. after a cold boot) needs the matching `ibt-*.sfi` + `ibt-*.ddc` from linux-firmware `intel/` in the firmware folder; the log names them (e.g. `ibt-0180-0041.sfi`). Only the AX211 has been tested so far |
 | MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | Not supported: need firmware loaders A2DPWB does not have |
 
 USB Bluetooth 5.0+ adapters generally work best for high-bitrate codecs like LDAC.

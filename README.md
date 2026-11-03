@@ -48,7 +48,7 @@ Windows 10 / 11 load only kernel drivers signed through Microsoft, which needs a
 
 > **Warning:** While WinUSB is assigned, Windows' own Bluetooth no longer sees the adapter. A built-in adapter can be used too, but **the PC then has no Windows Bluetooth at all** until the driver is restored, so a separate USB adapter is recommended. **Adapters > Restore original driver** gives the adapter back to Windows at any time, and the uninstaller offers it too.
 
-**Realtek adapters** need firmware files such as `rtl8761bu_fw.bin` and `rtl8761bu_config.bin` from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (proprietary, not included). The **Adapter** screen shows which files are needed; **Download Firmware** fetches them from kernel.org into the settings folder after you confirm, or open the download page and the settings folder to do it by hand. See the [Setup guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/setup).
+**Realtek adapters** need firmware files such as `rtl8761bu_fw.bin` and `rtl8761bu_config.bin` from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (proprietary, not included). The **Adapter** screen shows which files are needed; **Download Firmware** fetches them from kernel.org into the firmware folder after you confirm, or open the download page and the firmware folder to do it by hand. See the [Setup guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/setup).
 
 ## Usage
 

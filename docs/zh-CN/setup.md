@@ -117,9 +117,9 @@ a2dpwb-core.exe --cli --scan
 
 ### 在应用中（下载引导）
 
-**适配器**页面（以及设置向导的**驱动程序和固件**步骤）会显示适配器的固件状态：**固件正常**、**无需固件文件**，或**未找到固件**并列出所需的文件名。使用**打开下载页面**按钮在浏览器中打开 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 页面，然后使用**打开配置文件夹**打开目标文件夹。下载所需的 `.bin` 文件并放入该配置文件夹。
+**适配器**页面（以及设置向导的**驱动程序和固件**步骤）会显示适配器的固件状态：**固件正常**、**无需固件文件**，或**未找到固件**并列出所需的文件名。使用**打开下载页面**按钮在浏览器中打开 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 页面，然后使用**打开固件文件夹**打开目标文件夹。下载所需的 `.bin` 文件并放入该固件文件夹。
 
-对于 **Bluetooth 芯片** 列表中的芯片，**下载固件** 可以代劳：确认后，A2DPWB 会从 linux-firmware (kernel.org) 下载文件，逐个按预期的 SHA-256 校验，并保存到配置文件夹。linux-firmware 中没有 config 文件的芯片会得到一个空的 `_config.bin`（芯片将使用自身的设置）。这些文件不属于 A2DPWB，只在您请求时下载。
+对于 **Bluetooth 芯片** 列表中的芯片，**下载固件** 可以代劳：确认后，A2DPWB 会从 linux-firmware (kernel.org) 下载文件，逐个按预期的 SHA-256 校验，并保存到固件文件夹。linux-firmware 中没有 config 文件的芯片会得到一个空的 `_config.bin`（芯片将使用自身的设置）。这些文件不属于 A2DPWB，只在您请求时下载。
 
 A2DPWB 会检测适配器的芯片组，并显示需要哪些固件文件。
 
@@ -133,15 +133,15 @@ A2DPWB 会检测适配器的芯片组，并显示需要哪些固件文件。
 |:-------|:--------|
 | **自动**（默认） | 每次启动 A2DPWB 时根据检测到的适配器决定。已知的 Realtek 适配器会使用对应的芯片；其他适配器不执行 Realtek 初始化 |
 | **非 Realtek** | 从不执行 Realtek 初始化。如果“自动”无法识别你的适配器，Intel、Broadcom、CSR 等适配器请选择此项 |
-| **RTL8761BU**、**RTL8822CU**…… | 指定的 Realtek 芯片。用于“自动”无法识别的 Realtek 适配器（使用自有 VID:PID 的 OEM 产品）。状态行会显示其 `.bin` 文件是否已在配置文件夹中 |
-| **Custom** | 使用配置文件夹中的 `custom_fw.bin` 和 `custom_config.bin` |
+| **RTL8761BU**、**RTL8822CU**…… | 指定的 Realtek 芯片。用于“自动”无法识别的 Realtek 适配器（使用自有 VID:PID 的 OEM 产品）。状态行会显示其 `.bin` 文件是否已在固件文件夹中 |
+| **Custom** | 使用固件文件夹中的 `custom_fw.bin` 和 `custom_config.bin` |
 
 不要为非 Realtek 适配器选择 Realtek 芯片或 Custom：A2DPWB 会尝试向其上传 Realtek 固件，适配器可能因此无法启动。
 
 ### 手动下载
 
 1. 从 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 下载与芯片组对应的固件和配置 `.bin` 文件（如 `rtl8761bu_fw.bin` 和 `rtl8761bu_config.bin`）
-2. 将这两个文件放入 A2DPWB 配置文件夹（`%APPDATA%\A2DPWB`，也可在**设置 > 设置文件夹**中找到）
+2. 将这两个文件放入 A2DPWB 固件文件夹（`%APPDATA%\A2DPWB\firmware`，也可通过**打开固件文件夹**打开）
 
 {: .note }
 这些固件文件是通过 linux-firmware 项目分发的 Realtek 专有二进制文件，未包含在本仓库中。再分发条款请参阅 [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE)。
@@ -154,8 +154,8 @@ A2DPWB 会检测适配器的芯片组，并显示需要哪些固件文件。
 |:--------|:-----------------|:------|
 | Realtek | TP-Link UB500、RTL8761BU | 需要下载固件（见上文）。测试最充分 |
 | CSR | 通用 CSR8510 适配器 | 开箱即用，无需固件 |
-| Broadcom | ASUS BT400 (BCM20702) | *实验性。* 报告厂商类 `FF/01/01` 而非 Bluetooth 类 `E0/01/01` 的适配器（BCM20702 OEM 适配器）也能被检测到。使用 ROM 固件运行；如果配置文件夹中有可选的 PatchRAM `.hcd` 文件（如 `BCM20702A1-0b05-17cb.hcd`），会在启动时上传 |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *实验性。* 处于 bootloader 模式时（如冷启动后），需要将 linux-firmware `intel/` 中对应的 `ibt-*.sfi` + `ibt-*.ddc` 放入配置文件夹，所需文件名会写在日志里（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上测试过 |
+| Broadcom | ASUS BT400 (BCM20702) | *实验性。* 报告厂商类 `FF/01/01` 而非 Bluetooth 类 `E0/01/01` 的适配器（BCM20702 OEM 适配器）也能被检测到。使用 ROM 固件运行；如果固件文件夹中有可选的 PatchRAM `.hcd` 文件（如 `BCM20702A1-0b05-17cb.hcd`），会在启动时上传 |
+| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *实验性。* 处于 bootloader 模式时（如冷启动后），需要将 linux-firmware `intel/` 中对应的 `ibt-*.sfi` + `ibt-*.ddc` 放入固件文件夹，所需文件名会写在日志里（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上测试过 |
 | MediaTek、Qualcomm | MT7921/MT7922、QCA61x4 | 不支持：需要 A2DPWB 所没有的固件加载程序 |
 
 对于 LDAC 等高比特率编解码器，USB Bluetooth 5.0+ 适配器通常效果最好。

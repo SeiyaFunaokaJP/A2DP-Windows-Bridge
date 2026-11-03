@@ -117,9 +117,9 @@ Realtek 기반 USB Bluetooth 어댑터(예: TP-Link UB500, RTL8761BU 동글)는 
 
 ### 앱에서 (안내형 다운로드)
 
-**어댑터** 화면(및 설정 마법사의 **드라이버 및 펌웨어** 단계)에 어댑터의 펌웨어 상태가 **펌웨어 정상**, **펌웨어 파일이 필요 없습니다**, 또는 필요한 파일 이름과 함께 **펌웨어를 찾을 수 없음**으로 표시됩니다. **다운로드 페이지 열기** 버튼으로 브라우저에서 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 페이지를 열고, **설정 폴더 열기**로 저장할 폴더를 엽니다. 필요한 `.bin` 파일을 다운로드하여 설정 폴더에 넣습니다.
+**어댑터** 화면(및 설정 마법사의 **드라이버 및 펌웨어** 단계)에 어댑터의 펌웨어 상태가 **펌웨어 정상**, **펌웨어 파일이 필요 없습니다**, 또는 필요한 파일 이름과 함께 **펌웨어를 찾을 수 없음**으로 표시됩니다. **다운로드 페이지 열기** 버튼으로 브라우저에서 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 페이지를 열고, **펌웨어 폴더 열기**로 저장할 폴더를 엽니다. 필요한 `.bin` 파일을 다운로드하여 펌웨어 폴더에 넣습니다.
 
-**Bluetooth 칩** 목록에 있는 칩이라면 **펌웨어 다운로드**가 이 작업을 대신합니다. 확인하면 A2DPWB가 linux-firmware(kernel.org)에서 파일을 다운로드하고, 각각 예상 SHA-256과 대조한 뒤 설정 폴더에 저장합니다. linux-firmware에 config 파일이 없는 칩에는 빈 `_config.bin`을 둡니다(칩이 자체 설정을 사용합니다). 이 파일은 A2DPWB에 포함되어 있지 않으며, 요청할 때만 다운로드됩니다.
+**Bluetooth 칩** 목록에 있는 칩이라면 **펌웨어 다운로드**가 이 작업을 대신합니다. 확인하면 A2DPWB가 linux-firmware(kernel.org)에서 파일을 다운로드하고, 각각 예상 SHA-256과 대조한 뒤 펌웨어 폴더에 저장합니다. linux-firmware에 config 파일이 없는 칩에는 빈 `_config.bin`을 둡니다(칩이 자체 설정을 사용합니다). 이 파일은 A2DPWB에 포함되어 있지 않으며, 요청할 때만 다운로드됩니다.
 
 A2DPWB는 어댑터 칩셋을 감지하고 필요한 펌웨어 파일을 표시합니다.
 
@@ -133,15 +133,15 @@ A2DPWB는 어댑터 칩셋을 감지하고 필요한 펌웨어 파일을 표시�
 |:-----|:-----|
 | **자동** (기본값) | A2DPWB를 시작할 때마다 감지된 어댑터를 기준으로 결정합니다. 알려진 Realtek 어댑터에는 해당 칩이 선택되고, 그 밖의 어댑터에는 Realtek 초기화를 수행하지 않습니다 |
 | **Realtek 아님** | Realtek 초기화를 수행하지 않습니다. 자동이 어댑터를 인식하지 못할 때 Intel, Broadcom, CSR 및 기타 어댑터에 사용합니다 |
-| **RTL8761BU**, **RTL8822CU**, ... | 해당 Realtek 칩입니다. 자동이 인식하지 못하는 Realtek 기반 어댑터(자체 VID:PID를 쓰는 OEM 제품)에 필요합니다. 상태 표시줄에 해당 `.bin` 파일이 설정 폴더에 있는지 표시됩니다 |
-| **Custom** | 설정 폴더의 `custom_fw.bin`과 `custom_config.bin`을 사용합니다 |
+| **RTL8761BU**, **RTL8822CU**, ... | 해당 Realtek 칩입니다. 자동이 인식하지 못하는 Realtek 기반 어댑터(자체 VID:PID를 쓰는 OEM 제품)에 필요합니다. 상태 표시줄에 해당 `.bin` 파일이 펌웨어 폴더에 있는지 표시됩니다 |
+| **Custom** | 펌웨어 폴더의 `custom_fw.bin`과 `custom_config.bin`을 사용합니다 |
 
 Realtek이 아닌 어댑터에는 Realtek 칩이나 Custom을 선택하지 마십시오. A2DPWB가 Realtek 펌웨어를 업로드하려고 시도하여 어댑터가 시작되지 않을 수 있습니다.
 
 ### 수동 다운로드
 
 1. [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt)에서 칩셋에 맞는 펌웨어 및 config `.bin` 파일을 다운로드합니다 (예: `rtl8761bu_fw.bin`과 `rtl8761bu_config.bin`)
-2. 두 파일을 A2DPWB 설정 폴더(`%APPDATA%\A2DPWB`, **설정 > 설정 폴더**에서도 열 수 있음)에 넣습니다
+2. 두 파일을 A2DPWB 펌웨어 폴더(`%APPDATA%\A2DPWB\firmware`, **펌웨어 폴더 열기**로도 열 수 있음)에 넣습니다
 
 {: .note }
 이 펌웨어 파일은 linux-firmware 프로젝트를 통해 배포되는 Realtek 독점 바이너리이며, 이 저장소에는 포함되어 있지 않습니다. 재배포 조건은 [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE)를 참조하십시오.
@@ -154,8 +154,8 @@ Realtek이 아닌 어댑터에는 Realtek 칩이나 Custom을 선택하지 마�
 |:-----|:--------|:-----|
 | Realtek | TP-Link UB500, RTL8761BU | 펌웨어 다운로드 필요(위 참조). 가장 많이 테스트됨 |
 | CSR | 일반 CSR8510 동글 | 바로 작동하며 펌웨어 불필요 |
-| Broadcom | ASUS BT400 (BCM20702) | *실험적.* Bluetooth `E0/01/01` 대신 벤더 클래스 `FF/01/01`을 보고하는 어댑터(BCM20702 OEM 동글)도 감지됩니다. ROM 펌웨어로 작동하며, 설정 폴더에 선택적인 PatchRAM `.hcd`(예: `BCM20702A1-0b05-17cb.hcd`)가 있으면 시작 시 업로드됩니다 |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *실험적.* 부트로더 모드(예: 콜드 부팅 직후)에서는 linux-firmware `intel/`의 해당 `ibt-*.sfi` + `ibt-*.ddc`가 설정 폴더에 필요합니다. 필요한 파일 이름은 로그에 나옵니다(예: `ibt-0180-0041.sfi`). 지금까지 테스트된 것은 AX211뿐입니다 |
+| Broadcom | ASUS BT400 (BCM20702) | *실험적.* Bluetooth `E0/01/01` 대신 벤더 클래스 `FF/01/01`을 보고하는 어댑터(BCM20702 OEM 동글)도 감지됩니다. ROM 펌웨어로 작동하며, 펌웨어 폴더에 선택적인 PatchRAM `.hcd`(예: `BCM20702A1-0b05-17cb.hcd`)가 있으면 시작 시 업로드됩니다 |
+| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *실험적.* 부트로더 모드(예: 콜드 부팅 직후)에서는 linux-firmware `intel/`의 해당 `ibt-*.sfi` + `ibt-*.ddc`가 펌웨어 폴더에 필요합니다. 필요한 파일 이름은 로그에 나옵니다(예: `ibt-0180-0041.sfi`). 지금까지 테스트된 것은 AX211뿐입니다 |
 | MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | 미지원: A2DPWB에 없는 펌웨어 로더가 필요합니다 |
 
 LDAC 같은 고비트레이트 코덱에는 일반적으로 USB Bluetooth 5.0 이상 어댑터가 가장 적합합니다.

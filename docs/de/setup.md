@@ -117,9 +117,9 @@ USB-Bluetooth-Adapter mit Realtek-Chip (z. B. TP-Link UB500, RTL8761BU-Dongles) 
 
 ### In der App (geführter Download)
 
-Die Seite **Adapter** (und der Einrichtungsschritt **Treiber und Firmware**) zeigt die Firmware des Adapters an: **Firmware OK**, **Keine Firmwaredateien nötig** oder **Firmware nicht gefunden** mit den Namen der benötigten Dateien. Öffnen Sie mit der Schaltfläche **Downloadseite öffnen** die Seite [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) im Browser und anschließend mit **Konfigurationsordner öffnen** den Zielordner. Laden Sie die benötigten `.bin`-Dateien herunter und legen Sie sie im Konfigurationsordner ab.
+Die Seite **Adapter** (und der Einrichtungsschritt **Treiber und Firmware**) zeigt die Firmware des Adapters an: **Firmware OK**, **Keine Firmwaredateien nötig** oder **Firmware nicht gefunden** mit den Namen der benötigten Dateien. Öffnen Sie mit der Schaltfläche **Downloadseite öffnen** die Seite [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) im Browser und anschließend mit **Firmware-Ordner öffnen** den Zielordner. Laden Sie die benötigten `.bin`-Dateien herunter und legen Sie sie im Firmware-Ordner ab.
 
-Für die Chips der Liste **Bluetooth-Chip** erledigt **Firmware herunterladen** das für Sie: Nach Ihrer Bestätigung lädt A2DPWB die Dateien von linux-firmware (kernel.org) herunter, prüft jede gegen den erwarteten SHA-256 und speichert sie im Konfigurationsordner. Ein Chip, für den linux-firmware keine Config-Datei hat, erhält eine leere `_config.bin` (der Chip nutzt dann seine eigenen Einstellungen). Die Dateien sind nicht Teil von A2DPWB; sie werden nur heruntergeladen, wenn Sie es verlangen.
+Für die Chips der Liste **Bluetooth-Chip** erledigt **Firmware herunterladen** das für Sie: Nach Ihrer Bestätigung lädt A2DPWB die Dateien von linux-firmware (kernel.org) herunter, prüft jede gegen den erwarteten SHA-256 und speichert sie im Firmware-Ordner. Ein Chip, für den linux-firmware keine Config-Datei hat, erhält eine leere `_config.bin` (der Chip nutzt dann seine eigenen Einstellungen). Die Dateien sind nicht Teil von A2DPWB; sie werden nur heruntergeladen, wenn Sie es verlangen.
 
 A2DPWB erkennt den Chipsatz des Adapters und zeigt an, welche Firmwaredateien benötigt werden.
 
@@ -133,15 +133,15 @@ Die Liste **Bluetooth-Chip** auf der Seite **Adapter** legt fest, ob A2DPWB die 
 |:--------|:----------|
 | **Automatisch** (Standard) | Wird bei jedem Start von A2DPWB anhand des erkannten Adapters entschieden. Ein bekannter Realtek-Adapter erhält seinen Chip; jeder andere Adapter erhält keine Realtek-Initialisierung |
 | **Nicht Realtek** | Nie eine Realtek-Initialisierung ausführen. Verwenden Sie dies für Intel-, Broadcom-, CSR- und andere Adapter, falls Automatisch Ihren Adapter nicht erkennt |
-| **RTL8761BU**, **RTL8822CU**, ... | Der jeweilige Realtek-Chip. Nötig für einen Adapter mit Realtek-Chip, den Automatisch nicht erkennt (ein OEM-Produkt mit eigener VID:PID). Die Statuszeile zeigt, ob die zugehörigen `.bin`-Dateien im Konfigurationsordner liegen |
-| **Custom** | Verwendet `custom_fw.bin` und `custom_config.bin` aus dem Konfigurationsordner |
+| **RTL8761BU**, **RTL8822CU**, ... | Der jeweilige Realtek-Chip. Nötig für einen Adapter mit Realtek-Chip, den Automatisch nicht erkennt (ein OEM-Produkt mit eigener VID:PID). Die Statuszeile zeigt, ob die zugehörigen `.bin`-Dateien im Firmware-Ordner liegen |
+| **Custom** | Verwendet `custom_fw.bin` und `custom_config.bin` aus dem Firmware-Ordner |
 
 Wählen Sie für einen Adapter ohne Realtek-Chip weder einen Realtek-Chip noch Custom: A2DPWB würde versuchen, Realtek-Firmware auf ihn hochzuladen, und der Adapter startet dann möglicherweise nicht.
 
 ### Manueller Download
 
 1. Laden Sie die Firmware- und Config-`.bin`-Dateien für Ihren Chipsatz von [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) herunter (z. B. `rtl8761bu_fw.bin` und `rtl8761bu_config.bin`)
-2. Legen Sie beide Dateien im A2DPWB-Konfigurationsordner ab (`%APPDATA%\A2DPWB`, auch erreichbar über **Einstellungen > Einstellungsordner**)
+2. Legen Sie beide Dateien im A2DPWB-Firmware-Ordner ab (`%APPDATA%\A2DPWB\firmware`, auch erreichbar über **Firmware-Ordner öffnen**)
 
 {: .note }
 Diese Firmwaredateien sind proprietäre Realtek-Binärdateien, die über das Projekt linux-firmware verteilt werden. Sie sind nicht in diesem Repository enthalten. Die Bedingungen für die Weitergabe finden Sie in [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE).
@@ -154,8 +154,8 @@ Diese Firmwaredateien sind proprietäre Realtek-Binärdateien, die über das Pro
 |:---------|:-----------------|:---------|
 | Realtek | TP-Link UB500, RTL8761BU | Firmware-Download erforderlich (siehe oben). Am besten getestet |
 | CSR | Generische CSR8510-Dongles | Funktioniert sofort, keine Firmware nötig |
-| Broadcom | ASUS BT400 (BCM20702) | *Experimentell.* Adapter, die statt der Bluetooth-Klasse `E0/01/01` die Herstellerklasse `FF/01/01` melden (OEM-Dongles mit BCM20702), werden ebenfalls erkannt. Läuft mit der ROM-Firmware; eine optionale PatchRAM-Datei `.hcd` (z. B. `BCM20702A1-0b05-17cb.hcd`) im Konfigurationsordner wird beim Start hochgeladen |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimentell.* Im Bootloader-Modus (z. B. nach einem Kaltstart) werden die passenden Dateien `ibt-*.sfi` + `ibt-*.ddc` aus linux-firmware `intel/` im Konfigurationsordner benötigt; das Protokoll nennt sie (z. B. `ibt-0180-0041.sfi`). Bisher nur mit dem AX211 getestet |
+| Broadcom | ASUS BT400 (BCM20702) | *Experimentell.* Adapter, die statt der Bluetooth-Klasse `E0/01/01` die Herstellerklasse `FF/01/01` melden (OEM-Dongles mit BCM20702), werden ebenfalls erkannt. Läuft mit der ROM-Firmware; eine optionale PatchRAM-Datei `.hcd` (z. B. `BCM20702A1-0b05-17cb.hcd`) im Firmware-Ordner wird beim Start hochgeladen |
+| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimentell.* Im Bootloader-Modus (z. B. nach einem Kaltstart) werden die passenden Dateien `ibt-*.sfi` + `ibt-*.ddc` aus linux-firmware `intel/` im Firmware-Ordner benötigt; das Protokoll nennt sie (z. B. `ibt-0180-0041.sfi`). Bisher nur mit dem AX211 getestet |
 | MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | Nicht unterstützt: benötigen Firmware-Loader, die A2DPWB nicht hat |
 
 USB-Bluetooth-Adapter ab Version 5.0 eignen sich im Allgemeinen am besten für Codecs mit hoher Bitrate wie LDAC.

@@ -76,7 +76,7 @@ Mit **Einstellungen > Entwicklermodus** hat die Seite **Entwickler** eine Regist
 
 - Die erkannten USB-Bluetooth-Adapter mit ihrem Chip, **Treiber** und **Firmware**; die Liste aktualisiert sich selbst, wenn ein Adapter ein- oder ausgesteckt wird. Ein Adapter, den A2DPWB nicht verwenden kann (MediaTek, Qualcomm), behält seinen Treiber: seine Schaltflächen für WinUSB und Firmware sind deaktiviert. Im Entwicklermodus lässt sich WinUSB trotzdem zuweisen, und **Chip-Infos lesen** bei einem Adapter mit WinUSB speichert, was sein Chip auf einige Lesebefehle antwortet, in `logs\probe\` – für alle, die Unterstützung dafür hinzufügen (Bluetooth hält dafür an und startet bei der nächsten Nutzung neu)
 - **Durch WinUSB-Treiber ersetzen** / **Originaltreiber wiederherstellen** (siehe [Einrichtung](setup#winusb)); Windows fragt jedes Mal nach Administratorrechten
-- **Bluetooth-Chip** für die Firmware, mit **Firmware herunterladen**, **Downloadseite öffnen** und **Konfigurationsordner öffnen** (siehe [Firmware](setup#firmware))
+- **Bluetooth-Chip** für die Firmware, mit **Firmware herunterladen**, **Downloadseite öffnen** und **Firmware-Ordner öffnen** (siehe [Firmware](setup#firmware))
 - **Wi-Fi-Kanäle meiden**: Automatisch, Aus oder Manuell, mit den Wi-Fi-Kanälen daneben: die, die Automatisch gerade meidet, und nichts bei Aus (beide schreibgeschützt), die eingegebenen bei Manuell (siehe [Verbindungsqualität und AFH](#link-quality))
 - **Bluetooth-Stack**: angehalten (startet mit der ersten Suche oder Verbindung), wird gestartet, bereit oder Fehler, sowie **Bluetooth neu starten**
 

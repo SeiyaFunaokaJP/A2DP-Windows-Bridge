@@ -76,7 +76,7 @@ Avec **Paramètres > Mode développeur**, l'écran **Développeur** comporte un 
 
 - Les adaptateurs Bluetooth USB détectés, avec leur puce, leur **Pilote** et leur **Firmware** ; la liste se met à jour d'elle-même quand un adaptateur est branché ou débranché. Un adaptateur qu'A2DPWB ne peut pas utiliser (MediaTek, Qualcomm) garde son pilote : ses boutons WinUSB et firmware sont désactivés. En mode développeur, WinUSB peut quand même lui être attribué, et **Lire les infos de la puce** sur un adaptateur sous WinUSB enregistre dans `logs\probe\` ce que sa puce répond à quelques commandes de lecture, pour qui voudrait en ajouter la prise en charge (le Bluetooth s'arrête pour cela et redémarre à la prochaine utilisation)
 - **Remplacer par le pilote WinUSB** / **Restaurer le pilote d'origine** (voir [Installation](setup#winusb)) ; Windows demande à chaque fois l'autorisation de l'administrateur
-- **Puce Bluetooth** pour le firmware, avec **Télécharger le firmware**, **Ouvrir la page de téléchargement** et **Ouvrir le dossier de configuration** (voir [Firmware](setup#firmware))
+- **Puce Bluetooth** pour le firmware, avec **Télécharger le firmware**, **Ouvrir la page de téléchargement** et **Ouvrir le dossier du firmware** (voir [Firmware](setup#firmware))
 - **Éviter les canaux Wi-Fi** : Auto, Désactivé ou Manuel, avec les canaux Wi-Fi à côté : ceux qu'Auto évite actuellement et aucun pour Désactivé (tous deux en lecture seule), ceux que vous saisissez pour Manuel (voir [Qualité de liaison et AFH](#link-quality))
 - **Pile Bluetooth** : arrêtée (elle démarre à la première recherche ou connexion), en démarrage, prête ou en erreur, et **Redémarrer le Bluetooth**
 
