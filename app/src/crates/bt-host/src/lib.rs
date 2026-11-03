@@ -19,6 +19,7 @@ pub mod intel;
 mod le;
 pub mod link_keys;
 pub mod media;
+pub mod probe;
 pub mod rfcomm;
 mod shared;
 pub mod stats;
@@ -61,6 +62,8 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEVICE_A2DP_TIMEOUT: Duration = Duration::from_secs(2);
 /// A job the run loop should take at once
 const JOB_TIMEOUT: Duration = Duration::from_secs(5);
+/// The whole chip probe: every step timing out takes 8 s
+const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// An RFCOMM channel open: the BTstack thread answers by its deadline
 /// (rfcomm::OPEN_DEADLINE); this only guards against a run loop that hangs
 const RFCOMM_OPEN_TIMEOUT: Duration = Duration::from_secs(22);
@@ -363,6 +366,37 @@ fn exe_dir() -> PathBuf {
 impl BtHost {
     /// Starts BTstack and waits until HCI works
     pub fn start(config: HostConfig, stats: Arc<LinkStats>) -> Result<BtHost, InitFailure> {
+        let host = BtHost::launch(config, stats, None)?;
+        match host.wait_init() {
+            Ok(()) => Ok(host),
+            Err(f) => {
+                drop(host); // shuts the stack down, releasing the adapter
+                Err(f)
+            }
+        }
+    }
+
+    /// The chip probe (crate::probe) on the adapter `config` opens, in place
+    /// of HCI init: read commands only. The stack is shut down afterwards,
+    /// releasing the adapter. Err only when no stack could run at all.
+    pub fn probe(config: HostConfig) -> Result<probe::ProbeReport, InitFailure> {
+        let (tx, rx) = mpsc::channel();
+        let host = BtHost::launch(config, Arc::new(LinkStats::default()), Some(tx))?;
+        let report = rx.recv_timeout(PROBE_TIMEOUT).unwrap_or_else(|_| probe::ProbeReport {
+            error: Some("the probe did not finish in time".into()),
+            ..probe::ProbeReport::default()
+        });
+        drop(host);
+        Ok(report)
+    }
+
+    /// BTstack on its thread with the transport: HCI init (or the Intel
+    /// loader first), or with `probe` the chip probe instead
+    fn launch(
+        config: HostConfig,
+        stats: Arc<LinkStats>,
+        probe: Option<mpsc::Sender<probe::ProbeReport>>,
+    ) -> Result<BtHost, InitFailure> {
         let shared = Arc::new(Shared::default());
         let controls = Arc::new(Controls {
             volume: AtomicI32::new(-1),
@@ -432,6 +466,7 @@ impl BtHost {
                             .set_packet_logger(Some(Box::new(move |t, incoming, p| logger.log_packet(t, incoming, p))));
                         let (sink, consumer, media_streaming) = media::queue(stats.clone(), remote);
                         let _ = remote_tx.send((remote, sink));
+                        let probe_mode = probe.is_some();
                         let setup = Setup {
                             tcp,
                             link_key_dir,
@@ -440,6 +475,7 @@ impl BtHost {
                             realtek_files,
                             broadcom_ids,
                             battery,
+                            probe,
                         };
                         let mut app = HostApp::new(
                             shared,
@@ -454,7 +490,12 @@ impl BtHost {
                             le,
                         );
                         let backend = backend(&transport);
-                        if intel_loader && !tcp {
+                        if probe_mode {
+                            // Read commands only, no HCI init (also over
+                            // TCP: the emulator's controller)
+                            stack.install_transport(backend);
+                            app.start_probe(stack);
+                        } else if intel_loader && !tcp {
                             // Intel controllers boot into a bootloader and
                             // need ibt-*.sfi / .ddc before HCI init; the
                             // loader is done at once if the firmware runs
@@ -495,13 +536,7 @@ impl BtHost {
             le_on,
             le: le_shared,
         };
-        match host.wait_init() {
-            Ok(()) => Ok(host),
-            Err(f) => {
-                drop(host); // shuts the stack down, releasing the adapter
-                Err(f)
-            }
-        }
+        Ok(host)
     }
 
     fn wait_init(&self) -> Result<(), InitFailure> {

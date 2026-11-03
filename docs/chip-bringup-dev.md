@@ -6,8 +6,8 @@ nav_exclude: true
 
 # Chip bring-up and probing - developer note
 
-**Status: step 1 (common loader interface, Intel on it) is done; the rest is
-design.**
+**Status: steps 1 (common loader interface, Intel on it) and 2 (chip probe
+with the standard reads) are done; the rest is design.**
 
 A2DPWB drives the adapter itself, so every chip family that needs a firmware
 download needs its own loader (Realtek in BTstack, Broadcom PatchRAM, Intel
@@ -65,28 +65,38 @@ Still to come with the probe and MediaTek:
 
 ## 2. Chip probe
 
-A `Loader` that never writes to the chip, run in place of the normal start
-when the user asks for it (developer mode), on any adapter with WinUSB,
-including vendors marked unsupported.
+`bt-host/src/probe.rs` (done): a `ChipLoader` that never writes to the chip,
+run in place of HCI init (`BtHost::probe`) on any adapter with WinUSB,
+including vendors marked unsupported, and over TCP on the emulator's
+controller.
 
-Steps, each with its own timeout; a timeout or error is recorded and the probe
-goes on:
+Steps, each with a 1 s timeout; a timeout or error is recorded and the probe
+goes on. No HCI Reset: a bootloader may not take it.
 
-1. Standard reads: HCI Reset, Read Local Version, Read BD_ADDR, Read Local
-   Supported Commands / Features, Read Buffer Size, Read Local Name.
-2. The vendor's read-only steps from a table in `bringup/probe_steps.rs`,
-   e.g. Intel Read Version (0xFC05, 0xFF), Realtek ROM version, MediaTek
-   chip ID and firmware version, Qualcomm ROM version. Each entry says why it
-   is safe (read-only per vendor documentation or Linux behaviour).
-3. USB descriptors: interfaces, endpoints, alternate settings.
+1. Standard reads (done): Read Local Version, Read BD_ADDR, Read Local
+   Supported Commands / Features, Read Buffer Size, Read Local Name, LE Read
+   Local Supported Features, LE Read Buffer Size. Events that answer no step
+   (a bootloader's vendor events) are kept too.
+2. The vendor's read-only steps from a table (step 3 below), e.g. Intel Read
+   Version (0xFC05, 0xFF), Realtek ROM version, MediaTek chip ID and firmware
+   version, Qualcomm ROM version. Each entry says why it is safe (read-only
+   per vendor documentation or Linux behaviour).
+3. USB descriptors: interfaces, endpoints, alternate settings (step 3).
 
-Output: `probe-<time>.json` (steps, raw bytes both ways, timings, decoded
-fields where a decoder exists) plus the `.pklg`, both in the diagnostic
-bundle. Addresses are masked like the rest of the bundle when masking is on.
+Output (done): `logs\probe\probe-<time>.json` with a decoded summary
+(company, HCI / LMP version, address, name, buffers) and every packet in hex
+as sent and received; the newest 10 are kept. The packets are in the HCI
+capture as well. The diagnostic bundle takes the reports only with the HCI
+captures, as they hold the adapter's address.
 
-UI: a **Probe** button on the adapter row in developer mode. For an
-unsupported adapter it also allows switching to WinUSB, with a note that
-Windows Bluetooth on that adapter stops until the original driver is put back.
+How to run it:
+- Window: developer mode, Adapters, **Read chip info** on an adapter with
+  WinUSB. Developer mode also offers WinUSB for an unsupported adapter
+  (Windows Bluetooth on it stops until the original driver is put back).
+  The Bluetooth stack stops for the probe; the next use starts it again.
+- Command line: `a2dpwb-core --cli -u <adapter> --probe` prints the answers
+  and saves the report; `--hci-tcp 127.0.0.1:<port> --probe` runs it on the
+  emulator (tools/emu).
 
 ## 3. Step files (developer mode)
 
@@ -122,7 +132,7 @@ tests (step files are not a support path for users).
 | PR | Content | Verifiable here |
 |:--|:--|:--|
 | 1 (done) | `bringup` interface, Intel ported, runner generalised | yes: tests, AX211 |
-| 2 | Probe (HCI steps), report in the bundle, developer-mode button | yes: Realtek, AX211, emulator |
+| 2 (done) | Probe (HCI steps), report in the bundle, developer-mode button, `--probe` | yes: tests, emulator |
 | 3 | `UsbControl` action, USB descriptors in the probe, vendor read steps | partly: no MediaTek / Qualcomm here |
 | 4 | Step files | yes: emulator, Realtek |
 | 5 | MediaTek loader | needs a reporter with MT7921 / MT7922 |
@@ -133,4 +143,4 @@ tests (step files are not a support path for users).
   used by Realtek modules: detection may need PID lists or the probe's Read
   Local Version company ID (MediaTek 0x0046) after WinUSB is on.
 - Whether the probe should also run once automatically on an unsupported
-  adapter that is already on WinUSB.
+  adapter that is already on WinUSB (for now it runs only when asked).

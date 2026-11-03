@@ -684,6 +684,26 @@ impl Inner {
         !self.stop_requested()
     }
 
+    /// [`Service::probe_adapter`]: holds the stack slot meanwhile, so no
+    /// stack starts on the adapter during the probe
+    fn probe(&self, instance_id: Option<String>) -> Result<bt_host::probe::ProbeReport, Msg> {
+        let mut slot = self.host.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(h) = slot.take() {
+            h.shutdown();
+        }
+        let mut c = self.host_config(false);
+        if let (TransportConfig::Usb(sel), Some(id)) = (&mut c.transport, instance_id) {
+            sel.instance_id = Some(id);
+            sel.vid_pid = None;
+            sel.preferred = None;
+        }
+        tracing::info!("chip probe: transport {:?}", c.transport);
+        BtHost::probe(c).map_err(|f| {
+            tracing::error!("chip probe: no stack could run ({f:?})");
+            Msg::new("error.btstack_init")
+        })
+    }
+
     pub fn shutdown_host(&self) {
         let old = self.host.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(h) = old {
@@ -1243,6 +1263,21 @@ impl Service {
             tracing::info!("scan: no longer waiting for the headphones");
             self.stop_streaming();
         }
+    }
+
+    /// The chip probe (bt_host::probe) on the adapter `instance_id` (None:
+    /// the one a stack would open): read commands only, for adapters
+    /// A2DPWB cannot bring up yet. The stack stops first; the next use
+    /// starts a new one.
+    pub fn probe_adapter(&self, instance_id: Option<String>) -> Result<bt_host::probe::ProbeReport, Msg> {
+        self.end_wait_for_device();
+        if self.is_running() {
+            return Err(Msg::new("status.streaming"));
+        }
+        if self.is_scanning() {
+            return Err(Msg::new("status.scanning_devices"));
+        }
+        self.inner.probe(instance_id)
     }
 
     /// Inquiry for nearby (classic) devices

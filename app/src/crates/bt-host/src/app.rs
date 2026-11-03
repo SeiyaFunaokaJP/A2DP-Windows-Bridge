@@ -25,6 +25,7 @@ use crate::le::core::LeCore;
 use crate::le::iso_send::TIMER_ISO;
 use crate::link_keys::FileLinkKeyStore;
 use crate::media::{MediaPacket, RTP_HEADER_SIZE};
+use crate::probe::ProbeReport;
 use crate::rfcomm::{Rfcomm, TIMER_RFCOMM};
 use crate::shared::Shared;
 use crate::stats::LinkStats;
@@ -64,6 +65,8 @@ pub(crate) struct Setup {
     pub broadcom_ids: Vec<(u16, u16)>,
     /// HFP audio gateway for the headphones' battery level
     pub battery: bool,
+    /// Run the chip probe instead of HCI init (BtHost::probe): its report
+    pub probe: Option<mpsc::Sender<ProbeReport>>,
 }
 
 /// LMP subversions Realtek chips report while running their ROM code,
@@ -251,11 +254,21 @@ impl HostApp {
         self.start_loader(stack, Box::new(loader));
     }
 
+    /// The chip probe (crate::probe) on the transport installed already, in
+    /// place of HCI init: its report goes to `setup.probe`
+    pub fn start_probe(&mut self, stack: &Stack) {
+        self.start_loader(stack, Box::new(crate::probe::Probe::new()));
+    }
+
     /// A chip bring-up (crate::bringup) on the transport installed already,
     /// then HCI init
     fn start_loader(&mut self, stack: &Stack, mut loader: Box<dyn ChipLoader>) {
         if !stack.raw_begin() {
             tracing::error!("could not open the Bluetooth adapter");
+            if let Some(tx) = self.setup.probe.take() {
+                let error = Some("could not open the Bluetooth adapter".to_owned());
+                let _ = tx.send(ProbeReport { error, ..ProbeReport::default() });
+            }
             self.init_failed(InitFailure::Failed);
             return;
         }
@@ -294,7 +307,17 @@ impl HostApp {
 
     fn loader_done(&mut self, stack: &Stack, result: Result<bringup::Outcome, bringup::LoadError>) {
         stack.timer_stop(TIMER_LOADER);
-        let Some(loader) = self.loader.take() else { return };
+        let Some(mut loader) = self.loader.take() else { return };
+        // The probe: no HCI init after it. Raw mode stays until the stack is
+        // shut down, so BTstack gets no packet
+        if let Some(tx) = self.setup.probe.take() {
+            let mut report = loader.take_report().unwrap_or_default();
+            if let Err(e) = &result {
+                report.error = Some(e.to_string());
+            }
+            let _ = tx.send(report);
+            return;
+        }
         let vendor = loader.vendor();
         match result {
             Ok(outcome) => {
@@ -308,6 +331,8 @@ impl HostApp {
                         tracing::info!("{vendor} controller: firmware {firmware} loaded")
                     }
                     bringup::Outcome::Rom => tracing::info!("{vendor} controller: ROM firmware, nothing to load"),
+                    // Only from the probe, which returned above
+                    bringup::Outcome::Probed => {}
                 }
                 self.setup_hci_and_power_on(stack, None);
             }

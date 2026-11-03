@@ -26,6 +26,11 @@ pub fn recorder_dir(config: &Path) -> PathBuf {
     log_dir(config).join("hci")
 }
 
+/// Chip probe reports (crate::probe_report)
+pub fn probe_dir(config: &Path) -> PathBuf {
+    log_dir(config).join("probe")
+}
+
 /// Crash reports (win_sys::crash)
 pub fn crash_dir(config: &Path) -> PathBuf {
     log_dir(config).join("crash")

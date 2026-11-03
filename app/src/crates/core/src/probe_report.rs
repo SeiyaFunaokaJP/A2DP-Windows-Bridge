@@ -1,0 +1,167 @@
+//! Chip probe reports (bt_host::probe) as JSON files in `logs\probe\`, for
+//! whoever adds a loader for the chip (docs/chip-bringup-dev.md). They hold
+//! the adapter's address and name, so the diagnostic bundle takes them only
+//! with the HCI captures.
+
+use std::path::{Path, PathBuf};
+
+use bt_host::probe::{ProbeReport, ProbeSummary};
+use serde_json::{Value, json};
+
+use crate::adapter::bt_core_version;
+
+/// Reports kept in their folder (newest)
+const KEEP: usize = 10;
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// "Intel, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102, 8 of 8 commands
+/// answered"
+pub fn summary_line(report: &ProbeReport) -> String {
+    let s = report.summary();
+    let mut parts = Vec::new();
+    match (s.company_name, s.company) {
+        (Some(name), _) => parts.push(name.to_owned()),
+        (None, Some(id)) => parts.push(format!("company 0x{id:04X}")),
+        (None, None) => {}
+    }
+    if let Some(v) = s.hci_version {
+        parts.push(match bt_core_version(v) {
+            Some(core) => format!("Bluetooth {core} (HCI {v})"),
+            None => format!("HCI {v}"),
+        });
+    }
+    if let Some(sub) = s.lmp_subversion {
+        parts.push(format!("LMP subversion 0x{sub:04X}"));
+    }
+    parts.push(format!("{} of {} commands answered", s.answered, s.steps));
+    if let Some(e) = &report.error {
+        parts.push(e.clone());
+    }
+    parts.join(", ")
+}
+
+fn summary_json(s: &ProbeSummary) -> Value {
+    json!({
+        "hci_version": s.hci_version,
+        "bluetooth": s.hci_version.and_then(bt_core_version),
+        "hci_revision": s.hci_revision.map(|v| format!("0x{v:04X}")),
+        "lmp_version": s.lmp_version,
+        "lmp_subversion": s.lmp_subversion.map(|v| format!("0x{v:04X}")),
+        "company": s.company.map(|v| format!("0x{v:04X}")),
+        "company_name": s.company_name,
+        "address": s.address,
+        "name": s.name,
+        "acl_buffers": s.acl_buffers.map(|(len, n)| json!({ "length": len, "count": n })),
+        "le_acl_buffers": s.le_acl_buffers.map(|(len, n)| json!({ "length": len, "count": n })),
+        "answered": s.answered,
+        "steps": s.steps,
+    })
+}
+
+/// The report with its decoded summary; packets in hex as sent / received
+/// (HCI command: opcode, length, parameters; event: code, length,
+/// parameters)
+pub fn to_json(report: &ProbeReport, adapter: Option<&str>, version: &str) -> Value {
+    json!({
+        "a2dpwb": version,
+        "adapter": adapter,
+        "summary": summary_json(&report.summary()),
+        "error": report.error,
+        "millis": report.millis,
+        "steps": report.steps.iter().map(|s| json!({
+            "name": s.name,
+            "command": hex(&s.command),
+            "answer": s.answer.as_deref().map(hex),
+            "millis": s.millis,
+        })).collect::<Vec<_>>(),
+        "other_events": report.other_events.iter().map(|e| hex(e)).collect::<Vec<_>>(),
+    })
+}
+
+/// Writes `probe-<time>.json` to `logs\probe\` and keeps the newest
+/// [`KEEP`]
+pub fn save(config: &Path, report: &ProbeReport, adapter: Option<&str>, version: &str) -> std::io::Result<PathBuf> {
+    let dir = crate::paths::probe_dir(config);
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("probe-{}.json", crate::paths::local_stamp()));
+    let text = serde_json::to_string_pretty(&to_json(report, adapter, version)).unwrap_or_default();
+    std::fs::write(&path, text)?;
+    prune(&dir);
+    Ok(path)
+}
+
+fn prune(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut files: Vec<PathBuf> =
+        entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect();
+    // probe-YYYYMMDD_HHMMSS: the name sorts by time
+    files.sort();
+    let excess = files.len().saturating_sub(KEEP);
+    for old in &files[..excess] {
+        let _ = std::fs::remove_file(old);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bt_host::probe::ProbeStep;
+
+    fn report() -> ProbeReport {
+        ProbeReport {
+            steps: vec![
+                ProbeStep {
+                    name: "Read Local Version Information",
+                    command: vec![0x01, 0x10, 0x00],
+                    answer: Some(vec![0x0E, 0x0C, 0x01, 0x01, 0x10, 0x00, 12, 0x02, 0x31, 12, 0x02, 0x00, 0x02, 0x31]),
+                    millis: 3,
+                },
+                ProbeStep { name: "Read BD_ADDR", command: vec![0x09, 0x10, 0x00], answer: None, millis: 1000 },
+            ],
+            other_events: vec![vec![0xFF, 0x01, 0x06]],
+            millis: 1003,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn summary_names_the_chip_and_what_answered() {
+        assert_eq!(
+            summary_line(&report()),
+            "Intel, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102, 1 of 2 commands answered"
+        );
+        let nothing = ProbeReport { error: Some("could not open the Bluetooth adapter".into()), ..report() };
+        let nothing = ProbeReport { steps: Vec::new(), ..nothing };
+        assert_eq!(summary_line(&nothing), "0 of 0 commands answered, could not open the Bluetooth adapter");
+    }
+
+    #[test]
+    fn json_has_the_packets_in_hex() {
+        let v = to_json(&report(), Some(r"USB\VID_8087&PID_0033\5&3B72E4CF&0&14"), "2.0.2");
+        assert_eq!(v["summary"]["company_name"], "Intel");
+        assert_eq!(v["summary"]["bluetooth"], "5.3");
+        assert_eq!(v["steps"][0]["command"], "011000");
+        assert_eq!(v["steps"][0]["answer"], "0e0c010110000c02310c02000231");
+        assert_eq!(v["steps"][1]["answer"], Value::Null);
+        assert_eq!(v["other_events"][0], "ff0106");
+    }
+
+    #[test]
+    fn save_keeps_the_newest() {
+        let dir = std::env::temp_dir().join(format!("a2dpwb-probe-test-{}", std::process::id()));
+        let probe = crate::paths::probe_dir(&dir);
+        std::fs::create_dir_all(&probe).unwrap();
+        for i in 0..KEEP + 2 {
+            std::fs::write(probe.join(format!("probe-20260101_0000{i:02}.json")), "{}").unwrap();
+        }
+        let path = save(&dir, &report(), None, "2.0.2").unwrap();
+        let left = std::fs::read_dir(&probe).unwrap().count();
+        assert_eq!(left, KEEP);
+        assert!(path.exists());
+        assert!(!probe.join("probe-20260101_000000.json").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

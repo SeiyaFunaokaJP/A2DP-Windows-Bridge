@@ -249,3 +249,33 @@ describe("Adapter firmware", () => {
     expect(screen.queryByText(/not responding/i)).not.toBeInTheDocument();
   });
 });
+
+describe("Chip probe (developer mode)", () => {
+  it("offers WinUSB for a chip A2DPWB cannot use and reads a WinUSB adapter's chip", async () => {
+    const { calls, mock } = start();
+    await screen.findByRole("heading", { level: 1, name: "Adapters" });
+    const m = mock as any;
+    const [mediatek, realtek] = sampleSnapshot("fresh").adapter.adapters;
+    m.snap.adapter = { ...m.snap.adapter, adapters: [mediatek, { ...realtek, driver: "winusb" }] };
+    m.emit({ kind: "adapter", value: m.snap.adapter });
+    const mtk = await screen.findByRole("region", { name: "MediaTek Bluetooth Adapter" });
+    const assign = within(mtk).getByRole("button", { name: "Replace with WinUSB driver" });
+    // Developer mode off: neither
+    expect(assign).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Read chip info" })).toBeNull();
+
+    await mock.call("settings.set", { settings: { ...m.snap.settings, developer_mode: true } });
+    await waitFor(() => expect(assign).toBeEnabled());
+    expect(within(mtk).getByRole("group", { name: "Driver: Original driver" })).toHaveTextContent(
+      "Replaces the original driver",
+    );
+    // The probe on an adapter with WinUSB only
+    expect(within(mtk).queryByRole("button", { name: "Read chip info" })).toBeNull();
+    const rtl = screen.getByRole("region", { name: "TP-Link Bluetooth USB Adapter (RTL8761BU)" });
+    const reveal = vi.spyOn(mock, "revealPath");
+    fireEvent.click(within(rtl).getByRole("button", { name: "Read chip info" }));
+    expect(await screen.findByText(/^Chip info saved: Intel, Bluetooth 5\.3/)).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "adapter.probe")?.params).toEqual({ instance_id: realtek.instance_id });
+    expect(reveal).toHaveBeenCalledWith(expect.stringMatching(/probe-\d{8}_\d{6}\.json$/));
+  });
+});

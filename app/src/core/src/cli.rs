@@ -61,6 +61,9 @@ Usage: a2dpwb-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
                         statistics of a measuring receiver (tools/linux_sink);
                         without -d, stream to that receiver
   --scan [seconds]      list nearby devices and exit
+  --probe               read what the adapter answers (read commands only, no
+                        HCI init; for adapters A2DPWB cannot use yet), save it
+                        to logs\\probe and exit
 
 LE Audio (experimental, LC3 over LE isochronous channels):
   --le-audio            stream to the LE Audio device -d (BAP unicast, LC3)
@@ -119,6 +122,7 @@ struct Args {
     afh: Option<String>,
     remote_sink: Option<String>,
     scan: Option<u32>,
+    probe: bool,
     hci_tcp: Option<String>,
     hci_capture: Option<PathBuf>,
     test_tone: bool,
@@ -194,6 +198,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
         afh: None,
         remote_sink: None,
         scan: None,
+        probe: false,
         hci_tcp: None,
         hci_capture: None,
         test_tone: false,
@@ -286,6 +291,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
                 };
                 a.scan = Some(secs);
             }
+            "--probe" => a.probe = true,
             "--hci-tcp" => a.hci_tcp = Some(value(&mut it, "--hci-tcp")?),
             "--hci-capture" => a.hci_capture = Some(value(&mut it, "--hci-capture")?.into()),
             "--test-tone" => a.test_tone = true,
@@ -388,6 +394,44 @@ pub fn run(args: &[String]) -> i32 {
     if a.le.on {
         // LE Audio (experimental): its own flow (v1 le_audio_cli.cpp)
         let code = le_run(&a, &service, &running);
+        service.shutdown();
+        capture.stop();
+        return code;
+    }
+
+    if a.probe {
+        let code = match service.probe_adapter(None) {
+            Ok(report) => {
+                for s in &report.steps {
+                    let answer = s
+                        .answer
+                        .as_deref()
+                        .map_or_else(|| "no answer".to_owned(), |e| e.iter().map(|b| format!("{b:02x}")).collect());
+                    println!("{:<34} {:>5} ms  {answer}", s.name, s.millis);
+                }
+                println!("\n{}", a2dpwb_core::probe_report::summary_line(&report));
+                let adapter = a.usb.as_ref().map(|(u, _)| u.as_str());
+                match a2dpwb_core::probe_report::save(
+                    &a2dpwb_core::paths::config_dir(),
+                    &report,
+                    adapter,
+                    env!("CARGO_PKG_VERSION"),
+                ) {
+                    Ok(path) => {
+                        println!("Saved to {}", path.display());
+                        0
+                    }
+                    Err(e) => {
+                        eprintln!("The report could not be saved: {e}");
+                        1
+                    }
+                }
+            }
+            Err(m) => {
+                eprintln!("{m}");
+                1
+            }
+        };
         service.shutdown();
         capture.stop();
         return code;
