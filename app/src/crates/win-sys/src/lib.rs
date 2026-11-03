@@ -2,6 +2,7 @@
 //! the `*-sys` crates where `unsafe` is allowed; every function here is
 //! safe to call.
 
+pub mod accent;
 pub mod audio_policy;
 pub mod autostart;
 pub mod bt_paired;

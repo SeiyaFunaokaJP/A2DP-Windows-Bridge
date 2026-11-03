@@ -108,6 +108,7 @@ export type ParamsOf<M extends MethodName> =
 interface Results {
   "state.snapshot": Snapshot;
   "device.scan": Device[];
+  "device.windows_paired": string[];
   "adapter.list": AdapterInfo[];
   "adapter.assign_winusb": AdapterInfo[];
   "adapter.restore_driver": AdapterInfo[];

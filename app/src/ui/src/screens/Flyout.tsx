@@ -8,6 +8,7 @@
 
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { errorText, useApp } from "../app/context";
+import { mixerShown } from "../app/settings";
 import { CaptureSign } from "../app/indicators";
 import { Button, IconButton } from "../components/controls";
 import { Icon } from "../components/Icon";
@@ -123,7 +124,7 @@ export function Flyout() {
         </Show>
       </Show>
       {/* One click from the taskbar (issue #223) */}
-      <Show when={snap().settings.developer_mode}>
+      <Show when={mixerShown(snap().settings)}>
         <div class="fly-mixer">
           <MixerList />
         </div>

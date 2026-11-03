@@ -23,3 +23,21 @@ export function applyTheme(setting: string, transport: Transport): () => void {
   }
   return () => {};
 }
+
+/** Windows' accent colour on the controls (styles/app.css --accent-fill),
+ *  read again whenever the window gets the focus */
+export function followAccent(transport: Transport): void {
+  if (!transport.accentColors) return;
+  const root = document.documentElement;
+  const read = () =>
+    void transport
+      .accentColors?.()
+      .then((a) => {
+        if (!a) return;
+        root.style.setProperty("--sys-accent-light", a.light);
+        root.style.setProperty("--sys-accent-dark", a.dark);
+      })
+      .catch(() => {});
+  read();
+  window.addEventListener("focus", read);
+}

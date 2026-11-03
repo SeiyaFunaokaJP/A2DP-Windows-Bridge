@@ -14,7 +14,7 @@ afterEach(() => {
   mock = null;
 });
 
-async function open(settings: Partial<Settings> = { developer_mode: true, mute_output: false }) {
+async function open(settings: Partial<Settings> = { developer_mode: true, volume_mixer: true, mute_output: false }) {
   location.hash = "#/mixer";
   const calls: { method: string; params: unknown }[] = [];
   mock = new MockCore({ speed: 0, onCall: (method, params) => calls.push({ method, params }) });
@@ -30,6 +30,12 @@ describe("volume mixer", () => {
     await open({ developer_mode: false, mute_output: true });
     expect(screen.queryByRole("link", { name: t("ui.nav.mixer") })).toBeNull();
     expect(screen.queryByRole("heading", { level: 1, name: t("ui.nav.mixer") })).toBeNull();
+    expect(screen.queryByRole("slider", { name: "Music Player" })).toBeNull();
+  });
+
+  it("needs its Developer toggle as well (issue #86)", async () => {
+    await open({ developer_mode: true, volume_mixer: false, mute_output: true });
+    expect(screen.queryByRole("link", { name: t("ui.nav.mixer") })).toBeNull();
     expect(screen.queryByRole("slider", { name: "Music Player" })).toBeNull();
   });
 

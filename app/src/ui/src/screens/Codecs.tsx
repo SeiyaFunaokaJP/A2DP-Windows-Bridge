@@ -50,6 +50,7 @@ import { t } from "../i18n";
 import type { Profile, Snapshot } from "../ipc/types";
 import {
   AUTO_ORDER,
+  autoKeepsCodecSettings,
   CARD_ORDER,
   cardOrder,
   CODECS,
@@ -671,6 +672,8 @@ function DeviceCodecs(props: {
                 describedBy={hintId}
                 onPick={() => void choose(c.id)}
                 onReadOnly={(settings) => {
+                  // Developer mode: the codec's settings apply under Auto-select
+                  if (settings && autoKeepsCodecSettings(snap().settings)) return setSettingsOf(c);
                   // No reason to turn Auto-select off for a card that changes nothing
                   if (settings || !refused(c.id))
                     props.onLocked(() => (settings ? setSettingsOf(c) : void choose(c.id)));
@@ -708,6 +711,7 @@ function DeviceCodecs(props: {
           sbcCaps={knownSbcCaps(snap().devices, e().address)}
           caps={knownCodecCaps(snap().devices, e().address)}
           developer={snap().settings.developer_mode}
+          matchSource={snap().settings.developer_mode && snap().settings.dev_overrides.match_source}
           deviceName={e().name}
           onChange={(values) => {
             pending = values;

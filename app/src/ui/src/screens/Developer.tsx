@@ -18,7 +18,8 @@ import { PACKET_DEFAULT, PACKET_MAX, PACKET_MIN } from "../lib/codecs";
 import { audioEntries, entryByKey, normalizeProfile, profilesOf } from "../lib/profile";
 import { ReceiverTest } from "./ReceiverTest";
 
-type Tab = "receiver" | "overrides" | "logging";
+// The app's own settings apart from the codec and media path (issue #86)
+type Tab = "app" | "receiver" | "overrides" | "logging";
 
 const NO_OVERRIDES: DevOverrides = {
   rtp_marker: false,
@@ -29,15 +30,18 @@ const NO_OVERRIDES: DevOverrides = {
   aac_no_afterburner: false,
   aac_latm_v0: false,
   force_codec: false,
+  auto_codec_settings: false,
+  match_source: false,
 };
 
 export function Developer() {
   const app = useApp();
   const { core } = app;
-  const [tab, setTab] = createSignal<Tab>("overrides");
+  const [tab, setTab] = createSignal<Tab>("app");
   const settings = () => core.state.snap!.settings;
   const tabs = (): { id: Tab; label: string; icon: IconName }[] => [
-    { id: "overrides", label: t("ui.dev.overrides"), icon: "wrench" },
+    { id: "app", label: t("ui.dev.app_settings"), icon: "settings" },
+    { id: "overrides", label: t("ui.dev.codec_settings"), icon: "wrench" },
     { id: "logging", label: t("ui.dev.logging"), icon: "record" },
     { id: "receiver", label: t("receiver.title"), icon: "beaker" },
   ];
@@ -81,6 +85,16 @@ export function Developer() {
         </For>
       </div>
       <div class="tab-panel" role="tabpanel" id={`panel-${tab()}`} aria-labelledby={`tab-${tab()}`}>
+        <Show when={tab() === "app"}>
+          <Section title={t("ui.nav.mixer")}>
+            <Toggle
+              label={t("ui.dev.volume_mixer")}
+              hint={t("ui.dev.volume_mixer_hint")}
+              checked={settings().volume_mixer}
+              onChange={(v) => void saveSettings(app, { volume_mixer: v })}
+            />
+          </Section>
+        </Show>
         <Show when={tab() === "overrides"}>
           <Overrides value={settings().dev_overrides} save={(dev_overrides) => saveSettings(app, { dev_overrides })} />
         </Show>
@@ -112,6 +126,18 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
           hint={t("ui.dev.force_codec_hint")}
           checked={props.value.force_codec}
           onChange={(v) => set({ force_codec: v })}
+        />
+        <Toggle
+          label={t("ui.dev.auto_codec_settings")}
+          hint={t("ui.dev.auto_codec_settings_hint")}
+          checked={props.value.auto_codec_settings}
+          onChange={(v) => set({ auto_codec_settings: v })}
+        />
+        <Toggle
+          label={t("ui.dev.match_source")}
+          hint={t("ui.dev.match_source_hint")}
+          checked={props.value.match_source}
+          onChange={(v) => set({ match_source: v })}
         />
       </Section>
       <Section

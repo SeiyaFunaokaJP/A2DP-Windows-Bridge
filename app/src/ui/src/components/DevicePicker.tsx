@@ -248,6 +248,16 @@ export function DevicePicker(props: {
     }
     setBusy(false);
   };
+  // A device Windows' Bluetooth has paired too may be taken by both: asked
+  // first (issue #86). LE Audio entries and a list Windows cannot give pass.
+  const [windowsPaired, setWindowsPaired] = createSignal<{ name: string; go: () => void } | null>(null);
+  const unlessWindowsPaired = async (address: string, name: string, leAudio: boolean, go: () => void) => {
+    if (leAudio) return go();
+    const paired = await app.core.request("device.windows_paired").catch(() => []);
+    if ((paired ?? []).some((a) => a.toUpperCase() === address.toUpperCase())) {
+      setWindowsPaired({ name: name || address, go });
+    } else go();
+  };
   const forget = async () => {
     const d = forgetting();
     if (!d || busy()) return;
@@ -320,7 +330,7 @@ export function DevicePicker(props: {
                 icon="power"
                 busy={props.connecting === d.address}
                 disabled={!!props.connecting || props.connectDisabled}
-                onClick={() => connect()(d.address, d.name)}
+                onClick={() => void unlessWindowsPaired(d.address, d.name, d.le_audio, () => connect()(d.address, d.name))}
               >
                 {t("connection.connect")}
               </Button>
@@ -334,7 +344,7 @@ export function DevicePicker(props: {
               icon="add"
               disabled={busy()}
               onClick={() =>
-                void add(d.address, d.name, d.le_audio)
+                void unlessWindowsPaired(d.address, d.name, d.le_audio, () => void add(d.address, d.name, d.le_audio))
               }
             >
               {t("ui.devices.add")}
@@ -429,9 +439,10 @@ export function DevicePicker(props: {
               const a = parseAddress(manual());
               if (!a) return;
               if (props.onConnect) {
-                props.onConnect(a, "");
+                const connect = props.onConnect;
+                void unlessWindowsPaired(a, "", false, () => connect(a, ""));
               } else if (props.manage) {
-                void add(a, "", false).then(() => setManual(""));
+                void unlessWindowsPaired(a, "", false, () => void add(a, "", false).then(() => setManual("")));
               } else {
                 // A typed address keeps the kind chosen (the profile's check box)
                 pick(a, "", props.leAudio ?? false);
@@ -592,6 +603,20 @@ export function DevicePicker(props: {
             />
           )}
         </Field>
+      </Dialog>
+      <Dialog
+        open={windowsPaired() !== null}
+        title={t("ui.devices.windows_paired_title")}
+        confirm={t("ui.devices.add_anyway")}
+        cancel={t("modal.cancel")}
+        onConfirm={() => {
+          const w = windowsPaired();
+          setWindowsPaired(null);
+          w?.go();
+        }}
+        onCancel={() => setWindowsPaired(null)}
+      >
+        <p>{t("ui.devices.windows_paired_text", windowsPaired()?.name ?? "")}</p>
       </Dialog>
       <Dialog
         open={forgetting() !== null}

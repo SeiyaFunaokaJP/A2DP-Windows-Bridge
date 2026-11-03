@@ -1315,6 +1315,9 @@ pub struct DiagInput<'a> {
     pub le_audio: Option<&'a LeAudioDiag>,
     /// Verbose logging, crash reports, flight recorder files (one line)
     pub logging: Option<&'a str>,
+    /// The IPC clients connected ("encodeck/1.14.0"): other apps that
+    /// drive the device through A2DPWB (issue #86)
+    pub clients: &'a [String],
 }
 
 /// What the diagnostics tell about LE Audio (experimental) of the running
@@ -1394,6 +1397,9 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
     );
     if let Some(l) = d.logging {
         let _ = writeln!(out, "Logging      : {l}");
+    }
+    if !d.clients.is_empty() {
+        let _ = writeln!(out, "Clients      : {}", d.clients.join(", "));
     }
     let _ = write!(out, "State        : {}", state_name(d.state));
     if let Some((_, text)) = d.flow.last_state()
@@ -2191,6 +2197,7 @@ mod tests {
         stats.packets_sent.store(1500, std::sync::atomic::Ordering::Relaxed);
         let adapters = vec!["Realtek RTL8761B [0BDA:8771], driver WinUsb".to_string()];
         let mut input = DiagInput {
+            clients: &[],
             env: Environment {
                 generated: "2026-10-17 10:00:00".into(),
                 app_version: "2.0.0-alpha.1".into(),
@@ -2217,6 +2224,13 @@ mod tests {
         let text = diag_text(&input);
         assert!(text.starts_with("```text\nA2DPWB diagnostics - 2026-10-17 10:00:00\n"), "{text}");
         assert!(text.ends_with("```\n"));
+        // No other app connected: no line
+        assert!(!text.contains("Clients"), "{text}");
+        let clients = ["a2dpwb-ui/2.0.2".to_string(), "encodeck/1.14.0".to_string()];
+        input.clients = &clients;
+        let with_clients = diag_text(&input);
+        assert!(with_clients.contains("Clients      : a2dpwb-ui/2.0.2, encodeck/1.14.0\n"), "{with_clients}");
+        input.clients = &[];
         assert!(text.contains("OS           : Windows build 26200 (x86_64)\n"));
         assert!(text.contains("State        : Streaming (Connected)\n"));
         assert!(text.contains("  Setting: chip PID 0x0000 (auto)\n"), "{text}");

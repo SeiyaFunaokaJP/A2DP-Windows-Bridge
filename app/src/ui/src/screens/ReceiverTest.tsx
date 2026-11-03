@@ -15,7 +15,7 @@ import type { IconName } from "../components/icons";
 import { t, tm } from "../i18n";
 import type { Core } from "../ipc/store";
 import type { ReceiverInfo } from "../ipc/types";
-import { bitDepths, CODECS, codecSpec, sampleRates } from "../lib/codecs";
+import { bitDepths, CODECS, codecSpec, fixedBitDepth, sampleRates } from "../lib/codecs";
 import { copyText, khz } from "../lib/format";
 import {
   BUFFERS_MS,
@@ -396,15 +396,28 @@ export function ReceiverTest() {
         <Field label={t("receiver.codec")}>
           {(id) => <Select id={id} value={choices().codec} disabled={locked()} options={codecOptions()} onChange={setCodec} />}
         </Field>
+        {/* A codec with one quality or one bit depth: a value, not a list */}
         <Field label={t("receiver.quality")}>
           {(id) => (
-            <Select
-              id={id}
-              value={choices().quality}
-              disabled={locked() || codecSpec(choices().codec).qualities.length === 0}
-              options={qualityOptions()}
-              onChange={(quality) => set({ quality })}
-            />
+            <Show
+              when={codecSpec(choices().codec).qualities.length > 0}
+              fallback={
+                <input
+                  id={id}
+                  class="input readonly"
+                  readOnly
+                  value={qualityOptions().find((o) => o.value === choices().quality)?.label ?? "–"}
+                />
+              }
+            >
+              <Select
+                id={id}
+                value={choices().quality}
+                disabled={locked()}
+                options={qualityOptions()}
+                onChange={(quality) => set({ quality })}
+              />
+            </Show>
           )}
         </Field>
         <Field label={t("receiver.sample_rate")}>
@@ -420,13 +433,20 @@ export function ReceiverTest() {
         </Field>
         <Field label={t("receiver.bit_depth")}>
           {(id) => (
-            <Select
-              id={id}
-              value={choices().depth}
-              disabled={locked() || bitDepths(choices().codec).length < 2}
-              options={bitDepths(choices().codec).map((d) => ({ value: d, label: depthLabel(d) }))}
-              onChange={(depth) => set({ depth })}
-            />
+            <Show
+              when={bitDepths(choices().codec).length > 1}
+              fallback={
+                <input id={id} class="input readonly" readOnly value={t(`bitdepth.${fixedBitDepth(choices().codec)}`)} />
+              }
+            >
+              <Select
+                id={id}
+                value={choices().depth}
+                disabled={locked()}
+                options={bitDepths(choices().codec).map((d) => ({ value: d, label: depthLabel(d) }))}
+                onChange={(depth) => set({ depth })}
+              />
+            </Show>
           )}
         </Field>
         <div class="row">

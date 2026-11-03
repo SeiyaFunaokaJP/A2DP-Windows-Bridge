@@ -28,6 +28,13 @@ pub struct DevOverrides {
     /// A codec chosen that the device does not list is asked for anyway,
     /// with no fallback (RemoteCaps::forcing)
     pub force_codec: bool,
+    /// Auto-select streams the codec it picks with that codec's own
+    /// settings (its card's "..."), not Auto's defaults (issue #86)
+    pub auto_codec_settings: bool,
+    /// A sample rate and bit depth on Auto follow the captured output's
+    /// format (Windows' default format of the device) instead of 48 kHz,
+    /// as far as the codec and the device take it (issue #86)
+    pub match_source: bool,
 }
 
 impl DevOverrides {
@@ -45,6 +52,8 @@ static CURRENT: RwLock<DevOverrides> = RwLock::new(DevOverrides {
     aac_no_afterburner: false,
     aac_latm_v0: false,
     force_codec: false,
+    auto_codec_settings: false,
+    match_source: false,
 });
 
 /// The overrides in force

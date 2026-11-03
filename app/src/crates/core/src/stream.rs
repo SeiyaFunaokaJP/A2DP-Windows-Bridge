@@ -51,6 +51,10 @@ pub struct StreamRequest {
     pub sample_rate: Option<u32>,
     /// None = auto (24-bit where the codec carries it)
     pub bit_depth: Option<u8>,
+    /// Under Auto-select, each codec's own settings (the profile's): used
+    /// for the codec Auto picks while `DevOverrides::auto_codec_settings`
+    /// is on (developer mode), else not
+    pub codec_values: Vec<(CodecKind, crate::profiles::CodecValues)>,
     pub source: SourceRequest,
     pub volume_sync: VolumeSync,
     /// The default output device is muted while streaming
@@ -1125,6 +1129,17 @@ fn sbc_abr(req: &StreamRequest, kind: CodecKind) -> bool {
     req.abr && matches!(kind, CodecKind::Sbc | CodecKind::SbcXq) && req.codec == Some(kind)
 }
 
+/// The format Windows plays `source` in (the render device's), for matching
+/// it (`DevOverrides::match_source`); None for the test tone or when it
+/// cannot be read
+fn source_mix(source: &SourceRequest) -> Option<audio_capture::MixFormat> {
+    match source {
+        SourceRequest::SystemLoopback | SourceRequest::Application { .. } => audio_capture::mix_format(None),
+        SourceRequest::VirtualDevice { id, .. } if !id.is_empty() => audio_capture::mix_format(Some(id)),
+        _ => None,
+    }
+}
+
 /// Starts the encode thread; ABR as the encoder runs it
 fn start_pipeline(
     encoder: Box<dyn Encoder>,
@@ -1143,7 +1158,11 @@ fn start_pipeline(
             mtu,
             abr,
             buffer: BufferPreset::Standard,
-            mute: Some(Box::new(host.volume_is_zero())),
+            // Volume 0, or Windows' mute key under the output mute
+            mute: Some(Box::new({
+                let zero = host.volume_is_zero();
+                move || zero() || crate::mute_output::key_silenced()
+            })),
         },
         sink,
         host.stats().clone(),
@@ -1357,6 +1376,18 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         tracing::warn!("codec fallback: {} not available ({why:?}), using {}", wanted.name(), kind.name());
     }
     tracing::info!("codec selected: {}", kind.name());
+    // Developer mode: Auto-select with the picked codec's own settings
+    let own = req.codec_values.iter().find(|(k, _)| *k == kind).map(|(_, v)| v.clone());
+    let req = match own.filter(|_| req.codec.is_none() && codec::dev::overrides().auto_codec_settings) {
+        Some(v) => {
+            tracing::info!("codec: {} with its own settings under Auto-select (developer mode): {v:?}", kind.name());
+            // A copy: the connect closure keeps the request borrowed
+            let mut r = req.clone();
+            v.apply_to(&mut r);
+            r
+        }
+        None => req.clone(),
+    };
     tracing::debug!(
         "codec: requested {:?} (fallback {}), chose {} ({})",
         req.codec.map(CodecKind::name),
@@ -1378,10 +1409,23 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // (44.1 kHz, say). Not the highest it lists nor the Windows mix rate
     // (issue #86: 96 kHz brought latency and trouble with no audible gain,
     // and Windows mixes at 48 kHz); 96 kHz when chosen. WASAPI resamples.
-    let mut preferred = req.sample_rate.unwrap_or(AUTO_SAMPLE_RATE);
+    // Developer mode: Auto follows the captured output's format instead
+    let mix = (codec::dev::overrides().match_source && (req.sample_rate.is_none() || req.bit_depth.is_none()))
+        .then(|| source_mix(&req.source))
+        .flatten();
+    if let Some(m) = mix {
+        tracing::info!("codec: matching the source (developer mode): {} Hz, {}-bit", m.rate, m.bits);
+    }
+    let mut preferred = req.sample_rate.or(mix.map(|m| m.rate)).unwrap_or(AUTO_SAMPLE_RATE);
     tracing::debug!(
         "capture rate: {preferred} Hz preferred ({})",
-        if req.sample_rate.is_some() { "profile" } else { "Auto" }
+        if req.sample_rate.is_some() {
+            "profile"
+        } else if mix.is_some() {
+            "the source's"
+        } else {
+            "Auto"
+        }
     );
     if preferred > kind.max_sample_rate() {
         tracing::info!(
@@ -1448,9 +1492,12 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
 
     // LDAC, aptX HD and LHDC V5 carry 24-bit unless the profile says 16
     // (LHDC V5 only when the sink has 24-bit); aptX Adaptive always
+    let source_16bit = req.bit_depth.is_none() && mix.is_some_and(|m| m.bits <= 16);
     let bits: u8 = match (kind, req.bit_depth) {
         (CodecKind::AptxAdaptive, _) => 24,
         (_, Some(16)) => 16,
+        // Matching a 16-bit source (developer mode)
+        _ if source_16bit => 16,
         (CodecKind::Ldac | CodecKind::AptxHd, _) => 24,
         (CodecKind::LhdcV5, _) if remote.lhdcv5_24bit() => 24,
         _ => 16,

@@ -586,6 +586,10 @@ pub struct DevOverrides {
     pub aac_no_afterburner: bool,
     pub aac_latm_v0: bool,
     pub force_codec: bool,
+    /// Auto-select uses each codec's own settings
+    pub auto_codec_settings: bool,
+    /// Rate and bit depth on Auto follow the captured output's format
+    pub match_source: bool,
 }
 
 /// Developer mode's logging (a2dpwb_core::settings::DevLog), in force while
@@ -657,6 +661,10 @@ pub struct Settings {
     /// starts the profile in use again.
     #[serde(default)]
     pub mute_output: bool,
+    /// Developer > Volume Mixer (off by default): the mixer screen, the
+    /// flyout's app list and mute_output take effect only with it on
+    #[serde(default)]
+    pub volume_mixer: bool,
     /// Developer mode: receiver test, HCI capture, debug details
     pub developer_mode: bool,
     /// Developer mode: overrides of the codec and media path, in force
@@ -1117,6 +1125,11 @@ pub enum Method {
     /// Ends a running scan early: device.scan answers with what it found
     #[serde(rename = "device.scan_stop")]
     DeviceScanStop,
+    /// -> string[]: the addresses ("XX:XX:XX:XX:XX:XX") of the devices
+    /// paired in Windows' own Bluetooth, on any of its radios (adding one
+    /// here may conflict with it, issue #86)
+    #[serde(rename = "device.windows_paired")]
+    DeviceWindowsPaired,
     /// Removes a saved device; `le_audio` true: its LE Audio entry (absent
     /// or false: the classic one)
     #[serde(rename = "device.forget")]

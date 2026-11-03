@@ -43,6 +43,8 @@ export interface Transport {
   openFolder(path: string): Promise<void>;
   revealPath(path: string): Promise<void>;
   setTheme(theme: string): Promise<void>;
+  /** Windows' accent colours ("#rrggbb"), null if not known */
+  accentColors?(): Promise<{ light: string; dark: string } | null>;
   /** The backend asks the main window to show a screen */
   onNavigate(cb: (route: string) => void): void;
   /** The window was minimized */
