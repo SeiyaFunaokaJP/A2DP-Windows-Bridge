@@ -98,3 +98,41 @@ describe("developer screen", () => {
     await waitFor(() => expect(core.state.snap!.settings.dev_log.always_verbose).toBeNull());
   });
 });
+
+describe("chip tools", () => {
+  it("runs a read-only script, and asks before lines that may change the chip", async () => {
+    const { core, calls } = await open();
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    fireEvent.click(await screen.findByRole("tab", { name: "Chip" }));
+    const box = (await screen.findByRole("textbox", { name: "Chip script" })) as HTMLTextAreaElement;
+    expect(box.value).toContain("hci 1001");
+    const run = screen.getByRole("button", { name: "Run" });
+    // The example only reads: it runs at once
+    await waitFor(() => expect(run).toBeEnabled());
+    fireEvent.click(run);
+    expect(await screen.findByText("2 of 2 lines done")).toBeInTheDocument();
+    const sent = calls.find((c) => c.method === "adapter.run_script")!.params as { allow_writes: boolean };
+    expect(sent.allow_writes).toBe(false);
+    expect(screen.getByLabelText("Result")).toHaveTextContent("line 2: hci 1001");
+
+    // A vendor command: listed, and run only when allowed
+    fireEvent.input(box, { target: { value: "hci fc05 ff\n" } });
+    expect(await screen.findByText("These lines may change the chip")).toBeInTheDocument();
+    expect(screen.getByText("line 1: hci fc05 ff")).toBeInTheDocument();
+    expect(run).toBeDisabled();
+    fireEvent.click(screen.getByRole("switch", { name: "Run them" }));
+    expect(run).toBeEnabled();
+    fireEvent.click(run);
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === "adapter.run_script").pop()!.params).toMatchObject({ allow_writes: true }),
+    );
+
+    // Errors and denied lines never run
+    fireEvent.input(box, { target: { value: "fly away\n" } });
+    expect(await screen.findByText("The script has errors")).toBeInTheDocument();
+    expect(run).toBeDisabled();
+    fireEvent.input(box, { target: { value: "hci fc00 01\n" } });
+    expect(await screen.findByText("These lines could change the chip for good and never run")).toBeInTheDocument();
+    expect(run).toBeDisabled();
+  });
+});

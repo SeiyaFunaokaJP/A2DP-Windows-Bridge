@@ -3210,3 +3210,18 @@ html.win-flyout body {
 .battery-icon.st-unknown {
   color: var(--text-2);
 }
+
+/* Developer > Chip: the script as typed, and the lines that came back */
+.chip-script {
+  min-height: 10rem;
+  resize: vertical;
+  white-space: pre;
+  margin-block: var(--s2);
+}
+.chip-lines {
+  font-family: var(--mono);
+  font-size: var(--fs-12);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0;
+}

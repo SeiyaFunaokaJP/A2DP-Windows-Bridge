@@ -6,7 +6,7 @@ nav_exclude: true
 
 # Chip bring-up and probing - developer note
 
-**Status: the generic foundation is done (steps 1 to 3). Loaders for MediaTek,
+**Status: the generic foundation is done (steps 1 to 4). Loaders for MediaTek,
 Qualcomm and other chips are left to contributors with the hardware: the
 procedure is [Adding Chip Support](chip-support).**
 
@@ -22,7 +22,10 @@ provides the means, not the vendor code:
 2. a **chip probe** that any adapter on WinUSB can run, which only reads and
    records everything it sends and receives (#287);
 3. **USB control transfers** for loaders, the USB descriptors in the probe,
-   and a **sample loader** with its tests to start from.
+   and a **sample loader** with its tests to start from (#292);
+4. developer-mode **tools**: a report button after the probe, **chip
+   scripts** (a console and step files), and a loader's **progress** on the
+   Adapters screen.
 
 ## What it builds on
 
@@ -95,15 +98,38 @@ with WinUSB (developer mode also offers WinUSB for an unsupported adapter);
 or `a2dpwb-core --cli -u <adapter> --probe`, or with `--hci-tcp` on the
 emulator (tools/emu).
 
-## Possible later: step files
+## 4. Tools in developer mode
 
-A JSON file of steps (send a command, a control transfer, wait for an
-event, upload a file in chunks) run by one more `ChipLoader`, so a
-contributor could try a sequence on a reporter's adapter without a new
-build. Not built: it would be the one way to send writes from outside the
-code, so it needs a vendor deny list for flash / OTP commands and a
-confirmation in developer mode. A loader written from a capture and tested
-against the simulated controller has been enough so far.
+**Report button**: after **Read chip info**, the adapter's card keeps the
+summary and opens a `chip_report.yml` issue prefilled with it, the version
+and the Windows build (`chipReportUrl` in `ui/src/lib/links.ts`), with the
+report file in Explorer to attach.
+
+**Chip scripts** (`bt-host/src/script.rs`): text, one request per line
+(`hci`, `bulk`, `usb in/out`, `wait`, `expect`, `bootloader`, `upload`),
+parsed with line numbers and run by `ScriptLoader`, a `ChipLoader`, through
+`BtHost::run_script` (the probe and scripts share `BtHost::run_tool`). The
+one way to send writes from outside the code, so:
+
+- `Step::reads_only` lists what runs freely: HCI OGF 0x04, OGF 0x05 but
+  Reset Failed Contact Counter, a few reads of OGF 0x03 / 0x08, standard
+  GET_STATUS / GET_DESCRIPTOR / GET_CONFIGURATION / GET_INTERFACE, `wait`,
+  `expect`, `bootloader`. Anything else needs `allow_writes` (the window's
+  switch, `--allow-writes`), checked in the core
+- `chips::denied_opcodes(vendor)` never run, whatever is allowed: vendor
+  commands that write memory kept after a power cycle (CSR BCCMD so far)
+- uploads read the firmware folder only; the script stops at its first
+  failure; bootloader mode is on from the start (no HCI Reset on close)
+
+The window checks the script as it is typed (`adapter.check_script`) and
+runs it (`adapter.run_script`); the report is `script-<time>.json` beside
+the probe reports, with the script.
+
+**Loader progress**: `ChipLoader::step` / `progress`, reported after each
+batch of actions through `HostConfig::on_loader` (a hook: the loader runs
+inside `BtHost::start`, before the core has the stack's handle), into
+`ServiceEvent::Loader` and `AdapterState::loader`. Intel reports its steps
+and the Secure Send percent; tools do not report.
 
 ## Open questions
 

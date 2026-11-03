@@ -1,4 +1,5 @@
-// Developer (shown while developer mode is on): the peer receiver test,
+// Developer (shown while developer mode is on): the chip tools (ChipTools),
+// the peer receiver test,
 // overrides of the codec and the media path for finding out why a sink stays
 // silent (issue #87; read when the next stream is set up), each saved
 // device's max media packet size (issue #86), and how the core
@@ -16,10 +17,11 @@ import { t } from "../i18n";
 import type { DevLog, DevOverrides, LogLevel } from "../ipc/types";
 import { PACKET_DEFAULT, PACKET_MAX, PACKET_MIN } from "../lib/codecs";
 import { audioEntries, entryByKey, normalizeProfile, profilesOf } from "../lib/profile";
+import { ChipTools } from "./ChipTools";
 import { ReceiverTest } from "./ReceiverTest";
 
 // The app's own settings apart from the codec and media path (issue #86)
-type Tab = "app" | "receiver" | "overrides" | "logging";
+type Tab = "app" | "receiver" | "overrides" | "logging" | "chip";
 
 const NO_OVERRIDES: DevOverrides = {
   rtp_marker: false,
@@ -44,6 +46,7 @@ export function Developer() {
     { id: "overrides", label: t("ui.dev.codec_settings"), icon: "wrench" },
     { id: "logging", label: t("ui.dev.logging"), icon: "record" },
     { id: "receiver", label: t("receiver.title"), icon: "beaker" },
+    { id: "chip", label: t("ui.dev.chip"), icon: "usb_stick" },
   ];
 
   const onTabKey = (e: KeyboardEvent) => {
@@ -103,6 +106,9 @@ export function Developer() {
         </Show>
         <Show when={tab() === "receiver"}>
           <ReceiverTest />
+        </Show>
+        <Show when={tab() === "chip"}>
+          <ChipTools />
         </Show>
       </div>
     </div>

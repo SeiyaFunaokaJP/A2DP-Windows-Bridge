@@ -1,0 +1,55 @@
+name: Chip report
+description: An adapter A2DPWB cannot use yet (MediaTek, Qualcomm, …) — what its chip says, for whoever adds support
+labels: ["chip report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! This report is what a contributor needs to add support for your adapter's chip ([Adding Chip Support](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/chip-support)).
+        The window fills in most of it after **Read chip info** (Adapters screen, developer mode). Please attach the report file it showed in Explorer.
+
+  - type: input
+    id: version
+    attributes:
+      label: A2DPWB version
+      placeholder: e.g. 2.0.3
+    validations:
+      required: true
+
+  - type: input
+    id: adapter
+    attributes:
+      label: Adapter
+      description: Product name, and where it came from (built into a laptop: the laptop's model).
+      placeholder: e.g. built into a Lenovo IdeaPad 5 (AMD)
+    validations:
+      required: true
+
+  - type: input
+    id: chip
+    attributes:
+      label: What the probe read
+      description: The summary line A2DPWB showed.
+      placeholder: e.g. MediaTek, USB 0E8D:0608, Bluetooth 5.2 (HCI 11), LMP subversion 0x1234, 10 of 11 requests answered
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows
+      placeholder: e.g. Windows build 26200 (24H2)
+
+  - type: textarea
+    id: probe
+    attributes:
+      label: Probe report
+      description: Drag the probe-….json file here (the Explorer window A2DP Windows Bridge opened). It contains the adapter's Bluetooth address and name, nothing about your headphones.
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Does Windows' own Bluetooth work with it? The vendor's driver version (Device Manager), anything you tried.
