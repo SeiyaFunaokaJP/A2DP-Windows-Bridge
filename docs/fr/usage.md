@@ -431,7 +431,7 @@ Cela montre ce qu'A2DPWB a envoyé et que c'est valide pour le codec négocié. 
 
 ## Qualité de liaison et AFH {#link-quality}
 
-**Diagnostic > Qualité de liaison** affiche ce qu'A2DPWB envoie pendant la diffusion : le débit réel, les paquets envoyés, les paquets abandonnés avant envoi (file d'envoi pleine : la liaison radio ne suivait pas), l'audio perdu à la capture, la file d'envoi, le temps radio utilisé, et le **Signal** : le RSSI de la connexion, relatif à la plage de réception idéale (golden receive range) du contrôleur (0 = correct, négatif = trop faible ; ce n'est pas un niveau absolu), et le nombre des 79 canaux Bluetooth sur lesquels la liaison saute (AFH). Accueil et le volet de la zone de notification le résument par Bonne, Moyenne ou Faible.
+**Diagnostic > Qualité de liaison** affiche ce qu'A2DPWB envoie pendant la diffusion : le débit réel, les paquets envoyés, les paquets abandonnés avant envoi (file d'envoi pleine : la liaison radio ne suivait pas), l'audio perdu à la capture, la file d'envoi, le temps radio utilisé, et le **Signal par rapport à l'idéal** : le RSSI de la connexion, relatif à la plage de réception idéale (golden receive range) du contrôleur (0 = correct, négatif = trop faible ; ce n'est pas un niveau absolu ; en dessous de la plage, le niveau réel maximal possible suit en dBm), et le nombre des 79 canaux Bluetooth sur lesquels la liaison saute (AFH). Accueil et le volet de la zone de notification le résument par Bonne, Moyenne ou Faible.
 
 Le Bluetooth évite de lui-même les canaux encombrés (AFH), mais il ne découvre le Wi-Fi qu'à travers les erreurs. A2DPWB indique en plus à son contrôleur quels canaux éviter (classification des canaux AFH par l'hôte), pour chaque connexion :
 

@@ -431,7 +431,7 @@ Esto muestra lo que envió A2DPWB y que es válido para el códec negociado. Com
 
 ## Calidad del enlace y AFH {#link-quality}
 
-**Diagnóstico > Calidad del enlace** muestra lo que envía A2DPWB durante la transmisión: la tasa de bits real, los paquetes enviados, los paquetes descartados antes del envío (cola de envío llena: el enlace de radio no daba abasto), el audio descartado en la captura, la cola de envío, el tiempo de radio usado y la **Señal**: el RSSI de la conexión, relativo al rango óptimo de recepción del controlador (0 = bien, negativo = demasiado débil; no es un nivel absoluto), y en cuántos de los 79 canales Bluetooth salta el enlace (AFH). Inicio y el panel desplegable de la bandeja lo resumen como Buena, Aceptable o Mala.
+**Diagnóstico > Calidad del enlace** muestra lo que envía A2DPWB durante la transmisión: la tasa de bits real, los paquetes enviados, los paquetes descartados antes del envío (cola de envío llena: el enlace de radio no daba abasto), el audio descartado en la captura, la cola de envío, el tiempo de radio usado y la **Señal respecto al ideal**: el RSSI de la conexión, relativo al rango óptimo de recepción del controlador (0 = bien, negativo = demasiado débil; no es un nivel absoluto; por debajo del rango se añade en dBm el nivel real máximo posible), y en cuántos de los 79 canales Bluetooth salta el enlace (AFH). Inicio y el panel desplegable de la bandeja lo resumen como Buena, Aceptable o Mala.
 
 Bluetooth evita por sí mismo los canales ocupados (AFH), pero solo se entera de la presencia de Wi-Fi a través de los errores. A2DPWB además indica a su controlador qué canales debe evitar (clasificación de canales AFH del host), en cada conexión:
 
