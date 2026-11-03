@@ -217,7 +217,7 @@ Put the headphones into pairing mode first.
 | `--scan [seconds]` | List nearby devices and exit (default 10 seconds) |
 | `-h` | Show the help |
 
-For development and testing there are also `--hci-tcp <host:port>` (a virtual controller over TCP instead of the WinUSB adapter), `--test-tone` (1 kHz left / 1.5 kHz right instead of captured audio), `--duration <s>` (stop after this many seconds), `--sessions <n>` (stream n times in a row, as Disconnect / Connect in the app), `--restart` (with `--sessions`: restart Bluetooth between them) and `--hci-capture <file.pklg>` (HCI capture of the whole run); see [Building](building#emu). The LE Audio options are listed by `-h` (see [LE Audio](#le-audio)).
+For development and testing there are also `--hci-tcp <host:port>` (a virtual controller over TCP instead of the WinUSB adapter), `--test-tone` (1 kHz left / 1.5 kHz right instead of captured audio), `--duration <s>` (stop after this many seconds), `--sessions <n>` (stream n times in a row, as Disconnect / Connect in the app), `--restart` (with `--sessions`: restart Bluetooth between them), `--wait-off` (headphones turned off do not end the run) and `--hci-capture <file.pklg>` (HCI capture of the whole run); see [Building](building#emu). The LE Audio options are listed by `-h` (see [LE Audio](#le-audio)).
 
 Without `--cli`, `a2dpwb-core.exe` is the resident program: it starts the window too, except with `--background` (tray icon only, used by **Start with Windows** when **Start in the tray** is on). `a2dpwb-core.exe --quit` asks a running A2DPWB to stop streaming and exit (the installer uses it).
 

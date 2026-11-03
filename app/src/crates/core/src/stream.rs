@@ -2118,6 +2118,9 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         // A stack left running would accept the headphones when they are
         // turned on, which they may mean for a phone
         inner.shutdown_host();
+    } else {
+        // Nothing follows on this link
+        host.drop_acl_link(crate::service::LINK_RELEASE_WAIT);
     }
 }
 

@@ -520,6 +520,14 @@ impl HostApp {
         Some(state == AvdtpState::Open)
     }
 
+    /// `addr` has the current A2DP connection open. Called between attempts,
+    /// when none of ours is left: it is one the device opened.
+    pub fn has_a2dp_from_device(&self, stack: &Stack, addr: [u8; 6]) -> bool {
+        let (state, cid) = stack.avdtp_state_for_addr(&addr);
+        tracing::debug!("A2DP of {}: {state:?} (cid 0x{cid:04X}, ours 0x{:04X})", addr_str(&addr), self.a2dp_cid);
+        state == AvdtpState::Open && cid == self.a2dp_cid
+    }
+
     /// Tears down a half-open or open AVDTP connection after a failed or
     /// cancelled connect, or for a disconnect. Returns whether a release
     /// event follows.
@@ -1382,7 +1390,9 @@ impl HostApp {
                     });
                 } else {
                     tracing::info!("signaling connection established (cid 0x{cid:04x}, handle 0x{handle:04x})");
-                    // Not done yet: the capability discovery follows
+                    // Not done yet: the capability discovery follows, also
+                    // on a connection the device opened
+                    self.caps = Default::default();
                     self.shared.update(|s| s.a2dp_con_handle = Some(handle & 0x0FFF));
                 }
             }

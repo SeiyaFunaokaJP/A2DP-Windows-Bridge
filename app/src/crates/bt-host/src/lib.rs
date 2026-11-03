@@ -56,6 +56,8 @@ const INIT_NO_ANSWER: Duration = Duration::from_secs(5);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const STREAM_TIMEOUT: Duration = Duration::from_secs(10);
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// The capability discovery on an A2DP connection the device opened
+const DEVICE_A2DP_TIMEOUT: Duration = Duration::from_secs(2);
 /// A job the run loop should take at once
 const JOB_TIMEOUT: Duration = Duration::from_secs(5);
 /// An RFCOMM channel open: the BTstack thread answers by its deadline
@@ -1221,7 +1223,10 @@ impl BtHost {
     /// HCI Disconnect of the ACL link to the last remote, waiting for
     /// Disconnection Complete. A link that came up and then went silent
     /// otherwise stays until the supervision timeout, and the next attempt
-    /// would reuse it.
+    /// would reuse it. Closing the profiles does not end a link either:
+    /// BTstack looks for an idle one only once, 10 s after it came up, so
+    /// the link of a stream stays and keeps the headphones from going to
+    /// another device (issue #270).
     pub fn drop_acl_link(&self, timeout: Duration) {
         if !self.hci_ready() {
             return;
@@ -1231,7 +1236,7 @@ impl BtHost {
             tracing::debug!("drop ACL: no link to drop");
             return;
         }
-        tracing::info!("dropping the ACL link before trying again");
+        tracing::info!("dropping the ACL link");
         if self.shared.wait(timeout, false, |s| s.acl_down) != Wait::Done {
             tracing::warn!("no Disconnection Complete within {} ms", timeout.as_millis());
         }
@@ -1452,6 +1457,16 @@ impl BtHost {
             tracing::info!("reconnect aborted (cancel requested)");
             return Err(ReconnectError::Failed);
         }
+        if let Some(remote) = self.a2dp_from_device(addr) {
+            tracing::info!("{} connected A2DP itself, starting the stream on it", addr_str(&addr));
+            self.shared.update(|s| {
+                s.disconnect_occurred = false;
+                s.stream_done = None;
+                s.start_done = None;
+                s.last_connect_failure = None;
+            });
+            return self.configure_and_start(remote, &config, rebuild);
+        }
         self.shared.update(|s| {
             s.connected = false;
             s.streaming = false;
@@ -1470,6 +1485,22 @@ impl BtHost {
             return Err(ReconnectError::Failed);
         };
         self.configure_and_start(remote, &config, rebuild)
+    }
+
+    /// What the device offers on an A2DP connection it opened itself, as
+    /// headphones turned back on may do: closing it to open our own makes
+    /// them announce a disconnect (issue #270). None without one, or when
+    /// its capabilities do not come.
+    fn a2dp_from_device(&self, addr: [u8; 6]) -> Option<RemoteCaps> {
+        if self.call(Duration::from_secs(2), move |app, s| app.has_a2dp_from_device(s, addr)) != Some(true) {
+            return None;
+        }
+        // BTstack first gives the device a moment to configure the stream
+        if self.shared.wait(DEVICE_A2DP_TIMEOUT, true, |s| s.connected) != Wait::Done {
+            tracing::debug!("the A2DP connection of {} reported no capabilities", addr_str(&addr));
+            return None;
+        }
+        Some(self.shared.lock().remote_caps.clone())
     }
 
     /// The stream of a connection just (re)established, with a configuration
