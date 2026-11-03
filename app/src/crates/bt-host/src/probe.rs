@@ -286,7 +286,11 @@ impl ChipLoader for Probe {
     fn start(&mut self) -> Vec<Action> {
         *self = Probe::new();
         tracing::info!("chip probe: {} HCI read commands and the USB descriptors, no HCI Reset", HCI_STEPS.len());
-        self.send_next()
+        // Bootloader mode: closing the adapter afterwards sends no HCI Reset
+        // either, and events on the bulk IN pipe (a bootloader's) count too
+        let mut actions = vec![Action::Bootloader(true)];
+        actions.extend(self.send_next());
+        actions
     }
 
     fn on_event(&mut self, event: &[u8]) -> Vec<Action> {

@@ -46,6 +46,8 @@ fn run_with(
                 }
             }
             Action::Timer(_) => {}
+            // No HCI Reset when the adapter is closed afterwards
+            Action::Bootloader(on) => assert!(on),
             Action::Done(r) => {
                 assert_eq!(r, Ok(Outcome::Probed));
                 return (probe.take_report().unwrap(), sent, controls);

@@ -57,7 +57,8 @@ against a simulated controller. It is compiled for the tests only.
 `bt-host/src/probe.rs`: a `ChipLoader` that never writes to the chip, run in
 place of HCI init (`BtHost::probe`) on any adapter with WinUSB, including
 vendors marked unsupported, and over TCP on the emulator's controller. No HCI
-Reset: a bootloader may not take it.
+Reset, not even when the adapter is closed afterwards (the probe turns on
+bootloader mode): a bootloader may not take it.
 
 Steps, each answered, timed out (1 s) or failed, then the next:
 
