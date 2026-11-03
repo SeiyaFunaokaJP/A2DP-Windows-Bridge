@@ -99,7 +99,7 @@ The last two both have "core" in their name; the package names above are what `c
 
 A loader is a state machine with no I/O of its own: it gets the controller's events, the results of its USB requests and its timer, and returns **actions** that the app carries out. That makes it testable without the chip and keeps the USB and threading details out of it.
 
-1. Copy `app/src/crates/bt-host/src/bringup/sample.rs`, a complete loader for a made-up chip with its tests, to `app/src/crates/bt-host/src/<vendor>.rs` (for example `mediatek.rs`). Add `pub mod <vendor>;` to `app/src/crates/bt-host/src/lib.rs` beside `pub mod intel;`
+1. Copy `app/src/crates/bt-host/src/bringup/sample.rs`, a complete loader for a made-up chip with its tests, to `app/src/crates/bt-host/src/<vendor>.rs` (for example `mediatek.rs`). Add `pub mod <vendor>;` to `app/src/crates/bt-host/src/lib.rs`, in alphabetical order with the other modules
 2. Keep the names: the type is `Loader` (used as `<vendor>::Loader`), `vendor()` returns the vendor's name. Keep the tests in the file, as the sample does
 3. Replace everything the sample marks "made up" with what steps 2 and 3 showed: the version check, the USB request, the file name, the download command and how it is acknowledged, how the firmware is started
 4. Rewrite the module comment at the top: what the chip needs, the steps in order, and where each fact comes from (your capture of Windows' driver, vendor documentation, probe reports). Do not cite other drivers' source code as the source of a step
@@ -141,7 +141,8 @@ Helpers, so a loader does not parse bytes by hand:
 The sample shows each of these; drop what your chip does not need.
 
 - **One command, one acknowledgment**: send, start the timer, and in the waiting state accept only the acknowledgment of that opcode: a Command Complete, or a Command Status with status 0 for a command whose result comes later. Anything else is ignored, so a late answer does not move the loader on
-- **Acknowledged by a vendor event**: some chips answer each firmware part with their own event instead of a Command Complete. Then that event is the acknowledgment: wait for it alone (its code and the parameters that identify it), and still end on an error status in a Command Complete or Command Status
+- **Acknowledged by a vendor event**: some chips answer each firmware part with their own event instead of a Command Complete. Then that event is the acknowledgment: wait for it alone (its code and the parameters that identify it), ignore a Command Complete or a status-0 Command Status of that command in that state, and still end on an error status in either. The sample treats a Command Complete and a Command Status as the same acknowledgment, so its `on_event` needs a match on the state and the event for this
+- **Several files** (a patch, then a configuration): load and check all of them before sending any, send them in order, and name the last one in `Loaded { firmware, .. }` (the log lines name the others)
 - **A deliberate pause** (the driver waits 100 ms before the next step): a state for it and `Timer(100)`; `on_timeout` in that state sends the next step instead of failing. In the tests `SimRun::timeouts` counts such pauses too
 - **A command answered twice** (an acknowledgment, then a vendor event such as "firmware started"): two states, the second with its own timer. The sample's `Launching` and `Starting` do this. When the event carries a result code, a bad one ends the loader with `Rejected(code)`
 - **An error status** in a Command Complete or Command Status ends the loader with `Command { opcode, status }`
@@ -173,7 +174,7 @@ cargo test -p bt-host
 
 ## Step 6: Hook it into the app
 
-Every file to change, for a vendor already listed as unsupported (MediaTek, Qualcomm) or a new one. The compiler points at most of the `match`es you miss.
+Every file to change, for a vendor already listed as unsupported (MediaTek, Qualcomm) or a new one. For a new vendor the compiler points at the `match`es that need its variant; the rest, and everything for a vendor already listed, only this list finds.
 
 **One chip or the whole vendor?** A loader usually covers some of a vendor's chips (the MT7921 but not the MT7925). Then only those chips may leave "unsupported": list their VID:PIDs in `LOADER_CHIPS` in `app/src/crates/bt-host/src/chips.rs`, and leave the vendor's `support_tag()` as it is. `chips::chip_supported(vendor, vid, pid)` and `chip_support_tag()` then answer per adapter, and the adapter's name tag, its note on the Adapters screen, WinUSB being offered there and the "not implemented" warning follow them. Change `support_tag()` only for a loader that covers every chip of the vendor (as Intel's).
 
@@ -182,7 +183,7 @@ Keep each file's line endings: some source files use CRLF, others LF. Some edito
 
 **Detection** (`app/src/crates/bt-host/src/chips.rs`):
 
-1. `ChipVendor`: a new vendor gets a variant (with a doc line) and an arm in `name()`; add it to the enum's doc comment, which lists the vendors with loaders
+1. `ChipVendor`: a new vendor gets a variant (with a doc line) and an arm in `name()`. For any vendor, bring the enum's doc comment (which vendors have loaders) and the variant's doc line ("not supported") up to date
 2. Some chips: their VID:PIDs in `LOADER_CHIPS`, the module's `USB_IDS` constant if you keep one there. The whole vendor: `support_tag()` moves from `"unsupported"` to `"experimental"`
 3. `vendor_for_usb()`: the vendor's USB VIDs. A VID other makers use too must be matched as `VID if pid == PID`, never as a whole: laptop modules under the module maker's VID (AzureWave 0x13D3, Foxconn 0x0489), and shared VIDs such as pid.codes 0x1209. Every VID listed here also makes `is_bluetooth_vendor_vid` treat that maker's devices as Bluetooth adapters
 4. `company_name()`: the Bluetooth SIG company ID from Read Local Version, if it is not there yet
@@ -192,7 +193,7 @@ Keep each file's line endings: some source files use CRLF, others LF. Some edito
 
 **Starting the loader**, as Intel does (search for `intel_loader`):
 
-6. `app/src/crates/bt-host/src/lib.rs`: a `HostConfig` field like `intel_loader` (with its default in `HostConfig::new`, the destructuring in `BtHost::launch`, and the debug line), and the branch in `BtHost::launch` that installs the transport and calls the app's start function instead of `setup_hci_and_power_on`. One loader runs per start: when two vendors' flags are set (both adapters on WinUSB), the first branch wins, so test with only your adapter on WinUSB
+6. `app/src/crates/bt-host/src/lib.rs`: a `HostConfig` field like `intel_loader` (with its default in `HostConfig::new`, the destructuring in `BtHost::launch`, and the debug line), and the branch in `BtHost::launch` that installs the transport and calls the app's start function instead of `setup_hci_and_power_on`, only when not on H4 (`&& !tcp`, as Intel's: the emulator's controller is no real chip). One loader runs per start: when two vendors' flags are set (both adapters on WinUSB), the first branch wins, so test with only your adapter on WinUSB
 7. `app/src/crates/bt-host/src/app.rs`: a `start_<vendor>_loader` like `start_intel_loader` (with `use crate::<vendor>;`), giving the loader `read_firmware_file(&dir, "<vendor>", name)` (the subfolder name as in linux-firmware) and calling `start_loader`
 8. `app/src/crates/core/src/adapter.rs`, `configure()`: set the field when an adapter of the vendor with `chips::chip_supported(a.vendor, a.device.vid, a.device.pid)` is on WinUSB and not in use (as `config.intel_loader`, with Intel's "in use by another program" log for the others), and add it to the `adapter:` debug line there. The "firmware loading for this chip is not implemented" warning below it follows `chip_supported` already
 9. `app/src/crates/core/src/service.rs`, `host_config()`: add the field to the debug line
@@ -200,13 +201,13 @@ Keep each file's line endings: some source files use CRLF, others LF. Some edito
 **What the window shows**:
 
 10. `app/src/core/src/state.rs`, `vendor_note()`: an arm with a new key `firmware.vendor_<vendor>`, out of the `MediaTek | Qualcomm` arm, and its test. The function answers `firmware.vendor_unsupported` before that for chips `chip_supported` refuses, so the vendor's other chips keep it. The Adapters screen offers WinUSB to every adapter whose note is not `firmware.vendor_unsupported`
-11. `app/lang/*.json` (all 8 languages, same line in each): the new key, as the Intel one ("… adapter (experimental). …"); and take the vendor's name out of `firmware.vendor_unsupported` if it names it
-12. `app/src/ui/src/lib/links.ts`: the vendor's firmware page (in `LINKS`, `firmwareUrl()` and `vendorFirmwareUrl()`, as Intel's linux-firmware folder), so the Adapters screen and the setup show where to get the files; tests in `app/src/ui/src/lib/chips.test.ts`
+11. `app/lang/*.json` (all 8 languages, same line in each): the new key, as the Intel one ("… adapter (experimental). …"). Whole vendor: take its name out of `firmware.vendor_unsupported`. Some chips: leave it there, as the vendor's other chips still show that text
+12. `app/src/ui/src/lib/links.ts`: the vendor's firmware page (in `LINKS`, `firmwareUrl()` and `vendorFirmwareUrl()`, as Intel's linux-firmware folder), so the Adapters screen and the setup show where to get the files; tests in `app/src/ui/src/lib/chips.test.ts`. The Adapters screen shows the page only for adapters whose note is not `firmware.vendor_unsupported`, so the vendor's other chips do not get it
 
 **Docs**:
 
-13. The chip table in `docs/setup.md` and `docs/*/setup.md` (all languages): a row like Intel's, with the chips it covers, the firmware files and where they go (the firmware folder, which **Adapters > Open Firmware Folder** opens: `%APPDATA%\A2DPWB\firmware`, or its `<vendor>` subfolder; older rows still say "config folder") and *Experimental.*; take the vendor out of the "Not supported" row. Add the vendor to the sentence at the top of the Firmware section ("Intel and Broadcom adapters (experimental) may need firmware files of their own")
-14. [Verified Hardware](hardware) (`docs/hardware.md`) once someone has used it, and the opening of this page (`docs/chip-support.md`), which names the vendors without a loader
+13. The chip table in `docs/setup.md` and `docs/*/setup.md` (all languages): a row like Intel's, with the chips it covers, the firmware files and where they go (the firmware folder: `%APPDATA%\A2DPWB\firmware`, or its `<vendor>` subfolder; older rows still say "config folder") and *Experimental.* Name the window's buttons as each language's `app/lang/*.json` has them (`ui.nav.adapter` for the Adapters screen, `firmware.open_folder` for the button that opens that folder). Whole vendor: take it out of the "Not supported" row. Some chips: keep the vendor there and name the chips still not supported. Add the vendor to the sentence at the top of the Firmware section ("Intel and Broadcom adapters (experimental) may need firmware files of their own")
+14. [Verified Hardware](hardware) (`docs/hardware.md`) once someone has used it, and the opening of this page (`docs/chip-support.md`, all languages), which names the vendors without a loader (some chips: "the other <vendor> chips")
 
 ## Step 7: Try it on the adapter
 
