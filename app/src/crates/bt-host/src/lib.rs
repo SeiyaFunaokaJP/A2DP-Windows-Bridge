@@ -22,6 +22,7 @@ pub mod media;
 pub mod probe;
 pub mod rfcomm;
 pub mod script;
+pub mod sdp_services;
 mod shared;
 pub mod stats;
 
@@ -48,6 +49,7 @@ pub use rfcomm::{
     MAX_SEND_BYTES as RFCOMM_MAX_SEND_BYTES, OPEN_DEADLINE as RFCOMM_OPEN_DEADLINE, RfcommCloseReason, RfcommError,
     RfcommEvent, RfcommOpened, RfcommReply, RfcommSink, parse_uuid,
 };
+pub use sdp_services::{SdpRecord, ServicesError};
 use shared::{Shared, Wait};
 pub use stats::{LinkRadio, LinkStats, LiveCodec, MaxGauge, StreamTiming};
 
@@ -1500,6 +1502,26 @@ impl BtHost {
     /// answer.
     pub fn forget_link_key(&self, addr: [u8; 6]) -> bool {
         self.call(Duration::from_secs(2), move |_, s| s.drop_link_key(&addr)).is_some()
+    }
+
+    /// Stores a link key in the running stack and its file (one taken from
+    /// Windows): the device connects with it from then on. False when the
+    /// stack did not answer.
+    pub fn store_link_key(&self, addr: [u8; 6], key: [u8; 16], key_type: i32) -> bool {
+        self.call(Duration::from_secs(2), move |_, s| s.store_link_key(&addr, &key, key_type)).is_some()
+    }
+
+    /// The service records `addr` lists in SDP, asked over the link the
+    /// stack has to it (it never connects for this). Answered within
+    /// [`sdp_services::DEADLINE`] and a little more.
+    pub fn device_services(&self, addr: [u8; 6]) -> Result<Vec<SdpRecord>, ServicesError> {
+        let (tx, rx) = mpsc::sync_channel(1);
+        self.post(move |app, s| app.sdp_services.start(s, addr, tx));
+        match rx.recv_timeout(sdp_services::DEADLINE + Duration::from_secs(2)) {
+            Ok(r) => r,
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(ServicesError::NoAnswer),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(ServicesError::NotConnected),
+        }
     }
 
     pub fn is_connected(&self) -> bool {

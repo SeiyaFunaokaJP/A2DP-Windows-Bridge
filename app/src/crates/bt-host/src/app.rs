@@ -27,6 +27,7 @@ use crate::link_keys::FileLinkKeyStore;
 use crate::media::{MediaPacket, RTP_HEADER_SIZE};
 use crate::probe::ProbeReport;
 use crate::rfcomm::{Rfcomm, TIMER_RFCOMM};
+use crate::sdp_services::SdpServices;
 use crate::shared::Shared;
 use crate::stats::LinkStats;
 use crate::{AfhClassification, ConnectFailure, Controls, DiscoveredDevice, HostEvent, InitFailure, MediaKey};
@@ -96,6 +97,8 @@ pub(crate) struct HostApp {
     pub le: Option<LeCore>,
     /// RFCOMM client channels of IPC clients
     pub rfcomm: Rfcomm,
+    /// A device's services asked for (developer mode)
+    pub sdp_services: SdpServices,
 
     // ---- connection (BTstack thread only) ----
     pub a2dp_cid: u16,
@@ -200,6 +203,7 @@ impl HostApp {
             afh,
             le,
             rfcomm: Rfcomm::default(),
+            sdp_services: SdpServices::default(),
             a2dp_cid: 0,
             avrcp_cid: 0,
             local_seid: 0,
@@ -2173,6 +2177,7 @@ impl App for HostApp {
                 }
             }
             Source::SdpClient => self.rfcomm.on_sdp(stack, packet),
+            Source::SdpServices => self.sdp_services.on_event(packet),
             Source::Rfcomm => {}
             Source::Avrcp | Source::AvrcpController | Source::AvrcpTarget => {
                 if event_type(packet) == Some(HCI_EVENT_AVRCP_META) {

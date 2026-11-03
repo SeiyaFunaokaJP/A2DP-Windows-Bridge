@@ -131,6 +131,19 @@ export function Adapter() {
       })
       .finally(() => setProbing(false));
   };
+  // Developer mode: the keys Windows kept for this adapter's devices
+  const [importing, setImporting] = createSignal(false);
+  const importPairings = (address: string) => {
+    setImporting(true);
+    void app
+      .run(async () => {
+        const r = await core.request("device.import_windows_pairings", { adapter: address });
+        if (!r.adapter_found) return app.notify(t("ui.adapter.import_none"));
+        const kept = r.kept.length > 0 ? ` ${t("ui.adapter.import_kept", r.kept.length)}` : "";
+        app.notify(`${t("ui.adapter.import_done", r.imported.length)}${kept}`);
+      })
+      .finally(() => setImporting(false));
+  };
   /** A prefilled chip report in the browser, the file shown in Explorer to
    *  drag into it */
   const reportChip = (a: AdapterInfo, r: ProbeResult) =>
@@ -337,6 +350,13 @@ export function Adapter() {
                           </>
                         )}
                       </Show>
+                    </Show>
+                    <Show when={developer() && a.driver === "winusb" && a.address}>
+                      {(address) => (
+                        <Button icon="arrow_download" busy={importing()} onClick={() => importPairings(address())}>
+                          {t("ui.adapter.import_windows")}
+                        </Button>
+                      )}
                     </Show>
                   </div>
                 </div>

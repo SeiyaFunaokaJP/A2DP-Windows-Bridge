@@ -973,6 +973,47 @@ option {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+/* A tag that opens something (developer mode: a device's pairing), above
+   the row's full-size radio input */
+.tag-button {
+  position: relative;
+  z-index: 1;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-12);
+  cursor: pointer;
+}
+.tag-button:hover {
+  border-color: var(--accent-fill);
+  color: var(--text);
+}
+.tag-button:focus-visible {
+  outline: 2px solid var(--accent-fill);
+  outline-offset: 1px;
+}
+
+.pairing-part + .pairing-part {
+  margin-top: var(--s4);
+}
+.pairing-key {
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.pairing-services {
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--s2);
+}
+.pairing-services li {
+  display: flex;
+  flex-direction: column;
+}
+.pairing-services .mono {
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
 
 .notice-region {
   position: fixed;

@@ -221,7 +221,7 @@ Ponga antes los auriculares en modo de emparejamiento.
 | `--scan [seconds]` | Mostrar los dispositivos cercanos y salir (predeterminado: 10 segundos) |
 | `-h` | Mostrar la ayuda |
 
-Para desarrollo y pruebas también existen `--hci-tcp <host:port>` (un controlador virtual por TCP en lugar del adaptador WinUSB), `--test-tone` (1 kHz a la izquierda / 1.5 kHz a la derecha en lugar del audio capturado), `--duration <s>` (detenerse tras ese número de segundos), `--sessions <n>` (transmitir n veces seguidas, como Desconectar / Conectar en la aplicación), `--restart` (con `--sessions`: reiniciar Bluetooth entre ellas), `--wait-off` (apagar los auriculares no termina la ejecución) y `--hci-capture <file.pklg>` (captura HCI de toda la ejecución); consulte [Compilación](../building#emu). `-h` muestra las opciones de LE Audio (consulte [LE Audio](#le-audio)).
+Para desarrollo y pruebas también existen `--hci-tcp <host:port>` (un controlador virtual por TCP en lugar del adaptador WinUSB), `--test-tone` (1 kHz a la izquierda / 1.5 kHz a la derecha en lugar del audio capturado), `--duration <s>` (detenerse tras ese número de segundos), `--sessions <n>` (transmitir n veces seguidas, como Desconectar / Conectar en la aplicación), `--restart` (con `--sessions`: reiniciar Bluetooth entre ellas), `--wait-off` (apagar los auriculares no termina la ejecución) y `--hci-capture <file.pklg>` (captura HCI de toda la ejecución); consulte [Compilación](../building#emu). `-h` muestra las opciones de LE Audio (consulte [LE Audio](#le-audio)). `--services` muestra, una vez iniciado el streaming, los servicios que el dispositivo indica por SDP.
 
 Sin `--cli`, `a2dpwb-core.exe` es el programa residente: también inicia la ventana, salvo con `--background` (solo el icono de la bandeja; lo usa **Iniciar con Windows** cuando **Iniciar en la bandeja** está activado). `a2dpwb-core.exe --quit` pide a un A2DPWB en ejecución que detenga la transmisión y se cierre (lo usa el instalador).
 
@@ -505,6 +505,15 @@ La misma prueba funciona en la ventana: con **Configuración > Modo de desarroll
 Ambos lados cuentan los paquetes de un flujo desde su primer paquete, de modo que se pueden comparar los paquetes enviados y recibidos: deberían coincidir. Bluetooth retransmite dentro de los controladores los paquetes de radio perdidos, y A2DPWB no abandona un paquete mientras el enlace está activo, así que un enlace de radio deficiente se manifiesta como huecos, jitter y cortes en el receptor, no como paquetes perdidos; cuando el enlace no da abasto, los paquetes se descartan antes del envío en el lado emisor. Ninguno de los dos lados puede conocer el número de retransmisiones.
 
 Mientras la herramienta se ejecuta, la pila Bluetooth del propio receptor no puede usar su adaptador. La búsqueda usa una difusión UDP en el puerto 51201, así que ambos PC deben estar en el mismo segmento de red (si no, escriba la dirección). Consulte `tools/linux_sink/README.md` para ver todas las opciones y el protocolo de estadísticas.
+
+## Emparejamiento compartido con Windows y Linux {#shared-pairing}
+
+En modo desarrollador, la etiqueta **Emparejado** de un dispositivo guardado abre su emparejamiento:
+
+- **Clave de enlace**: la clave que A2DPWB guarda para el dispositivo y su tipo. **Copiar clave** la copia; **Copiar para Linux** la copia como el grupo `[LinkKey]` del archivo `/var/lib/bluetooth/<adaptador>/<dispositivo>/info` de BlueZ, para que Linux en el mismo PC use el emparejamiento con el mismo adaptador. Cualquiera con la clave puede hacerse pasar por el dispositivo: no la compartas
+- **Servicios**: las clases de servicio que el dispositivo indica por SDP, con los nombres Bluetooth de las habituales. Se consultan mientras el dispositivo está conectado
+
+**Adaptador > Importar emparejamientos de Windows** (modo desarrollador, un adaptador con WinUSB) toma las claves de enlace que el Bluetooth de Windows guardó para ese adaptador antes de asignarle WinUSB: los auriculares emparejados con Windows a través de él se conectan a A2DPWB sin volver a emparejarlos (añádelos en **Dispositivos de audio** como siempre). Windows pide permiso de administrador, porque solo el sistema puede leer esas claves. Un dispositivo para el que A2DPWB ya tiene clave conserva la suya (se emparejó con A2DPWB después, la clave de Windows es la antigua). Las claves que Windows creó con otro adaptador, como el Bluetooth integrado del PC, no sirven: un emparejamiento pertenece a la dirección del adaptador. Windows no guarda el tipo de una clave, así que una clave importada recibe el tipo 4. Los dispositivos LE no se importan.
 
 ## LE Audio (experimental) {#le-audio}
 

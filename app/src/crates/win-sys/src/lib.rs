@@ -5,6 +5,7 @@
 pub mod accent;
 pub mod audio_policy;
 pub mod autostart;
+pub mod bt_keys;
 pub mod bt_paired;
 pub mod bt_radios;
 pub mod com;

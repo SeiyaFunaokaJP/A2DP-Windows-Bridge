@@ -129,5 +129,8 @@ mod tests {
         ScriptCheck::export_all(&cfg).unwrap();
         ScriptResult::export_all(&cfg).unwrap();
         RfcommOpened::export_all(&cfg).unwrap();
+        DevicePairing::export_all(&cfg).unwrap();
+        DeviceService::export_all(&cfg).unwrap();
+        WindowsImport::export_all(&cfg).unwrap();
     }
 }

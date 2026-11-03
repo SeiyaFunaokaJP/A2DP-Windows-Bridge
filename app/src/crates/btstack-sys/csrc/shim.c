@@ -287,6 +287,7 @@ enum {
     SOURCE_HFP = 10,
     SOURCE_RFCOMM = 11,
     SOURCE_SDP_CLIENT = 12,
+    SOURCE_SDP_SERVICES = 13,
 };
 
 static void handler_hci(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_HCI, t, c, p, s); }
@@ -302,6 +303,7 @@ static void handler_hfp(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_
 static void handler_iso(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_ISO, t, c, p, s); }
 static void handler_rfcomm(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_RFCOMM, t, c, p, s); }
 static void handler_sdp_client(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_SDP_CLIENT, t, c, p, s); }
+static void handler_sdp_services(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_SDP_SERVICES, t, c, p, s); }
 
 static btstack_packet_callback_registration_t hci_event_registration;
 
@@ -473,6 +475,59 @@ uint8_t a2dpwb_sdp_query_rfcomm(const uint8_t *addr, const uint8_t *uuid128) {
         (void)sdp_client_register_query_callback(&sdp_rfcomm_kick);
     }
     return ERROR_CODE_SUCCESS;
+}
+
+/* The services a device lists (developer mode): every record with L2CAP in
+ * its protocols, attributes ServiceClassIDList and ServiceName. Queued like
+ * the RFCOMM query above; the results (SDP_EVENT_QUERY_ATTRIBUTE_VALUE per
+ * byte, then SDP_EVENT_QUERY_COMPLETE) go to SOURCE_SDP_SERVICES. */
+static btstack_context_callback_registration_t sdp_services_request;
+static btstack_context_callback_registration_t sdp_services_kick;
+static int sdp_services_wanted;
+static int sdp_services_listed;
+static bd_addr_t sdp_services_addr;
+/* Own buffers: the SDP client reads them while the query runs */
+static const uint8_t sdp_services_pattern[] = {0x35, 0x03, 0x19, 0x01, 0x00};
+static const uint8_t sdp_services_attributes[] = {0x35, 0x06, 0x09, 0x00, 0x01, 0x09, 0x01, 0x00};
+
+static void sdp_services_start(void *context) {
+    (void)context;
+    sdp_services_listed = 0;
+    if (!sdp_services_wanted) return;
+    sdp_services_wanted = 0;
+    uint8_t status = sdp_client_query(&handler_sdp_services, sdp_services_addr, sdp_services_pattern,
+                                      sdp_services_attributes);
+    if (status != ERROR_CODE_SUCCESS) {
+        uint8_t event[3] = {SDP_EVENT_QUERY_COMPLETE, 1, status};
+        handler_sdp_services(HCI_EVENT_PACKET, 0, event, sizeof(event));
+    }
+}
+
+uint8_t a2dpwb_sdp_query_services(const uint8_t *addr) {
+    if (sdp_services_wanted) return ERROR_CODE_COMMAND_DISALLOWED;
+    memcpy(sdp_services_addr, addr, 6);
+    sdp_services_wanted = 1;
+    if (!sdp_services_listed) {
+        sdp_services_listed = 1;
+        sdp_services_request.callback = &sdp_services_start;
+        uint8_t status = sdp_client_register_query_callback(&sdp_services_request);
+        if (status != ERROR_CODE_SUCCESS) {
+            sdp_services_listed = 0;
+            sdp_services_wanted = 0;
+            return status;
+        }
+    } else if (sdp_client_ready()) {
+        sdp_services_kick.callback = &sdp_rfcomm_kicked;
+        (void)sdp_client_register_query_callback(&sdp_services_kick);
+    }
+    return ERROR_CODE_SUCCESS;
+}
+
+/* sdp_client_deinit, and a services query asked for in this run is
+ * forgotten (the next run may ask again) */
+void a2dpwb_sdp_client_deinit(void) {
+    sdp_client_deinit();
+    sdp_services_wanted = 0;
 }
 
 /* ======================================================================== */

@@ -32,7 +32,7 @@ fn record_path(state: &CoreState, instance_id: &str) -> PathBuf {
     state.config_dir().join("driver").join(format!("{safe}.json"))
 }
 
-fn run(args: &[&str]) -> Result<(u32, Value), ErrorInfo> {
+pub(crate) fn run(args: &[&str]) -> Result<(u32, Value), ErrorInfo> {
     let out = std::env::temp_dir().join(format!("a2dpwb-driver-{}.json", std::process::id()));
     let _ = std::fs::remove_file(&out);
     let mut all: Vec<&str> = args.to_vec();
@@ -52,10 +52,14 @@ fn run(args: &[&str]) -> Result<(u32, Value), ErrorInfo> {
             err("adapter.driver_failed", "error.driver_failed")
         }
     })?;
-    let json =
+    let json: Option<Value> =
         std::fs::read_to_string(&out).ok().and_then(|t| serde_json::from_str(t.trim_start_matches('\u{feff}')).ok());
     let _ = std::fs::remove_file(&out);
-    tracing::info!("driver helper {} -> exit {code}: {json:?}", args.join(" "));
+    // The result of windows-keys holds link keys: not for the log
+    match json.as_ref().and_then(|j| j.get("keys")).and_then(Value::as_array) {
+        Some(keys) => tracing::info!("driver helper {} -> exit {code}: {} key(s)", args.join(" "), keys.len()),
+        None => tracing::info!("driver helper {} -> exit {code}: {json:?}", args.join(" ")),
+    }
     Ok((code, json.unwrap_or(Value::Null)))
 }
 
