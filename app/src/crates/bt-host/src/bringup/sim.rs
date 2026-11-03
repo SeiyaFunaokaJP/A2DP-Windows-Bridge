@@ -43,6 +43,8 @@ pub struct SimRun {
     pub bootloader: bool,
     /// How often the timer fired
     pub timeouts: usize,
+    /// Every [`Action::Timer`] started, its milliseconds in order
+    pub timers: Vec<u32>,
 }
 
 /// A command as sent, and on which pipe
@@ -80,7 +82,7 @@ const MAX_ACTIONS: usize = 1_000_000;
 pub fn run(loader: &mut dyn ChipLoader, chip: &mut dyn SimController) -> SimRun {
     let mut actions: VecDeque<Action> = loader.start().into();
     let (mut commands, mut controls) = (Vec::new(), Vec::new());
-    let (mut bootloader, mut timer, mut timeouts) = (false, false, 0);
+    let (mut bootloader, mut timer, mut timeouts, mut timers) = (false, false, 0, Vec::new());
     for _ in 0..MAX_ACTIONS {
         let Some(action) = actions.pop_front() else {
             assert!(timer, "the loader waits with no timer running: it would hang");
@@ -112,8 +114,11 @@ pub fn run(loader: &mut dyn ChipLoader, chip: &mut dyn SimController) -> SimRun 
                 }
             }
             Action::Bootloader(on) => bootloader = on,
-            Action::Timer(_) => timer = true,
-            Action::Done(result) => return SimRun { result, commands, controls, bootloader, timeouts },
+            Action::Timer(ms) => {
+                timer = true;
+                timers.push(ms);
+            }
+            Action::Done(result) => return SimRun { result, commands, controls, bootloader, timeouts, timers },
         }
     }
     panic!("the loader did not finish within {MAX_ACTIONS} actions");

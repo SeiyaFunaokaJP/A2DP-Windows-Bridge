@@ -156,25 +156,6 @@ fn tag_in(table: &[(ChipVendor, u16, u16)], vendor: ChipVendor, vid: u16, pid: u
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_loader_for_some_chips_leaves_the_others_unsupported() {
-        let table = [(ChipVendor::MediaTek, 0x0E8D, 0x7999)];
-        assert!(supported_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7999));
-        assert_eq!(tag_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7999), Some("experimental"));
-        assert!(!supported_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7925));
-        assert_eq!(tag_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7925), Some("unsupported"));
-        // Vendors with a loader for all their chips, or none needed
-        assert!(supported_in(&[], ChipVendor::Intel, 0x8087, 0x0033));
-        assert_eq!(tag_in(&[], ChipVendor::Intel, 0x8087, 0x0033), Some("experimental"));
-        assert!(supported_in(&[], ChipVendor::Realtek, 0x0BDA, 0x8771));
-        assert_eq!(tag_in(&[], ChipVendor::Csr, 0x0A12, 0x0001), None);
-    }
-}
-
 /// The chip table entry of a Realtek PID
 pub fn realtek_chip(pid: u16) -> Option<&'static RealtekChip> {
     REALTEK_CHIPS.iter().find(|c| c.pid == pid)
@@ -442,4 +423,23 @@ pub fn scan_firmware_files(dir: &Path) -> Vec<FirmwareFileEntry> {
         .collect();
     result.sort_by(|a, b| b.pid.is_some().cmp(&a.pid.is_some()).then_with(|| a.display_name.cmp(&b.display_name)));
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_loader_for_some_chips_leaves_the_others_unsupported() {
+        let table = [(ChipVendor::MediaTek, 0x0E8D, 0x7999)];
+        assert!(supported_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7999));
+        assert_eq!(tag_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7999), Some("experimental"));
+        assert!(!supported_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7925));
+        assert_eq!(tag_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7925), Some("unsupported"));
+        // Vendors with a loader for all their chips, or none needed
+        assert!(supported_in(&[], ChipVendor::Intel, 0x8087, 0x0033));
+        assert_eq!(tag_in(&[], ChipVendor::Intel, 0x8087, 0x0033), Some("experimental"));
+        assert!(supported_in(&[], ChipVendor::Realtek, 0x0BDA, 0x8771));
+        assert_eq!(tag_in(&[], ChipVendor::Csr, 0x0A12, 0x0001), None);
+    }
 }

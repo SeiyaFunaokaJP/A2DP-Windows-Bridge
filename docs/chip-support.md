@@ -184,8 +184,8 @@ Keep each file's line endings: some source files use CRLF, others LF. Some edito
 **Detection** (`app/src/crates/bt-host/src/chips.rs`):
 
 1. `ChipVendor`: a new vendor gets a variant (with a doc line) and an arm in `name()`. For any vendor, bring the enum's doc comment (which vendors have loaders) and the variant's doc line ("not supported") up to date
-2. Some chips: their VID:PIDs in `LOADER_CHIPS`, the module's `USB_IDS` constant if you keep one there. The whole vendor: `support_tag()` moves from `"unsupported"` to `"experimental"`
-3. `vendor_for_usb()`: the vendor's USB VIDs. A VID other makers use too must be matched as `VID if pid == PID`, never as a whole: laptop modules under the module maker's VID (AzureWave 0x13D3, Foxconn 0x0489), and shared VIDs such as pid.codes 0x1209. Every VID listed here also makes `is_bluetooth_vendor_vid` treat that maker's devices as Bluetooth adapters
+2. Some chips: their VID:PIDs in `LOADER_CHIPS`, and a test in the loader's module that its own chip check (chip ID, version) accepts exactly what those entries are. The whole vendor: `support_tag()` moves from `"unsupported"` to `"experimental"`
+3. `vendor_for_usb()`: the vendor's USB VIDs. A VID other makers use too must be matched as `VID if pid == PID`, never as a whole: laptop modules under the module maker's VID (AzureWave 0x13D3, Foxconn 0x0489), and shared VIDs such as pid.codes 0x1209. Every VID listed here also makes `is_bluetooth_vendor_vid` treat that maker's devices as Bluetooth adapters. A VID:PID in BTstack's Realtek table or in `OEM_TABLE` (both in this file's `resolve_realtek_pid`) is taken as Realtek before `vendor_for_usb` is asked: check that yours is in neither
 4. `company_name()`: the Bluetooth SIG company ID from Read Local Version, if it is not there yet
 5. Tests: `app/src/crates/bt-host/tests/chips.rs` (the VID:PIDs and the tag)
 
@@ -201,8 +201,8 @@ Keep each file's line endings: some source files use CRLF, others LF. Some edito
 **What the window shows**:
 
 10. `app/src/core/src/state.rs`, `vendor_note()`: an arm with a new key `firmware.vendor_<vendor>`, out of the `MediaTek | Qualcomm` arm, and its test. The function answers `firmware.vendor_unsupported` before that for chips `chip_supported` refuses, so the vendor's other chips keep it. The Adapters screen offers WinUSB to every adapter whose note is not `firmware.vendor_unsupported`
-11. `app/lang/*.json` (all 8 languages, same line in each): the new key, as the Intel one ("… adapter (experimental). …"). Whole vendor: take its name out of `firmware.vendor_unsupported`. Some chips: leave it there, as the vendor's other chips still show that text
-12. `app/src/ui/src/lib/links.ts`: the vendor's firmware page (in `LINKS`, `firmwareUrl()` and `vendorFirmwareUrl()`, as Intel's linux-firmware folder), so the Adapters screen and the setup show where to get the files; tests in `app/src/ui/src/lib/chips.test.ts`. The Adapters screen shows the page only for adapters whose note is not `firmware.vendor_unsupported`, so the vendor's other chips do not get it
+11. `app/lang/*.json` (all 8 languages, same line in each): the new key, as the Intel one ("… adapter (experimental). …"). Where it names a button or folder, use that language's own words from the same file (the firmware folder's button is `firmware.open_folder`). Whole vendor: take its name out of `firmware.vendor_unsupported`. Some chips: leave it there, as the vendor's other chips still show that text
+12. `app/src/ui/src/lib/links.ts`: the vendor's firmware page (in `LINKS`, `firmwareUrl()` and `vendorFirmwareUrl()`, as Intel's linux-firmware folder), so the Adapters screen shows where to get the files; tests in `app/src/ui/src/lib/chips.test.ts`. The Adapters screen shows the page only for adapters whose note is not `firmware.vendor_unsupported`, so the vendor's other chips do not get it
 
 **Docs**:
 
@@ -246,9 +246,9 @@ python tools/check_lang.py
 
 Without Node.js, run the tests and clippy on the three crates above instead (`-p bt-host -p a2dpwb-core -p a2dpwb-core-exe`), leave the UI checks to the pull request's CI, and say so in the pull request. `pwsh ./build.ps1 -Test` runs everything.
 
-Clippy also checks names: a `State` variant called `PatchState` fails `enum_variant_names`; call it `Patch`.
+Clippy also checks names: a `State` variant called `PatchState` fails `enum_variant_names`; call it `Patch`. `check_lang.py` may report "long hints left" that were there before your change; only errors and missing keys are yours to fix.
 
-Other places mention MediaTek or Qualcomm as unsupported in passing (the UI's mock data and tests, a comment in `Adapter.tsx`, the "Not Realtek" choice): they stay as they are.
+Other places mention MediaTek or Qualcomm as unsupported in passing (the UI's mock data and tests, comments in `Adapter.tsx` and `probe.rs`, the "Not Realtek" choice): they stay as they are.
 
 In the pull request:
 
