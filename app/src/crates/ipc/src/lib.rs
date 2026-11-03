@@ -131,6 +131,7 @@ mod tests {
         RfcommOpened::export_all(&cfg).unwrap();
         DevicePairing::export_all(&cfg).unwrap();
         DeviceService::export_all(&cfg).unwrap();
+        ServiceList::export_all(&cfg).unwrap();
         WindowsImport::export_all(&cfg).unwrap();
     }
 }

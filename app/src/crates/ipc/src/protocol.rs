@@ -1196,8 +1196,9 @@ pub enum Method {
     /// (developer mode only)
     #[serde(rename = "device.pairing")]
     DevicePairing { address: String },
-    /// -> DeviceService[]: the services a classic device lists, asked over
-    /// the connection A2DPWB has to it (developer mode only)
+    /// -> ServiceList: the services a classic device lists, asked over the
+    /// connection A2DPWB has to it, else the list from its last connection
+    /// since the core started (developer mode only)
     #[serde(rename = "device.services")]
     DeviceServices { address: String },
     /// -> WindowsImport: takes over the link keys Windows' Bluetooth keeps
@@ -1657,6 +1658,15 @@ pub struct DeviceService {
     pub uuids: Vec<String>,
     /// The name the device gives it
     pub name: Option<String>,
+}
+
+/// device.services' result
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct ServiceList {
+    pub services: Vec<DeviceService>,
+    /// Not connected now: the list from its last connection
+    pub from_last_connection: bool,
 }
 
 /// device.import_windows_pairings' result

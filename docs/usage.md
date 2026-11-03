@@ -507,10 +507,10 @@ The receiver's adapter is not available to its own Bluetooth stack while the too
 
 ## Pairing Shared with Windows and Linux {#shared-pairing}
 
-In developer mode, a saved device's **Paired** tag opens its pairing:
+In developer mode, a saved classic device has two more buttons on **Audio Devices**:
 
-- **Link key**: the key A2DPWB keeps for the device, and its type. **Copy key** copies it; **Copy for Linux** copies it as the `[LinkKey]` group of BlueZ's `/var/lib/bluetooth/<adapter>/<device>/info`, so that Linux on the same PC can use the pairing with the same adapter. Anyone with the key can pose as the device: do not share it
-- **Services**: the service classes the device lists in SDP, with the Bluetooth names of the common ones. Asked while the device is connected
+- **Services**: the services the device lists, named as Windows' Bluetooth Services list names them (the Bluetooth name, with the device's own in quotes such as *Serial Port 'GAIA'*; **Unknown service** for a vendor's), each with its UUIDs. Asked while the device is connected; when it is not, the list from its last connection since A2DP Windows Bridge started is shown
+- **Pairing key**: the link key A2DPWB keeps for the device, and its type. **Copy key** copies it; **Copy for Linux** copies BlueZ's whole `info` file (name, trusted, the services when known, the link key): save it as `/var/lib/bluetooth/<adapter>/<device>/info` on Linux on the same PC and restart Bluetooth there, so it uses the pairing with the same adapter. There are no LE keys: A2DPWB pairs devices over classic Bluetooth. Anyone with the key can pose as the device: do not share it
 
 **Adapter > Import pairings from Windows** (developer mode, an adapter on WinUSB) takes over the link keys Windows' Bluetooth kept for that adapter before it was given WinUSB: headphones paired with Windows through it then connect to A2DPWB without pairing again (add them under **Audio Devices** as usual). Windows asks for administrator permission, since only the system may read those keys. A device A2DPWB already has a key for keeps its own (it was paired with A2DPWB later, so Windows' key is the old one). Keys Windows made with another adapter, such as the PC's built-in Bluetooth, do not work: a pairing belongs to the adapter's address. Windows does not keep a key's type, so an imported key gets type 4. LE devices are not imported.
 

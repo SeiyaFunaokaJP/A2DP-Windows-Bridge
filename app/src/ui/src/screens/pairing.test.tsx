@@ -30,24 +30,38 @@ async function open(hash: string, developer: boolean) {
 }
 
 describe("device pairing", () => {
-  it("is a plain tag without developer mode", async () => {
+  it("has no services or key buttons without developer mode", async () => {
     await open("#/devices", false);
     await screen.findAllByText(t("device.tag_saved"));
-    expect(screen.queryByRole("button", { name: new RegExp(`^${t("ui.pairing.title")}:`) })).toBeNull();
+    expect(screen.queryByRole("button", { name: t("ui.pairing.services") })).toBeNull();
+    expect(screen.queryByRole("button", { name: t("ui.pairing.key_title") })).toBeNull();
+    // The tag is a tag, not a button (issue #86)
+    expect(screen.queryByRole("button", { name: t("device.tag_saved") })).toBeNull();
   });
 
-  it("shows the key, its Linux form and the services", async () => {
+  it("lists the services as Windows names them (issue #86)", async () => {
     const { calls } = await open("#/devices", true);
-    const [tag] = await screen.findAllByRole("button", { name: new RegExp(`^${t("ui.pairing.title")}:`) });
-    fireEvent.click(tag);
-    const dialog = await screen.findByRole("dialog");
+    const [button] = await screen.findAllByRole("button", { name: t("ui.pairing.services") });
+    fireEvent.click(button);
+    const dialog = await screen.findByRole("dialog", { name: t("ui.pairing.services") });
+    expect(await within(dialog).findByText("Audio Sink")).toBeInTheDocument();
+    expect(within(dialog).getByText("A/V Remote Control")).toBeInTheDocument();
+    // The SIG name with the device's own, and one known to neither
+    expect(within(dialog).getByText("Serial Port 'GAIA'")).toBeInTheDocument();
+    expect(within(dialog).getByText(t("ui.pairing.unknown_service"))).toBeInTheDocument();
+    expect(within(dialog).queryByText("00112233445566778899AABBCCDDEEFF")).toBeNull();
+    expect(calls.filter((c) => c.method === "device.services")).toHaveLength(1);
+  });
+
+  it("shows the key and copies BlueZ' whole info file", async () => {
+    await open("#/devices", true);
+    const [button] = await screen.findAllByRole("button", { name: t("ui.pairing.key_title") });
+    fireEvent.click(button);
+    const dialog = await screen.findByRole("dialog", { name: t("ui.pairing.key_title") });
     expect(await within(dialog).findByText("00112233445566778899AABBCCDDEEFF")).toBeInTheDocument();
     expect(within(dialog).getByText(t("ui.pairing.key_type", 4))).toBeInTheDocument();
-    expect(await within(dialog).findByText("Audio Sink")).toBeInTheDocument();
-    // No SIG name: the device's own
-    expect(within(dialog).getByText("Vendor")).toBeInTheDocument();
-    expect(within(dialog).getByText("A/V Remote Control")).toBeInTheDocument();
-    expect(calls.filter((c) => c.method === "device.services")).toHaveLength(1);
+    expect(within(dialog).getByText(t("ui.pairing.no_le_keys"))).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: t("ui.pairing.copy_linux") })).toBeInTheDocument();
   });
 
   it("imports Windows' pairings of an adapter on WinUSB", async () => {
