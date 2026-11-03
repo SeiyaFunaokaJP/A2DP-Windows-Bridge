@@ -1203,8 +1203,8 @@ pub enum Method {
     DeviceServices { address: String },
     /// -> WindowsImport: takes over the link keys Windows' Bluetooth keeps
     /// for the adapter with the Bluetooth address `adapter`, so the devices
-    /// it paired with that adapter connect without pairing again (an
-    /// administrator prompt; developer mode only)
+    /// it paired with that adapter connect without pairing again, and saves
+    /// the audio ones (an administrator prompt)
     #[serde(rename = "device.import_windows_pairings")]
     DeviceImportWindowsPairings { adapter: String },
     /// Removes a saved device; `le_audio` true: its LE Audio entry (absent
@@ -1681,6 +1681,10 @@ pub struct WindowsImport {
     /// The addresses A2DPWB has a key for already: it stays (the device
     /// was paired with A2DPWB after Windows, Windows' key is an old one)
     pub kept: Vec<String>,
+    /// The audio devices among `imported` that were added to the saved
+    /// devices, with Windows' names
+    #[serde(default)]
+    pub added: Vec<String>,
 }
 
 /// rfcomm.open's result

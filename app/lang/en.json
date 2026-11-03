@@ -770,6 +770,7 @@
   "ui.devices.all_title": "All audio devices",
   "ui.more_info": "More about %s",
   "ui.devices.add": "Add",
+  "ui.devices.import_hint": "Headphones paired in Windows through this adapter then connect without pairing again. Windows asks for administrator permission.",
   "ui.devices.windows_paired_title": "Paired in Windows",
   "ui.devices.windows_paired_text": "%s is already paired in Windows Bluetooth. To prevent connection conflicts, remove it from Windows Bluetooth first.",
   "ui.devices.add_anyway": "Add anyway",

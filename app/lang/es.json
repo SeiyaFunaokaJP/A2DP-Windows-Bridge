@@ -770,6 +770,7 @@
   "ui.devices.all_title": "Todos los dispositivos de audio",
   "ui.more_info": "Más sobre %s",
   "ui.devices.add": "Añadir",
+  "ui.devices.import_hint": "Los auriculares emparejados en Windows con este adaptador se conectan sin volver a emparejar. Windows pide permiso de administrador.",
   "ui.devices.windows_paired_title": "Emparejado en Windows",
   "ui.devices.windows_paired_text": "%s ya está emparejado en el Bluetooth de Windows. Para evitar conflictos de conexión, quítalo primero de allí.",
   "ui.devices.add_anyway": "Añadir de todos modos",

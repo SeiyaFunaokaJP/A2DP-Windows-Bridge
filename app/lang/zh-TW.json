@@ -770,6 +770,7 @@
   "ui.devices.all_title": "所有音訊裝置",
   "ui.more_info": "關於%s的更多資訊",
   "ui.devices.add": "新增",
+  "ui.devices.import_hint": "在 Windows 中透過此介面卡配對的耳機無需重新配對即可連線。Windows 會要求系統管理員權限。",
   "ui.devices.windows_paired_title": "已在 Windows 中配對",
   "ui.devices.windows_paired_text": "%s 已在 Windows 藍牙中配對。為避免連線衝突，建議先從 Windows 藍牙中移除它。",
   "ui.devices.add_anyway": "仍要新增",

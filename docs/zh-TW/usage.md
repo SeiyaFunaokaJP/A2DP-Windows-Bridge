@@ -513,7 +513,7 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 - **服務**：裝置公開的服務，名稱與 Windows 的「藍牙服務」清單相同（藍牙名稱，並以引號附上裝置自己的名稱，例如 *Serial Port 'GAIA'*；廠商自有的顯示為 **未知服務**），並顯示各自的 UUID。裝置連線時查詢；未連線時顯示 A2DP Windows Bridge 啟動後上次連線時的清單
 - **配對金鑰**：A2DPWB 為該裝置保存的連結金鑰及其類型。**複製金鑰** 複製金鑰；**複製為 Linux 格式** 複製 BlueZ 完整的 `info` 檔案（名稱、已信任、已知的服務、連結金鑰）：在同一台電腦的 Linux 上存成 `/var/lib/bluetooth/<介面卡>/<裝置>/info` 並重新啟動藍牙，即可用同一介面卡使用該配對。A2DPWB 透過傳統藍牙配對，因此沒有 LE 金鑰。任何取得金鑰的人都能冒充該裝置：請勿分享
 
-**介面卡 > 匯入 Windows 的配對**（開發人員模式，使用 WinUSB 的介面卡）會接手 Windows Bluetooth 在該介面卡改用 WinUSB 之前為其儲存的連結金鑰：透過它與 Windows 配對過的耳機無需重新配對即可連線 A2DPWB（照常在 **音訊裝置** 中新增）。只有系統能讀取這些金鑰，因此 Windows 會要求系統管理員權限。A2DPWB 已有金鑰的裝置保留自己的金鑰（它之後與 A2DPWB 配對過，Windows 的金鑰是舊的）。Windows 用其他介面卡（例如電腦內建 Bluetooth）建立的金鑰無法使用：配對屬於介面卡的位址。Windows 不儲存金鑰類型，匯入的金鑰類型為 4。不匯入 LE 裝置。
+**音訊裝置** 和初始設定的裝置步驟中的 **匯入 Windows 的配對**（使用 WinUSB 的介面卡；當 Windows 記有 A2DPWB 尚未儲存的裝置時顯示）會接手 Windows Bluetooth 在該介面卡改用 WinUSB 之前為其儲存的連結金鑰：透過它與 Windows 配對過的耳機無需重新配對即可連線 A2DPWB。只有系統能讀取這些金鑰，因此 Windows 會要求系統管理員權限。A2DPWB 已有金鑰的裝置保留自己的金鑰（它之後與 A2DPWB 配對過，Windows 的金鑰是舊的）。Windows 用其他介面卡（例如電腦內建 Bluetooth）建立的金鑰無法使用：配對屬於介面卡的位址。Windows 不儲存金鑰類型，匯入的金鑰類型為 4。不匯入 LE 裝置。匯入的耳機會以 Windows 中的名稱加入已儲存的裝置，可直接連線。
 
 ## LE Audio（實驗性） {#le-audio}
 

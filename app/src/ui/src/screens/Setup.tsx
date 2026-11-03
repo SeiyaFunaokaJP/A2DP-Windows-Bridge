@@ -16,6 +16,7 @@ import { saveSettings } from "../app/settings";
 import { Banner, Button, Toggle } from "../components/controls";
 import { VbCableNote } from "../components/DeviceSettings";
 import { DevicePicker, saveWithProfile } from "../components/DevicePicker";
+import { ImportPairings } from "../components/ImportPairings";
 import { Icon } from "../components/Icon";
 import { openFirmwareFolder, statusText } from "../components/stream";
 import { t } from "../i18n";
@@ -511,6 +512,7 @@ function StepDevice() {
         <Show when={cable() === null}>
           <VbCableNote />
         </Show>
+        <ImportPairings />
       </DevicePicker>
       <Show when={running()}>
         <div>

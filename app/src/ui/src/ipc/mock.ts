@@ -712,7 +712,7 @@ export class MockCore implements Transport {
           from_last_connection: false,
         };
       case "device.import_windows_pairings":
-        return { adapter_found: true, imported: ["00:A2:D0:00:00:02"], kept: [] };
+        return { adapter_found: true, imported: ["00:A2:D0:00:00:02"], kept: [], added: [] };
       case "device.scan_stop":
         this.scanStop?.();
         return null;

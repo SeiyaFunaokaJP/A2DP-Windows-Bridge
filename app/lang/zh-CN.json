@@ -770,6 +770,7 @@
   "ui.devices.all_title": "所有音频设备",
   "ui.more_info": "关于%s的更多信息",
   "ui.devices.add": "添加",
+  "ui.devices.import_hint": "在 Windows 中通过此适配器配对的耳机无需重新配对即可连接。Windows 会请求管理员权限。",
   "ui.devices.windows_paired_title": "已在 Windows 中配对",
   "ui.devices.windows_paired_text": "%s 已在 Windows 蓝牙中配对。为避免连接冲突，建议先从 Windows 蓝牙中删除它。",
   "ui.devices.add_anyway": "仍然添加",

@@ -770,6 +770,7 @@
   "ui.devices.all_title": "Tous les appareils audio",
   "ui.more_info": "En savoir plus : %s",
   "ui.devices.add": "Ajouter",
+  "ui.devices.import_hint": "Les casques associés dans Windows avec cet adaptateur se connectent sans nouvelle association. Windows demande les droits administrateur.",
   "ui.devices.windows_paired_title": "Associé dans Windows",
   "ui.devices.windows_paired_text": "%s est déjà associé dans le Bluetooth de Windows. Pour éviter les conflits de connexion, supprimez-le d'abord de Windows.",
   "ui.devices.add_anyway": "Ajouter quand même",

@@ -513,7 +513,7 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 - **服务**：设备公开的服务，名称与 Windows 的“蓝牙服务”列表相同（蓝牙名称，并用引号附上设备自己的名称，如 *Serial Port 'GAIA'*；厂商自有的显示为 **未知服务**），并显示各自的 UUID。设备连接时查询；未连接时显示 A2DP Windows Bridge 启动后上次连接时的列表
 - **配对密钥**：A2DPWB 为该设备保存的链路密钥及其类型。**复制密钥** 复制密钥；**复制为 Linux 格式** 复制 BlueZ 的完整 `info` 文件（名称、已信任、已知的服务、链路密钥）：在同一台电脑的 Linux 上保存为 `/var/lib/bluetooth/<适配器>/<设备>/info` 并重启蓝牙，即可用同一适配器使用该配对。A2DPWB 通过经典蓝牙配对，因此没有 LE 密钥。任何拿到密钥的人都能冒充该设备：请勿分享
 
-**适配器 > 导入 Windows 的配对**（开发者模式，使用 WinUSB 的适配器）会接管 Windows Bluetooth 在该适配器改用 WinUSB 之前为其保存的链接密钥：通过它与 Windows 配对过的耳机无需重新配对即可连接 A2DPWB（照常在 **音频设备** 中添加）。只有系统能读取这些密钥，因此 Windows 会请求管理员权限。A2DPWB 已有密钥的设备保留自己的密钥（它之后与 A2DPWB 配对过，Windows 的密钥是旧的）。Windows 用其他适配器（例如电脑内置 Bluetooth）创建的密钥无法使用：配对属于适配器的地址。Windows 不保存密钥类型，导入的密钥类型为 4。不导入 LE 设备。
+**音频设备** 和初始设置的设备步骤中的 **导入 Windows 的配对**（使用 WinUSB 的适配器；当 Windows 记有 A2DPWB 尚未保存的设备时显示）会接管 Windows Bluetooth 在该适配器改用 WinUSB 之前为其保存的链接密钥：通过它与 Windows 配对过的耳机无需重新配对即可连接 A2DPWB。只有系统能读取这些密钥，因此 Windows 会请求管理员权限。A2DPWB 已有密钥的设备保留自己的密钥（它之后与 A2DPWB 配对过，Windows 的密钥是旧的）。Windows 用其他适配器（例如电脑内置 Bluetooth）创建的密钥无法使用：配对属于适配器的地址。Windows 不保存密钥类型，导入的密钥类型为 4。不导入 LE 设备。导入的耳机会以 Windows 中的名称加入已保存的设备，可直接连接。
 
 ## LE Audio（实验性） {#le-audio}
 

@@ -1,7 +1,8 @@
-//! Developer mode: a classic device's pairing as A2DPWB keeps it, the
-//! services the device lists, and taking over the link keys Windows'
-//! Bluetooth kept for the adapter A2DPWB now uses (issue #86: devices paired
-//! in Windows then connect without pairing again).
+//! Developer mode: a classic device's pairing as A2DPWB keeps it and the
+//! services the device lists. For everyone: taking over the link keys
+//! Windows' Bluetooth kept for the adapter A2DPWB now uses (issue #86:
+//! devices paired in Windows then connect without pairing again; the audio
+//! ones are added to the saved devices with Windows' names).
 //!
 //! Windows keeps its keys where only SYSTEM may read them: the elevated
 //! helper reads them (a2dpwb-driver.exe `windows-keys`, one administrator
@@ -107,9 +108,9 @@ fn parse_key(v: &Value) -> Option<([u8; 6], [u8; 16])> {
     Some((addr, key))
 }
 
-/// device.import_windows_pairings
+/// device.import_windows_pairings (not developer mode only since issue #86:
+/// it only reads Windows' keys, after an administrator prompt)
 pub fn import_windows(state: &Arc<CoreState>, adapter: &str) -> Result<Value, ErrorInfo> {
-    developer(state)?;
     let radio = bt_host::addr_str(&address(adapter)?);
     let (code, result) = crate::driver::run(&["windows-keys", &radio])?;
     if code != 0 || result.get("ok").and_then(Value::as_bool) != Some(true) {
@@ -142,12 +143,40 @@ pub fn import_windows(state: &Arc<CoreState>, adapter: &str) -> Result<Value, Er
             tracing::warn!("Windows' key of {} not stored: the stack did not answer", bt_host::addr_str(&addr));
         }
     }
+    let added = add_audio_devices(state, &imported);
     tracing::info!(
-        "Windows' keys of {radio}: adapter found {adapter_found}, {} taken, {} kept",
+        "Windows' keys of {radio}: adapter found {adapter_found}, {} taken, {} kept, {} added",
         imported.len(),
-        kept.len()
+        kept.len(),
+        added.len()
     );
-    Ok(serde_json::to_value(WindowsImport { adapter_found, imported, kept }).unwrap_or(Value::Null))
+    Ok(serde_json::to_value(WindowsImport { adapter_found, imported, kept, added }).unwrap_or(Value::Null))
+}
+
+/// The audio devices among `imported` that are not saved yet, saved with the
+/// name Windows knows them by (they then show on Audio Devices, ready to
+/// connect); the addresses added
+fn add_audio_devices(state: &Arc<CoreState>, imported: &[String]) -> Vec<String> {
+    let Ok(windows) = win_sys::bt_paired::paired_devices() else {
+        return Vec::new();
+    };
+    let dir = state.config_dir();
+    let saved: Vec<String> = a2dpwb_core::devices::load(&dir).into_iter().map(|d| d.address.to_uppercase()).collect();
+    let mut added = Vec::new();
+    for d in windows.iter().filter(|d| d.is_a2dp_sink()) {
+        let address = bt_host::addr_str(&d.address);
+        if !imported.contains(&address) || saved.contains(&address.to_uppercase()) {
+            continue;
+        }
+        match a2dpwb_core::devices::save(&dir, &address, d.name.trim()) {
+            Ok(()) => added.push(address),
+            Err(e) => tracing::warn!("Windows' device {address} not saved: {e}"),
+        }
+    }
+    if !added.is_empty() {
+        state.refresh_devices();
+    }
+    added
 }
 
 #[cfg(test)]

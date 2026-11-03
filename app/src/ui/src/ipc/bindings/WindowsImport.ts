@@ -17,4 +17,9 @@ imported: Array<string>,
  * The addresses A2DPWB has a key for already: it stays (the device
  * was paired with A2DPWB after Windows, Windows' key is an old one)
  */
-kept: Array<string>, };
+kept: Array<string>, 
+/**
+ * The audio devices among `imported` that were added to the saved
+ * devices, with Windows' names
+ */
+added: Array<string>, };
