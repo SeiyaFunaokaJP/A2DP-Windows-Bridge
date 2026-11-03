@@ -357,6 +357,7 @@ fn run(ctl: &mut Controller, files: HashMap<String, Vec<u8>>, images: &[(u8, u8,
                 result = Some(r);
                 Vec::new()
             }
+            Action::UsbControl(r) => panic!("the Intel loader asked for a USB transfer: {r:?}"),
         };
         for e in events {
             actions.extend(loader.on_event(&e));

@@ -448,10 +448,13 @@ function FirmwareStatus(props: { status: ChipStatus; embedded?: boolean }): JSX.
         </Banner>
       );
     case "vendor": {
-      const url = vendorFirmwareUrl(st.vendor);
+      // Per chip: a vendor's chips without a loader get no firmware page,
+      // even when its other chips have one
+      const unsupported = st.note.key === "firmware.vendor_unsupported";
+      const url = unsupported ? null : vendorFirmwareUrl(st.vendor);
       return (
         <Banner
-          kind={st.note.key === "firmware.vendor_unsupported" ? "warn" : "info"}
+          kind={unsupported ? "warn" : "info"}
           actions={url ? download(url) : undefined}
         >
           {tm(st.note)}

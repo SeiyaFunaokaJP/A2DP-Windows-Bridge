@@ -1,11 +1,11 @@
 //! Chip probe reports (bt_host::probe) as JSON files in `logs\probe\`, for
-//! whoever adds a loader for the chip (docs/chip-bringup-dev.md). They hold
-//! the adapter's address and name, so the diagnostic bundle takes them only
+//! whoever adds a loader for the chip (docs/chip-support.md). They hold the
+//! adapter's address and name, so the diagnostic bundle takes them only
 //! with the HCI captures.
 
 use std::path::{Path, PathBuf};
 
-use bt_host::probe::{ProbeReport, ProbeSummary};
+use bt_host::probe::{ProbeReport, ProbeSummary, StepKind};
 use serde_json::{Value, json};
 
 use crate::adapter::bt_core_version;
@@ -17,8 +17,8 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// "Intel, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102, 8 of 8 commands
-/// answered"
+/// "Intel, USB 8087:0033, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102,
+/// 10 of 10 requests answered"
 pub fn summary_line(report: &ProbeReport) -> String {
     let s = report.summary();
     let mut parts = Vec::new();
@@ -26,6 +26,9 @@ pub fn summary_line(report: &ProbeReport) -> String {
         (Some(name), _) => parts.push(name.to_owned()),
         (None, Some(id)) => parts.push(format!("company 0x{id:04X}")),
         (None, None) => {}
+    }
+    if let Some((vid, pid)) = s.usb_ids {
+        parts.push(format!("USB {vid:04X}:{pid:04X}"));
     }
     if let Some(v) = s.hci_version {
         parts.push(match bt_core_version(v) {
@@ -36,7 +39,7 @@ pub fn summary_line(report: &ProbeReport) -> String {
     if let Some(sub) = s.lmp_subversion {
         parts.push(format!("LMP subversion 0x{sub:04X}"));
     }
-    parts.push(format!("{} of {} commands answered", s.answered, s.steps));
+    parts.push(format!("{} of {} requests answered", s.answered, s.steps));
     if let Some(e) = &report.error {
         parts.push(e.clone());
     }
@@ -56,6 +59,9 @@ fn summary_json(s: &ProbeSummary) -> Value {
         "name": s.name,
         "acl_buffers": s.acl_buffers.map(|(len, n)| json!({ "length": len, "count": n })),
         "le_acl_buffers": s.le_acl_buffers.map(|(len, n)| json!({ "length": len, "count": n })),
+        "usb_ids": s.usb_ids.map(|(vid, pid)| format!("{vid:04X}:{pid:04X}")),
+        "usb_manufacturer": s.usb_manufacturer,
+        "usb_product": s.usb_product,
         "answered": s.answered,
         "steps": s.steps,
     })
@@ -63,7 +69,7 @@ fn summary_json(s: &ProbeSummary) -> Value {
 
 /// The report with its decoded summary; packets in hex as sent / received
 /// (HCI command: opcode, length, parameters; event: code, length,
-/// parameters)
+/// parameters; USB: the SETUP packet and the bytes read)
 pub fn to_json(report: &ProbeReport, adapter: Option<&str>, version: &str) -> Value {
     json!({
         "a2dpwb": version,
@@ -73,11 +79,18 @@ pub fn to_json(report: &ProbeReport, adapter: Option<&str>, version: &str) -> Va
         "millis": report.millis,
         "steps": report.steps.iter().map(|s| json!({
             "name": s.name,
+            "kind": match s.kind { StepKind::Hci => "hci", StepKind::Usb => "usb" },
             "command": hex(&s.command),
             "answer": s.answer.as_deref().map(hex),
+            "error": s.error,
             "millis": s.millis,
         })).collect::<Vec<_>>(),
         "other_events": report.other_events.iter().map(|e| hex(e)).collect::<Vec<_>>(),
+        "usb": report.usb.as_ref().map(|u| json!({
+            "interfaces": u.summary,
+            "device_descriptor": hex(&u.device),
+            "configuration_descriptors": u.configurations.iter().map(|c| hex(c)).collect::<Vec<_>>(),
+        })),
     })
 }
 
@@ -108,6 +121,7 @@ fn prune(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bt_host::bringup::UsbDescriptors;
     use bt_host::probe::ProbeStep;
 
     fn report() -> ProbeReport {
@@ -115,15 +129,39 @@ mod tests {
             steps: vec![
                 ProbeStep {
                     name: "Read Local Version Information",
+                    kind: StepKind::Hci,
                     command: vec![0x01, 0x10, 0x00],
                     answer: Some(vec![0x0E, 0x0C, 0x01, 0x01, 0x10, 0x00, 12, 0x02, 0x31, 12, 0x02, 0x00, 0x02, 0x31]),
+                    error: None,
                     millis: 3,
                 },
-                ProbeStep { name: "Read BD_ADDR", command: vec![0x09, 0x10, 0x00], answer: None, millis: 1000 },
+                ProbeStep {
+                    name: "Read BD_ADDR",
+                    kind: StepKind::Hci,
+                    command: vec![0x09, 0x10, 0x00],
+                    answer: None,
+                    error: None,
+                    millis: 1000,
+                },
+                ProbeStep {
+                    name: "USB device descriptor",
+                    kind: StepKind::Usb,
+                    command: vec![0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 18, 0],
+                    answer: Some(vec![
+                        18, 0x01, 0x00, 0x02, 0xE0, 0x01, 0x01, 64, 0x87, 0x80, 0x33, 0x00, 0x00, 0x00, 0, 0, 0, 1,
+                    ]),
+                    error: None,
+                    millis: 1,
+                },
             ],
             other_events: vec![vec![0xFF, 0x01, 0x06]],
-            millis: 1003,
+            millis: 1004,
             error: None,
+            usb: Some(UsbDescriptors {
+                device: vec![18, 0x01],
+                configurations: vec![vec![9, 0x02]],
+                summary: vec!["interface 0 alt 0 class E0/01/01: 0x81 interrupt 64".into()],
+            }),
         }
     }
 
@@ -131,11 +169,11 @@ mod tests {
     fn summary_names_the_chip_and_what_answered() {
         assert_eq!(
             summary_line(&report()),
-            "Intel, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102, 1 of 2 commands answered"
+            "Intel, USB 8087:0033, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102, 2 of 3 requests answered"
         );
         let nothing = ProbeReport { error: Some("could not open the Bluetooth adapter".into()), ..report() };
         let nothing = ProbeReport { steps: Vec::new(), ..nothing };
-        assert_eq!(summary_line(&nothing), "0 of 0 commands answered, could not open the Bluetooth adapter");
+        assert_eq!(summary_line(&nothing), "0 of 0 requests answered, could not open the Bluetooth adapter");
     }
 
     #[test]
@@ -145,8 +183,14 @@ mod tests {
         assert_eq!(v["summary"]["bluetooth"], "5.3");
         assert_eq!(v["steps"][0]["command"], "011000");
         assert_eq!(v["steps"][0]["answer"], "0e0c010110000c02310c02000231");
+        assert_eq!(v["steps"][0]["kind"], "hci");
         assert_eq!(v["steps"][1]["answer"], Value::Null);
+        assert_eq!(v["steps"][2]["kind"], "usb");
+        assert_eq!(v["steps"][2]["command"], "8006000100001200");
+        assert_eq!(v["summary"]["usb_ids"], "8087:0033");
         assert_eq!(v["other_events"][0], "ff0106");
+        assert_eq!(v["usb"]["interfaces"][0], "interface 0 alt 0 class E0/01/01: 0x81 interrupt 64");
+        assert_eq!(v["usb"]["configuration_descriptors"][0], "0902");
     }
 
     #[test]

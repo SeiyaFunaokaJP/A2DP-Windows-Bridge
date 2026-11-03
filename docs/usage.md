@@ -105,7 +105,7 @@ Shown while **Settings > Developer mode** is on; most users never need it. It is
 | Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray** and **Open the tray window from** (see [Tray and Flyout](#tray)) |
 | Notifications | **Notify when a device connects** (the device, its battery, the codec and what it runs with; on by default), **Notify when the battery is low**: **Below 20%** (the default), **Below 10%**, **Below 5%** or **Never**, once per connection (again only after the battery was back 5 points above) |
 | Updates | **Check for Updates**, **Check for Updates on Startup**, **Include Pre-releases in Update Checks** (also offer beta releases), **Update now** (see [Updates](#updates)) |
-| Advanced | **Developer mode** (adds the [Developer](#developer) screen with codec overrides, each device's **Max media packet size**, the SBC **Frame setup** in the codec settings, logging options and the peer receiver test, and more details to the log; no restart needed), **Settings folder** with **Open Config Folder**, **Run setup** |
+| Advanced | **Developer mode** (adds the [Developer](#developer) screen with codec overrides, each device's **Max media packet size**, the SBC **Frame setup** in the codec settings, logging options and the peer receiver test, and more details to the log; no restart needed), **Settings folder** with **Open Settings Folder**, **Run setup** |
 | About A2DP Windows Bridge | Version, license, third-party licenses, **Quit A2DP Windows Bridge** |
 
 ### First-Run Setup

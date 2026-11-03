@@ -157,7 +157,7 @@ Which adapters and headphones have actually been used with A2DPWB, with the code
 | CSR | Generic CSR8510 dongles | Works out of the box, no firmware needed |
 | Broadcom | ASUS BT400 (BCM20702) | *Experimental.* Adapters that report the vendor class `FF/01/01` instead of Bluetooth `E0/01/01` (BCM20702 OEM dongles) are detected too. Runs on ROM firmware; an optional PatchRAM `.hcd` (e.g. `BCM20702A1-0b05-17cb.hcd`) in the firmware folder is uploaded at startup |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimental.* In bootloader mode (e.g. after a cold boot) needs the matching `ibt-*.sfi` + `ibt-*.ddc` from linux-firmware `intel/` in the firmware folder; the log names them (e.g. `ibt-0180-0041.sfi`). Only the AX211 has been tested so far |
-| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | Not supported: need firmware loaders A2DPWB does not have |
+| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | Not supported: need firmware loaders A2DPWB does not have ([help add one](chip-support)) |
 
 USB Bluetooth 5.0+ adapters generally work best for high-bitrate codecs like LDAC.
 

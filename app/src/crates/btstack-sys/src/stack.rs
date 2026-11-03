@@ -356,6 +356,28 @@ impl Stack {
         transport::send_raw(crate::consts::HCI_ACL_DATA_PACKET, command)
     }
 
+    /// A USB control transfer for a chip loader
+    /// ([`crate::HciBackend::control`]). Not an HCI packet: logged to the
+    /// HCI capture as a log line with its result, so the capture keeps the
+    /// whole sequence in order.
+    pub fn raw_control(&self, request: &crate::ControlRequest) -> Result<Vec<u8>, String> {
+        let result = transport::control(request);
+        let outcome = match &result {
+            Ok(data) if data.is_empty() => "ok".to_owned(),
+            Ok(data) => data.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+            Err(e) => format!("failed: {e}"),
+        };
+        let line = format!("USB control {} -> {outcome}", request.describe());
+        tracing::debug!(target: "hci", "{line}");
+        crate::callbacks::log_packet(crate::consts::LOG_MESSAGE_PACKET, false, line.as_bytes());
+        result
+    }
+
+    /// The open USB device's descriptors ([`crate::HciBackend::usb_descriptors`])
+    pub fn usb_descriptors(&self) -> Option<crate::UsbDescriptors> {
+        transport::usb_descriptors()
+    }
+
     /// The controller runs its bootloader, see
     /// [`crate::HciBackend::set_bootloader`]
     pub fn set_bootloader(&self, on: bool) {
