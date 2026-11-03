@@ -126,6 +126,8 @@ mod tests {
         DiagBundle::export_all(&cfg).unwrap();
         DiagBundleParams::export_all(&cfg).unwrap();
         ProbeResult::export_all(&cfg).unwrap();
+        ScriptCheck::export_all(&cfg).unwrap();
+        ScriptResult::export_all(&cfg).unwrap();
         RfcommOpened::export_all(&cfg).unwrap();
     }
 }

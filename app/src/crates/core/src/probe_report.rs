@@ -79,7 +79,7 @@ pub fn to_json(report: &ProbeReport, adapter: Option<&str>, version: &str) -> Va
         "millis": report.millis,
         "steps": report.steps.iter().map(|s| json!({
             "name": s.name,
-            "kind": match s.kind { StepKind::Hci => "hci", StepKind::Usb => "usb" },
+            "kind": match s.kind { StepKind::Hci => "hci", StepKind::Usb => "usb", StepKind::Other => "other" },
             "command": hex(&s.command),
             "answer": s.answer.as_deref().map(hex),
             "error": s.error,
@@ -97,20 +97,41 @@ pub fn to_json(report: &ProbeReport, adapter: Option<&str>, version: &str) -> Va
 /// Writes `probe-<time>.json` to `logs\probe\` and keeps the newest
 /// [`KEEP`]
 pub fn save(config: &Path, report: &ProbeReport, adapter: Option<&str>, version: &str) -> std::io::Result<PathBuf> {
+    write(config, "probe", to_json(report, adapter, version))
+}
+
+/// Writes a chip script's report, with the script, as `script-<time>.json`
+/// beside the probe reports (the newest [`KEEP`] of them)
+pub fn save_script(
+    config: &Path,
+    report: &ProbeReport,
+    script: &str,
+    adapter: Option<&str>,
+    version: &str,
+) -> std::io::Result<PathBuf> {
+    let mut v = to_json(report, adapter, version);
+    v["script"] = Value::String(script.to_owned());
+    write(config, "script", v)
+}
+
+fn write(config: &Path, prefix: &str, v: Value) -> std::io::Result<PathBuf> {
     let dir = crate::paths::probe_dir(config);
     std::fs::create_dir_all(&dir)?;
-    let path = dir.join(format!("probe-{}.json", crate::paths::local_stamp()));
-    let text = serde_json::to_string_pretty(&to_json(report, adapter, version)).unwrap_or_default();
-    std::fs::write(&path, text)?;
-    prune(&dir);
+    let path = dir.join(format!("{prefix}-{}.json", crate::paths::local_stamp()));
+    std::fs::write(&path, serde_json::to_string_pretty(&v).unwrap_or_default())?;
+    prune(&dir, prefix);
     Ok(path)
 }
 
-fn prune(dir: &Path) {
+fn prune(dir: &Path, prefix: &str) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
-    let mut files: Vec<PathBuf> =
-        entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect();
-    // probe-YYYYMMDD_HHMMSS: the name sorts by time
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&format!("{prefix}-"))))
+        .collect();
+    // <prefix>-YYYYMMDD_HHMMSS: the name sorts by time
     files.sort();
     let excess = files.len().saturating_sub(KEEP);
     for old in &files[..excess] {
@@ -128,7 +149,7 @@ mod tests {
         ProbeReport {
             steps: vec![
                 ProbeStep {
-                    name: "Read Local Version Information",
+                    name: "Read Local Version Information".into(),
                     kind: StepKind::Hci,
                     command: vec![0x01, 0x10, 0x00],
                     answer: Some(vec![0x0E, 0x0C, 0x01, 0x01, 0x10, 0x00, 12, 0x02, 0x31, 12, 0x02, 0x00, 0x02, 0x31]),
@@ -136,7 +157,7 @@ mod tests {
                     millis: 3,
                 },
                 ProbeStep {
-                    name: "Read BD_ADDR",
+                    name: "Read BD_ADDR".into(),
                     kind: StepKind::Hci,
                     command: vec![0x09, 0x10, 0x00],
                     answer: None,
@@ -144,7 +165,7 @@ mod tests {
                     millis: 1000,
                 },
                 ProbeStep {
-                    name: "USB device descriptor",
+                    name: "USB device descriptor".into(),
                     kind: StepKind::Usb,
                     command: vec![0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 18, 0],
                     answer: Some(vec![
@@ -206,6 +227,12 @@ mod tests {
         assert_eq!(left, KEEP);
         assert!(path.exists());
         assert!(!probe.join("probe-20260101_000000.json").exists());
+        // Script reports are kept apart, with their script
+        let script = save_script(&dir, &report(), "hci 1001\n", None, "2.0.2").unwrap();
+        assert!(script.file_name().unwrap().to_string_lossy().starts_with("script-"));
+        assert_eq!(std::fs::read_dir(&probe).unwrap().count(), KEEP + 1);
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&script).unwrap()).unwrap();
+        assert_eq!(v["script"], "hci 1001\n");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

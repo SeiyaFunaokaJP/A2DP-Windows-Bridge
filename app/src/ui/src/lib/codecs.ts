@@ -287,6 +287,16 @@ export function forcesCodec(s: Pick<Settings, "developer_mode" | "dev_overrides"
   return s.developer_mode && s.dev_overrides.force_codec;
 }
 
+/** What the codec settings go by: without LHDC V5's maximum bit rate while
+ *  developer mode's override ignores it, so every quality is offered */
+export function capsForSettings(
+  caps: readonly CodecCaps[],
+  s: Pick<Settings, "developer_mode" | "dev_overrides">,
+): readonly CodecCaps[] {
+  if (!(s.developer_mode && s.dev_overrides.lhdcv5_ignore_sink_max)) return caps;
+  return caps.map((c) => (c.codec === "lhdcv5" ? { ...c, max_bitrate: 0 } : c));
+}
+
 /**
  * Auto's choice, highest sound quality first (core: CodecKind::AUTO_PRIORITY,
  * issue #86). FastStream and Opus 05 are used only when chosen.

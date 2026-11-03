@@ -20,9 +20,9 @@ use bt_host::LinkStats;
 use bt_host::chips::{self, ChipVendor};
 use ipc::{
     AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, DevLog, DevOverrides, Device,
-    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, MixerApp, Msg, OtherRadio,
-    ProbeResult, Profile, ReceiverConnection, ReceiverState, Settings, SettingsApplied, Snapshot, SourceInfo,
-    StreamState, StreamStatus, UpdateState,
+    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, LoaderStatus, Method, MixerApp,
+    Msg, OtherRadio, ProbeResult, Profile, ReceiverConnection, ReceiverState, ScriptCheck, ScriptResult, Settings,
+    SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus, UpdateState,
 };
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -309,6 +309,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
             force_codec: s.dev_overrides.force_codec,
             auto_codec_settings: s.dev_overrides.auto_codec_settings,
             match_source: s.dev_overrides.match_source,
+            lhdcv5_ignore_sink_max: s.dev_overrides.lhdcv5_ignore_sink_max,
         },
         dev_log: DevLog {
             keep_days: s.dev_log.keep_days,
@@ -370,6 +371,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
         force_codec: s.dev_overrides.force_codec,
         auto_codec_settings: s.dev_overrides.auto_codec_settings,
         match_source: s.dev_overrides.match_source,
+        lhdcv5_ignore_sink_max: s.dev_overrides.lhdcv5_ignore_sink_max,
     };
     c.dev_log = a2dpwb_core::settings::DevLog {
         keep_days: s.dev_log.keep_days,
@@ -1125,6 +1127,7 @@ impl CoreState {
                 adapters,
                 error: None,
                 rom_firmware: false,
+                loader: None,
             },
             devices: saved_devices(&dir, &[], &service.device_codecs()),
             scanning: false,
@@ -1409,6 +1412,19 @@ impl CoreState {
                 devices_changed = true;
             }
             ServiceEvent::Volume(v) => stream.volume = Some(v),
+            // The Adapters screen shows the loader while the adapter starts
+            ServiceEvent::Loader(p) => {
+                self.publish(Event::Adapter(AdapterState {
+                    loader: Some(LoaderStatus {
+                        vendor: p.vendor.to_owned(),
+                        step: p.step,
+                        percent: p.percent,
+                        ok: p.done,
+                    }),
+                    ..s.adapter
+                }));
+                return;
+            }
             // Another saved device connected while the one streamed was off
             // (issue #86): its own profile starts, as a connect on Home
             ServiceEvent::OtherDeviceBack(addr) => {
@@ -1888,6 +1904,33 @@ impl CoreState {
         *self.rates.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// A chip script read for the adapter `instance_id`: what cannot run,
+    /// what may change the chip, what its vendor never takes from a script
+    fn check_script(
+        &self,
+        instance_id: &str,
+        text: &str,
+    ) -> (Result<bt_host::script::Script, Vec<String>>, ScriptCheck) {
+        let parsed = bt_host::script::parse(text);
+        let (_, s) = self.snapshot();
+        let vendor = s
+            .adapter
+            .adapters
+            .iter()
+            .find(|a| a.instance_id == instance_id)
+            .map_or(ChipVendor::Unknown, |a| chips::vendor_for_usb(a.vid, a.pid, None));
+        let line = |l: &bt_host::script::ScriptLine| format!("line {}: {}", l.line, l.text);
+        let check = match &parsed {
+            Ok(script) => ScriptCheck {
+                errors: Vec::new(),
+                writes: script.writes().into_iter().map(line).collect(),
+                denied: script.denied(chips::denied_opcodes(vendor)).into_iter().map(line).collect(),
+            },
+            Err(errors) => ScriptCheck { errors: errors.clone(), writes: Vec::new(), denied: Vec::new() },
+        };
+        (parsed, check)
+    }
+
     // ---- HCI capture -------------------------------------------------------
 
     fn start_capture(&self) -> Result<String, ErrorInfo> {
@@ -2300,6 +2343,61 @@ impl CoreState {
                             err("adapter.probe_failed", "error.probe_save")
                         })?;
                     Ok(json(&ProbeResult { path: path.display().to_string(), summary }))
+                }))
+                .await
+            }
+            Method::AdapterCheckScript { instance_id, script } => Ok(json(&self.check_script(&instance_id, &script).1)),
+            Method::AdapterRunScript { instance_id, script, allow_writes } => {
+                blocking(Box::new(move |me| {
+                    let (parsed, check) = me.check_script(&instance_id, &script);
+                    let invalid = |key: &str, lines: &[String]| ErrorInfo {
+                        code: "adapter.script_refused".into(),
+                        message: Msg { key: key.into(), args: vec![lines.join("\n")] },
+                    };
+                    let parsed = match parsed {
+                        Ok(s) if check.denied.is_empty() && (allow_writes || check.writes.is_empty()) => s,
+                        Ok(_) if !check.denied.is_empty() => return Err(invalid("error.script_denied", &check.denied)),
+                        Ok(_) => return Err(invalid("error.script_writes", &check.writes)),
+                        Err(_) => return Err(invalid("error.script_invalid", &check.errors)),
+                    };
+                    let total = parsed.lines.len();
+                    tracing::info!(
+                        "chip script on {instance_id}: {total} lines, {} that may change the chip",
+                        check.writes.len()
+                    );
+                    let report = me
+                        .service
+                        .run_script(Some(instance_id.clone()), parsed)
+                        .map_err(|m| ErrorInfo { code: "adapter.script_failed".into(), message: msg(&m) })?;
+                    let (_, s) = me.snapshot();
+                    me.publish(Event::Adapter(AdapterState {
+                        status: AdapterStatus::Stopped,
+                        error: None,
+                        ..s.adapter
+                    }));
+                    let summary = match &report.error {
+                        Some(e) => e.clone(),
+                        None => format!("{} of {total} lines done", report.steps.len()),
+                    };
+                    let version = env!("CARGO_PKG_VERSION");
+                    let path = a2dpwb_core::probe_report::save_script(
+                        &me.config_dir(),
+                        &report,
+                        &script,
+                        Some(&instance_id),
+                        version,
+                    )
+                    .map_err(|e| {
+                        tracing::warn!("chip script: the report could not be saved: {e}");
+                        err("adapter.script_failed", "error.probe_save")
+                    })?;
+                    let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+                    Ok(json(&ScriptResult {
+                        path: path.display().to_string(),
+                        summary,
+                        lines: bt_host::script::report_text(&report),
+                        other_events: report.other_events.iter().map(|e| hex(e)).collect(),
+                    }))
                 }))
                 .await
             }

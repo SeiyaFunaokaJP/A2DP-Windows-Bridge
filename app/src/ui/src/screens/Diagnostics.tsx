@@ -18,6 +18,7 @@ import type { CaptureState, DiagBundle, FlowStepView, LogLevel, LogLine } from "
 import { bitrateNoteKey, codecLabelKey } from "../lib/codecs";
 import { STEPS, type Step, type StepStatus, stepDetail } from "../lib/flow";
 import { clock, copyText, kbps, knowAdapters, maskIdentifiers } from "../lib/format";
+import { baseName } from "../lib/links";
 import {
   dropsPerSample,
   EDR3_MAX_KBPS,
@@ -60,11 +61,6 @@ const [withHci, setWithHci] = createSignal(false);
 const GITHUB_ATTACHMENT_LIMIT = 25 * 1024 * 1024;
 
 type VerboseChoice = "off" | "debug" | "trace";
-
-/** "a.zip" of "C:\x\a.zip" */
-function baseName(path: string): string {
-  return path.slice(Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/")) + 1);
-}
 
 /** When verbose logging ends, as the local date and time */
 function untilText(ms: number): string {

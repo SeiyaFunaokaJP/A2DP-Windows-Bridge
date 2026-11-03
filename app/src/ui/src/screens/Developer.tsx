@@ -1,4 +1,5 @@
-// Developer (shown while developer mode is on): the peer receiver test,
+// Developer (shown while developer mode is on): the chip tools (ChipTools),
+// the peer receiver test,
 // overrides of the codec and the media path for finding out why a sink stays
 // silent (issue #87; read when the next stream is set up), each saved
 // device's max media packet size (issue #86), and how the core
@@ -16,10 +17,11 @@ import { t } from "../i18n";
 import type { DevLog, DevOverrides, LogLevel } from "../ipc/types";
 import { PACKET_DEFAULT, PACKET_MAX, PACKET_MIN } from "../lib/codecs";
 import { audioEntries, entryByKey, normalizeProfile, profilesOf } from "../lib/profile";
+import { ChipTools } from "./ChipTools";
 import { ReceiverTest } from "./ReceiverTest";
 
 // The app's own settings apart from the codec and media path (issue #86)
-type Tab = "app" | "receiver" | "overrides" | "logging";
+type Tab = "app" | "receiver" | "overrides" | "logging" | "chip";
 
 const NO_OVERRIDES: DevOverrides = {
   rtp_marker: false,
@@ -32,6 +34,7 @@ const NO_OVERRIDES: DevOverrides = {
   force_codec: false,
   auto_codec_settings: false,
   match_source: false,
+  lhdcv5_ignore_sink_max: false,
 };
 
 export function Developer() {
@@ -44,6 +47,7 @@ export function Developer() {
     { id: "overrides", label: t("ui.dev.codec_settings"), icon: "wrench" },
     { id: "logging", label: t("ui.dev.logging"), icon: "record" },
     { id: "receiver", label: t("receiver.title"), icon: "beaker" },
+    { id: "chip", label: t("ui.dev.chip"), icon: "usb_stick" },
   ];
 
   const onTabKey = (e: KeyboardEvent) => {
@@ -104,6 +108,9 @@ export function Developer() {
         <Show when={tab() === "receiver"}>
           <ReceiverTest />
         </Show>
+        <Show when={tab() === "chip"}>
+          <ChipTools />
+        </Show>
       </div>
     </div>
   );
@@ -138,6 +145,11 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
           hint={t("ui.dev.match_source_hint")}
           checked={props.value.match_source}
           onChange={(v) => set({ match_source: v })}
+        />
+        <Toggle
+          label={t("ui.dev.lhdcv5_ignore_sink_max")}
+          checked={props.value.lhdcv5_ignore_sink_max}
+          onChange={(v) => set({ lhdcv5_ignore_sink_max: v })}
         />
       </Section>
       <Section
