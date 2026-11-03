@@ -40,7 +40,7 @@ body:
     id: dual_connection
     attributes:
       label: Dual connection
-      description: Were the headphones connected to a second device (a phone, for example) at the same time?
+      description: Were the headphones connected to a second device at the same time? A phone, or this PC's own Bluetooth, counts, also when it is only there for the headphones' app (battery, noise control, EQ).
       options:
         - "No"
         - "Yes"
