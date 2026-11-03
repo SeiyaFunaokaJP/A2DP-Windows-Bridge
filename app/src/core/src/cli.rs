@@ -403,11 +403,18 @@ pub fn run(args: &[String]) -> i32 {
         let code = match service.probe_adapter(None) {
             Ok(report) => {
                 for s in &report.steps {
-                    let answer = s
-                        .answer
-                        .as_deref()
-                        .map_or_else(|| "no answer".to_owned(), |e| e.iter().map(|b| format!("{b:02x}")).collect());
+                    let answer = match (&s.answer, &s.error) {
+                        (Some(a), _) => a.iter().map(|b| format!("{b:02x}")).collect(),
+                        (None, Some(e)) => format!("failed: {e}"),
+                        (None, None) => "no answer".to_owned(),
+                    };
                     println!("{:<34} {:>5} ms  {answer}", s.name, s.millis);
+                }
+                if let Some(usb) = &report.usb {
+                    println!();
+                    for line in &usb.summary {
+                        println!("{line}");
+                    }
                 }
                 println!("\n{}", a2dpwb_core::probe_report::summary_line(&report));
                 let adapter = a.usb.as_ref().map(|(u, _)| u.as_str());

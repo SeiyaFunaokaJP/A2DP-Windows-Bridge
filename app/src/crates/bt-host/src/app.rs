@@ -278,8 +278,20 @@ impl HostApp {
     }
 
     fn run_loader(&mut self, stack: &Stack, actions: Vec<bringup::Action>) {
-        for action in actions {
+        let mut actions: std::collections::VecDeque<_> = actions.into();
+        while let Some(action) = actions.pop_front() {
             let failed = match action {
+                // Done at once; what the loader answers runs before the
+                // actions after it
+                bringup::Action::UsbControl(request) => {
+                    let result = stack.raw_control(&request);
+                    if let Some(loader) = self.loader.as_mut() {
+                        for a in loader.on_control(result).into_iter().rev() {
+                            actions.push_front(a);
+                        }
+                    }
+                    None
+                }
                 bringup::Action::Command(c) => {
                     (!stack.raw_send(HCI_COMMAND_DATA_PACKET, &c)).then_some("the adapter does not take commands")
                 }
@@ -315,6 +327,7 @@ impl HostApp {
             if let Err(e) = &result {
                 report.error = Some(e.to_string());
             }
+            report.usb = stack.usb_descriptors();
             let _ = tx.send(report);
             return;
         }

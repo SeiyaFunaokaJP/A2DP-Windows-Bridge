@@ -156,7 +156,7 @@ Estos archivos de firmware son binarios propietarios de Realtek distribuidos a t
 | CSR | Llaves CSR8510 genéricas | Funcionan sin más, no necesitan firmware |
 | Broadcom | ASUS BT400 (BCM20702) | *Experimental.* También se detectan los adaptadores que indican la clase de fabricante `FF/01/01` en lugar de la clase Bluetooth `E0/01/01` (llaves OEM BCM20702). Funciona con el firmware en ROM; un archivo PatchRAM `.hcd` opcional (p. ej. `BCM20702A1-0b05-17cb.hcd`) en la carpeta de configuración se carga al iniciar |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimental.* En modo bootloader (p. ej. tras un arranque en frío) necesita los archivos `ibt-*.sfi` + `ibt-*.ddc` correspondientes de `intel/` de linux-firmware en la carpeta de configuración; el registro indica cuáles (p. ej. `ibt-0180-0041.sfi`). Por ahora solo se ha probado el AX211 |
-| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | No compatibles: necesitan cargadores de firmware que A2DPWB no tiene |
+| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | No compatibles: necesitan cargadores de firmware que A2DPWB no tiene ([ayuda a añadirlos](../chip-support)) |
 
 Por lo general, los adaptadores USB Bluetooth 5.0+ funcionan mejor con códecs de alta tasa de bits como LDAC.
 

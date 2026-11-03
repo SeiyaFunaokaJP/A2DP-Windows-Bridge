@@ -8,9 +8,16 @@
 //! (`Stack::raw_begin`), so its packets are in the HCI capture too.
 //!
 //! Plain data and std only: a loader can be tested against a simulated
-//! controller (tests/intel.rs).
+//! controller (tests/intel.rs). [`sample`] is a complete loader with its
+//! tests to start a new one from (docs/chip-bringup-dev.md, "Adding a
+//! vendor").
 
 use std::fmt;
+
+pub use btstack_sys::{ControlData, ControlKind, ControlRecipient, ControlRequest, UsbDescriptors};
+
+#[cfg(test)]
+mod sample;
 
 /// Reads a file of the firmware folder by name ("ibt-0040-0041.sfi")
 pub type FileReader = Box<dyn FnMut(&str) -> Option<Vec<u8>>>;
@@ -28,6 +35,11 @@ pub enum Action {
     Bootloader(bool),
     /// (Re)start the loader's timer: [`ChipLoader::on_timeout`] when it fires
     Timer(u32),
+    /// A USB control transfer on the default pipe (vendor registers,
+    /// descriptors). Done at once: [`ChipLoader::on_control`] gets its
+    /// result before the actions after this one run. Over H4 (the
+    /// emulator) it fails with "not a USB transport".
+    UsbControl(ControlRequest),
     /// Finished. Ok: HCI init may start; Err: the controller is unusable
     Done(Result<Outcome, LoadError>),
 }
@@ -108,6 +120,11 @@ pub trait ChipLoader {
     /// An HCI event from the controller (either pipe)
     fn on_event(&mut self, event: &[u8]) -> Vec<Action>;
     fn on_timeout(&mut self) -> Vec<Action>;
+    /// The result of an [`Action::UsbControl`]: the bytes read (IN), none
+    /// (OUT), or why it failed. Only loaders that ask for one get it.
+    fn on_control(&mut self, _result: Result<Vec<u8>, String>) -> Vec<Action> {
+        Vec::new()
+    }
     /// What to put in the firmware folder when `file` is missing
     /// ("x.sfi and x.ddc from linux-firmware (intel/)")
     fn missing_file_hint(&self, file: &str) -> String {
