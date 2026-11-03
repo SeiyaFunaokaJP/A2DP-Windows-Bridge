@@ -117,9 +117,9 @@ Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU �
 
 ### アプリでの案内（ガイド付きダウンロード）
 
-**アダプタ** 画面（とセットアップの **ドライバとファームウェア**）に、アダプターのファームウェアの状態が出ます: **ファームウェアOK**、**ファームウェアのファイルは不要です**、または必要なファイル名付きの **ファームウェアが見つかりません**。**ダウンロードページを開く** ボタンでブラウザの [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) ページを開き、**設定フォルダを開く** で保存先フォルダーを開きます。必要な `.bin` ファイルをダウンロードしてフォルダーに配置します。
+**アダプタ** 画面（とセットアップの **ドライバとファームウェア**）に、アダプターのファームウェアの状態が出ます: **ファームウェアOK**、**ファームウェアのファイルは不要です**、または必要なファイル名付きの **ファームウェアが見つかりません**。**ダウンロードページを開く** ボタンでブラウザの [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) ページを開き、**ファームウェアフォルダを開く** で保存先フォルダーを開きます。必要な `.bin` ファイルをダウンロードしてフォルダーに配置します。
 
-**Bluetooth チップ** の一覧にあるチップなら、**ファームウェアをダウンロード** で同じことができます。確認のあと、A2DPWB が linux-firmware (kernel.org) からファイルをダウンロードし、それぞれ SHA-256 を照合して設定フォルダーに保存します。linux-firmware に config ファイルがないチップには空の `_config.bin` を置きます（チップは自身の設定を使います）。ファイルは A2DPWB に含まれておらず、ボタンを押したときにだけダウンロードされます。
+**Bluetooth チップ** の一覧にあるチップなら、**ファームウェアをダウンロード** で同じことができます。確認のあと、A2DPWB が linux-firmware (kernel.org) からファイルをダウンロードし、それぞれ SHA-256 を照合してファームウェアフォルダーに保存します。linux-firmware に config ファイルがないチップには空の `_config.bin` を置きます（チップは自身の設定を使います）。ファイルは A2DPWB に含まれておらず、ボタンを押したときにだけダウンロードされます。
 
 A2DPWB はアダプターのチップセットを検出し、必要なファームウェアファイル名を表示します。
 
@@ -133,15 +133,15 @@ A2DPWB はアダプターのチップセットを検出し、必要なファー�
 |:-------|:-----|
 | **自動**（既定） | A2DPWB の起動ごとに、検出したアダプターから判定します。既知の Realtek アダプターならそのチップ、それ以外のアダプターなら Realtek の初期化を行いません |
 | **Realtek 以外** | Realtek の初期化を行いません。Intel、Broadcom、CSR などのアダプターを自動で判別できない場合に選びます |
-| **RTL8761BU**、**RTL8822CU** など | その Realtek チップとして扱います。自動で判別できない Realtek 系アダプター（独自の VID:PID を持つ OEM 製品）で必要です。状態欄に `.bin` ファイルが設定フォルダーにあるかが表示されます |
-| **Custom** | 設定フォルダーの `custom_fw.bin` と `custom_config.bin` を使います |
+| **RTL8761BU**、**RTL8822CU** など | その Realtek チップとして扱います。自動で判別できない Realtek 系アダプター（独自の VID:PID を持つ OEM 製品）で必要です。状態欄に `.bin` ファイルがファームウェアフォルダーにあるかが表示されます |
+| **Custom** | ファームウェアフォルダーの `custom_fw.bin` と `custom_config.bin` を使います |
 
 Realtek 以外のアダプターに Realtek チップや Custom を選ばないでください。Realtek ファームウェアを書き込もうとするため、アダプターが起動しない場合があります。
 
 ### 手動ダウンロード
 
 1. [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) からチップセット用のファームウェアと設定の `.bin` ファイルをダウンロード（例: `rtl8761bu_fw.bin` と `rtl8761bu_config.bin`）
-2. A2DPWB 設定フォルダー（`%APPDATA%\A2DPWB`。**設定 > 設定フォルダ** にも表示されます）に両ファイルを配置
+2. A2DPWB のファームウェアフォルダー（`%APPDATA%\A2DPWB\firmware`。**ファームウェアフォルダを開く** でも開けます）に両ファイルを配置
 
 {: .note }
 これらのファームウェアファイルは linux-firmware プロジェクト経由で配布される Realtek 独自のバイナリです。本リポジトリには含まれていません。再配布条件については [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE) を参照してください。
@@ -154,8 +154,8 @@ Realtek 以外のアダプターに Realtek チップや Custom を選ばない�
 |:-------------|:-------|:-----|
 | Realtek | TP-Link UB500、RTL8761BU | ファームウェアのダウンロードが必要（上記参照）。最も検証済み |
 | CSR | CSR8510 汎用ドングル | そのまま動作、ファームウェア不要 |
-| Broadcom | ASUS BT400 (BCM20702) | *試験的。* Bluetooth クラス `E0/01/01` ではなくベンダークラス `FF/01/01` を名乗るアダプタ（BCM20702 の OEM ドングル）も検出。ROM ファームウェアで動作。設定フォルダに PatchRAM `.hcd`（例: `BCM20702A1-0b05-17cb.hcd`）があれば起動時に適用 |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *試験的。* ブートローダーモード（コールドブート後など）では linux-firmware `intel/` の対応する `ibt-*.sfi` + `ibt-*.ddc` を設定フォルダに配置する必要あり。必要なファイル名はログに出ます（例: `ibt-0180-0041.sfi`）。検証済みは今のところ AX211 のみ |
+| Broadcom | ASUS BT400 (BCM20702) | *試験的。* Bluetooth クラス `E0/01/01` ではなくベンダークラス `FF/01/01` を名乗るアダプタ（BCM20702 の OEM ドングル）も検出。ROM ファームウェアで動作。ファームウェアフォルダに PatchRAM `.hcd`（例: `BCM20702A1-0b05-17cb.hcd`）があれば起動時に適用 |
+| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *試験的。* ブートローダーモード（コールドブート後など）では linux-firmware `intel/` の対応する `ibt-*.sfi` + `ibt-*.ddc` をファームウェアフォルダに配置する必要あり。必要なファイル名はログに出ます（例: `ibt-0180-0041.sfi`）。検証済みは今のところ AX211 のみ |
 | MediaTek、Qualcomm | MT7921/MT7922、QCA61x4 | 未対応: A2DPWB にないファームウェアローダーが必要（[対応の追加に協力する](chip-support)） |
 
 USB Bluetooth 5.0 以上のアダプターは、LDAC のような高ビットレートコーデックに最適です。

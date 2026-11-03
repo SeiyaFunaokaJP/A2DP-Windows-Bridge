@@ -117,9 +117,9 @@ a2dpwb-core.exe --cli --scan
 
 ### 在應用程式中（下載引導）
 
-**介面卡** 畫面（以及設定精靈的 **驅動程式與韌體** 步驟）會顯示介面卡的韌體狀態：**韌體正常**、**不需要韌體檔案**，或 **找不到韌體** 並列出所需的檔案名稱。使用 **開啟下載頁面** 按鈕在瀏覽器中開啟 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 頁面，再使用 **開啟設定資料夾** 開啟目的資料夾。下載所需的 `.bin` 檔案並放到設定資料夾中。
+**介面卡** 畫面（以及設定精靈的 **驅動程式與韌體** 步驟）會顯示介面卡的韌體狀態：**韌體正常**、**不需要韌體檔案**，或 **找不到韌體** 並列出所需的檔案名稱。使用 **開啟下載頁面** 按鈕在瀏覽器中開啟 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 頁面，再使用 **開啟韌體資料夾** 開啟目的資料夾。下載所需的 `.bin` 檔案並放到韌體資料夾中。
 
-對於 **藍牙晶片** 清單中的晶片，**下載韌體** 可以代勞：確認後，A2DPWB 會從 linux-firmware (kernel.org) 下載檔案，逐一以預期的 SHA-256 驗證，並儲存到設定資料夾。linux-firmware 中沒有 config 檔案的晶片會得到一個空的 `_config.bin`（晶片會使用自身的設定）。這些檔案不屬於 A2DPWB，只在您要求時才會下載。
+對於 **藍牙晶片** 清單中的晶片，**下載韌體** 可以代勞：確認後，A2DPWB 會從 linux-firmware (kernel.org) 下載檔案，逐一以預期的 SHA-256 驗證，並儲存到韌體資料夾。linux-firmware 中沒有 config 檔案的晶片會得到一個空的 `_config.bin`（晶片會使用自身的設定）。這些檔案不屬於 A2DPWB，只在您要求時才會下載。
 
 A2DPWB 會偵測介面卡的晶片組，並顯示需要哪些韌體檔案。
 
@@ -133,15 +133,15 @@ A2DPWB 會偵測介面卡的晶片組，並顯示需要哪些韌體檔案。
 |:-------|:--------|
 | **自動**（預設） | 每次啟動 A2DPWB 時依偵測到的介面卡決定。已知的 Realtek 介面卡會套用其晶片；其他介面卡則不執行 Realtek 初始化 |
 | **非 Realtek** | 一律不執行 Realtek 初始化。若「自動」無法辨識您的 Intel、Broadcom、CSR 或其他介面卡，請選擇此項 |
-| **RTL8761BU**、**RTL8822CU**、... | 指定的 Realtek 晶片。適用於「自動」無法辨識的 Realtek 介面卡（以自有 VID:PID 銷售的 OEM 產品）。狀態列會顯示其 `.bin` 檔案是否已在設定資料夾中 |
-| **Custom** | 使用設定資料夾中的 `custom_fw.bin` 與 `custom_config.bin` |
+| **RTL8761BU**、**RTL8822CU**、... | 指定的 Realtek 晶片。適用於「自動」無法辨識的 Realtek 介面卡（以自有 VID:PID 銷售的 OEM 產品）。狀態列會顯示其 `.bin` 檔案是否已在韌體資料夾中 |
+| **Custom** | 使用韌體資料夾中的 `custom_fw.bin` 與 `custom_config.bin` |
 
 請勿為非 Realtek 介面卡選擇 Realtek 晶片或 Custom：A2DPWB 會嘗試將 Realtek 韌體上傳到該介面卡，可能導致介面卡無法啟動。
 
 ### 手動下載
 
 1. 從 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 下載適用於您晶片組的韌體與設定 `.bin` 檔案（例如 `rtl8761bu_fw.bin` 與 `rtl8761bu_config.bin`）
-2. 將兩個檔案放到 A2DPWB 設定資料夾（`%APPDATA%\A2DPWB`，也可從 **設定 > 設定資料夾** 開啟）
+2. 將兩個檔案放到 A2DPWB 韌體資料夾（`%APPDATA%\A2DPWB\firmware`，也可從 **開啟韌體資料夾** 開啟）
 
 {: .note }
 這些韌體檔案是透過 linux-firmware 專案發佈的 Realtek 專有二進位檔，並未包含在本儲存庫中。再散布條款請參閱 [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE)。
@@ -154,8 +154,8 @@ A2DPWB 會偵測介面卡的晶片組，並顯示需要哪些韌體檔案。
 |:--------|:-----------------|:------|
 | Realtek | TP-Link UB500, RTL8761BU | 需要下載韌體（見上文）。測試最完整 |
 | CSR | 一般的 CSR8510 接收器 | 隨插即用，不需要韌體 |
-| Broadcom | ASUS BT400 (BCM20702) | *實驗性。* 回報廠商類別 `FF/01/01` 而非藍牙類別 `E0/01/01` 的介面卡（BCM20702 OEM 接收器）也能偵測。以 ROM 韌體運作；若設定資料夾中有選用的 PatchRAM `.hcd`（例如 `BCM20702A1-0b05-17cb.hcd`），會在啟動時上傳 |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *實驗性。* 處於 bootloader 模式時（例如冷開機後），設定資料夾中需要 linux-firmware `intel/` 內對應的 `ibt-*.sfi` + `ibt-*.ddc`，所需檔名會寫在記錄裡（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上測試過 |
+| Broadcom | ASUS BT400 (BCM20702) | *實驗性。* 回報廠商類別 `FF/01/01` 而非藍牙類別 `E0/01/01` 的介面卡（BCM20702 OEM 接收器）也能偵測。以 ROM 韌體運作；若韌體資料夾中有選用的 PatchRAM `.hcd`（例如 `BCM20702A1-0b05-17cb.hcd`），會在啟動時上傳 |
+| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *實驗性。* 處於 bootloader 模式時（例如冷開機後），韌體資料夾中需要 linux-firmware `intel/` 內對應的 `ibt-*.sfi` + `ibt-*.ddc`，所需檔名會寫在記錄裡（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上測試過 |
 | MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | 不支援：需要 A2DPWB 沒有的韌體載入程式（[協助加入支援](chip-support)） |
 
 USB 藍牙 5.0 以上的介面卡通常最適合 LDAC 等高位元率轉碼器。
