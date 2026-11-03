@@ -35,19 +35,40 @@ pub trait SimController {
 pub struct SimRun {
     pub result: Result<Outcome, LoadError>,
     /// Every command sent, both pipes, in order
-    pub commands: Vec<Vec<u8>>,
+    pub commands: Vec<SimCommand>,
     /// Every control transfer, in order
     pub controls: Vec<ControlRequest>,
-    /// The last [`Action::Bootloader`]
+    /// Bootloader mode at the end (the last [`Action::Bootloader`]; off if
+    /// none)
     pub bootloader: bool,
     /// How often the timer fired
     pub timeouts: usize,
 }
 
+/// A command as sent, and on which pipe
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SimCommand {
+    /// Sent with [`Action::BulkCommand`] (the bulk OUT pipe), not
+    /// [`Action::Command`]
+    pub bulk: bool,
+    /// Opcode, length, parameters
+    pub bytes: Vec<u8>,
+}
+
+impl SimCommand {
+    pub fn opcode(&self) -> u16 {
+        opcode(&self.bytes)
+    }
+
+    pub fn params(&self) -> &[u8] {
+        params(&self.bytes)
+    }
+}
+
 impl SimRun {
     /// The opcodes of the commands sent
     pub fn opcodes(&self) -> Vec<u16> {
-        self.commands.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).collect()
+        self.commands.iter().map(SimCommand::opcode).collect()
     }
 }
 
@@ -71,14 +92,14 @@ pub fn run(loader: &mut dyn ChipLoader, chip: &mut dyn SimController) -> SimRun 
         match action {
             Action::Command(c) => {
                 let events = chip.command(&c);
-                commands.push(c);
+                commands.push(SimCommand { bulk: false, bytes: c });
                 for e in events {
                     actions.extend(loader.on_event(&e));
                 }
             }
             Action::BulkCommand(c) => {
                 let events = chip.bulk_command(&c);
-                commands.push(c);
+                commands.push(SimCommand { bulk: true, bytes: c });
                 for e in events {
                     actions.extend(loader.on_event(&e));
                 }
