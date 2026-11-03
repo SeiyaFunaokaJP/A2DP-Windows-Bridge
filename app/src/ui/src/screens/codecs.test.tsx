@@ -819,7 +819,7 @@ describe("SBC settings", () => {
 
     // The WH-1000XM5 lists 8 subbands and loudness only (the mock's XM5_SBC)
     const subbands = within(dialog).getByLabelText(t("ui.diag.cd_subbands"));
-    expect(within(subbands).getAllByRole("option").map((o) => o.textContent)).toEqual([t("codec.auto"), "8"]);
+    expect(within(subbands).getAllByRole("option").map((o) => o.textContent)).toEqual([t("codec.auto_value", "8"), "8"]);
     const alloc = within(dialog).getByLabelText(t("ui.diag.cd_allocation"));
     expect(within(alloc).queryByRole("option", { name: t("ui.diag.cd_alloc.snr") })).toBeNull();
     const blocks = within(dialog).getByLabelText(t("ui.diag.cd_blocks"));
@@ -827,7 +827,7 @@ describe("SBC settings", () => {
     // Dual channel is SBC XQ
     const mode = within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"));
     expect(within(mode).getAllByRole("option").map((o) => o.textContent)).toEqual(
-      [t("codec.auto"), ...["joint_stereo", "stereo", "mono"].map((m) => t(`ui.diag.cd_mode.${m}`))],
+      [t("codec.auto_value", t("ui.diag.cd_mode.joint_stereo")), ...["joint_stereo", "stereo", "mono"].map((m) => t(`ui.diag.cd_mode.${m}`))],
     );
 
     // 8 blocks: shorter frames, a higher rate
