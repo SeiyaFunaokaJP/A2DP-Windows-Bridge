@@ -16,9 +16,9 @@ import { LINKS } from "../lib/links";
 export function ThemeChoice() {
   const app = useApp();
   return (
-    <div class="field">
-      <span class="field-label" id="theme-label">
-        {t("settings.theme")}
+    <div class="row">
+      <span class="row-text">
+        <span class="row-label">{t("settings.theme")}</span>
       </span>
       <Segmented
         label={t("settings.theme")}

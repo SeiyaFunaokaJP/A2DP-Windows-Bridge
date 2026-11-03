@@ -50,6 +50,14 @@ describe("developer screen", () => {
     expect(core.state.snap!.settings.dev_overrides.rtp_marker).toBe(false);
   });
 
+  it("saves the forced connection with the overrides", async () => {
+    const { core } = await open();
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    fireEvent.click(await screen.findByRole("switch", { name: new RegExp(t("ui.dev.force_codec")) }));
+    await screen.findByText(t("ui.dev.active"));
+    expect(core.state.snap!.settings.dev_overrides.force_codec).toBe(true);
+  });
+
   it("saves the logging settings in range and puts markers in the log", async () => {
     const { core, calls } = await open();
     await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });

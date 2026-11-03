@@ -83,7 +83,7 @@ export function Toggle(props: {
   return (
     <div class="row toggle-row">
       <label class="row-text" for={id}>
-        <span class="row-label">
+        <span class="row-label" id={`${id}-label`}>
           {props.label}
           {props.help?.()}
         </span>
@@ -100,6 +100,7 @@ export function Toggle(props: {
         class="switch"
         checked={props.checked}
         disabled={props.disabled}
+        aria-labelledby={`${id}-label`}
         aria-describedby={props.hint ? `${id}-hint` : undefined}
         onChange={(e) => props.onChange(e.currentTarget.checked)}
       />
@@ -165,12 +166,15 @@ export function Segmented<T extends string | number>(props: {
 }
 
 /** A labelled control with an optional hint and error, and the details
- *  behind an info button (the long explanations, issue #86) */
+ *  behind an info button (the long explanations, issue #86). The label and
+ *  hint on the left and the control on the right, as a Toggle (issue #86);
+ *  `stacked`: one below the other, for a control that needs the width. */
 export function Field(props: {
   label: string;
   hint?: string;
   error?: string | null;
   more?: () => JSX.Element;
+  stacked?: boolean;
   children: (id: string, describedBy: string | undefined) => JSX.Element;
 }) {
   const id = createUniqueId();
@@ -179,33 +183,51 @@ export function Field(props: {
   // and the typed text) whenever the error comes or goes. References to an
   // absent hint or error are ignored by assistive technology.
   const control = untrack(() => props.children(id, `${id}-hint ${id}-err`));
-  return (
-    <div class="field" classList={{ invalid: !!props.error }}>
-      <div class="field-head">
-        <label class="field-label" for={id}>
-          {props.label}
-        </label>
-        <Show when={props.more}>
-          <button
-            type="button"
-            class="btn btn-icon field-more-btn"
-            classList={{ on: open() }}
-            aria-label={t("ui.more_info", props.label)}
-            title={t("ui.more_info", props.label)}
-            aria-expanded={open()}
-            aria-controls={`${id}-more`}
-            onClick={() => setOpen(!open())}
-          >
-            <Icon name="info" />
-          </button>
-        </Show>
-      </div>
-      {control}
-      <Show when={props.hint}>
-        <span class="hint" id={`${id}-hint`}>
-          {props.hint}
-        </span>
+  const head = (
+    <div class="field-head">
+      <label class="field-label" for={id}>
+        {props.label}
+      </label>
+      <Show when={props.more}>
+        <button
+          type="button"
+          class="btn btn-icon field-more-btn"
+          classList={{ on: open() }}
+          aria-label={t("ui.more_info", props.label)}
+          title={t("ui.more_info", props.label)}
+          aria-expanded={open()}
+          aria-controls={`${id}-more`}
+          onClick={() => setOpen(!open())}
+        >
+          <Icon name="info" />
+        </button>
       </Show>
+    </div>
+  );
+  const hint = (
+    <Show when={props.hint}>
+      <span class="hint" id={`${id}-hint`}>
+        {props.hint}
+      </span>
+    </Show>
+  );
+  return (
+    <div class="field" classList={{ invalid: !!props.error, side: !props.stacked }}>
+      {props.stacked ? (
+        <>
+          {head}
+          {control}
+          {hint}
+        </>
+      ) : (
+        <div class="row">
+          <div class="row-text">
+            {head}
+            {hint}
+          </div>
+          {control}
+        </div>
+      )}
       <Show when={props.error}>
         <span class="field-error" id={`${id}-err`} role="alert">
           <Icon name="error_circle" />

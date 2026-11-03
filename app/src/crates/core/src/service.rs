@@ -34,6 +34,8 @@ const RESUME_WAIT_TICKS: u32 = 300;
 const LE_SCAN: Duration = Duration::from_secs(5);
 /// A link younger than this keeps the stack ([`Service::host_for_stream`])
 const FRESH_LINK: Duration = Duration::from_secs(60);
+/// A link given up on is gone by then, or by its supervision timeout
+pub(crate) const LINK_RELEASE_WAIT: Duration = Duration::from_secs(2);
 /// A connection started during a scan waits this long for the scan to end
 /// (a name request being cancelled takes up to ~2 s)
 const SCAN_END_WAIT: Duration = Duration::from_secs(5);
@@ -967,6 +969,15 @@ impl Service {
         let _control = self.control.lock().unwrap_or_else(|e| e.into_inner());
         self.forget_session();
         self.stop_session();
+        self.release_link();
+    }
+
+    /// After Disconnect: the headphones are free for another device, with
+    /// the stack still up (issue #270)
+    fn release_link(&self) {
+        if let Some(h) = self.host() {
+            h.drop_acl_link(LINK_RELEASE_WAIT);
+        }
     }
 
     /// Changes the source of the running A2DP stream: the link stays up.
@@ -1067,6 +1078,7 @@ impl Service {
             if !self.stop_session() {
                 self.inner.notify(StreamState::Idle, Msg::new("status.ready"));
             }
+            self.release_link();
         }
     }
 

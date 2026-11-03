@@ -76,6 +76,9 @@ Development / testing:
   --duration <seconds>  stop after this time (default: Ctrl+C)
   --sessions <n>        stream n times in a row with --duration each, as
                         Disconnect / Connect in the app (A2DP)
+  --wait-off            headphones turned off: wait for them, as the app does
+  --restart-on-link     start the session again as soon as its link is up, as
+                        a setting changed while connecting does
   --restart             with --sessions: between sessions restart Bluetooth
                         as the Adapters page does, which connects again
   --le-sim-volume <level>[,<s>:<level>...]
@@ -126,6 +129,10 @@ struct Args {
     /// --restart: between sessions Bluetooth is restarted instead, as on
     /// the Adapters page, and the session connects again (issue #86)
     restart: bool,
+    /// --restart-on-link: the first session starts again once its link is up
+    restart_on_link: bool,
+    /// --wait-off: headphones turned off do not end the run
+    wait_off: bool,
     le: LeArgs,
 }
 
@@ -193,6 +200,8 @@ fn parse(args: &[String]) -> Result<Args, String> {
         duration: None,
         sessions: 1,
         restart: false,
+        restart_on_link: false,
+        wait_off: false,
         le: LeArgs::default(),
     };
     let mut it = args.iter().peekable();
@@ -288,6 +297,8 @@ fn parse(args: &[String]) -> Result<Args, String> {
                 }
             }
             "--restart" => a.restart = true,
+            "--restart-on-link" => a.restart_on_link = true,
+            "--wait-off" => a.wait_off = true,
             "--le-audio" => a.le.on = true,
             "--le-device" => {
                 a.le.on = true;
@@ -556,6 +567,14 @@ pub fn run(args: &[String]) -> i32 {
             println!("Connecting again (session {session} of {})", a.sessions);
         }
         service.start_streaming(request.clone());
+        if a.restart_on_link && session == 1 {
+            let until = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < until && !service.host().is_some_and(|h| h.link_age(device).is_some()) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            println!("Starting again while connecting");
+            service.start_streaming(request.clone());
+        }
         let duration_reached = stream_session(&a, &service, &rx, &running, &receiver, &mut code);
         if !duration_reached || code != 0 {
             break;
@@ -620,6 +639,7 @@ fn stream_session(
                         *code = 1;
                         return false;
                     }
+                    StreamState::Idle if a.wait_off && service.is_running() => {}
                     StreamState::Idle if streaming_since.is_some() || !service.is_running() => return false,
                     _ => {}
                 }

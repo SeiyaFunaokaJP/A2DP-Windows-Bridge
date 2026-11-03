@@ -82,6 +82,10 @@ export function newProfile(): Profile {
     sbcxq_bitpool: 0,
     sbc_min_bitpool: 0,
     sbcxq_min_bitpool: 0,
+    sbc_blocks: 0,
+    sbc_subbands: 0,
+    sbc_allocation: "",
+    sbc_channel_mode: "",
     codec_settings: {},
     codec_order: [],
   };
@@ -168,6 +172,10 @@ export function codecValues(p: Profile): CodecValues {
     sbcxq_bitpool: p.sbcxq_bitpool,
     sbc_min_bitpool: p.sbc_min_bitpool,
     sbcxq_min_bitpool: p.sbcxq_min_bitpool,
+    sbc_blocks: p.sbc_blocks,
+    sbc_subbands: p.sbc_subbands,
+    sbc_allocation: p.sbc_allocation,
+    sbc_channel_mode: p.sbc_channel_mode,
   };
 }
 

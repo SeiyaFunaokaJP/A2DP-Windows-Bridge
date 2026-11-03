@@ -314,7 +314,7 @@ function ChipSection(props: { files: FirmwareFile[]; onChanged: () => Promise<vo
   });
   const body = () => (
     <>
-      <Field label={t("settings.bt_chip")} hint={hint()}>
+      <Field label={t("settings.bt_chip")} hint={hint()} stacked>
         {(id, described) => (
           <Select
             id={id}

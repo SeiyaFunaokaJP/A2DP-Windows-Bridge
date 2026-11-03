@@ -48,6 +48,10 @@ bandwidth_share?: number | null,
  */
 queue_capacity?: number | null, 
 /**
+ * How long the oldest packet in the send queue has waited (ms)
+ */
+queue_ms?: number | null, 
+/**
  * Capture rate of the stream (frames per second; 0 while not
  * streaming): capture drops in ms = frames * 1000 / this
  */

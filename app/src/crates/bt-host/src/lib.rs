@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use btstack_sys::{HciBackend, Remote, Stack};
+use btstack_sys::{AclState, HciBackend, Remote, Stack};
 use codec::caps::{Configuration, RemoteCaps};
 use hci_transport::{TcpH4, UsbSelector, UsbTransport};
 
@@ -56,6 +56,8 @@ const INIT_NO_ANSWER: Duration = Duration::from_secs(5);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const STREAM_TIMEOUT: Duration = Duration::from_secs(10);
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// The capability discovery on an A2DP connection the device opened
+const DEVICE_A2DP_TIMEOUT: Duration = Duration::from_secs(2);
 /// A job the run loop should take at once
 const JOB_TIMEOUT: Duration = Duration::from_secs(5);
 /// An RFCOMM channel open: the BTstack thread answers by its deadline
@@ -923,6 +925,10 @@ impl BtHost {
 
     fn establish_and_wait(&self, addr: [u8; 6]) -> Result<RemoteCaps, ConnectFailure> {
         let started = Instant::now();
+        if let Err(f) = self.wait_for_closing_link(addr) {
+            self.set_failure(f);
+            return Err(f);
+        }
         match self.call(JOB_TIMEOUT, move |app, s| app.establish(s, addr)) {
             Some(Ok(())) => {}
             r => {
@@ -936,7 +942,7 @@ impl BtHost {
             w => {
                 let cancelled = w == Wait::Cancelled;
                 tracing::warn!("connection {}", if cancelled { "cancelled" } else { "timed out" });
-                let stuck = !cancelled && self.check_stalled();
+                let stuck = !cancelled && self.check_stalled(addr);
                 if !stuck && !cancelled {
                     // An answer that never came (e.g. a lost SDP response)
                     self.set_failure(ConnectFailure::LinkLost);
@@ -979,6 +985,26 @@ impl BtHost {
         Ok(caps)
     }
 
+    /// Waits until a link to `addr` that is going down has gone. BTstack
+    /// drops a Create Connection meanwhile without a word: the SDP query
+    /// behind it then waits for a link nobody pages, every later connection
+    /// queues behind that query, and nothing moves until the device connects
+    /// by itself (a session restarted just after its link came up).
+    fn wait_for_closing_link(&self, addr: [u8; 6]) -> Result<(), ConnectFailure> {
+        let deadline = Instant::now() + DISCONNECT_TIMEOUT;
+        while self.call(Duration::from_secs(2), move |_, s| s.acl_state(&addr)) == Some(AclState::Closing) {
+            if self.shared.lock().cancel {
+                return Err(ConnectFailure::Cancelled);
+            }
+            if Instant::now() >= deadline {
+                tracing::warn!("the link to {} did not go down", addr_str(&addr));
+                return Err(ConnectFailure::LinkLost);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Ok(())
+    }
+
     /// LinkLost -> Refused when the device ended the link itself
     fn classify_link_lost(&self) {
         if self.last_connect_failure() != Some(ConnectFailure::LinkLost) {
@@ -1012,11 +1038,11 @@ impl BtHost {
 
     /// After a connect wait timed out: is the stack stuck rather than the
     /// remote silent? Sets stalled.
-    fn check_stalled(&self) -> bool {
+    fn check_stalled(&self, addr: [u8; 6]) -> bool {
         if self.stalled() {
             return true;
         }
-        let why = match self.call(Duration::from_secs(2), |app, s| app.still_paging(s)) {
+        let why = match self.call(Duration::from_secs(2), move |_, s| s.acl_state(&addr)) {
             None => Some("the BTstack run loop does not respond"),
             // A page can outrun the page timeout and still end (issue #86:
             // 27 s on an RTL8761B): the abort cancels it, and a retry needs
@@ -1024,6 +1050,10 @@ impl BtHost {
             Some(_) if !self.controller_responds(Duration::from_secs(2)) => {
                 Some("the controller does not answer HCI commands")
             }
+            // A failed page ends the wait: neither a link nor a page means
+            // the connection never paged (wait_for_closing_link), and only
+            // a new stack or the device itself moves it
+            Some(AclState::None) => Some("the connection never paged the device"),
             _ => None,
         };
         let Some(why) = why else {
@@ -1221,7 +1251,10 @@ impl BtHost {
     /// HCI Disconnect of the ACL link to the last remote, waiting for
     /// Disconnection Complete. A link that came up and then went silent
     /// otherwise stays until the supervision timeout, and the next attempt
-    /// would reuse it.
+    /// would reuse it. Closing the profiles does not end a link either:
+    /// BTstack looks for an idle one only once, 10 s after it came up, so
+    /// the link of a stream stays and keeps the headphones from going to
+    /// another device (issue #270).
     pub fn drop_acl_link(&self, timeout: Duration) {
         if !self.hci_ready() {
             return;
@@ -1231,7 +1264,7 @@ impl BtHost {
             tracing::debug!("drop ACL: no link to drop");
             return;
         }
-        tracing::info!("dropping the ACL link before trying again");
+        tracing::info!("dropping the ACL link");
         if self.shared.wait(timeout, false, |s| s.acl_down) != Wait::Done {
             tracing::warn!("no Disconnection Complete within {} ms", timeout.as_millis());
         }
@@ -1452,6 +1485,16 @@ impl BtHost {
             tracing::info!("reconnect aborted (cancel requested)");
             return Err(ReconnectError::Failed);
         }
+        if let Some(remote) = self.a2dp_from_device(addr) {
+            tracing::info!("{} connected A2DP itself, starting the stream on it", addr_str(&addr));
+            self.shared.update(|s| {
+                s.disconnect_occurred = false;
+                s.stream_done = None;
+                s.start_done = None;
+                s.last_connect_failure = None;
+            });
+            return self.configure_and_start(remote, &config, rebuild);
+        }
         self.shared.update(|s| {
             s.connected = false;
             s.streaming = false;
@@ -1470,6 +1513,22 @@ impl BtHost {
             return Err(ReconnectError::Failed);
         };
         self.configure_and_start(remote, &config, rebuild)
+    }
+
+    /// What the device offers on an A2DP connection it opened itself, as
+    /// headphones turned back on may do: closing it to open our own makes
+    /// them announce a disconnect (issue #270). None without one, or when
+    /// its capabilities do not come.
+    fn a2dp_from_device(&self, addr: [u8; 6]) -> Option<RemoteCaps> {
+        if self.call(Duration::from_secs(2), move |app, s| app.has_a2dp_from_device(s, addr)) != Some(true) {
+            return None;
+        }
+        // BTstack first gives the device a moment to configure the stream
+        if self.shared.wait(DEVICE_A2DP_TIMEOUT, true, |s| s.connected) != Wait::Done {
+            tracing::debug!("the A2DP connection of {} reported no capabilities", addr_str(&addr));
+            return None;
+        }
+        Some(self.shared.lock().remote_caps.clone())
     }
 
     /// The stream of a connection just (re)established, with a configuration

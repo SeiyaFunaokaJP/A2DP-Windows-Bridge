@@ -2,7 +2,8 @@
 // comparison bars and whether the device supported it when it last
 // connected (green / red, issue #86), and behind "..." that codec's
 // quality, sample rate, bit depth
-// and ABR (SBC and SBC XQ: bitpool). The codecs offered
+// and ABR (SBC and SBC XQ: bitpool, in developer mode frame setup). The
+// codecs offered
 // and what they can be set to come from lib/codecs.ts, as far as the
 // device listed them when it last connected (issue #86: its rates, bit
 // depths, largest bit rate and bitpool range).
@@ -15,6 +16,7 @@ import {
   capsOf,
   carryToCodec,
   fixedBitDepth,
+  fixedKbpsText,
   codecSpec,
   BITPOOL_MAX,
   BITPOOL_MAX_XQ,
@@ -27,8 +29,18 @@ import {
   type CodecSpec,
   type CodecSupport,
 } from "../lib/codecs";
-import { sbcKbpsText, sbcRate, sbcSetup, type SbcCaps } from "../lib/sbc";
-import { Button, Check, Dialog, Field, IconButton, Select } from "./controls";
+import {
+  SBC_ALLOCATIONS,
+  SBC_BLOCKS,
+  SBC_CHANNEL_MODES,
+  SBC_SUBBANDS,
+  sbcKbpsText,
+  sbcOffered,
+  sbcRate,
+  sbcSetup,
+  type SbcCaps,
+} from "../lib/sbc";
+import { Button, Dialog, Field, IconButton, Select, Toggle } from "./controls";
 import { Icon } from "./Icon";
 
 /** One codec choice with its three comparison bars, and "..." for its settings */
@@ -152,6 +164,10 @@ export type CodecChoice = Pick<
   | "sbcxq_bitpool"
   | "sbc_min_bitpool"
   | "sbcxq_min_bitpool"
+  | "sbc_blocks"
+  | "sbc_subbands"
+  | "sbc_allocation"
+  | "sbc_channel_mode"
 >;
 
 export function codecChoice(p: CodecChoice): CodecChoice {
@@ -165,6 +181,10 @@ export function codecChoice(p: CodecChoice): CodecChoice {
     sbcxq_bitpool: p.sbcxq_bitpool,
     sbc_min_bitpool: p.sbc_min_bitpool,
     sbcxq_min_bitpool: p.sbcxq_min_bitpool,
+    sbc_blocks: p.sbc_blocks,
+    sbc_subbands: p.sbc_subbands,
+    sbc_allocation: p.sbc_allocation,
+    sbc_channel_mode: p.sbc_channel_mode,
   };
 }
 
@@ -264,10 +284,10 @@ export function BitpoolSlider(props: {
 
 /**
  * One codec's quality, sample rate, bit depth and ABR (what "Advanced" had
- * for the chosen codec); SBC and SBC XQ also their bitpool, offering only
- * what the device listed when it last connected (`sbcCaps`, and for every
- * codec its rates, bit depths and largest bit rate: `caps`,
- * issue #86), with the bit rate that gives. A codec with one quality shows
+ * for the chosen codec); SBC and SBC XQ also their bitpool and, in developer
+ * mode, frame setup, offering only what the device listed when it last
+ * connected (`sbcCaps`, and for every codec its rates, bit depths and largest
+ * bit rate: `caps`, issue #86), with the bit rate that gives. A codec with one quality shows
  * it rather than a choice. It starts from the profile's values fitted
  * to the codec, or from what that codec was last set to (`kept`: the
  * profile's codec_settings); each change goes to `onChange` at once
@@ -280,6 +300,8 @@ export function CodecSettings(props: {
   sbcCaps: SbcCaps | null;
   /** Device.codec_caps (empty: not known) */
   caps?: readonly CodecCaps[];
+  /** Offers the SBC frame setup, which only counts then */
+  developer?: boolean;
   /** Who listed what is offered, once it did */
   deviceName?: string;
   onChange: (values: CodecChoice) => void;
@@ -295,6 +317,10 @@ export function CodecSettings(props: {
     sbcxq_bitpool: 0,
     sbc_min_bitpool: 0,
     sbcxq_min_bitpool: 0,
+    sbc_blocks: 0,
+    sbc_subbands: 0,
+    sbc_allocation: "",
+    sbc_channel_mode: "",
   });
   createEffect(
     on(
@@ -303,8 +329,8 @@ export function CodecSettings(props: {
         if (!s) return;
         const kept = props.kept(s.id);
         const p = s.id === props.profile.codec || !kept ? props.profile : { ...kept, codec: s.id };
-        // From another codec's values: without its ABR (SBC and SBC XQ
-        // apart, issue #86)
+        // From another codec's values: without its ABR or SBC frame setup
+        // (SBC and SBC XQ apart, issue #86)
         const from = carryToCodec(codecChoice(p), s.id);
         // SBC / SBC XQ: no quality to choose, Auto is the highest bitpool
         const fitted = s.bitpool ? { ...from, quality: "hq" } : from;
@@ -364,9 +390,28 @@ export function CodecSettings(props: {
     const offered = offeredBitDepths(v.codec, caps());
     return offered.includes(v.bit_depth) ? offered : [...offered, v.bit_depth];
   };
+  // The frame setup: Auto, then what the device listed (the value chosen
+  // stays, marked, when it did not list it: it falls back when connecting)
+  const sbcChoice = <T extends string | number>(
+    field: "blocks" | "subbands" | "allocations" | "channel_modes",
+    values: T[],
+    current: T,
+    label: (v: T) => string,
+  ) => [
+    { value: (typeof current === "number" ? 0 : "") as T, label: t("codec.auto") },
+    ...values
+      .filter((x) => x === current || sbcOffered(props.sbcCaps, field, x))
+      .map((x) => ({
+        value: x,
+        label: sbcOffered(props.sbcCaps, field, x) ? label(x) : t("ui.profile.sbc_not_offered", label(x)),
+      })),
+  ];
+  // What streams: outside developer mode the frame setup kept is not used
+  const streamed = (): CodecChoice =>
+    props.developer ? v : { ...v, sbc_blocks: 0, sbc_subbands: 0, sbc_allocation: "", sbc_channel_mode: "" };
   // The bit rate it gives, as the core works it out (one figure, issue #86)
-  const sbcBitrate = () => (bitpoolError() ? "" : sbcKbpsText(v, props.sbcCaps));
-  const sbcMode = () => sbcSetup(v, sbcRate(v, props.sbcCaps), props.sbcCaps).mode;
+  const sbcBitrate = () => (bitpoolError() ? "" : sbcKbpsText(streamed(), props.sbcCaps));
+  const sbcMode = () => sbcSetup(streamed(), sbcRate(v, props.sbcCaps), props.sbcCaps).mode;
   const changed = () => {
     if (!bitpoolError()) props.onChange({ ...v });
   };
@@ -405,7 +450,7 @@ export function CodecSettings(props: {
               <Field label={t("connection.quality")} hint={t("tooltip.quality")}>
                 {(id, described) => (
                   <output id={id} class="input readonly" aria-describedby={described}>
-                    {qualities().length ? qualityText(qualities()[0]) : t("ui.profile.fixed_bitrate")}
+                    {qualities().length ? qualityText(qualities()[0]) : fixedKbpsText(v.codec, sbcRate(v, caps()))}
                   </output>
                 )}
               </Field>
@@ -463,19 +508,13 @@ export function CodecSettings(props: {
           )}
         </Field>
         <Show when={spec().abr}>
-          <div class="field">
-            <Check label={t("connection.abr")} checked={v.abr} onChange={(x) => set("abr", x)} />
-            <span class="hint">{t("tooltip.abr")}</span>
-          </div>
+          <Toggle label={t("connection.abr")} hint={t("tooltip.abr")} checked={v.abr} onChange={(x) => set("abr", x)} />
         </Show>
         <Show when={spec().vbr}>
-          <div class="field">
-            <Check label={t("connection.vbr")} checked={v.abr} onChange={(x) => set("abr", x)} />
-            <span class="hint">{t("tooltip.vbr")}</span>
-          </div>
+          <Toggle label={t("connection.vbr")} hint={t("tooltip.vbr")} checked={v.abr} onChange={(x) => set("abr", x)} />
         </Show>
         <Show when={spec().bitpool}>
-          <Field label={t("connection.sbc_bitpool")} hint={t("tooltip.sbc_bitpool")} error={bitpoolError()}>
+          <Field label={t("connection.sbc_bitpool")} hint={t("tooltip.sbc_bitpool")} error={bitpoolError()} stacked>
             {(id, described) => (
               <div class="inline bp-field">
                 <BitpoolSlider
@@ -503,8 +542,61 @@ export function CodecSettings(props: {
               </div>
             )}
           </Field>
-          {/* Fixed for each codec, not a setting (issue #86) */}
-          <span class="hint">{t("ui.profile.sbc_channel_mode", t(`ui.diag.cd_mode.${sbcMode()}`))}</span>
+          <Show when={props.developer}>
+            <fieldset class="sbc-frame">
+              <legend class="field-label">{t("ui.profile.sbc_frame")}</legend>
+              <Field label={t("ui.diag.cd_blocks")} stacked>
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={v.sbc_blocks}
+                    options={sbcChoice("blocks", SBC_BLOCKS, v.sbc_blocks, String)}
+                    onChange={(x) => set("sbc_blocks", x)}
+                  />
+                )}
+              </Field>
+              <Field label={t("ui.diag.cd_subbands")} stacked>
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={v.sbc_subbands}
+                    options={sbcChoice("subbands", SBC_SUBBANDS, v.sbc_subbands, String)}
+                    onChange={(x) => set("sbc_subbands", x)}
+                  />
+                )}
+              </Field>
+              <Field label={t("ui.diag.cd_allocation")} stacked>
+                {(id) => (
+                  <Select
+                    id={id}
+                    value={v.sbc_allocation}
+                    options={sbcChoice("allocations", SBC_ALLOCATIONS, v.sbc_allocation, (a) => t(`ui.diag.cd_alloc.${a}`))}
+                    onChange={(x) => set("sbc_allocation", x)}
+                  />
+                )}
+              </Field>
+              {/* SBC XQ is dual channel by definition */}
+              <Show when={v.codec === "sbc"}>
+                <Field label={t("ui.diag.cd_channel_mode")} stacked>
+                  {(id) => (
+                    <Select
+                      id={id}
+                      value={v.sbc_channel_mode}
+                      options={sbcChoice("channel_modes", SBC_CHANNEL_MODES, v.sbc_channel_mode, (m) => t(`ui.diag.cd_mode.${m}`))}
+                      onChange={(x) => set("sbc_channel_mode", x)}
+                    />
+                  )}
+                </Field>
+              </Show>
+              <p class="hint">{t(v.codec === "sbc" ? "ui.profile.sbc_frame_hint" : "ui.profile.sbc_frame_hint_xq")}</p>
+            </fieldset>
+          </Show>
+          {/* Fixed for each codec, unless chosen above (issue #86) */}
+          <Show when={!props.developer || v.codec === "sbcxq"}>
+            <Field label={t("ui.diag.cd_channel_mode")}>
+              {(id) => <input id={id} class="input readonly" readOnly value={t(`ui.diag.cd_mode.${sbcMode()}`)} />}
+            </Field>
+          </Show>
         </Show>
       </div>
     </Dialog>

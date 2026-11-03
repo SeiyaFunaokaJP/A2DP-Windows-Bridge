@@ -520,6 +520,14 @@ impl HostApp {
         Some(state == AvdtpState::Open)
     }
 
+    /// `addr` has the current A2DP connection open. Called between attempts,
+    /// when none of ours is left: it is one the device opened.
+    pub fn has_a2dp_from_device(&self, stack: &Stack, addr: [u8; 6]) -> bool {
+        let (state, cid) = stack.avdtp_state_for_addr(&addr);
+        tracing::debug!("A2DP of {}: {state:?} (cid 0x{cid:04X}, ours 0x{:04X})", addr_str(&addr), self.a2dp_cid);
+        state == AvdtpState::Open && cid == self.a2dp_cid
+    }
+
     /// Tears down a half-open or open AVDTP connection after a failed or
     /// cancelled connect, or for a disconnect. Returns whether a release
     /// event follows.
@@ -744,6 +752,7 @@ impl HostApp {
                 tracing::info!("dropped {stale} media packet(s) queued before the stream started");
             }
             self.stats.queue_depth.store(0, Ordering::Relaxed);
+            self.stats.queue_wait_ms.store(0, Ordering::Relaxed);
         }
         if on != self.streaming {
             tracing::debug!(
@@ -761,6 +770,22 @@ impl HostApp {
         self.last_completed = None;
     }
 
+    fn drop_stale_media(&mut self, now: Instant) {
+        if !self.streaming {
+            return;
+        }
+        let dropped = crate::media::drop_stale(&mut self.media, &self.stats, now);
+        if dropped > 0 {
+            let n = self.stats.queue_drops.load(Ordering::Relaxed);
+            if n <= 10 || n.is_power_of_two() {
+                tracing::debug!(
+                    "media: dropped {dropped} old packet(s), {} queued, {n} queue drop(s) so far",
+                    self.media.slots()
+                );
+            }
+        }
+    }
+
     fn kick_media(&mut self, stack: &Stack) {
         if self.streaming && !self.can_send_requested && self.a2dp_cid != 0 && !self.media.is_empty() {
             self.can_send_requested = true;
@@ -776,6 +801,7 @@ impl HostApp {
         if let Some(asked) = self.can_send_asked.take() {
             self.stats.timing.can_send_wait_us.record_duration(now - asked);
         }
+        self.drop_stale_media(now);
         if let Ok(packet) = self.media.pop() {
             let depth = self.media.slots() as u32;
             self.stats.queue_depth.store(depth, Ordering::Relaxed);
@@ -1150,6 +1176,7 @@ impl HostApp {
                     self.set_streaming(false);
                     self.can_send_requested = false;
                     self.stats.queue_depth.store(0, Ordering::Relaxed);
+                    self.stats.queue_wait_ms.store(0, Ordering::Relaxed);
                     tracing::warn!("connection lost");
                     let _ = self.events.send(HostEvent::ConnectionLost);
                 }
@@ -1382,7 +1409,9 @@ impl HostApp {
                     });
                 } else {
                     tracing::info!("signaling connection established (cid 0x{cid:04x}, handle 0x{handle:04x})");
-                    // Not done yet: the capability discovery follows
+                    // Not done yet: the capability discovery follows, also
+                    // on a connection the device opened
+                    self.caps = Default::default();
                     self.shared.update(|s| s.a2dp_con_handle = Some(handle & 0x0FFF));
                 }
             }
@@ -2084,6 +2113,7 @@ impl App for HostApp {
                 let _ = self.events.send(HostEvent::TransportFailed);
             }
         }
+        self.drop_stale_media(Instant::now());
         self.kick_media(stack);
     }
 

@@ -22,6 +22,7 @@ import {
   fixedBitDepth,
   moved,
   offeredBitDepths,
+  fixedKbpsText,
   offeredQualities,
   offeredSampleRates,
   qualityIgnored,
@@ -229,9 +230,9 @@ describe("profiles", () => {
     expect(abrCarries("sbc", "sbcxq")).toBe(false);
     expect(abrCarries("sbcxq", "sbc")).toBe(false);
     expect(abrCarries("sbc", "sbc")).toBe(true);
-    const sbcAbr = { ...p, codec: "sbc", abr: true, sbc_bitpool: 40, sbcxq_bitpool: 0 };
-    expect(carryToCodec(sbcAbr, "sbcxq")).toMatchObject({ codec: "sbcxq", abr: false, sbc_bitpool: 0 });
-    expect(carryToCodec(sbcAbr, "sbc")).toMatchObject({ abr: true, sbc_bitpool: 40 });
+    const sbcAbr = { ...p, codec: "sbc", abr: true, sbc_bitpool: 40, sbcxq_bitpool: 0, sbc_blocks: 8, sbc_subbands: 4, sbc_allocation: "snr", sbc_channel_mode: "stereo" };
+    expect(carryToCodec(sbcAbr, "sbcxq")).toMatchObject({ codec: "sbcxq", abr: false, sbc_bitpool: 0, sbc_blocks: 0, sbc_subbands: 0, sbc_allocation: "", sbc_channel_mode: "" });
+    expect(carryToCodec(sbcAbr, "sbc")).toMatchObject({ abr: true, sbc_bitpool: 40, sbc_blocks: 8, sbc_subbands: 4, sbc_allocation: "snr", sbc_channel_mode: "stereo" });
     expect(carryToCodec({ ...p, codec: "ldac", abr: true }, "lhdcv5")).toMatchObject({ abr: true });
     expect(abrCarries("ldac", "sbc")).toBe(false);
     expect(abrCarries("sbcxq", "auto")).toBe(false);
@@ -243,6 +244,16 @@ describe("profiles", () => {
     // ... and their own minimum (issue #86)
     expect(fitToCodec({ ...p, codec: "sbcxq", sbc_min_bitpool: 20, sbcxq_min_bitpool: 30 })).toMatchObject({ sbc_min_bitpool: 0, sbcxq_min_bitpool: 30 });
     expect(fitToCodec({ ...p, codec: "aac", sbc_min_bitpool: 20 })).toMatchObject({ sbc_min_bitpool: 0 });
+    // The frame setup is both's; the channel mode SBC's only
+    const frame = { sbc_blocks: 8, sbc_subbands: 4, sbc_allocation: "snr", sbc_channel_mode: "stereo" };
+    expect(fitToCodec({ ...p, ...frame, codec: "sbc" })).toMatchObject(frame);
+    expect(fitToCodec({ ...p, ...frame, codec: "sbcxq" })).toMatchObject({ ...frame, sbc_channel_mode: "" });
+    expect(fitToCodec({ ...p, ...frame, codec: "aac" })).toMatchObject({
+      sbc_blocks: 0,
+      sbc_subbands: 0,
+      sbc_allocation: "",
+      sbc_channel_mode: "",
+    });
     expect(fitToCodec({ ...p, codec: "auto" })).toMatchObject({ abr: true, sample_rate: 0, bit_depth: 24 });
     expect(fitToCodec({ ...p, codec: "aptx" })).toMatchObject({ quality: "mhq", abr: false });
     expect(fitToCodec({ ...p, codec: "opus" })).toMatchObject({ quality: "hq", abr: false, sample_rate: 0, bit_depth: 0 });
@@ -298,6 +309,9 @@ describe("profiles", () => {
     expect(qualityKbps("aac", "hq", 0, capsOf(caps, "aac")!.max_bitrate)).toBe("131");
     expect(qualityKbps("aac", "hq", 0, 320000)).toBe("256");
     // LHDC V5 at most 500 kbps: High is 500, Medium the same (left out)
+    expect(fixedKbpsText("aptx", 44100)).toBe("352 kbps");
+    expect(fixedKbpsText("aptxll", 48000)).toBe("384 kbps");
+    expect(fixedKbpsText("faststream", 48000)).toBe("216 kbps");
     expect(offeredQualities("lhdcv5", 48000).map((q) => [q.id, q.kbps])).toEqual([
       ["hq", "1000"],
       ["mhq", "900"],

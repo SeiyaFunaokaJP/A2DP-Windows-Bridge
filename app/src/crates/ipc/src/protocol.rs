@@ -500,6 +500,20 @@ pub struct Profile {
     /// The same for SBC XQ
     #[serde(default)]
     pub sbcxq_min_bitpool: u8,
+    /// SBC / SBC XQ: block length 4, 8, 12, 16 (0 = auto: 16). The frame
+    /// setup counts in developer mode only
+    #[serde(default)]
+    pub sbc_blocks: u8,
+    /// SBC / SBC XQ: subbands 4, 8 (0 = auto: 8)
+    #[serde(default)]
+    pub sbc_subbands: u8,
+    /// SBC / SBC XQ: "loudness", "snr" ("" = auto: loudness)
+    #[serde(default)]
+    pub sbc_allocation: String,
+    /// SBC: "joint_stereo", "stereo", "mono" ("" = auto: joint stereo; SBC
+    /// XQ is always dual channel)
+    #[serde(default)]
+    pub sbc_channel_mode: String,
     /// The settings of the codecs the profile is not using, by codec key,
     /// as they were last chosen (the Codecs screen brings them back when
     /// that codec is chosen again)
@@ -526,6 +540,10 @@ pub struct CodecValues {
     pub sbcxq_bitpool: u8,
     pub sbc_min_bitpool: u8,
     pub sbcxq_min_bitpool: u8,
+    pub sbc_blocks: u8,
+    pub sbc_subbands: u8,
+    pub sbc_allocation: String,
+    pub sbc_channel_mode: String,
 }
 
 impl Default for CodecValues {
@@ -539,6 +557,10 @@ impl Default for CodecValues {
             sbcxq_bitpool: 0,
             sbc_min_bitpool: 0,
             sbcxq_min_bitpool: 0,
+            sbc_blocks: 0,
+            sbc_subbands: 0,
+            sbc_allocation: String::new(),
+            sbc_channel_mode: String::new(),
         }
     }
 }
@@ -563,6 +585,7 @@ pub struct DevOverrides {
     pub aac_no_peak: bool,
     pub aac_no_afterburner: bool,
     pub aac_latm_v0: bool,
+    pub force_codec: bool,
 }
 
 /// Developer mode's logging (bluecaster_core::settings::DevLog), in force while
@@ -857,6 +880,10 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub queue_capacity: Option<u32>,
+    /// How long the oldest packet in the send queue has waited (ms)
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub queue_ms: Option<u32>,
     /// Capture rate of the stream (frames per second; 0 while not
     /// streaming): capture drops in ms = frames * 1000 / this
     #[ts(optional = nullable)]

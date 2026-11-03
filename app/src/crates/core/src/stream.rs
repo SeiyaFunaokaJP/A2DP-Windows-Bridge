@@ -1105,6 +1105,19 @@ fn sbc_xq_fallback(kind: CodecKind, failure: &ConfigFailure, requested: Option<C
         && (requested.is_none() || fallback)
 }
 
+/// `remote` with `forced` usable, the codec developer mode's force_codec
+/// asks for though the device does not list it
+fn with_forced(remote: RemoteCaps, forced: Option<CodecKind>) -> RemoteCaps {
+    let Some(kind) = forced else { return remote };
+    match remote.forcing(kind) {
+        Some(caps) => {
+            tracing::warn!("codec: forcing {}, which the device does not list", kind.name());
+            caps
+        }
+        None => remote,
+    }
+}
+
 /// SBC / SBC XQ adaptive bitpool: only when the profile asks for that codec
 /// itself with ABR on. A profile's ABR was LDAC's and LHDC V5's: Auto, or a
 /// fallback from LDAC, landing on SBC keeps today's fixed bitpool.
@@ -1310,6 +1323,10 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     }
 
     // ---- codec ----
+    // Developer mode: the codec chosen, listed or not, and no fallback
+    let force = codec::dev::overrides().force_codec;
+    let forced = req.codec.filter(|&k| force && k.available() && !remote.has(k));
+    remote = with_forced(remote, forced);
     if !req.auto_order.is_default() {
         tracing::info!("codec: the device's order set by the user: {}", req.auto_order.names());
     }
@@ -1457,6 +1474,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     }
     if let Err(failure) = &configured
         && !stopped()
+        && forced.is_none()
         && sbc_xq_fallback(kind, failure, req.codec, req.codec_fallback)
     {
         // The sink lists dual channel but refuses it. BTstack's A2DP setup
@@ -1600,7 +1618,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
 
     // A reconnect builds the configuration anew from what the device lists
     // then (v1 read its capabilities again)
-    let rebuild = |r: &RemoteCaps| match r.configuration_with(
+    let rebuild = |r: &RemoteCaps| match with_forced(r.clone(), forced).configuration_with(
         kind,
         format.sample_rate,
         channels,
@@ -1997,7 +2015,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             }
             tracing::warn!("reconnect attempt {attempt} failed");
         }
-        let Some(r) = reconnected else {
+        let Some(mut r) = reconnected else {
             tracing::debug!(
                 "reconnect: gave up after {attempt} attempt(s), {} ms (stopped {}, codec gone {codec_gone}, restart pending {restart_why:?})",
                 reconnect_start.elapsed().as_millis(),
@@ -2017,6 +2035,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             }
             break;
         };
+        r.remote = with_forced(r.remote, forced);
         // The encoder follows the new stream: its MTU and the device's
         // settings (e.g. its SBC bitpool range) may have changed
         let new_config =
@@ -2118,6 +2137,9 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         // A stack left running would accept the headphones when they are
         // turned on, which they may mean for a phone
         inner.shutdown_host();
+    } else {
+        // Nothing follows on this link
+        host.drop_acl_link(crate::service::LINK_RELEASE_WAIT);
     }
 }
 

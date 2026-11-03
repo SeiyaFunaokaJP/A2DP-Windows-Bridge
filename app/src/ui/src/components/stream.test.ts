@@ -23,7 +23,19 @@ const run = (n: number, f: (i: number) => Partial<LinkSample> = () => ({})) =>
 describe("link quality", () => {
   it("is good on a link that delivers everything, whatever the RSSI", () => {
     const q = linkQuality(run(60, (i) => ({ rssi: i % 2 ? -27 : -6 })));
-    expect(q).toEqual({ level: 4, status: "good" });
+    expect(q).toEqual({ level: 4, status: "good", pcBusy: false });
+  });
+
+  it("does not blame the radio for audio the PC lost at capture (issue #252)", () => {
+    const q = linkQuality(run(60, (i) => ({ capture_dropped: i < 50 ? 0 : 480 })));
+    expect(q).toEqual({ level: 4, status: "warn", pcBusy: true });
+    const later = run(60, (i) => ({ capture_dropped: i < 10 ? 0 : 480 }));
+    expect(linkQuality(later)?.pcBusy).toBe(false);
+  });
+
+  it("says what the radio does when both go wrong", () => {
+    const q = linkQuality(run(60, (i) => ({ dropped: i < 50 ? 0 : 128, capture_dropped: i < 50 ? 0 : 480 })));
+    expect(q).toEqual({ level: 1, status: "bad", pcBusy: false });
   });
 
   it("is poor while packets drop, and recovers 10 s later", () => {
@@ -34,8 +46,9 @@ describe("link quality", () => {
   });
 
   it("is fair while the send queue backs up", () => {
-    const q = linkQuality(run(30, (i) => ({ queue_depth: i === 25 ? 40 : 0 })));
+    const q = linkQuality(run(30, (i) => ({ queue_ms: i === 25 ? 200 : 0 })));
     expect(q?.status).toBe("warn");
+    expect(q?.pcBusy).toBe(false);
   });
 
   it("has no data when nothing streams", () => {

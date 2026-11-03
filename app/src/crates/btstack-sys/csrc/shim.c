@@ -581,7 +581,8 @@ uint8_t bluecaster_set_config_other(uint16_t a2dp_cid, uint8_t local_seid, uint8
 /* Connection state queries                                                 */
 /* ======================================================================== */
 
-/* ACL link to addr: -1 none, 0 still paging, 1 open (handle set), 2 other */
+/* ACL link to addr: -1 none, 0 still paging, 1 open (handle set), 2 other,
+ * 3 going down (our HCI Disconnect) */
 int bluecaster_acl_state(const uint8_t *addr, uint16_t *con_handle) {
     hci_connection_t *c = hci_connection_for_bd_addr_and_type(addr, BD_ADDR_TYPE_ACL);
     if (c == NULL) return -1;
@@ -590,6 +591,7 @@ int bluecaster_acl_state(const uint8_t *addr, uint16_t *con_handle) {
         if (con_handle) *con_handle = c->con_handle;
         return 1;
     }
+    if (c->state == SEND_DISCONNECT || c->state == SENT_DISCONNECT) return 3;
     return 2;
 }
 
