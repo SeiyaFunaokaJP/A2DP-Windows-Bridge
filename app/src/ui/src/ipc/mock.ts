@@ -1582,6 +1582,7 @@ export class MockCore implements Transport {
       acl_packet: avg === null ? null : { name: avg + 4 <= 83 ? "3-DH1" : avg + 4 <= 552 ? "3-DH3" : "3-DH5", slots },
       bandwidth_share: streaming ? (pps * ((avg ?? 0) + 4) * 8) / 1000 / 2178.13 : null,
       queue_capacity: 64,
+      queue_ms: streaming ? Math.max(0, Math.round(10 + 10 * Math.sin(t))) : 0,
       source_rate: streaming ? (this.snap.stream.info?.source_sample_rate ?? 0) : 0,
       counters: { total: { ...this.totals }, stream_start: { ...this.streamStart }, stream_starts: this.streamStarts },
     };

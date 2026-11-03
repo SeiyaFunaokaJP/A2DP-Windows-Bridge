@@ -440,6 +440,7 @@
   "ui.quality.good": "Bonne",
   "ui.quality.fair": "Moyenne",
   "ui.quality.poor": "Faible",
+  "ui.quality.pc_busy": "PC occupé",
   "ui.quality.unknown": "Aucune donnée",
   "ui.fix.retry": "Réessayer",
   "ui.error.copy": "Copier le journal",

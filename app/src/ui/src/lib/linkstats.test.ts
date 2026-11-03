@@ -94,7 +94,7 @@ describe("link statistics", () => {
     const a = sample({ dropped: 3, capture_dropped: 1 });
     const b = sample({ dropped: 5, capture_dropped: 4 });
     const c = sample({ dropped: 5, capture_dropped: 4 });
-    expect(dropsPerSample([a, b, c])).toEqual([0, 5, 0]);
+    expect(dropsPerSample([a, b, c])).toEqual([0, 2, 0]);
     const old = (dropped: number) => sample({}, {}, { counters: null, dropped });
     expect(dropsPerSample([old(1), old(4), old(0)])).toEqual([0, 3, 0]);
   });

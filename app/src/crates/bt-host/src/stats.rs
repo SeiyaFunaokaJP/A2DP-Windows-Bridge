@@ -4,9 +4,14 @@
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::time::Duration;
 
 /// Capacity of the media send queue, in packets (as v1)
 pub const MEDIA_QUEUE_PACKETS: usize = 64;
+/// Longest a media packet waits in the send queue: what the 64 packets hold
+/// at LDAC's 187 packets a second, so a stall the headphones' own buffer
+/// rides out stays one. Audio older than this comes too late to play.
+pub const MEDIA_QUEUE_MAX_WAIT: Duration = Duration::from_millis(350);
 
 #[derive(Debug, Default)]
 pub struct LinkStats {
@@ -14,7 +19,8 @@ pub struct LinkStats {
     /// header, media payload header and codec data)
     pub packets_sent: AtomicU64,
     pub bytes_sent: AtomicU64,
-    /// Packets lost before the radio: send queue full / L2CAP refused
+    /// Packets lost before the radio: waited too long in the send queue or
+    /// found it full / L2CAP refused
     pub queue_drops: AtomicU64,
     pub send_errors: AtomicU64,
     /// PCM frames captured from Windows (real audio, not silence fill), and
@@ -25,6 +31,8 @@ pub struct LinkStats {
     pub silence_frames: AtomicU64,
     /// Instantaneous send queue fill (packets)
     pub queue_depth: AtomicU32,
+    /// How long the oldest packet in the send queue has waited (ms)
+    pub queue_wait_ms: AtomicU32,
     /// The counters above when the current stream started; stream_starts
     /// changes with every stream (written after them)
     pub start_packets: AtomicU64,

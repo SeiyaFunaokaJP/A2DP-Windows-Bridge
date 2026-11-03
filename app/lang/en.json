@@ -440,6 +440,7 @@
   "ui.quality.good": "Good",
   "ui.quality.fair": "Fair",
   "ui.quality.poor": "Poor",
+  "ui.quality.pc_busy": "PC busy",
   "ui.quality.unknown": "No data",
   "ui.fix.retry": "Try again",
   "ui.error.copy": "Copy log",

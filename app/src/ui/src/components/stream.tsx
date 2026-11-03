@@ -384,28 +384,34 @@ export type QualityLevel = 0 | 1 | 2 | 3 | 4;
 const QUALITY_DROP_SAMPLES = 40;
 /** ... and for a send queue backing up: 4 s */
 const QUALITY_QUEUE_SAMPLES = 16;
-/** Packets in the send queue (of 64) that mean the radio fell behind */
-const QUALITY_QUEUE_BACKLOG = 32;
+/** Milliseconds in the send queue that mean the radio fell behind */
+export const QUALITY_QUEUE_BACKLOG_MS = 150;
 
-/** Link quality from the last samples: what reaches the headphones (drops,
- *  the send queue backing up, air time). Not RSSI: controllers report it
- *  differently (vs. the golden range or not) and the headphones' power
- *  control moves it by 10-20 dB on a link that delivers everything. */
-export function linkQuality(samples: readonly LinkSample[]): { level: QualityLevel; status: "good" | "warn" | "bad" } | null {
+/** Link quality from the last samples: what reaches the headphones (packet
+ *  drops, the send queue backing up, air time) sets the bars. Not RSSI:
+ *  controllers report it differently (vs. the golden range or not) and the
+ *  headphones' power control moves it by 10-20 dB on a link that delivers
+ *  everything. Audio the PC itself lost at capture says nothing about the
+ *  radio (and counts frames, not packets): on a link that is fine, pcBusy. */
+export function linkQuality(
+  samples: readonly LinkSample[],
+): { level: QualityLevel; status: "good" | "warn" | "bad"; pcBusy: boolean } | null {
   if (samples.length === 0) return null;
   const last = samples[samples.length - 1];
   if (last.bytes_per_second === 0 && last.rssi === null) return null;
   const caps: QualityLevel[] = [4];
   const old = samples[Math.max(0, samples.length - QUALITY_DROP_SAMPLES)];
-  const dropped = last.dropped - old.dropped + (last.capture_dropped - old.capture_dropped);
+  const dropped = last.dropped - old.dropped;
   if (dropped > 5) caps.push(1);
   else if (dropped > 0) caps.push(2);
-  const backlog = Math.max(...samples.slice(-QUALITY_QUEUE_SAMPLES).map((s) => s.queue_depth));
-  if (backlog >= QUALITY_QUEUE_BACKLOG) caps.push(2);
-  else if (backlog >= QUALITY_QUEUE_BACKLOG / 2) caps.push(3);
+  const backlog = Math.max(...samples.slice(-QUALITY_QUEUE_SAMPLES).map((s) => s.queue_ms ?? 0));
+  if (backlog >= QUALITY_QUEUE_BACKLOG_MS) caps.push(2);
+  else if (backlog >= QUALITY_QUEUE_BACKLOG_MS / 2) caps.push(3);
   if (last.airtime > 0.8) caps.push(2);
   const level = Math.min(...caps) as QualityLevel;
-  return { level, status: level >= 3 ? "good" : level === 2 ? "warn" : "bad" };
+  const linkGood = level >= 3;
+  const pcBusy = linkGood && last.capture_dropped > old.capture_dropped;
+  return { level, status: pcBusy ? "warn" : linkGood ? "good" : level === 2 ? "warn" : "bad", pcBusy };
 }
 
 export function QualityIndicator() {
@@ -415,6 +421,7 @@ export function QualityIndicator() {
   const label = () => {
     const v = q();
     if (!v) return t("ui.quality.unknown");
+    if (v.pcBusy) return t("ui.quality.pc_busy");
     return v.status === "good" ? t("ui.quality.good") : v.status === "warn" ? t("ui.quality.fair") : t("ui.quality.poor");
   };
   return (

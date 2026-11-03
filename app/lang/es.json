@@ -440,6 +440,7 @@
   "ui.quality.good": "Buena",
   "ui.quality.fair": "Aceptable",
   "ui.quality.poor": "Mala",
+  "ui.quality.pc_busy": "PC ocupado",
   "ui.quality.unknown": "Sin datos",
   "ui.fix.retry": "Reintentar",
   "ui.error.copy": "Copiar registro",

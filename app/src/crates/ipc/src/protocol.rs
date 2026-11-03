@@ -857,6 +857,10 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub queue_capacity: Option<u32>,
+    /// How long the oldest packet in the send queue has waited (ms)
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub queue_ms: Option<u32>,
     /// Capture rate of the stream (frames per second; 0 while not
     /// streaming): capture drops in ms = frames * 1000 / this
     #[ts(optional = nullable)]
