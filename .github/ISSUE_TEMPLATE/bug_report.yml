@@ -36,6 +36,15 @@ body:
       label: Headphones / speaker
       placeholder: e.g. Sony WH-1000XM4
 
+  - type: markdown
+    attributes:
+      value: |
+        **Sound drops out, or the connection is unstable?** These often fix it, so try them first if you can, and say below whether they helped:
+        - Turn off any other Bluetooth adapter in this PC (the built-in one, for example).
+        - Turn off dual connection (multipoint) in the headphones' app, or disconnect the phone.
+        - Close the headphones' app, on the phone and on this PC.
+        - Put this PC on 5 or 6 GHz Wi-Fi instead of 2.4 GHz, or [avoid the router's Wi-Fi channel](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/usage#link-quality).
+
   - type: dropdown
     id: dual_connection
     attributes:
@@ -54,6 +63,17 @@ body:
       options:
         - "No"
         - "Yes"
+        - I don't know
+
+  - type: dropdown
+    id: wifi
+    attributes:
+      label: Wi-Fi
+      description: Which Wi-Fi was this PC on?
+      options:
+        - 2.4 GHz
+        - 5 or 6 GHz
+        - None (wired or off)
         - I don't know
 
   - type: dropdown
