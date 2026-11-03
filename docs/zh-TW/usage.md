@@ -194,7 +194,7 @@ a2dpwb-core.exe --cli --scan
 | `--scan [seconds]` | 列出附近的裝置後結束（預設 10 秒） |
 | `-h` | 顯示說明 |
 
-開發與測試用途另有 `--hci-tcp <host:port>`（以 TCP 連線的虛擬控制器取代 WinUSB 介面卡）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 取代擷取的音訊）、`--duration <s>`（經過指定秒數後停止）與 `--hci-capture <file.pklg>`（擷取整個執行期間的 HCI）；請參閱 [建置](../building#emu)。
+開發與測試用途另有 `--hci-tcp <host:port>`（以 TCP 連線的虛擬控制器取代 WinUSB 介面卡）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 取代擷取的音訊）、`--duration <s>`（經過指定秒數後停止）與 `--hci-capture <file.pklg>`（擷取整個執行期間的 HCI）；請參閱 [建置](../building#emu)。 `--services` 在開始串流後列出裝置透過 SDP 提供的服務。
 
 未加上 `--cli` 時，`a2dpwb-core.exe` 即為常駐程式：它也會啟動視窗，但加上 `--background` 時除外（只顯示系統匣圖示，開啟 **在系統匣中啟動** 時，**隨 Windows 啟動** 使用此選項）。`a2dpwb-core.exe --quit` 會要求執行中的 A2DPWB 停止串流並結束（安裝程式會使用此選項）。
 
@@ -472,6 +472,15 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 兩端都從串流的第一個封包開始計算封包數，因此可以比較傳送與接收的封包數：兩者應該相等。藍牙會在控制器內部重新傳送遺失的無線封包，而且 A2DPWB 在連結存續期間不會放棄任何封包，因此無線連結不佳時，會在接收端呈現為間隔、抖動與斷音，而不是封包遺失；當連結跟不上時，傳送端會在傳送前捨棄封包。兩端都無法得知重新傳送的次數。
 
 工具執行期間，接收端的介面卡無法供其本身的藍牙堆疊使用。探索使用 UDP 連接埠 51201 的廣播，因此兩台 PC 必須位於相同的網段（否則請輸入位址）。所有選項與統計通訊協定請參閱 `tools/linux_sink/README.md`。
+
+## 與 Windows 和 Linux 共用配對 {#shared-pairing}
+
+在開發人員模式下，點選已儲存裝置的 **已配對** 標籤會開啟它的配對資訊：
+
+- **連結金鑰**：A2DPWB 為該裝置儲存的金鑰及其類型。**複製金鑰** 複製金鑰本身；**複製為 Linux 格式** 將其複製為 BlueZ `/var/lib/bluetooth/<介面卡>/<裝置>/info` 中的 `[LinkKey]` 部分，同一台電腦上的 Linux 使用同一介面卡即可沿用此配對。任何持有金鑰的人都能冒充該裝置，請勿分享
+- **服務**：裝置透過 SDP 列出的服務類別，常見的附上 Bluetooth 名稱。在裝置連線時詢問
+
+**介面卡 > 匯入 Windows 的配對**（開發人員模式，使用 WinUSB 的介面卡）會接手 Windows Bluetooth 在該介面卡改用 WinUSB 之前為其儲存的連結金鑰：透過它與 Windows 配對過的耳機無需重新配對即可連線 A2DPWB（照常在 **音訊裝置** 中新增）。只有系統能讀取這些金鑰，因此 Windows 會要求系統管理員權限。A2DPWB 已有金鑰的裝置保留自己的金鑰（它之後與 A2DPWB 配對過，Windows 的金鑰是舊的）。Windows 用其他介面卡（例如電腦內建 Bluetooth）建立的金鑰無法使用：配對屬於介面卡的位址。Windows 不儲存金鑰類型，匯入的金鑰類型為 4。不匯入 LE 裝置。
 
 ## LE Audio（實驗性） {#le-audio}
 

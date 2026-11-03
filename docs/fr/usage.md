@@ -194,7 +194,7 @@ Mettez d'abord le casque en mode d'association.
 | `--scan [seconds]` | Lister les appareils à proximité et quitter (10 secondes par défaut) |
 | `-h` | Afficher l'aide |
 
-Pour le développement et les tests, il existe aussi `--hci-tcp <host:port>` (un contrôleur virtuel via TCP au lieu de l'adaptateur WinUSB), `--test-tone` (1 kHz à gauche / 1,5 kHz à droite au lieu de l'audio capturé), `--duration <s>` (arrêt après ce nombre de secondes) et `--hci-capture <file.pklg>` (capture HCI de toute l'exécution) ; voir [Compilation](../building#emu).
+Pour le développement et les tests, il existe aussi `--hci-tcp <host:port>` (un contrôleur virtuel via TCP au lieu de l'adaptateur WinUSB), `--test-tone` (1 kHz à gauche / 1,5 kHz à droite au lieu de l'audio capturé), `--duration <s>` (arrêt après ce nombre de secondes) et `--hci-capture <file.pklg>` (capture HCI de toute l'exécution) ; voir [Compilation](../building#emu). `--services` liste, une fois le flux lancé, les services que l'appareil indique en SDP.
 
 Sans `--cli`, `a2dpwb-core.exe` est le programme résident : il démarre aussi la fenêtre, sauf avec `--background` (icône de la zone de notification uniquement, utilisé par **Démarrer avec Windows** lorsque **Démarrer dans la zone de notification** est activé). `a2dpwb-core.exe --quit` demande à un A2DPWB en cours d'exécution d'arrêter la diffusion et de quitter (le programme d'installation l'utilise).
 
@@ -472,6 +472,15 @@ Le même test fonctionne dans la fenêtre : activez **Paramètres > Mode dévelo
 Les deux côtés comptent les paquets d'un flux à partir de son premier paquet, ce qui permet de comparer les paquets envoyés et reçus : ils doivent être égaux. Le Bluetooth retransmet les paquets radio perdus à l'intérieur des contrôleurs, et A2DPWB n'abandonne pas un paquet tant que la liaison est active : une mauvaise liaison radio se traduit donc par des trous, de la gigue et des coupures au niveau du récepteur plutôt que par des paquets perdus ; lorsque la liaison ne suit pas, des paquets sont abandonnés avant l'envoi du côté émetteur. Le nombre de retransmissions n'est disponible d'aucun côté.
 
 L'adaptateur du récepteur n'est pas disponible pour sa propre pile Bluetooth tant que l'outil fonctionne. La découverte utilise une diffusion UDP sur le port 51201 : les deux PC doivent donc être sur le même segment réseau (sinon, saisissez l'adresse). Voir `tools/linux_sink/README.md` pour toutes les options et le protocole des statistiques.
+
+## Association partagée avec Windows et Linux {#shared-pairing}
+
+En mode développeur, l'étiquette **Associé** d'un appareil enregistré ouvre son association :
+
+- **Clé de liaison** : la clé qu'A2DPWB garde pour l'appareil, et son type. **Copier la clé** la copie ; **Copier pour Linux** la copie sous la forme du groupe `[LinkKey]` du fichier `/var/lib/bluetooth/<adaptateur>/<appareil>/info` de BlueZ, pour que Linux sur le même PC utilise l'association avec le même adaptateur. Toute personne ayant la clé peut se faire passer pour l'appareil : ne la partagez pas
+- **Services** : les classes de service que l'appareil liste en SDP, avec les noms Bluetooth des plus courantes. Demandées pendant que l'appareil est connecté
+
+**Adaptateur > Importer les associations de Windows** (mode développeur, un adaptateur sous WinUSB) reprend les clés de liaison que le Bluetooth de Windows a gardées pour cet adaptateur avant qu'il passe sous WinUSB : les casques associés à Windows par cet adaptateur se connectent alors à A2DPWB sans nouvelle association (ajoutez-les dans **Appareils audio** comme d'habitude). Windows demande l'autorisation d'administrateur, car seul le système peut lire ces clés. Un appareil pour lequel A2DPWB a déjà une clé garde la sienne (il a été associé à A2DPWB plus tard, la clé de Windows est l'ancienne). Les clés que Windows a créées avec un autre adaptateur, comme le Bluetooth intégré du PC, ne fonctionnent pas : une association appartient à l'adresse de l'adaptateur. Windows ne garde pas le type d'une clé : une clé importée reçoit le type 4. Les appareils LE ne sont pas importés.
 
 ## LE Audio (expérimental) {#le-audio}
 

@@ -194,7 +194,7 @@ a2dpwb-core.exe --cli --scan
 | `--scan [seconds]` | 列出附近的设备并退出（默认 10 秒） |
 | `-h` | 显示帮助 |
 
-用于开发和测试的选项还有：`--hci-tcp <host:port>`（通过 TCP 使用虚拟控制器，代替 WinUSB 适配器）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 的测试音代替捕获的音频）、`--duration <s>`（运行指定秒数后停止）和 `--hci-capture <file.pklg>`（对整个运行过程进行 HCI 捕获）；请参阅[构建](../building#emu)。
+用于开发和测试的选项还有：`--hci-tcp <host:port>`（通过 TCP 使用虚拟控制器，代替 WinUSB 适配器）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 的测试音代替捕获的音频）、`--duration <s>`（运行指定秒数后停止）和 `--hci-capture <file.pklg>`（对整个运行过程进行 HCI 捕获）；请参阅[构建](../building#emu)。 `--services` 在开始串流后列出设备通过 SDP 提供的服务。
 
 不带 `--cli` 时，`a2dpwb-core.exe` 就是常驻程序：它也会启动窗口，但使用 `--background` 时除外（只显示托盘图标，开启**在托盘中启动**时供**随 Windows 启动**使用）。`a2dpwb-core.exe --quit` 会请求正在运行的 A2DPWB 停止串流并退出（安装程序会使用它）。
 
@@ -472,6 +472,15 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 双方都从流的第一个数据包开始计数，因此可以比较发送和接收的数据包数：两者应当相等。Bluetooth 会在控制器内部重传丢失的无线数据包，而 A2DPWB 在链路保持连接期间不会放弃任何数据包，因此较差的无线链路在接收端会表现为间隔、抖动和断音，而不是丢包；当链路跟不上时，数据包会在发送端于发送前被丢弃。双方都无法获得重传次数。
 
 工具运行期间，接收端的适配器无法供其自身的 Bluetooth 堆栈使用。发现过程使用 UDP 端口 51201 上的广播，因此两台 PC 必须位于同一网段（否则请输入地址）。所有选项和统计协议请参阅 `tools/linux_sink/README.md`。
+
+## 与 Windows 和 Linux 共享配对 {#shared-pairing}
+
+在开发者模式下，点击已保存设备的 **已配对** 标签会打开它的配对信息：
+
+- **链接密钥**：A2DPWB 为该设备保存的密钥及其类型。**复制密钥** 复制密钥本身；**复制为 Linux 格式** 将其复制为 BlueZ `/var/lib/bluetooth/<适配器>/<设备>/info` 中的 `[LinkKey]` 部分，同一台电脑上的 Linux 使用同一适配器即可沿用此配对。任何持有密钥的人都能冒充该设备，请勿分享
+- **服务**：设备通过 SDP 列出的服务类别，常见的附带 Bluetooth 名称。在设备连接时询问
+
+**适配器 > 导入 Windows 的配对**（开发者模式，使用 WinUSB 的适配器）会接管 Windows Bluetooth 在该适配器改用 WinUSB 之前为其保存的链接密钥：通过它与 Windows 配对过的耳机无需重新配对即可连接 A2DPWB（照常在 **音频设备** 中添加）。只有系统能读取这些密钥，因此 Windows 会请求管理员权限。A2DPWB 已有密钥的设备保留自己的密钥（它之后与 A2DPWB 配对过，Windows 的密钥是旧的）。Windows 用其他适配器（例如电脑内置 Bluetooth）创建的密钥无法使用：配对属于适配器的地址。Windows 不保存密钥类型，导入的密钥类型为 4。不导入 LE 设备。
 
 ## LE Audio（实验性） {#le-audio}
 

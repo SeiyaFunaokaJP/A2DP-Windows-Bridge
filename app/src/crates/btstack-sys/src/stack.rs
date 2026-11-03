@@ -207,6 +207,19 @@ impl Stack {
         status
     }
 
+    /// Asks the device's SDP server for the service class UUIDs and names
+    /// of all its records. Queued like [`Stack::sdp_query_rfcomm`], one at a
+    /// time. The result comes as [`crate::Source::SdpServices`] events:
+    /// SDP_EVENT_QUERY_ATTRIBUTE_VALUE per attribute byte, then
+    /// SDP_EVENT_QUERY_COMPLETE.
+    pub fn sdp_query_services(&self, addr: &[u8; 6]) -> u8 {
+        // SAFETY: on the BTstack thread after sdp_init; the shim copies the
+        // 6 bytes.
+        let status = unsafe { ffi::a2dpwb_sdp_query_services(addr.as_ptr()) };
+        tracing::debug!(target: "btstack", "sdp query services {}: 0x{status:02X}", addr_str(addr));
+        status
+    }
+
     /// Opens an RFCOMM channel to the device's `server_channel` (after
     /// [`Stack::rfcomm_init`]); its events and data come as
     /// [`crate::Source::Rfcomm`]. Returns the RFCOMM cid, or BTstack's status.
@@ -817,7 +830,7 @@ impl Stack {
                 ffi::a2dpwb_rfcomm_deinit();
             }
             if init & INIT_SDP != 0 {
-                ffi::sdp_client_deinit();
+                ffi::a2dpwb_sdp_client_deinit();
                 ffi::sdp_deinit();
             }
             if init & INIT_L2CAP != 0 {

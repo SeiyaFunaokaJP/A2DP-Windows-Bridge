@@ -80,6 +80,7 @@ Development / testing:
   --sessions <n>        stream n times in a row with --duration each, as
                         Disconnect / Connect in the app (A2DP)
   --wait-off            headphones turned off: wait for them, as the app does
+  --services            once streaming, list the services the device gives in SDP
   --restart-on-link     start the session again as soon as its link is up, as
                         a setting changed while connecting does
   --restart             with --sessions: between sessions restart Bluetooth
@@ -123,6 +124,8 @@ struct Args {
     remote_sink: Option<String>,
     scan: Option<u32>,
     probe: bool,
+    /// --services: once streaming, the services the device lists in SDP
+    services: bool,
     hci_tcp: Option<String>,
     hci_capture: Option<PathBuf>,
     test_tone: bool,
@@ -199,6 +202,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
         remote_sink: None,
         scan: None,
         probe: false,
+        services: false,
         hci_tcp: None,
         hci_capture: None,
         test_tone: false,
@@ -292,6 +296,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
                 a.scan = Some(secs);
             }
             "--probe" => a.probe = true,
+            "--services" => a.services = true,
             "--hci-tcp" => a.hci_tcp = Some(value(&mut it, "--hci-tcp")?),
             "--hci-capture" => a.hci_capture = Some(value(&mut it, "--hci-capture")?.into()),
             "--test-tone" => a.test_tone = true,
@@ -686,7 +691,12 @@ fn stream_session(
             Ok(ServiceEvent::State(state, msg)) => {
                 println!("[{state:?}] {msg}");
                 match state {
-                    StreamState::Streaming if streaming_since.is_none() => streaming_since = Some(Instant::now()),
+                    StreamState::Streaming if streaming_since.is_none() => {
+                        streaming_since = Some(Instant::now());
+                        if a.services {
+                            print_services(service, a.device.as_deref());
+                        }
+                    }
                     StreamState::Error => {
                         *code = 1;
                         return false;
@@ -708,6 +718,20 @@ fn stream_session(
             Err(mpsc::RecvTimeoutError::Disconnected) => return false,
         }
     }
+}
+
+/// --services: asked on a thread of its own, the stream goes on meanwhile
+fn print_services(service: &Service, device: Option<&str>) {
+    let (Some(host), Some(addr)) = (service.host(), device.and_then(bt_host::parse_addr)) else { return };
+    let _ = std::thread::Builder::new().name("cli-services".into()).spawn(move || match host.device_services(addr) {
+        Ok(records) => {
+            println!("Services: {} record(s)", records.len());
+            for r in records {
+                println!("  {} {}", r.classes.join(" "), r.name.as_deref().unwrap_or("-"));
+            }
+        }
+        Err(e) => println!("Services: {e:?}"),
+    });
 }
 
 // ---- LE Audio (experimental): v1 le_audio_cli.cpp ----

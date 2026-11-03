@@ -194,7 +194,7 @@ Versetzen Sie die Kopfhörer vorher in den Kopplungsmodus.
 | `--scan [seconds]` | Geräte in der Nähe auflisten und beenden (Standard 10 Sekunden) |
 | `-h` | Hilfe anzeigen |
 
-Für Entwicklung und Tests gibt es außerdem `--hci-tcp <host:port>` (ein virtueller Controller über TCP statt des WinUSB-Adapters), `--test-tone` (1 kHz links / 1,5 kHz rechts statt des aufgenommenen Audios), `--duration <s>` (nach dieser Anzahl Sekunden beenden) und `--hci-capture <file.pklg>` (HCI-Aufzeichnung des gesamten Laufs); siehe [Bauen](../building#emu).
+Für Entwicklung und Tests gibt es außerdem `--hci-tcp <host:port>` (ein virtueller Controller über TCP statt des WinUSB-Adapters), `--test-tone` (1 kHz links / 1,5 kHz rechts statt des aufgenommenen Audios), `--duration <s>` (nach dieser Anzahl Sekunden beenden) und `--hci-capture <file.pklg>` (HCI-Aufzeichnung des gesamten Laufs); siehe [Bauen](../building#emu). `--services` listet nach dem Streamstart die Dienste, die das Gerät per SDP nennt.
 
 Ohne `--cli` ist `a2dpwb-core.exe` das residente Programm: Es startet auch das Fenster, außer mit `--background` (nur das Symbol im Infobereich, wird von **Mit Windows starten** verwendet, wenn **Im Infobereich starten** eingeschaltet ist). `a2dpwb-core.exe --quit` fordert ein laufendes A2DPWB auf, das Streaming zu beenden und sich zu schließen (das Installationsprogramm verwendet dies).
 
@@ -472,6 +472,15 @@ Derselbe Test läuft auch im Fenster: Schalten Sie **Einstellungen > Entwicklerm
 Beide Seiten zählen die Pakete eines Streams ab dessen erstem Paket, sodass gesendete und empfangene Pakete verglichen werden können: Sie sollten gleich sein. Bluetooth überträgt verlorene Funkpakete innerhalb der Controller erneut, und A2DPWB gibt ein Paket nicht auf, solange die Verbindung besteht; eine schlechte Funkverbindung zeigt sich daher beim Empfänger als Lücken, Jitter und Aussetzer statt als verlorene Pakete. Kommt die Verbindung nicht nach, werden auf der Sendeseite Pakete vor dem Senden verworfen. Die Anzahl der Neuübertragungen ist auf keiner der beiden Seiten verfügbar.
 
 Der Adapter des Empfängers steht dessen eigenem Bluetooth-Stack nicht zur Verfügung, solange das Werkzeug läuft. Die Suche verwendet einen UDP-Broadcast auf Port 51201, daher müssen sich beide PCs im selben Netzwerksegment befinden (andernfalls geben Sie die Adresse ein). Alle Optionen und das Statistikprotokoll finden Sie in `tools/linux_sink/README.md`.
+
+## Kopplung mit Windows und Linux teilen {#shared-pairing}
+
+Im Entwicklermodus öffnet das Etikett **Gekoppelt** eines gespeicherten Geräts seine Kopplung:
+
+- **Verbindungsschlüssel**: der Schlüssel, den A2DPWB für das Gerät speichert, und sein Typ. **Schlüssel kopieren** kopiert ihn; **Für Linux kopieren** kopiert ihn als Gruppe `[LinkKey]` von BlueZ' `/var/lib/bluetooth/<Adapter>/<Gerät>/info`, damit Linux auf demselben PC die Kopplung mit demselben Adapter nutzen kann. Wer den Schlüssel hat, kann sich als das Gerät ausgeben: nicht weitergeben
+- **Dienste**: die Dienstklassen, die das Gerät per SDP nennt, die üblichen mit ihren Bluetooth-Namen. Abgefragt, während das Gerät verbunden ist
+
+**Adapter > Kopplungen aus Windows übernehmen** (Entwicklermodus, ein Adapter mit WinUSB) übernimmt die Verbindungsschlüssel, die Windows' Bluetooth für diesen Adapter gespeichert hat, bevor er WinUSB bekam: Kopfhörer, die über ihn mit Windows gekoppelt wurden, verbinden sich dann ohne neue Kopplung mit A2DPWB (wie gewohnt unter **Audiogeräte** hinzufügen). Windows fragt nach Administratorrechten, da nur das System diese Schlüssel lesen darf. Ein Gerät, für das A2DPWB schon einen Schlüssel hat, behält seinen eigenen (es wurde später mit A2DPWB gekoppelt, der Schlüssel von Windows ist der alte). Schlüssel, die Windows mit einem anderen Adapter erstellt hat, etwa dem eingebauten Bluetooth des PCs, funktionieren nicht: Eine Kopplung gehört zur Adresse des Adapters. Windows speichert den Typ eines Schlüssels nicht, ein übernommener Schlüssel bekommt Typ 4. LE-Geräte werden nicht übernommen.
 
 ## LE Audio (experimentell) {#le-audio}
 

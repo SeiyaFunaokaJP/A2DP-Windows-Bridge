@@ -219,7 +219,7 @@ Put the headphones into pairing mode first.
 | `--scan [seconds]` | List nearby devices and exit (default 10 seconds) |
 | `-h` | Show the help |
 
-For development and testing there are also `--hci-tcp <host:port>` (a virtual controller over TCP instead of the WinUSB adapter), `--test-tone` (1 kHz left / 1.5 kHz right instead of captured audio), `--duration <s>` (stop after this many seconds), `--sessions <n>` (stream n times in a row, as Disconnect / Connect in the app), `--restart` (with `--sessions`: restart Bluetooth between them), `--wait-off` (headphones turned off do not end the run) and `--hci-capture <file.pklg>` (HCI capture of the whole run); see [Building](building#emu). The LE Audio options are listed by `-h` (see [LE Audio](#le-audio)).
+For development and testing there are also `--hci-tcp <host:port>` (a virtual controller over TCP instead of the WinUSB adapter), `--test-tone` (1 kHz left / 1.5 kHz right instead of captured audio), `--duration <s>` (stop after this many seconds), `--sessions <n>` (stream n times in a row, as Disconnect / Connect in the app), `--restart` (with `--sessions`: restart Bluetooth between them), `--wait-off` (headphones turned off do not end the run) and `--hci-capture <file.pklg>` (HCI capture of the whole run); see [Building](building#emu). The LE Audio options are listed by `-h` (see [LE Audio](#le-audio)). `--services` lists the services the device gives in SDP once streaming.
 
 Without `--cli`, `a2dpwb-core.exe` is the resident program: it starts the window too, except with `--background` (tray icon only, used by **Start with Windows** when **Start in the tray** is on). `a2dpwb-core.exe --quit` asks a running A2DPWB to stop streaming and exit (the installer uses it).
 
@@ -503,6 +503,15 @@ The same test runs in the window: with **Settings > Developer mode** on, open **
 Both sides count the packets of a stream from its first packet, so the packets sent and received can be compared: they should be equal. Bluetooth retransmits lost radio packets inside the controllers, and A2DPWB does not give up on a packet while the link is up, so a poor radio link shows as gaps, jitter and dropouts at the receiver rather than as lost packets; when the link cannot keep up, packets are dropped before sending on the sending side. The number of retransmissions is not available to either side.
 
 The receiver's adapter is not available to its own Bluetooth stack while the tool runs. Discovery uses a UDP broadcast on port 51201, so both PCs must be on the same network segment (otherwise enter the address). See `tools/linux_sink/README.md` for all options and the statistics protocol.
+
+## Pairing Shared with Windows and Linux {#shared-pairing}
+
+In developer mode, a saved device's **Paired** tag opens its pairing:
+
+- **Link key**: the key A2DPWB keeps for the device, and its type. **Copy key** copies it; **Copy for Linux** copies it as the `[LinkKey]` group of BlueZ's `/var/lib/bluetooth/<adapter>/<device>/info`, so that Linux on the same PC can use the pairing with the same adapter. Anyone with the key can pose as the device: do not share it
+- **Services**: the service classes the device lists in SDP, with the Bluetooth names of the common ones. Asked while the device is connected
+
+**Adapter > Import pairings from Windows** (developer mode, an adapter on WinUSB) takes over the link keys Windows' Bluetooth kept for that adapter before it was given WinUSB: headphones paired with Windows through it then connect to A2DPWB without pairing again (add them under **Audio Devices** as usual). Windows asks for administrator permission, since only the system may read those keys. A device A2DPWB already has a key for keeps its own (it was paired with A2DPWB later, so Windows' key is the old one). Keys Windows made with another adapter, such as the PC's built-in Bluetooth, do not work: a pairing belongs to the adapter's address. Windows does not keep a key's type, so an imported key gets type 4. LE devices are not imported.
 
 ## LE Audio (experimental) {#le-audio}
 

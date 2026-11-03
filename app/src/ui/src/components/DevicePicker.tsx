@@ -23,6 +23,7 @@ import {
 } from "../lib/profile";
 import { Button, Dialog, Field, IconButton } from "./controls";
 import { Icon } from "./Icon";
+import { PairingDialog } from "./PairingDialog";
 
 /** How long a scan looks for devices (issue #86: 10 s found too few) */
 export const SCAN_SECONDS = 30;
@@ -258,6 +259,8 @@ export function DevicePicker(props: {
       setWindowsPaired({ name: name || address, go });
     } else go();
   };
+  // Developer mode: a saved classic device's tag opens its pairing
+  const [pairingOf, setPairingOf] = createSignal<Device | null>(null);
   const forget = async () => {
     const d = forgetting();
     if (!d || busy()) return;
@@ -300,7 +303,19 @@ export function DevicePicker(props: {
         </span>
         <span class="tags">
           <Show when={d.saved}>
-            <span class="tag">{t("device.tag_saved")}</span>
+            <Show
+              when={snap().settings.developer_mode && !d.le_audio}
+              fallback={<span class="tag">{t("device.tag_saved")}</span>}
+            >
+              <button
+                type="button"
+                class="tag tag-button"
+                aria-label={`${t("ui.pairing.title")}: ${label()}`}
+                onClick={() => setPairingOf(d)}
+              >
+                {t("device.tag_saved")}
+              </button>
+            </Show>
           </Show>
           <Show
             when={d.le_audio}
@@ -604,6 +619,7 @@ export function DevicePicker(props: {
           )}
         </Field>
       </Dialog>
+      <PairingDialog device={pairingOf()} onClose={() => setPairingOf(null)} />
       <Dialog
         open={windowsPaired() !== null}
         title={t("ui.devices.windows_paired_title")}

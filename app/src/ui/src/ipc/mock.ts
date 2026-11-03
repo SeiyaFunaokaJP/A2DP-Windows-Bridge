@@ -694,6 +694,20 @@ export class MockCore implements Transport {
         return this.scan(Number(p.seconds ?? 10));
       case "device.windows_paired":
         return this.windowsPaired;
+      case "device.pairing":
+        return {
+          link_key: this.snap.devices.some((d) => d.saved && d.address === String(p.address))
+            ? { key: "00112233445566778899aabbccddeeff", key_type: 4 }
+            : null,
+        };
+      case "device.services":
+        return [
+          { uuids: ["0000110b-0000-1000-8000-00805f9b34fb"], name: "Audio Sink" },
+          { uuids: ["0000110e-0000-1000-8000-00805f9b34fb", "0000110f-0000-1000-8000-00805f9b34fb"], name: null },
+          { uuids: ["df21fe2c-2515-4fdb-8886-f12c4d67927c"], name: "Vendor" },
+        ];
+      case "device.import_windows_pairings":
+        return { adapter_found: true, imported: ["00:A2:D0:00:00:02"], kept: [] };
       case "device.scan_stop":
         this.scanStop?.();
         return null;

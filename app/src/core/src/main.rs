@@ -12,6 +12,7 @@ mod cli;
 mod crashes;
 mod driver;
 mod logging;
+mod pairing;
 mod quit;
 mod resident;
 mod rfcomm;

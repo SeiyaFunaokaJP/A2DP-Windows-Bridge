@@ -31,6 +31,8 @@ unsafe extern "C" {
     pub fn a2dpwb_rfcomm_deinit();
     pub fn a2dpwb_rfcomm_create_channel(addr: *const u8, server_channel: u8, out_cid: *mut u16) -> u8;
     pub fn a2dpwb_sdp_query_rfcomm(addr: *const u8, uuid128: *const u8) -> u8;
+    pub fn a2dpwb_sdp_query_services(addr: *const u8) -> u8;
+    pub fn a2dpwb_sdp_client_deinit();
 
     // ---- shim.c: GAP, SDP, endpoints, configuration ----
     pub fn a2dpwb_gap_setup(class_of_device: u32, page_timeout: u16);
@@ -97,7 +99,6 @@ unsafe extern "C" {
     pub fn l2cap_deinit();
     pub fn sdp_init();
     pub fn sdp_deinit();
-    pub fn sdp_client_deinit();
 
     // ---- BTstack: GAP ----
     pub fn gap_inquiry_start(duration_in_1280ms_units: u8) -> c_int;

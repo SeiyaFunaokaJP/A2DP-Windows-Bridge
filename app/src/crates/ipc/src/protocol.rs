@@ -1141,6 +1141,20 @@ pub enum Method {
     /// here may conflict with it, issue #86)
     #[serde(rename = "device.windows_paired")]
     DeviceWindowsPaired,
+    /// -> DevicePairing: what A2DPWB keeps of a classic device's pairing
+    /// (developer mode only)
+    #[serde(rename = "device.pairing")]
+    DevicePairing { address: String },
+    /// -> DeviceService[]: the services a classic device lists, asked over
+    /// the connection A2DPWB has to it (developer mode only)
+    #[serde(rename = "device.services")]
+    DeviceServices { address: String },
+    /// -> WindowsImport: takes over the link keys Windows' Bluetooth keeps
+    /// for the adapter with the Bluetooth address `adapter`, so the devices
+    /// it paired with that adapter connect without pairing again (an
+    /// administrator prompt; developer mode only)
+    #[serde(rename = "device.import_windows_pairings")]
+    DeviceImportWindowsPairings { adapter: String },
     /// Removes a saved device; `le_audio` true: its LE Audio entry (absent
     /// or false: the classic one)
     #[serde(rename = "device.forget")]
@@ -1554,6 +1568,50 @@ pub struct ReceiverState {
     pub sent: Option<LinkTotals>,
     /// LinkCounters.stream_starts: a change means `sent` starts again
     pub stream_starts: u32,
+}
+
+/// device.pairing's result
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct DevicePairing {
+    /// The link key A2DPWB keeps, None when it has none (not paired)
+    pub link_key: Option<LinkKeyInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct LinkKeyInfo {
+    /// 32 hex digits, in the order of HCI's Link Key Notification (the
+    /// order BlueZ and Windows keep it in too)
+    pub key: String,
+    /// HCI's link key type (4: unauthenticated P-192, 5: authenticated
+    /// P-192, 7 and 8: their P-256 forms). A key taken from Windows, which
+    /// keeps no type, has 4.
+    pub key_type: u8,
+}
+
+/// One service record of device.services
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct DeviceService {
+    /// Its service class UUIDs, 128-bit form in lowercase
+    pub uuids: Vec<String>,
+    /// The name the device gives it
+    pub name: Option<String>,
+}
+
+/// device.import_windows_pairings' result
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct WindowsImport {
+    /// Windows has keys for the adapter (false: it never paired a device
+    /// with it)
+    pub adapter_found: bool,
+    /// The addresses whose keys were taken
+    pub imported: Vec<String>,
+    /// The addresses A2DPWB has a key for already: it stays (the device
+    /// was paired with A2DPWB after Windows, Windows' key is an old one)
+    pub kept: Vec<String>,
 }
 
 /// rfcomm.open's result

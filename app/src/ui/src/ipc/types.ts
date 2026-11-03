@@ -11,6 +11,8 @@ import type { AudioDevice as BAudioDevice } from "./bindings/AudioDevice";
 import type { CaptureState as BCaptureState } from "./bindings/CaptureState";
 import type { CodecDetails as BCodecDetails } from "./bindings/CodecDetails";
 import type { Device as BDevice } from "./bindings/Device";
+import type { DevicePairing as BDevicePairing } from "./bindings/DevicePairing";
+import type { DeviceService as BDeviceService } from "./bindings/DeviceService";
 import type { DiagBundle as BDiagBundle } from "./bindings/DiagBundle";
 import type { ProbeResult as BProbeResult } from "./bindings/ProbeResult";
 import type { DiagInfo as BDiagInfo } from "./bindings/DiagInfo";
@@ -42,6 +44,7 @@ import type { StreamInfo as BStreamInfo } from "./bindings/StreamInfo";
 import type { StreamStatus as BStreamStatus } from "./bindings/StreamStatus";
 import type { UpdateState as BUpdateState } from "./bindings/UpdateState";
 import type { VerboseState as BVerboseState } from "./bindings/VerboseState";
+import type { WindowsImport as BWindowsImport } from "./bindings/WindowsImport";
 
 export type Wire<T> = T extends bigint
   ? number
@@ -99,6 +102,9 @@ export type StreamInfo = Wire<BStreamInfo>;
 export type StreamStatus = Wire<BStreamStatus>;
 export type UpdateState = Wire<BUpdateState>;
 export type VerboseState = Wire<BVerboseState>;
+export type DevicePairing = Wire<BDevicePairing>;
+export type DeviceService = Wire<BDeviceService>;
+export type WindowsImport = Wire<BWindowsImport>;
 
 export type MethodName = Method["method"];
 
@@ -111,6 +117,9 @@ interface Results {
   "state.snapshot": Snapshot;
   "device.scan": Device[];
   "device.windows_paired": string[];
+  "device.pairing": DevicePairing;
+  "device.services": DeviceService[];
+  "device.import_windows_pairings": WindowsImport;
   "adapter.list": AdapterInfo[];
   "adapter.assign_winusb": AdapterInfo[];
   "adapter.restore_driver": AdapterInfo[];

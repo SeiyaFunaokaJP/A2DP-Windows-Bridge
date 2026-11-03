@@ -51,6 +51,7 @@ pub const RFCOMM_EVENT_CHANNEL_CLOSED: u8 = 0x81;
 pub const RFCOMM_EVENT_CAN_SEND_NOW: u8 = 0x89;
 pub const SDP_EVENT_QUERY_COMPLETE: u8 = 0x91;
 pub const SDP_EVENT_QUERY_RFCOMM_SERVICE: u8 = 0x92;
+pub const SDP_EVENT_QUERY_ATTRIBUTE_VALUE: u8 = 0x94;
 
 // ---- HCI opcodes ----
 pub const HCI_OPCODE_INQUIRY: u16 = 0x0401;

@@ -82,6 +82,8 @@ pub enum Source {
     Rfcomm,
     /// Results of [`Stack::sdp_query_rfcomm`]
     SdpClient,
+    /// Results of [`Stack::sdp_query_services`]
+    SdpServices,
 }
 
 impl Source {
@@ -99,6 +101,7 @@ impl Source {
             10 => Source::Hfp,
             11 => Source::Rfcomm,
             12 => Source::SdpClient,
+            13 => Source::SdpServices,
             _ => Source::Hci,
         }
     }

@@ -2075,6 +2075,13 @@ impl CoreState {
                 Ok(Value::Null)
             }
             Method::DeviceWindowsPaired => blocking(Box::new(|_| Ok(json(&windows_paired())))).await,
+            Method::DevicePairing { address } => crate::pairing::pairing(self, &address),
+            Method::DeviceServices { address } => {
+                blocking(Box::new(move |me| crate::pairing::services(me, &address))).await
+            }
+            Method::DeviceImportWindowsPairings { adapter } => {
+                blocking(Box::new(move |me| crate::pairing::import_windows(me, &adapter))).await
+            }
             Method::DeviceForget { address, le_audio } => {
                 blocking(Box::new(move |me| me.forget_device(&address, le_audio == Some(true)))).await
             }
