@@ -1,25 +1,29 @@
 //! A sample chip loader with its tests: the starting point for a new
-//! vendor (docs/chip-support.md, "Write the loader")
+//! vendor (docs/chip-support.md, "Step 4: Write the loader")
 //!
 //! It shows every piece a loader uses, for a made-up chip:
 //! 1. ask the controller what runs (standard Read Local Version)
 //! 2. done at once when the operational firmware runs already
 //! 3. read a chip register over USB ([`Action::UsbControl`]) to pick the
 //!    firmware file
-//! 4. read the file ([`FileReader`]) and send it in vendor commands, each
-//!    acknowledged with a Command Complete
-//! 5. start the firmware and finish ([`Action::Done`])
+//! 4. read the file ([`FileReader`]), check it, and send it in vendor
+//!    commands, each acknowledged with a Command Complete
+//! 5. start the firmware: a Command Complete, then a vendor event saying it
+//!    runs (two waits for one command)
+//! 6. finish ([`Action::Done`])
 //!
-//! Every opcode, request and file name below is invented for the example:
-//! no chip takes them. Compiled for the tests only, it never reaches a
-//! controller. Copy the file to `<vendor>.rs`, replace the made-up parts with
-//! what the chip's probe reports and captures show, and keep the test style:
-//! a simulated controller that answers what the real one did.
+//! Every opcode, request, register, event and file name marked "made up"
+//! is invented: no chip takes them. Compiled for the tests only, it never
+//! reaches a controller. Copy the file to `bt-host/src/<vendor>.rs`, rename
+//! `Loader`'s vendor, replace what is made up with what the chip's probe
+//! report and captures show, and keep the tests, with a simulated chip that
+//! answers what the real one did.
 
 use std::time::Instant;
 
 use crate::bringup::{
-    Action, ChipLoader, ControlData, ControlKind, ControlRecipient, ControlRequest, FileReader, LoadError, Outcome,
+    Action, ChipLoader, ControlData, ControlKind, ControlRecipient, ControlRequest, FileReader, HciEvent, LoadError,
+    Outcome, hci_command, parse_event,
 };
 
 const OP_READ_LOCAL_VERSION: u16 = 0x1001;
@@ -27,67 +31,59 @@ const OP_READ_LOCAL_VERSION: u16 = 0x1001;
 const OP_DOWNLOAD: u16 = 0xFC20;
 /// Made up: "start the downloaded firmware"
 const OP_LAUNCH: u16 = 0xFC21;
-
-const EVENT_COMMAND_COMPLETE: u8 = 0x0E;
-const EVENT_COMMAND_STATUS: u8 = 0x0F;
+/// Made up: the vendor event's first parameter when the firmware runs
+const EVENT_STARTED: u8 = 0x07;
 
 /// Made up: the LMP subversion the chip reports while it runs its ROM code
 const ROM_SUBVERSION: u16 = 0x1234;
-/// Made up: the vendor request that reads a chip register
+/// Made up: the vendor request that reads a chip register, and the register
 const REQUEST_READ_REGISTER: u8 = 0x01;
 const REGISTER_CHIP_ID: u16 = 0x0010;
+/// Made up: every firmware file starts with this
+const FILE_MAGIC: &[u8; 4] = b"SMPL";
 
-/// Data per download command: its parameter is the chunk index and up to
-/// this many bytes (HCI parameters are at most 255 bytes)
+/// Data per download command. Made up: its parameters are the chunk index
+/// and the data (real chips often take a byte offset instead); HCI
+/// parameters are at most 255 bytes
 const CHUNK: usize = 252;
 
 pub const COMMAND_TIMEOUT_MS: u32 = 2000;
+/// Made up: how long the firmware takes to report that it runs
+pub const START_TIMEOUT_MS: u32 = 3000;
 
-/// Where the loader is
+/// Where the loader is: each waiting state names what it waits for
 enum State {
     Idle,
+    /// Read Local Version sent
     Version,
+    /// The chip ID transfer asked for
     ChipId,
-    Downloading { file: String, chunks: Vec<Vec<u8>>, next: usize },
-    Launching { file: String },
+    /// Download commands, one after the other's Command Complete
+    Downloading {
+        file: String,
+        chunks: Vec<Vec<u8>>,
+        next: usize,
+    },
+    /// The launch command sent: its Command Complete next
+    Launching {
+        file: String,
+    },
+    /// Launch acknowledged: the "started" vendor event next
+    Starting {
+        file: String,
+    },
     Done,
 }
 
-pub struct SampleLoader {
+pub struct Loader {
     read_file: FileReader,
     state: State,
     started: Instant,
 }
 
-/// HCI command: opcode, length, parameters
-fn command(opcode: u16, params: &[u8]) -> Vec<u8> {
-    let mut c = opcode.to_le_bytes().to_vec();
-    c.push(params.len() as u8);
-    c.extend_from_slice(params);
-    c
-}
-
-/// The opcode and return parameters of a Command Complete, or the opcode and
-/// status of a failed Command Status
-enum Answer<'a> {
-    Complete(u16, &'a [u8]),
-    Failed(u16, u8),
-    Other,
-}
-
-fn answer(event: &[u8]) -> Answer<'_> {
-    match event {
-        [EVENT_COMMAND_COMPLETE, _, _, lo, hi, ret @ ..] => Answer::Complete(u16::from_le_bytes([*lo, *hi]), ret),
-        [EVENT_COMMAND_STATUS, _, status, _, lo, hi, ..] if *status != 0 => {
-            Answer::Failed(u16::from_le_bytes([*lo, *hi]), *status)
-        }
-        _ => Answer::Other,
-    }
-}
-
-impl SampleLoader {
-    pub fn new(read_file: FileReader) -> SampleLoader {
-        SampleLoader { read_file, state: State::Idle, started: Instant::now() }
+impl Loader {
+    pub fn new(read_file: FileReader) -> Loader {
+        Loader { read_file, state: State::Idle, started: Instant::now() }
     }
 
     fn finish(&mut self, result: Result<Outcome, LoadError>) -> Vec<Action> {
@@ -97,11 +93,12 @@ impl SampleLoader {
     }
 
     fn on_version(&mut self, ret: &[u8]) -> Vec<Action> {
-        // Status, HCI version, revision (2), LMP version, company (2), LMP
+        // HCI version, revision (2), LMP version, company (2), LMP
         // subversion (2)
-        let Some(subversion) = ret.get(7..9).map(|v| u16::from_le_bytes([v[0], v[1]])) else {
+        let Some(subversion) = ret.get(6..8).map(|v| u16::from_le_bytes([v[0], v[1]])) else {
             return self.finish(Err(LoadError::BadVersion));
         };
+        tracing::info!("sample chip: LMP subversion 0x{subversion:04X}");
         if subversion != ROM_SUBVERSION {
             return self.finish(Ok(Outcome::AlreadyRunning));
         }
@@ -117,48 +114,30 @@ impl SampleLoader {
     }
 
     fn on_chip_id(&mut self, id: u32) -> Vec<Action> {
+        tracing::info!("sample chip: chip ID 0x{id:08X}");
+        // The name only: the app also looks in the vendor's subfolder
         let file = format!("sample_{id:08x}.bin");
         let Some(data) = (self.read_file)(&file) else { return self.finish(Err(LoadError::MissingFile(file))) };
-        if data.is_empty() {
-            return self.finish(Err(LoadError::BadFile { file, why: "empty" }));
-        }
-        let chunks: Vec<Vec<u8>> = data
+        // Check the whole file before sending any of it
+        let Some(body) = data.strip_prefix(FILE_MAGIC).filter(|b| !b.is_empty()) else {
+            return self.finish(Err(LoadError::BadFile { file, why: "not a sample firmware file" }));
+        };
+        let chunks: Vec<Vec<u8>> = body
             .chunks(CHUNK)
             .enumerate()
             .map(|(i, part)| {
                 let mut params = vec![i as u8];
                 params.extend_from_slice(part);
-                command(OP_DOWNLOAD, &params)
+                hci_command(OP_DOWNLOAD, &params)
             })
             .collect();
-        tracing::info!("sample loader: {file}, {} bytes in {} commands", data.len(), chunks.len());
+        tracing::info!("sample loader: {file}, {} bytes in {} commands", body.len(), chunks.len());
         let first = chunks[0].clone();
         self.state = State::Downloading { file, chunks, next: 1 };
         vec![Action::Command(first), Action::Timer(COMMAND_TIMEOUT_MS)]
     }
-}
 
-impl ChipLoader for SampleLoader {
-    fn vendor(&self) -> &'static str {
-        "Sample"
-    }
-
-    fn start(&mut self) -> Vec<Action> {
-        self.started = Instant::now();
-        self.state = State::Version;
-        vec![Action::Command(command(OP_READ_LOCAL_VERSION, &[])), Action::Timer(COMMAND_TIMEOUT_MS)]
-    }
-
-    fn on_event(&mut self, event: &[u8]) -> Vec<Action> {
-        let (opcode, ret) = match answer(event) {
-            Answer::Complete(opcode, ret) => (opcode, ret),
-            Answer::Failed(opcode, status) => return self.finish(Err(LoadError::Command { opcode, status })),
-            Answer::Other => return Vec::new(),
-        };
-        let status = ret.first().copied().unwrap_or(0xFF);
-        if status != 0 {
-            return self.finish(Err(LoadError::Command { opcode, status }));
-        }
+    fn on_complete(&mut self, opcode: u16, ret: &[u8]) -> Vec<Action> {
         match (std::mem::replace(&mut self.state, State::Idle), opcode) {
             (State::Version, OP_READ_LOCAL_VERSION) => self.on_version(ret),
             (State::Downloading { file, chunks, next }, OP_DOWNLOAD) => match chunks.get(next) {
@@ -169,15 +148,51 @@ impl ChipLoader for SampleLoader {
                 }
                 None => {
                     self.state = State::Launching { file };
-                    vec![Action::Command(command(OP_LAUNCH, &[])), Action::Timer(COMMAND_TIMEOUT_MS)]
+                    vec![Action::Command(hci_command(OP_LAUNCH, &[])), Action::Timer(COMMAND_TIMEOUT_MS)]
                 }
             },
-            (State::Launching { file }, OP_LAUNCH) => self.finish(Ok(Outcome::Loaded { firmware: file, detail: None })),
+            // Acknowledged; the firmware says itself when it runs
+            (State::Launching { file }, OP_LAUNCH) => {
+                self.state = State::Starting { file };
+                vec![Action::Timer(START_TIMEOUT_MS)]
+            }
             // Not the answer the state waits for (a late one): ignored
             (state, _) => {
                 self.state = state;
                 Vec::new()
             }
+        }
+    }
+}
+
+impl ChipLoader for Loader {
+    fn vendor(&self) -> &'static str {
+        "Sample"
+    }
+
+    fn start(&mut self) -> Vec<Action> {
+        self.started = Instant::now();
+        self.state = State::Version;
+        vec![Action::Command(hci_command(OP_READ_LOCAL_VERSION, &[])), Action::Timer(COMMAND_TIMEOUT_MS)]
+    }
+
+    fn on_event(&mut self, event: &[u8]) -> Vec<Action> {
+        match parse_event(event) {
+            HciEvent::Complete { opcode, status: 0, ret } => self.on_complete(opcode, ret),
+            HciEvent::Complete { opcode, status, .. } | HciEvent::Status { opcode, status }
+                if status != 0 && !matches!(self.state, State::Idle | State::Done) =>
+            {
+                self.finish(Err(LoadError::Command { opcode, status }))
+            }
+            HciEvent::Vendor([EVENT_STARTED, ..]) => match std::mem::replace(&mut self.state, State::Idle) {
+                State::Starting { file } => self.finish(Ok(Outcome::Loaded { firmware: file, detail: None })),
+                state => {
+                    self.state = state;
+                    Vec::new()
+                }
+            },
+            // Other events (a successful Command Status, unrelated ones)
+            _ => Vec::new(),
         }
     }
 
@@ -186,6 +201,7 @@ impl ChipLoader for SampleLoader {
             State::Version => "Read Local Version",
             State::Downloading { .. } => "download",
             State::Launching { .. } => "launch",
+            State::Starting { .. } => "firmware start",
             State::Idle | State::ChipId | State::Done => return Vec::new(),
         };
         self.finish(Err(LoadError::Timeout(step)))
@@ -210,13 +226,15 @@ impl ChipLoader for SampleLoader {
     }
 }
 
-/// The tests drive the loader as the app does (crate::app run_loader)
-/// against a simulated controller: copy them along with the loader.
+/// The tests drive the loader with [`crate::bringup::sim::run`], which runs
+/// it as the app does, against a simulated chip: copy them along with the
+/// loader and replace the chip's answers with the real one's.
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, VecDeque};
+    use std::collections::HashMap;
 
     use super::*;
+    use crate::bringup::sim::{self, SimController, command_complete, vendor_event};
 
     /// What the made-up chip does
     struct Chip {
@@ -226,40 +244,34 @@ mod tests {
         reject_chunk: Option<(u8, u8)>,
         /// Commands it does not answer
         silent: Option<u16>,
-        received: Vec<Vec<u8>>,
+        /// Sends the "started" event after launching
+        starts: bool,
     }
 
     impl Chip {
         fn new() -> Chip {
-            Chip { rom: true, chip_id: Ok(0x0000_7961), reject_chunk: None, silent: None, received: Vec::new() }
+            Chip { rom: true, chip_id: Ok(0x0000_7961), reject_chunk: None, silent: None, starts: true }
         }
+    }
 
-        fn complete(opcode: u16, ret: &[u8]) -> Vec<u8> {
-            let [lo, hi] = opcode.to_le_bytes();
-            let mut e = vec![EVENT_COMMAND_COMPLETE, (3 + ret.len()) as u8, 1, lo, hi];
-            e.extend_from_slice(ret);
-            e
-        }
-
-        /// The events for a command; empty: silent
+    impl SimController for Chip {
         fn command(&mut self, c: &[u8]) -> Vec<Vec<u8>> {
-            self.received.push(c.to_vec());
-            let opcode = u16::from_le_bytes([c[0], c[1]]);
+            let opcode = sim::opcode(c);
             if self.silent == Some(opcode) {
                 return Vec::new();
             }
-            let ret = match opcode {
+            match opcode {
                 OP_READ_LOCAL_VERSION => {
                     let sub = if self.rom { ROM_SUBVERSION } else { 0x5678 }.to_le_bytes();
-                    vec![0, 12, 0, 0, 12, 0xFF, 0xFF, sub[0], sub[1]]
+                    vec![command_complete(opcode, 0, &[12, 0, 0, 12, 0xFF, 0xFF, sub[0], sub[1]])]
                 }
                 OP_DOWNLOAD => match self.reject_chunk {
-                    Some((index, status)) if c[3] == index => vec![status],
-                    _ => vec![0],
+                    Some((index, status)) if sim::params(c)[0] == index => vec![command_complete(opcode, status, &[])],
+                    _ => vec![command_complete(opcode, 0, &[])],
                 },
-                _ => vec![0],
-            };
-            vec![Chip::complete(opcode, &ret)]
+                OP_LAUNCH if self.starts => vec![command_complete(opcode, 0, &[]), vendor_event(&[EVENT_STARTED])],
+                _ => vec![command_complete(opcode, 0, &[])],
+            }
         }
 
         fn control(&mut self, r: &ControlRequest) -> Result<Vec<u8>, String> {
@@ -268,83 +280,74 @@ mod tests {
         }
     }
 
-    /// Runs the loader to its end -> its result
-    fn run(chip: &mut Chip, files: HashMap<&'static str, Vec<u8>>) -> Result<Outcome, LoadError> {
-        let mut loader = SampleLoader::new(Box::new(move |name| files.get(name).cloned()));
-        let mut actions: VecDeque<Action> = loader.start().into();
-        let mut timer = false;
-        loop {
-            let Some(action) = actions.pop_front() else {
-                // Nothing to do but wait: the timer fires
-                assert!(timer, "the loader waits without a timer");
-                timer = false;
-                actions.extend(loader.on_timeout());
-                continue;
-            };
-            match action {
-                Action::Command(c) => {
-                    for e in chip.command(&c) {
-                        actions.extend(loader.on_event(&e));
-                    }
-                }
-                Action::UsbControl(r) => {
-                    let result = chip.control(&r);
-                    for a in loader.on_control(result).into_iter().rev() {
-                        actions.push_front(a);
-                    }
-                }
-                Action::Timer(_) => timer = true,
-                Action::Done(result) => return result,
-                other => panic!("unexpected {other:?}"),
-            }
-        }
+    fn run(chip: &mut Chip, files: HashMap<&'static str, Vec<u8>>) -> sim::SimRun {
+        let mut loader = Loader::new(Box::new(move |name| files.get(name).cloned()));
+        sim::run(&mut loader, chip)
     }
 
     fn firmware(len: usize) -> HashMap<&'static str, Vec<u8>> {
-        HashMap::from([("sample_00007961.bin", (0..len).map(|i| i as u8).collect())])
+        let mut data = FILE_MAGIC.to_vec();
+        data.extend((0..len).map(|i| i as u8));
+        HashMap::from([("sample_00007961.bin", data)])
     }
 
     #[test]
-    fn loads_the_firmware_in_chunks_then_launches_it() {
-        let mut chip = Chip::new();
-        let r = run(&mut chip, firmware(600));
-        assert_eq!(r, Ok(Outcome::Loaded { firmware: "sample_00007961.bin".into(), detail: None }));
-        let ops: Vec<u16> = chip.received.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+    fn loads_the_firmware_in_chunks_then_starts_it() {
+        let r = run(&mut Chip::new(), firmware(600));
+        assert_eq!(r.result, Ok(Outcome::Loaded { firmware: "sample_00007961.bin".into(), detail: None }));
         // 600 bytes: 252 + 252 + 96
-        assert_eq!(ops, [OP_READ_LOCAL_VERSION, OP_DOWNLOAD, OP_DOWNLOAD, OP_DOWNLOAD, OP_LAUNCH]);
-        assert_eq!(chip.received[3][2] as usize, 1 + 96);
-        assert_eq!(chip.received[3][3], 2, "chunk index");
+        assert_eq!(r.opcodes(), [OP_READ_LOCAL_VERSION, OP_DOWNLOAD, OP_DOWNLOAD, OP_DOWNLOAD, OP_LAUNCH]);
+        assert_eq!(
+            sim::params(&r.commands[3]),
+            [&[2u8][..], &(504..600).map(|i| i as u8).collect::<Vec<_>>()].concat()
+        );
+        assert_eq!(r.controls.len(), 1);
+        assert_eq!(r.timeouts, 0);
     }
 
     #[test]
     fn nothing_to_do_when_the_firmware_runs() {
-        let mut chip = Chip { rom: false, ..Chip::new() };
-        assert_eq!(run(&mut chip, HashMap::new()), Ok(Outcome::AlreadyRunning));
-        assert_eq!(chip.received.len(), 1);
+        let r = run(&mut Chip { rom: false, ..Chip::new() }, HashMap::new());
+        assert_eq!(r.result, Ok(Outcome::AlreadyRunning));
+        assert_eq!(r.opcodes(), [OP_READ_LOCAL_VERSION]);
     }
 
     #[test]
     fn names_the_missing_file() {
-        let mut chip = Chip::new();
-        assert_eq!(run(&mut chip, HashMap::new()), Err(LoadError::MissingFile("sample_00007961.bin".into())));
+        let r = run(&mut Chip::new(), HashMap::new());
+        assert_eq!(r.result, Err(LoadError::MissingFile("sample_00007961.bin".into())));
+    }
+
+    #[test]
+    fn checks_the_file_before_sending_any_of_it() {
+        let r = run(&mut Chip::new(), HashMap::from([("sample_00007961.bin", b"MZ\x90\x00".to_vec())]));
+        assert!(matches!(r.result, Err(LoadError::BadFile { .. })), "{:?}", r.result);
+        assert_eq!(r.opcodes(), [OP_READ_LOCAL_VERSION], "nothing of it sent");
     }
 
     #[test]
     fn stops_at_a_rejected_chunk() {
-        let mut chip = Chip { reject_chunk: Some((1, 0x12)), ..Chip::new() };
-        assert_eq!(run(&mut chip, firmware(600)), Err(LoadError::Command { opcode: OP_DOWNLOAD, status: 0x12 }));
+        let r = run(&mut Chip { reject_chunk: Some((1, 0x12)), ..Chip::new() }, firmware(600));
+        assert_eq!(r.result, Err(LoadError::Command { opcode: OP_DOWNLOAD, status: 0x12 }));
+        assert_eq!(r.opcodes().len(), 3, "no chunk after the rejected one");
     }
 
     #[test]
     fn a_silent_controller_times_out() {
-        let mut chip = Chip { silent: Some(OP_LAUNCH), ..Chip::new() };
-        assert_eq!(run(&mut chip, firmware(10)), Err(LoadError::Timeout("launch")));
+        let r = run(&mut Chip { silent: Some(OP_DOWNLOAD), ..Chip::new() }, firmware(10));
+        assert_eq!(r.result, Err(LoadError::Timeout("download")));
+    }
+
+    #[test]
+    fn a_firmware_that_never_says_it_runs_times_out() {
+        let r = run(&mut Chip { starts: false, ..Chip::new() }, firmware(10));
+        assert_eq!(r.result, Err(LoadError::Timeout("firmware start")));
     }
 
     #[test]
     fn a_failed_usb_transfer_ends_it() {
         // Over H4 (the emulator) every control transfer fails like this
-        let mut chip = Chip { chip_id: Err("not a USB transport".into()), ..Chip::new() };
-        assert!(matches!(run(&mut chip, firmware(10)), Err(LoadError::Host(_))));
+        let r = run(&mut Chip { chip_id: Err("not a USB transport".into()), ..Chip::new() }, firmware(10));
+        assert!(matches!(r.result, Err(LoadError::Host(_))));
     }
 }

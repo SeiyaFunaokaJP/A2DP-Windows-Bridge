@@ -49,7 +49,11 @@ the result to `on_control` before the next action. Control transfers are not
 HCI packets, so `Stack::raw_control` writes each one with its result to the
 HCI capture as a log line, keeping the whole sequence in order there.
 
-`bringup/sample.rs` is a complete loader for a made-up chip with tests
+`bringup.rs` also has `hci_command` / `parse_event`, and `bringup/sim.rs`
+runs a loader against a simulated controller with the runner's rules (the
+timer, `UsbControl` before the next action), so loader tests do not copy
+their own driver. `bringup/sample.rs` is a complete loader for a made-up
+chip with tests
 against a simulated controller. It is compiled for the tests only.
 
 ## 2. Chip probe

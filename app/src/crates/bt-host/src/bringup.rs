@@ -1,16 +1,15 @@
 //! Controller bring-up before HCI init: what every chip loader shares
 //!
 //! Some controllers need the host to do something before HCI init can run:
-//! download firmware to a bootloader (Intel), or later read what an
-//! unsupported chip is (the probe, docs/chip-bringup-dev.md). A loader is a
-//! state machine fed with the controller's HCI events and its timer; it
-//! answers with [`Action`]s that the app carries out on the raw transport
+//! download firmware to a bootloader (Intel), or read what an unsupported
+//! chip is (crate::probe). A loader is a state machine fed with the
+//! controller's HCI events, the results of its USB requests and its timer;
+//! it answers with [`Action`]s that the app carries out on the raw transport
 //! (`Stack::raw_begin`), so its packets are in the HCI capture too.
 //!
-//! Plain data and std only: a loader can be tested against a simulated
-//! controller (tests/intel.rs). [`sample`] is a complete loader with its
-//! tests to start a new one from (docs/chip-bringup-dev.md, "Adding a
-//! vendor").
+//! Plain data and std only: a loader is tested against a simulated
+//! controller ([`sim`]). `bringup/sample.rs` is a complete loader with its
+//! tests to start a new one from (docs/chip-support.md).
 
 use std::fmt;
 
@@ -18,9 +17,50 @@ pub use btstack_sys::{ControlData, ControlKind, ControlRecipient, ControlRequest
 
 #[cfg(test)]
 mod sample;
+pub mod sim;
 
-/// Reads a file of the firmware folder by name ("ibt-0040-0041.sfi")
+/// Reads a file of the firmware folder by name, without a folder
+/// ("ibt-0040-0041.sfi"): the app looks in the firmware folder and in the
+/// vendor's subfolder there ("intel\"), as linux-firmware has them
 pub type FileReader = Box<dyn FnMut(&str) -> Option<Vec<u8>>>;
+
+/// An HCI command as sent: opcode, length, parameters
+pub fn hci_command(opcode: u16, params: &[u8]) -> Vec<u8> {
+    let mut c = opcode.to_le_bytes().to_vec();
+    c.push(params.len() as u8);
+    c.extend_from_slice(params);
+    c
+}
+
+/// An HCI event as a loader reads it ([`parse_event`])
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HciEvent<'a> {
+    /// Command Complete: the command, its status, the return parameters
+    /// after the status
+    Complete { opcode: u16, status: u8, ret: &'a [u8] },
+    /// Command Status (a command whose result comes later, or a refused one)
+    Status { opcode: u16, status: u8 },
+    /// A vendor event (code 0xFF): its parameters
+    Vendor(&'a [u8]),
+    /// Any other event: code and parameters
+    Other { code: u8, params: &'a [u8] },
+}
+
+/// Reads an event as received (code, length, parameters); a truncated one
+/// is [`HciEvent::Other`]
+pub fn parse_event(event: &[u8]) -> HciEvent<'_> {
+    let code = event.first().copied().unwrap_or(0);
+    let len = event.get(1).copied().unwrap_or(0) as usize;
+    let params = event.get(2..2 + len).unwrap_or(&[]);
+    match (code, params) {
+        (0x0E, [_, lo, hi, status, ret @ ..]) => {
+            HciEvent::Complete { opcode: u16::from_le_bytes([*lo, *hi]), status: *status, ret }
+        }
+        (0x0F, [status, _, lo, hi]) => HciEvent::Status { opcode: u16::from_le_bytes([*lo, *hi]), status: *status },
+        (0xFF, params) => HciEvent::Vendor(params),
+        (code, params) => HciEvent::Other { code, params },
+    }
+}
 
 /// What the caller does for a [`ChipLoader`]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,7 +71,11 @@ pub enum Action {
     /// bootloader takes Secure Send
     BulkCommand(Vec<u8>),
     /// The controller runs its bootloader (events also on the bulk IN pipe,
-    /// no HCI Reset), or no longer
+    /// no HCI Reset when the adapter is closed), or no longer. Turn it on
+    /// before the first command for a chip whose loader answers on the bulk
+    /// pipe or does not take HCI Reset, and off once the operational
+    /// firmware runs; a failed download leaves it on. ROM chips that answer
+    /// HCI normally do not need it.
     Bootloader(bool),
     /// (Re)start the loader's timer: [`ChipLoader::on_timeout`] when it fires
     Timer(u32),
@@ -112,7 +156,8 @@ impl std::error::Error for LoadError {}
 
 /// A controller bring-up: [`start`](Self::start), then every HCI event to
 /// [`on_event`](Self::on_event) and the timer to
-/// [`on_timeout`](Self::on_timeout), until [`Action::Done`]
+/// [`on_timeout`](Self::on_timeout), until [`Action::Done`]. The app drops
+/// the loader at Done: a late answer never reaches it.
 pub trait ChipLoader {
     /// The vendor, for log lines ("Intel")
     fn vendor(&self) -> &'static str;
