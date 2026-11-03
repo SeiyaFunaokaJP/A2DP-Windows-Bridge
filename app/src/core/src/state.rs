@@ -393,8 +393,13 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c
 }
 
-/// What the UI tells about an adapter's firmware besides Realtek's files
-fn vendor_note(vendor: ChipVendor) -> Option<Msg> {
+/// What the UI tells about an adapter's firmware besides Realtek's files.
+/// Per chip: a vendor's chips without a loader stay unsupported when others
+/// have one (bt_host::chips::LOADER_CHIPS)
+fn vendor_note(vendor: ChipVendor, vid: u16, pid: u16) -> Option<Msg> {
+    if !chips::chip_supported(vendor, vid, pid) {
+        return Some(Msg::new("firmware.vendor_unsupported"));
+    }
     let key = match vendor {
         ChipVendor::Intel => "firmware.vendor_intel",
         ChipVendor::Broadcom => "firmware.vendor_broadcom",
@@ -419,7 +424,7 @@ fn le_audio_now(running: Option<bool>, adapters: &[AdapterInfo]) -> Option<bool>
 /// another known vendor (MediaTek, Intel, ...) gets none, else it showed the
 /// Realtek adapter's "Firmware OK" (issue #86)
 fn adapter_chip(vendor: ChipVendor, realtek_pid: Option<u16>, settings: &CoreSettings) -> (u16, &str) {
-    if vendor_note(vendor).is_some() {
+    if !matches!(vendor, ChipVendor::Realtek | ChipVendor::Unknown) {
         return (0, "");
     }
     (chips::resolve_chip_pid(settings.bt_chip_pid, &settings.bt_chip_fw_stem, [realtek_pid]), &settings.bt_chip_fw_stem)
@@ -512,7 +517,7 @@ fn adapter_infos(config_dir: &Path, settings: &CoreSettings) -> Vec<AdapterInfo>
                 firmware_download: files.as_ref().is_some_and(|(f, _)| a2dpwb_core::firmware::available(f)),
                 firmware_files: files.map(|(f, c)| vec![f, c]).unwrap_or_default(),
                 firmware_invalid: check.and_then(|c| c.invalid_file),
-                vendor_note: vendor_note(a.vendor),
+                vendor_note: vendor_note(a.vendor, a.device.vid, a.device.pid),
                 restart_needed: a.device.problem_code == Some(CM_PROB_NEED_RESTART),
                 le_audio: a2dpwb_core::adapter::le_audio(config_dir, a.device.vid, a.device.pid),
                 // What Windows' radio of this very device reads now, else
@@ -3267,9 +3272,9 @@ mod tests {
 
     #[test]
     fn vendors_get_their_notes() {
-        assert_eq!(vendor_note(ChipVendor::Intel).unwrap().key, "firmware.vendor_intel");
-        assert_eq!(vendor_note(ChipVendor::Qualcomm).unwrap().key, "firmware.vendor_unsupported");
-        assert!(vendor_note(ChipVendor::Realtek).is_none());
+        assert_eq!(vendor_note(ChipVendor::Intel, 0x8087, 0x0033).unwrap().key, "firmware.vendor_intel");
+        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0CF3, 0xE300).unwrap().key, "firmware.vendor_unsupported");
+        assert!(vendor_note(ChipVendor::Realtek, 0x0BDA, 0x8771).is_none());
     }
 
     #[test]

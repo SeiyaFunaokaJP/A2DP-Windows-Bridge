@@ -1,5 +1,5 @@
-//! Chip probe: what a controller answers to the standard read commands,
-//! recorded byte for byte (docs/chip-bringup-dev.md)
+//! Chip probe: what a controller answers to standard read requests,
+//! recorded byte for byte (docs/chip-support.md)
 //!
 //! For adapters A2DPWB cannot bring up yet (MediaTek, Qualcomm) and for
 //! reports of odd ones: whoever adds a loader sees what the chip says. The
@@ -8,27 +8,33 @@
 //! a controller that answers nothing yields a report of timeouts, which says
 //! something too.
 //!
+//! The steps: the standard HCI read commands, then over USB the device
+//! descriptor and the manufacturer and product strings it names (standard
+//! GET_DESCRIPTOR requests on the default pipe). The app adds the USB
+//! descriptors Windows keeps ([`ProbeReport::usb`]).
+//!
 //! [`Probe`] is a [`ChipLoader`]: the app runs it on the raw transport in
 //! place of HCI init ([`crate::BtHost::probe`]), so its packets are in the
 //! HCI capture as well.
 
+use std::collections::VecDeque;
 use std::time::Instant;
 
-use crate::bringup::{Action, ChipLoader, Outcome};
+use crate::bringup::{Action, ChipLoader, ControlRequest, Outcome, UsbDescriptors};
 use crate::chips;
 
 const EVENT_COMMAND_COMPLETE: u8 = 0x0E;
 const EVENT_COMMAND_STATUS: u8 = 0x0F;
 
-/// Answer to one step
+/// Answer to one HCI step
 pub const STEP_TIMEOUT_MS: u32 = 1000;
 
 /// Events kept that answer no step (a bootloader's vendor events)
 const MAX_OTHER_EVENTS: usize = 32;
 
-/// The steps: read commands every controller should take (Core spec Vol 4
-/// Part E 7.4, 7.3.12, 7.8.2 / 7.8.3)
-const STEPS: [(&str, u16); 8] = [
+/// The HCI steps: read commands every controller should take (Core spec
+/// Vol 4 Part E 7.4, 7.3.12, 7.8.2 / 7.8.3)
+const HCI_STEPS: [(&str, u16); 8] = [
     ("Read Local Version Information", 0x1001),
     ("Read BD_ADDR", 0x1009),
     ("Read Local Supported Commands", 0x1002),
@@ -39,21 +45,40 @@ const STEPS: [(&str, u16); 8] = [
     ("LE Read Buffer Size", 0x2002),
 ];
 
-/// One command and what came back
+const USB_DEVICE_DESCRIPTOR: &str = "USB device descriptor";
+const USB_MANUFACTURER: &str = "USB manufacturer string";
+const USB_PRODUCT: &str = "USB product string";
+
+/// How a step reached the adapter
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepKind {
+    /// An HCI command; the answer is its event
+    Hci,
+    /// A USB control transfer; `command` is its SETUP packet, the answer
+    /// the bytes read
+    Usb,
+}
+
+/// One request and what came back
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProbeStep {
     pub name: &'static str,
-    /// The HCI command as sent (opcode, length, parameters)
+    pub kind: StepKind,
+    /// HCI: the command as sent (opcode, length, parameters); USB: the SETUP
+    /// packet
     pub command: Vec<u8>,
-    /// The event that answered it (Command Complete or Command Status), as
-    /// received; None: no answer within [`STEP_TIMEOUT_MS`]
+    /// HCI: the event that answered it (Command Complete or Command Status)
+    /// as received; USB: the bytes read. None: no answer (HCI: none within
+    /// [`STEP_TIMEOUT_MS`]; USB: see `error`)
     pub answer: Option<Vec<u8>>,
+    /// Why a USB transfer failed
+    pub error: Option<String>,
     pub millis: u32,
 }
 
 impl ProbeStep {
-    fn opcode(&self) -> u16 {
-        u16::from_le_bytes([self.command[0], self.command[1]])
+    fn opcode(&self) -> Option<u16> {
+        (self.kind == StepKind::Hci).then(|| u16::from_le_bytes([self.command[0], self.command[1]]))
     }
 
     /// The return parameters of a successful Command Complete
@@ -75,6 +100,8 @@ pub struct ProbeReport {
     /// Why the probe stopped early (the adapter could not be opened, a
     /// command could not be sent)
     pub error: Option<String>,
+    /// The USB descriptors Windows keeps for the adapter (None over H4)
+    pub usb: Option<UsbDescriptors>,
 }
 
 /// The decoded fields of a [`ProbeReport`]
@@ -92,13 +119,37 @@ pub struct ProbeSummary {
     /// ACL data packet length and count
     pub acl_buffers: Option<(u16, u16)>,
     pub le_acl_buffers: Option<(u16, u8)>,
+    /// From the USB device descriptor
+    pub usb_ids: Option<(u16, u16)>,
+    pub usb_manufacturer: Option<String>,
+    pub usb_product: Option<String>,
     pub answered: usize,
     pub steps: usize,
 }
 
+/// A USB string descriptor's text (UTF-16LE after the 2-byte header)
+fn usb_string(d: &[u8]) -> Option<String> {
+    let len = (*d.first()? as usize).min(d.len());
+    if len < 2 || d.get(1) != Some(&0x03) {
+        return None;
+    }
+    let (pairs, _) = d[2..len].as_chunks::<2>();
+    let units: Vec<u16> = pairs.iter().map(|&c| u16::from_le_bytes(c)).collect();
+    Some(String::from_utf16_lossy(&units))
+}
+
+/// iManufacturer and iProduct of a device descriptor
+fn string_indexes(d: &[u8]) -> Option<(u8, u8)> {
+    (d.len() >= 18 && d[1] == 0x01).then(|| (d[14], d[15]))
+}
+
 impl ProbeReport {
     fn ret(&self, opcode: u16) -> Option<&[u8]> {
-        self.steps.iter().find(|s| s.opcode() == opcode).and_then(ProbeStep::ret)
+        self.steps.iter().find(|s| s.opcode() == Some(opcode)).and_then(ProbeStep::ret)
+    }
+
+    fn usb_answer(&self, name: &str) -> Option<&[u8]> {
+        self.steps.iter().find(|s| s.kind == StepKind::Usb && s.name == name).and_then(|s| s.answer.as_deref())
     }
 
     pub fn summary(&self) -> ProbeSummary {
@@ -129,14 +180,25 @@ impl ProbeReport {
         if let Some(b) = self.ret(0x2002).filter(|b| b.len() >= 3) {
             s.le_acl_buffers = le16(b, 0).map(|len| (len, b[2]));
         }
+        if let Some(d) = self.usb_answer(USB_DEVICE_DESCRIPTOR).filter(|d| string_indexes(d).is_some()) {
+            s.usb_ids = le16(d, 8).zip(le16(d, 10));
+        }
+        s.usb_manufacturer = self.usb_answer(USB_MANUFACTURER).and_then(usb_string);
+        s.usb_product = self.usb_answer(USB_PRODUCT).and_then(usb_string);
         s
     }
 }
 
-/// The probe as a [`ChipLoader`]: one step at a time, each answered or timed
-/// out, then [`Outcome::Probed`]; the report from [`Probe::report`]
+enum Planned {
+    Hci(&'static str, u16),
+    Usb(&'static str, ControlRequest),
+}
+
+/// The probe as a [`ChipLoader`]: one step at a time, each answered, timed
+/// out or failed, then [`Outcome::Probed`]; the report from
+/// [`ChipLoader::take_report`]
 pub struct Probe {
-    next: usize,
+    plan: VecDeque<Planned>,
     sent: Option<Instant>,
     report: ProbeReport,
     started: Instant,
@@ -151,7 +213,9 @@ impl Default for Probe {
 
 impl Probe {
     pub fn new() -> Probe {
-        Probe { next: 0, sent: None, report: ProbeReport::default(), started: Instant::now(), done: false }
+        let mut plan: VecDeque<Planned> = HCI_STEPS.iter().map(|&(name, op)| Planned::Hci(name, op)).collect();
+        plan.push_back(Planned::Usb(USB_DEVICE_DESCRIPTOR, ControlRequest::device_descriptor()));
+        Probe { plan, sent: None, report: ProbeReport::default(), started: Instant::now(), done: false }
     }
 
     pub fn report(&self) -> &ProbeReport {
@@ -159,24 +223,45 @@ impl Probe {
     }
 
     fn send_next(&mut self) -> Vec<Action> {
-        let Some(&(name, opcode)) = STEPS.get(self.next) else {
+        let Some(step) = self.plan.pop_front() else {
             self.done = true;
             self.sent = None;
             self.report.millis = self.started.elapsed().as_millis() as u32;
             tracing::info!(
-                "chip probe: {} of {} commands answered in {} ms",
+                "chip probe: {} of {} requests answered in {} ms",
                 self.report.steps.iter().filter(|s| s.answer.is_some()).count(),
                 self.report.steps.len(),
                 self.report.millis
             );
             return vec![Action::Done(Ok(Outcome::Probed))];
         };
-        self.next += 1;
-        let [lo, hi] = opcode.to_le_bytes();
-        let command = vec![lo, hi, 0];
-        self.report.steps.push(ProbeStep { name, command: command.clone(), answer: None, millis: 0 });
         self.sent = Some(Instant::now());
-        vec![Action::Command(command), Action::Timer(STEP_TIMEOUT_MS)]
+        match step {
+            Planned::Hci(name, opcode) => {
+                let [lo, hi] = opcode.to_le_bytes();
+                let command = vec![lo, hi, 0];
+                self.report.steps.push(ProbeStep {
+                    name,
+                    kind: StepKind::Hci,
+                    command: command.clone(),
+                    answer: None,
+                    error: None,
+                    millis: 0,
+                });
+                vec![Action::Command(command), Action::Timer(STEP_TIMEOUT_MS)]
+            }
+            Planned::Usb(name, request) => {
+                self.report.steps.push(ProbeStep {
+                    name,
+                    kind: StepKind::Usb,
+                    command: request.setup_packet().to_vec(),
+                    answer: None,
+                    error: None,
+                    millis: 0,
+                });
+                vec![Action::UsbControl(request)]
+            }
+        }
     }
 
     /// The opcode an event answers (Command Complete / Status), if any
@@ -187,6 +272,10 @@ impl Probe {
             _ => None,
         }
     }
+
+    fn elapsed(&self) -> u32 {
+        self.sent.map_or(0, |t| t.elapsed().as_millis() as u32)
+    }
 }
 
 impl ChipLoader for Probe {
@@ -195,21 +284,26 @@ impl ChipLoader for Probe {
     }
 
     fn start(&mut self) -> Vec<Action> {
-        tracing::info!("chip probe: {} read commands, no HCI Reset", STEPS.len());
         *self = Probe::new();
-        self.send_next()
+        tracing::info!("chip probe: {} HCI read commands and the USB descriptors, no HCI Reset", HCI_STEPS.len());
+        // Bootloader mode: closing the adapter afterwards sends no HCI Reset
+        // either, and events on the bulk IN pipe (a bootloader's) count too
+        let mut actions = vec![Action::Bootloader(true)];
+        actions.extend(self.send_next());
+        actions
     }
 
     fn on_event(&mut self, event: &[u8]) -> Vec<Action> {
         if self.done {
             return Vec::new();
         }
-        let current = self.sent.and_then(|_| self.report.steps.last_mut());
+        let millis = self.elapsed();
+        let current = self.sent.and_then(|_| self.report.steps.last_mut()).filter(|s| s.kind == StepKind::Hci);
         match current {
-            Some(step) if Probe::answers(event) == Some(step.opcode()) => {
-                step.millis = self.sent.map_or(0, |t| t.elapsed().as_millis() as u32);
+            Some(step) if Probe::answers(event) == step.opcode() => {
+                step.millis = millis;
                 step.answer = Some(event.to_vec());
-                tracing::debug!("chip probe: {} answered in {} ms", step.name, step.millis);
+                tracing::debug!("chip probe: {} answered in {millis} ms", step.name);
                 self.send_next()
             }
             _ => {
@@ -228,6 +322,37 @@ impl ChipLoader for Probe {
         if let Some(step) = self.report.steps.last_mut() {
             step.millis = STEP_TIMEOUT_MS;
             tracing::info!("chip probe: no answer to {}", step.name);
+        }
+        self.send_next()
+    }
+
+    fn on_control(&mut self, result: Result<Vec<u8>, String>) -> Vec<Action> {
+        if self.done {
+            return Vec::new();
+        }
+        let millis = self.elapsed();
+        let Some(step) = self.report.steps.last_mut().filter(|s| s.kind == StepKind::Usb) else {
+            return Vec::new();
+        };
+        step.millis = millis;
+        match result {
+            Ok(data) => {
+                // The device descriptor names its strings
+                if step.name == USB_DEVICE_DESCRIPTOR
+                    && let Some((manufacturer, product)) = string_indexes(&data)
+                {
+                    for (name, index) in [(USB_MANUFACTURER, manufacturer), (USB_PRODUCT, product)] {
+                        if index != 0 {
+                            self.plan.push_back(Planned::Usb(name, ControlRequest::string_descriptor(index)));
+                        }
+                    }
+                }
+                step.answer = Some(data);
+            }
+            Err(e) => {
+                tracing::info!("chip probe: {}: {e}", step.name);
+                step.error = Some(e);
+            }
         }
         self.send_next()
     }

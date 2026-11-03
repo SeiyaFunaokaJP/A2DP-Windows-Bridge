@@ -93,7 +93,7 @@ Shown while **Settings > Developer mode** is on; most users never need it. It is
 
 - The detected USB Bluetooth adapters with their chip, address, USB ID, Bluetooth version, **Driver** and **Firmware**; the list updates by itself when an adapter is plugged in or out. The driver is **Original driver** (the one Windows or the manufacturer installed; hover for its name) or **WinUSB driver** (the one A2DPWB uses). A Realtek adapter shows its address, from its USB serial number, even before it was used; for the others the address and Bluetooth version show once Windows' Bluetooth or A2DPWB has used the adapter (hover over the line for why). An adapter A2DPWB cannot use (MediaTek, Qualcomm) keeps its driver: its WinUSB and firmware buttons are disabled. In developer mode WinUSB can be assigned to it anyway, and **Read chip info** on an adapter with WinUSB saves what its chip answers to a few read commands to `logs\probe\`, for whoever adds support for it (Bluetooth stops for it and starts again when next used)
 - **Replace with WinUSB driver** / **Restore original driver** (see [Setup](setup#winusb)); Windows asks for administrator permission each time
-- **Bluetooth Chip** for the firmware, with **Download Firmware**, **Open Download Page** and **Open Config Folder** (see [Firmware](setup#firmware))
+- **Bluetooth Chip** for the firmware, with **Download Firmware**, **Open Download Page** and **Open Firmware Folder** (see [Firmware](setup#firmware))
 - **Avoid Wi-Fi channels**: Auto, Off or Manual, with the Wi-Fi channels beside it: the ones Auto avoids now and nothing for Off (both read only), the ones you type for Manual (see [Link Quality and AFH](#link-quality))
 - **Bluetooth stack**: stopped (it starts with the first scan or connection), starting, ready or error, and **Restart Bluetooth**
 
@@ -105,7 +105,7 @@ Shown while **Settings > Developer mode** is on; most users never need it. It is
 | Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray** and **Open the tray window from** (see [Tray and Flyout](#tray)) |
 | Notifications | **Notify when a device connects** (the device, its battery, the codec and what it runs with; on by default), **Notify when the battery is low**: **Below 20%** (the default), **Below 10%**, **Below 5%** or **Never**, once per connection (again only after the battery was back 5 points above) |
 | Updates | **Check for Updates**, **Check for Updates on Startup**, **Include Pre-releases in Update Checks** (also offer beta releases), **Update now** (see [Updates](#updates)) |
-| Advanced | **Developer mode** (adds the [Developer](#developer) screen with codec overrides, each device's **Max media packet size**, the SBC **Frame setup** in the codec settings, logging options and the peer receiver test, and more details to the log; no restart needed), **Settings folder** with **Open Config Folder**, **Run setup** |
+| Advanced | **Developer mode** (adds the [Developer](#developer) screen with codec overrides, each device's **Max media packet size**, the SBC **Frame setup** in the codec settings, logging options and the peer receiver test, and more details to the log; no restart needed), **Settings folder** with **Open Settings Folder**, **Run setup** |
 | About A2DP Windows Bridge | Version, license, third-party licenses, **Quit A2DP Windows Bridge** |
 
 ### First-Run Setup

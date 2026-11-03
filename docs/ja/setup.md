@@ -156,7 +156,7 @@ Realtek 以外のアダプターに Realtek チップや Custom を選ばない�
 | CSR | CSR8510 汎用ドングル | そのまま動作、ファームウェア不要 |
 | Broadcom | ASUS BT400 (BCM20702) | *試験的。* Bluetooth クラス `E0/01/01` ではなくベンダークラス `FF/01/01` を名乗るアダプタ（BCM20702 の OEM ドングル）も検出。ROM ファームウェアで動作。設定フォルダに PatchRAM `.hcd`（例: `BCM20702A1-0b05-17cb.hcd`）があれば起動時に適用 |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *試験的。* ブートローダーモード（コールドブート後など）では linux-firmware `intel/` の対応する `ibt-*.sfi` + `ibt-*.ddc` を設定フォルダに配置する必要あり。必要なファイル名はログに出ます（例: `ibt-0180-0041.sfi`）。検証済みは今のところ AX211 のみ |
-| MediaTek、Qualcomm | MT7921/MT7922、QCA61x4 | 未対応: A2DPWB にないファームウェアローダーが必要 |
+| MediaTek、Qualcomm | MT7921/MT7922、QCA61x4 | 未対応: A2DPWB にないファームウェアローダーが必要（[対応の追加に協力する](chip-support)） |
 
 USB Bluetooth 5.0 以上のアダプターは、LDAC のような高ビットレートコーデックに最適です。
 

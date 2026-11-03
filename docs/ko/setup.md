@@ -156,7 +156,7 @@ Realtek이 아닌 어댑터에는 Realtek 칩이나 Custom을 선택하지 마�
 | CSR | 일반 CSR8510 동글 | 바로 작동하며 펌웨어 불필요 |
 | Broadcom | ASUS BT400 (BCM20702) | *실험적.* Bluetooth `E0/01/01` 대신 벤더 클래스 `FF/01/01`을 보고하는 어댑터(BCM20702 OEM 동글)도 감지됩니다. ROM 펌웨어로 작동하며, 설정 폴더에 선택적인 PatchRAM `.hcd`(예: `BCM20702A1-0b05-17cb.hcd`)가 있으면 시작 시 업로드됩니다 |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *실험적.* 부트로더 모드(예: 콜드 부팅 직후)에서는 linux-firmware `intel/`의 해당 `ibt-*.sfi` + `ibt-*.ddc`가 설정 폴더에 필요합니다. 필요한 파일 이름은 로그에 나옵니다(예: `ibt-0180-0041.sfi`). 지금까지 테스트된 것은 AX211뿐입니다 |
-| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | 미지원: A2DPWB에 없는 펌웨어 로더가 필요합니다 |
+| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | 미지원: A2DPWB에 없는 펌웨어 로더가 필요합니다 ([지원 추가 돕기](chip-support)) |
 
 LDAC 같은 고비트레이트 코덱에는 일반적으로 USB Bluetooth 5.0 이상 어댑터가 가장 적합합니다.
 
