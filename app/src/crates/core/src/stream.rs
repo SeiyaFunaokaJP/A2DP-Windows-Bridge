@@ -1299,16 +1299,19 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // OPPO earbuds that cap LHDC V5: asked for, not for Auto, and only when
     // the profile wants more than the 400 kbps they may give anyway. Nothing
     // gained: earbuds that had Hi-Res off get it back, and a connection after it.
+    // Once a run per earbuds that took the write, as each costs a connection.
     if req.codec == Some(CodecKind::LhdcV5)
         && req.quality != Quality::Mobile
         && !req.abr
         && remote.listed_max_bitrate(CodecKind::LhdcV5) != 0
         && remote.audio_sinks_in_use == 0
         && vendor::oppo::is_oppo(&req.device_name)
+        && !vendor::oppo::asked(req.device)
         && !stopped()
     {
         inner.notify(StreamState::Connecting, Msg::new("status.oppo_hi_res"));
         if let Some(before) = vendor::oppo::ask_for_hi_res(&host, req.device) {
+            vendor::oppo::mark_asked(req.device);
             let listed = remote.listed_max_bitrate(CodecKind::LhdcV5);
             let mut result = connect_again();
             if before == 0

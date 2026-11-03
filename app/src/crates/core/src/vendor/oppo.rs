@@ -11,9 +11,12 @@
 //! sequence, its payload starts with a status (0: fine). A long one comes in
 //! pieces, `01` first and `03` last, each with 3 bytes before its data.
 //!
-//! Writes are for the models LHDC-Switch tried them on.
+//! LHDC-Switch writes only to the two models it was tried on. Here any earbuds
+//! that report the write in their capabilities get it (issue #237: an Enco X4
+//! with Hi-Res off was left out): a write that brings nothing is undone.
 
 use std::collections::VecDeque;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use bt_host::BtHost;
@@ -48,9 +51,6 @@ const CAN_WRITE_FEATURES: usize = 7;
 const CAN_READ_CODEC: usize = 17;
 const CAN_WRITE_CODEC: usize = 37;
 
-/// Enco Free4, and their Dynaudio edition
-const VERIFIED_PRODUCTS: [u32; 2] = [0x06_8C10, 0x06_C010];
-
 /// From opening the channel to the first read
 const OPEN_SETTLE: Duration = Duration::from_millis(300);
 /// Between requests
@@ -59,6 +59,23 @@ const REQUEST_GAP: Duration = Duration::from_millis(200);
 const ANSWER_TIMEOUT: Duration = Duration::from_millis(3500);
 /// Longest packet accepted (more: not a packet start)
 const MAX_LENGTH: usize = 4096;
+
+/// Earbuds that took a write in this run: they keep what it brought, or had
+/// it undone, so they are not asked again on each connection
+static ASKED: Mutex<Vec<[u8; 6]>> = Mutex::new(Vec::new());
+
+/// Whether the earbuds took a write in this run already
+pub fn asked(addr: [u8; 6]) -> bool {
+    ASKED.lock().unwrap_or_else(|e| e.into_inner()).contains(&addr)
+}
+
+/// Marks the earbuds as having taken a write
+pub fn mark_asked(addr: [u8; 6]) {
+    let mut asked = ASKED.lock().unwrap_or_else(|e| e.into_inner());
+    if !asked.contains(&addr) {
+        asked.push(addr);
+    }
+}
 
 /// Earbuds of this protocol, by their name
 pub fn is_oppo(device_name: &str) -> bool {
@@ -177,7 +194,6 @@ fn feature(features: &[u8], id: u8) -> Option<u8> {
 
 /// The earbuds as they report themselves
 struct State {
-    product: u32,
     capabilities: Vec<u8>,
     hi_res: Option<u8>,
     spatial_audio: Option<u8>,
@@ -254,7 +270,6 @@ impl<'a> Link<'a> {
         );
         tracing::debug!("OPPO: capabilities {capabilities:02X?}, features {features:02X?}");
         Some(State {
-            product,
             hi_res: feature(&features, HI_RES),
             spatial_audio: feature(&features, SPATIAL_AUDIO),
             capabilities,
@@ -290,10 +305,6 @@ impl<'a> Link<'a> {
 pub fn ask_for_hi_res(host: &BtHost, addr: [u8; 6]) -> Option<u8> {
     let mut link = Link::open(host, addr)?;
     let state = link.state()?;
-    if !VERIFIED_PRODUCTS.contains(&state.product) {
-        tracing::info!("OPPO: product {:06X} not known to take the write", state.product);
-        return None;
-    }
     let (true, Some(before)) = (capability(&state.capabilities, CAN_WRITE_FEATURES), state.hi_res) else {
         tracing::info!("OPPO: these earbuds report no Hi-Res mode");
         return None;
@@ -322,6 +333,16 @@ mod tests {
 
     fn hex(s: &str) -> Vec<u8> {
         (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+    }
+
+    #[test]
+    fn earbuds_are_asked_once_a_run() {
+        let (a, b) = ([1, 2, 3, 4, 5, 6], [6, 5, 4, 3, 2, 1]);
+        assert!(!asked(a));
+        mark_asked(a);
+        mark_asked(a);
+        assert!(asked(a) && !asked(b));
+        assert_eq!(ASKED.lock().unwrap().iter().filter(|&&x| x == a).count(), 1);
     }
 
     // The packet of LHDC-Switch's self test

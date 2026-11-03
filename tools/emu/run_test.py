@@ -235,8 +235,10 @@ NEGOTIATION = {
     # Nothing gained: Hi-Res back off when it was off, as it was when it was on
     'oppo-no-change': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-change'], 'lhdcv5', OPPO_NAME),
     'oppo-no-change-on': ('lhdcv5', OPPO_SINK + ['--oppo', 'on', '--oppo-no-change'], 'lhdcv5', OPPO_NAME),
-    # Left alone: other models, spatial audio on, another name
-    'oppo-other-product': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-product', '123456'], 'lhdcv5', OPPO_NAME),
+    # Another model (an Enco X4) asked the same way
+    'oppo-other-product': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-product', '06EC10'], 'lhdcv5', OPPO_NAME),
+    # Left alone: no feature write listed, spatial audio on, another name
+    'oppo-no-write': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-write'], 'lhdcv5', OPPO_NAME),
     'oppo-spatial': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-spatial'], 'lhdcv5', OPPO_NAME),
     'oppo-other-name': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', []),
 }
@@ -262,7 +264,8 @@ LOG_CHECKS = {
                        ('a2dpwb.log', ENCODED_400, True)],
     'oppo-no-change-on': [('sink.log', HI_RES_ON, True), ('sink.log', HI_RES_OFF, False),
                           ('a2dpwb.log', ENCODED_400, True)],
-    'oppo-other-product': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-other-product': [('sink.log', HI_RES_ON, True), ('a2dpwb.log', ENCODED_1000, True)],
+    'oppo-no-write': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
     'oppo-spatial': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
     'oppo-other-name': [('sink.log', 'OPPO control', False), ('a2dpwb.log', ENCODED_400, True)],
 }
