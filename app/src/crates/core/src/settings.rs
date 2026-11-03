@@ -379,6 +379,12 @@ impl Settings {
         self.mute_output && self.debug_mode
     }
 
+    /// The SBC frame setup a stream takes from its profile: the fixed one
+    /// outside developer mode (issue #86)
+    pub fn sbc_frame(&self, wanted: codec::sbc::SbcParams) -> codec::sbc::SbcParams {
+        if self.debug_mode { wanted } else { Default::default() }
+    }
+
     /// The media packet size limit of a settings file from before v1.1, for
     /// profiles saved without one
     pub fn legacy_max_media_payload(&self) -> u16 {
@@ -428,6 +434,15 @@ mod tests {
         s.dev_log.always_verbose = "trace".into();
         s.dev_log.day_cap_mb = 1 << 20;
         assert_eq!((s.log().always_verbose.as_str(), s.log().day_cap_mb), ("trace", 10240));
+    }
+
+    #[test]
+    fn sbc_frame_counts_only_in_developer_mode() {
+        let wanted = codec::sbc::SbcParams { blocks: 8, subbands: 4, ..Default::default() };
+        let mut s = Settings::default();
+        assert!(s.sbc_frame(wanted).is_default());
+        s.debug_mode = true;
+        assert_eq!(s.sbc_frame(wanted), wanted);
     }
 
     #[test]

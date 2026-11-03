@@ -746,6 +746,62 @@ describe("codec settings within what the device lists (issue #86: moto buds+)", 
 });
 
 describe("SBC settings", () => {
+  it("developer mode offers the frame setup the device listed", async () => {
+    const { calls, core } = start("#/codecs");
+    const wh = await section("WH-1000XM5");
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    const dialog = await codecSettings(wh, "codec.sbc");
+    const rate = within(dialog).getByRole("status");
+    expect(rate).toHaveTextContent("≈ 357 kbps");
+
+    // The WH-1000XM5 lists 8 subbands and loudness only (the mock's XM5_SBC)
+    const subbands = within(dialog).getByLabelText(t("ui.diag.cd_subbands"));
+    expect(within(subbands).getAllByRole("option").map((o) => o.textContent)).toEqual([t("codec.auto"), "8"]);
+    const alloc = within(dialog).getByLabelText(t("ui.diag.cd_allocation"));
+    expect(within(alloc).queryByRole("option", { name: t("ui.diag.cd_alloc.snr") })).toBeNull();
+    const blocks = within(dialog).getByLabelText(t("ui.diag.cd_blocks"));
+    expect(within(blocks).getAllByRole("option")).toHaveLength(5);
+    // Dual channel is SBC XQ
+    const mode = within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"));
+    expect(within(mode).getAllByRole("option").map((o) => o.textContent)).toEqual(
+      [t("codec.auto"), ...["joint_stereo", "stereo", "mono"].map((m) => t(`ui.diag.cd_mode.${m}`))],
+    );
+
+    // 8 blocks: shorter frames, a higher rate
+    fireEvent.change(blocks, { target: { value: "8" } });
+    await waitFor(() => expect(rate).toHaveTextContent("≈ 396 kbps"));
+    // Stereo at 44.1 kHz with bitpool 40: 4 + 8 + 8 * 40 / 8 = 52 bytes per 64 samples
+    fireEvent.change(mode, { target: { value: "stereo" } });
+    fireEvent.change(within(dialog).getByLabelText(t("connection.sample_rate")), { target: { value: "44100" } });
+    fireEvent.input(within(dialog).getByRole("slider", { name: t("ui.profile.sbc_bitpool_max") }), { target: { value: "40" } });
+    await waitFor(() => expect(rate).toHaveTextContent("≈ 286 kbps"));
+
+    // Out of developer mode it no longer streams: the fixed frame's bit rate
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: false } });
+    await waitFor(() => expect(rate).toHaveTextContent("≈ 256 kbps"));
+    expect(within(dialog).queryByLabelText(t("ui.diag.cd_blocks"))).toBeNull();
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"))).toHaveValue(t("ui.diag.cd_mode.joint_stereo"));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: t("modal.close") }));
+    // ... and is kept
+    await waitFor(() =>
+      expect(saves(calls).at(-1)?.profile.codec_settings).toMatchObject({
+        sbc: { sbc_blocks: 8, sbc_subbands: 0, sbc_allocation: "", sbc_channel_mode: "stereo", sbc_bitpool: 40 },
+      }),
+    );
+  });
+
+  it("SBC XQ's channel mode stays fixed in developer mode", async () => {
+    const { core } = start("#/codecs");
+    fireEvent.click(await screen.findByRole("switch", { name: (n) => n.startsWith(t("ui.profile.codecs_hide")) }));
+    const wh = await section("WH-1000XM5");
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    const dialog = await codecSettings(wh, "codec.sbc_xq");
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_blocks"))).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"))).toHaveValue(t("ui.diag.cd_mode.dual_channel"));
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"))).toHaveAttribute("readonly");
+  });
+
   it("offer what the device listed and show the bit rate as it changes", async () => {
     const { calls } = start("#/codecs");
     const dialog = await codecSettings(await section("WH-1000XM5"), "codec.sbc");
@@ -755,7 +811,7 @@ describe("SBC settings", () => {
     expect(rate).toBe(within(dialog).getByLabelText(t("connection.quality")));
     expect(rate).toHaveTextContent("≈ 357 kbps");
 
-    // The frame itself is not a choice (issue #86)
+    // The frame itself is not a choice outside developer mode (issue #86)
     for (const label of ["cd_blocks", "cd_subbands", "cd_allocation"])
       expect(within(dialog).queryByLabelText(t(`ui.diag.${label}`))).toBeNull();
 
