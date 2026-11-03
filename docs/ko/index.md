@@ -97,6 +97,10 @@ A2DPWB 자체는 Windows(Windows 10 22H2 또는 Windows 11) 전용이며 x64와 
 
 Sony WH-1000XM4·WH-1000XM6, EarFun Air Pro 4+, Grado GW100x 등을 TP-Link UB500, 범용 RTL8761B, 노트북 내장 RTL8852BE, ASUS BT400, CSR8510 어댑터에서 확인했습니다. 코덱, 버전, 근거가 된 보고까지 담은 전체 목록은 **[검증된 하드웨어](../hardware)** (영어)에 있습니다.
 
+## 끊김과 연결 문제
+
+끊김과 연결 문제의 보고가 결국 무엇이었는지, 보고하기 전에 확인할 것, 연결 품질을 읽는 방법: **[끊김과 연결 문제](wireless)**.
+
 ## 함께 쓰는 도구
 
 이어폰 제어 앱처럼 A2DPWB와 함께 동작한다고 이슈에서 보고된 타사 앱입니다(A2DPWB가 만들거나 지원하지 않음): **[Works With](../works-with)**(영어).

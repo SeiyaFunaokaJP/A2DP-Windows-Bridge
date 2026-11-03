@@ -97,6 +97,10 @@ A2DPWB solo funciona en Windows (Windows 10 22H2 o Windows 11), con compilacione
 
 Probado con Sony WH-1000XM4 y WH-1000XM6, EarFun Air Pro 4+, Grado GW100x y otros, con los adaptadores TP-Link UB500, RTL8761B genérico, el RTL8852BE integrado de un portátil, ASUS BT400 y CSR8510. La lista completa con códecs, versiones y los informes en que se basa: **[Hardware verificado](../hardware)** (en inglés).
 
+## Cortes y problemas de conexión
+
+En qué resultaron consistir los informes de cortes y de conexión, las comprobaciones que hacer antes de informar y cómo leer Calidad del enlace: **[Cortes y problemas de conexión](wireless)**.
+
 ## Funciona con
 
 Aplicaciones de terceros que funcionan junto con A2DPWB, como apps de control de auriculares, según lo informado en los issues (no las crea ni las soporta A2DPWB): **[Works With](../works-with)** (en inglés).

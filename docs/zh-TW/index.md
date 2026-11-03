@@ -97,6 +97,10 @@ A2DPWB 本身僅能在 Windows（Windows 10 22H2 或 Windows 11）上以 x64 與
 
 已在 TP-Link UB500、通用 RTL8761B、筆電內建的 RTL8852BE、ASUS BT400 與 CSR8510 介面卡上，以 Sony WH-1000XM4 與 WH-1000XM6、EarFun Air Pro 4+、Grado GW100x 等確認。包含編解碼器、版本與相關回報的完整清單：**[已驗證的硬體](../hardware)**（英文）。
 
+## 斷音與連線問題
+
+斷音與連線問題的回報最後查出的原因、回報前應執行的檢查，以及如何解讀連線品質：**[斷音與連線問題](wireless)**。
+
 ## 搭配使用的工具
 
 在 issue 中回報可與 A2DPWB 搭配使用的第三方應用程式，例如耳機控制 App（並非 A2DPWB 製作或支援）：**[Works With](../works-with)**（英文）。
