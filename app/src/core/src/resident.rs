@@ -170,6 +170,12 @@ async fn sampler(state: Arc<CoreState>) {
             last_link = None;
             continue;
         }
+        // A new subscription: no rate without the last counters, and a 0 would
+        // show as a dip in the charts
+        if last_link.is_none() {
+            last_link = Some((now, crate::state::link_totals(&stats).0));
+            continue;
+        }
         let (source_rate, le_cis) = state.with_snapshot(|s| match (&s.stream.state, &s.stream.info) {
             (ipc::StreamState::Streaming, Some(i)) => (i.source_sample_rate, i.le.as_ref().map(|l| l.cis)),
             _ => (0, None),
