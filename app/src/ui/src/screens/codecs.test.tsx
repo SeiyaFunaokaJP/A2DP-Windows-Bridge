@@ -234,21 +234,36 @@ describe("the Codecs screen", () => {
     await waitFor(() => expect(within(wh).getByRole("radio", { name: /AAC/ })).toBeChecked());
   });
 
-  it("chooses the best supported codec for an unsupported card, not the next one below it (issue #86)", async () => {
+  it("keeps the codec chosen when an unsupported card is clicked (issue #86)", async () => {
     const { calls } = start("#/codecs");
     const wh = await section("WH-1000XM5");
     fireEvent.click(hideSwitch());
-    // AAC first, then aptX HD: not offered by the WH-1000XM5 (SBC, AAC,
-    // LDAC): LDAC, the best it offers, not AAC below aptX HD, and no note
+    // AAC first, then aptX HD, not offered by the WH-1000XM5 (SBC, AAC, LDAC)
     fireEvent.click(within(wh).getByRole("radio", { name: /^AAC/ }));
     await waitFor(() => expect(saves(calls)).toHaveLength(1));
     await waitFor(() => expect(within(wh).getByRole("radio", { name: /^AAC/ })).toBeChecked());
-    fireEvent.click(await within(wh).findByRole("radio", { name: /aptX HD/ }));
-    await waitFor(() => expect(saves(calls)).toHaveLength(2));
-    expect(saves(calls).at(-1)?.profile).toMatchObject({ codec: "ldac" });
-    await waitFor(() => expect(within(wh).getByRole("radio", { name: /LDAC/ })).toBeChecked());
-    expect(within(wh).getByRole("radio", { name: /aptX HD/ })).not.toBeChecked();
+    await settled(wh);
+    const hd = await within(wh).findByRole("radio", { name: /aptX HD/ });
+    fireEvent.click(hd);
+    await waitFor(() => expect(hd).not.toBeChecked());
+    expect(within(wh).getByRole("radio", { name: /^AAC/ })).toBeChecked();
+    expect(saves(calls)).toHaveLength(1);
     expect(within(wh).queryByText(t("error.codec_not_supported", "aptX HD"))).toBeNull();
+  });
+
+  it("does not offer to turn Auto-select off for an unsupported card (issue #86)", async () => {
+    start("#/codecs");
+    const wh = await section("WH-1000XM5");
+    fireEvent.click(hideSwitch());
+    fireEvent.click(autoSwitch());
+    await waitFor(() => expect(autoSwitch()).toBeChecked());
+    const hd = await within(wh).findByRole("radio", { name: /aptX HD/ });
+    await waitFor(() => expect(hd).toBeDisabled());
+    fireEvent.click(hd.closest("label")!);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // Its settings can still be looked at
+    fireEvent.click(within(wh).getByRole("button", { name: t("ui.profile.codec_settings", t("codec.aptx_hd")) }));
+    expect(await autoDialog()).toBeTruthy();
   });
 
   it("keeps LDAC choosable on earbuds that list it only once asked (issue #30)", async () => {
@@ -439,19 +454,19 @@ describe("codec cards", () => {
     // The other devices keep the default order
     expect(cardNames(await section("SRS-XB13"))[0]).toBe(t("codec.lhdc_v5"));
 
-    // An unsupported card chooses the first card the device supports (AAC
-    // for aptX HD)
+    // An unsupported card changes nothing (issue #86)
     fireEvent.click(hideSwitch());
-    fireEvent.click(await within(wh).findByRole("radio", { name: /aptX HD/ }));
-    await waitFor(() => expect(saves(calls)).toHaveLength(2));
-    expect(saves(calls)[1].profile).toMatchObject({ codec: "aac", codec_order: order });
-    await waitFor(() => expect(within(wh).getByRole("radio", { name: /AAC/ })).toBeChecked());
+    const hd = await within(wh).findByRole("radio", { name: /aptX HD/ });
+    fireEvent.click(hd);
+    await waitFor(() => expect(hd).not.toBeChecked());
+    expect(within(wh).getByRole("radio", { name: /LDAC/ })).toBeChecked();
+    expect(saves(calls)).toHaveLength(1);
 
     // Back to the default order: saved as none
     await settled(wh);
     fireEvent.click(main().getByRole("button", { name: t("ui.codecs.order_reset") }));
-    await waitFor(() => expect(saves(calls)).toHaveLength(3));
-    expect(saves(calls)[2].profile.codec_order).toEqual([]);
+    await waitFor(() => expect(saves(calls)).toHaveLength(2));
+    expect(saves(calls)[1].profile.codec_order).toEqual([]);
     await waitFor(() => expect(main().queryByRole("button", { name: t("ui.codecs.order_reset") })).toBeNull());
   });
 
@@ -689,7 +704,7 @@ describe("codec settings within what the device lists (issue #86: moto buds+)", 
     // Auto: where the quality puts it, the device's largest here
     expect(bitpool).toHaveValue("39");
     expect(bitpool).toHaveAttribute("aria-valuetext", t("ui.profile.sbc_bitpool_auto", 39));
-    expect(dialog).toHaveTextContent(t("ui.profile.sbc_channel_mode", t("ui.diag.cd_mode.joint_stereo")));
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"))).toHaveValue(t("ui.diag.cd_mode.joint_stereo"));
     // Never past the device's largest
     fireEvent.input(bitpool, { target: { value: "53" } });
     expect(bitpool).toHaveValue("39");
@@ -698,6 +713,17 @@ describe("codec settings within what the device lists (issue #86: moto buds+)", 
     fireEvent.click(within(dialog).getByRole("button", { name: t("modal.close") }));
     await waitFor(() => expect(saves(calls)).toHaveLength(1));
     expect(saves(calls)[0].profile).toMatchObject({ codec_settings: { sbc: { sbc_bitpool: 39, sbc_min_bitpool: 0 } } });
+  });
+
+  it("a codec with one bit rate shows it at the sample rate chosen (issue #86)", async () => {
+    start("#/codecs");
+    const wh = await section("WH-1000XM5");
+    fireEvent.click(hideSwitch());
+    const dialog = await codecSettings(wh, "codec.aptx_hd");
+    const quality = within(dialog).getByLabelText(t("connection.quality"));
+    expect(quality).toHaveTextContent("576 kbps");
+    fireEvent.change(within(dialog).getByLabelText(t("connection.sample_rate")), { target: { value: "44100" } });
+    await waitFor(() => expect(quality).toHaveTextContent("529 kbps"));
   });
 
   it("aptX Adaptive offers 96 kHz only to a device that lists it", async () => {
@@ -730,7 +756,7 @@ describe("SBC settings", () => {
     expect(rate).toHaveTextContent("≈ 357 kbps");
 
     // The frame itself is not a choice (issue #86)
-    for (const label of ["cd_blocks", "cd_subbands", "cd_allocation", "cd_channel_mode"])
+    for (const label of ["cd_blocks", "cd_subbands", "cd_allocation"])
       expect(within(dialog).queryByLabelText(t(`ui.diag.${label}`))).toBeNull();
 
     // 44.1 kHz with bitpool 40: 4 + 8 + (16 * 40 + 8) / 8 = 93 bytes per 128 samples
@@ -812,7 +838,7 @@ describe("SBC settings", () => {
     const high = within(dialog).getByRole("slider", { name: t("ui.profile.sbc_bitpool_max") });
     // Auto at 48 kHz: 43 per channel
     expect(high).toHaveAttribute("aria-valuetext", t("ui.profile.sbc_bitpool_auto", 43));
-    expect(dialog).toHaveTextContent(t("ui.profile.sbc_channel_mode", t("ui.diag.cd_mode.dual_channel")));
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"))).toHaveValue(t("ui.diag.cd_mode.dual_channel"));
     // With the highest on Auto, the lowest stops where Auto's highest is
     fireEvent.input(low, { target: { value: "47" } });
     expect(low).toHaveValue("43");

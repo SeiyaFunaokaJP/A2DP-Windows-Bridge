@@ -15,6 +15,7 @@ import {
   capsOf,
   carryToCodec,
   fixedBitDepth,
+  fixedKbpsText,
   codecSpec,
   BITPOOL_MAX,
   BITPOOL_MAX_XQ,
@@ -28,7 +29,7 @@ import {
   type CodecSupport,
 } from "../lib/codecs";
 import { sbcKbpsText, sbcRate, sbcSetup, type SbcCaps } from "../lib/sbc";
-import { Button, Check, Dialog, Field, IconButton, Select } from "./controls";
+import { Button, Dialog, Field, IconButton, Select, Toggle } from "./controls";
 import { Icon } from "./Icon";
 
 /** One codec choice with its three comparison bars, and "..." for its settings */
@@ -405,7 +406,7 @@ export function CodecSettings(props: {
               <Field label={t("connection.quality")} hint={t("tooltip.quality")}>
                 {(id, described) => (
                   <output id={id} class="input readonly" aria-describedby={described}>
-                    {qualities().length ? qualityText(qualities()[0]) : t("ui.profile.fixed_bitrate")}
+                    {qualities().length ? qualityText(qualities()[0]) : fixedKbpsText(v.codec, sbcRate(v, caps()))}
                   </output>
                 )}
               </Field>
@@ -463,19 +464,13 @@ export function CodecSettings(props: {
           )}
         </Field>
         <Show when={spec().abr}>
-          <div class="field">
-            <Check label={t("connection.abr")} checked={v.abr} onChange={(x) => set("abr", x)} />
-            <span class="hint">{t("tooltip.abr")}</span>
-          </div>
+          <Toggle label={t("connection.abr")} hint={t("tooltip.abr")} checked={v.abr} onChange={(x) => set("abr", x)} />
         </Show>
         <Show when={spec().vbr}>
-          <div class="field">
-            <Check label={t("connection.vbr")} checked={v.abr} onChange={(x) => set("abr", x)} />
-            <span class="hint">{t("tooltip.vbr")}</span>
-          </div>
+          <Toggle label={t("connection.vbr")} hint={t("tooltip.vbr")} checked={v.abr} onChange={(x) => set("abr", x)} />
         </Show>
         <Show when={spec().bitpool}>
-          <Field label={t("connection.sbc_bitpool")} hint={t("tooltip.sbc_bitpool")} error={bitpoolError()}>
+          <Field label={t("connection.sbc_bitpool")} hint={t("tooltip.sbc_bitpool")} error={bitpoolError()} stacked>
             {(id, described) => (
               <div class="inline bp-field">
                 <BitpoolSlider
@@ -504,7 +499,9 @@ export function CodecSettings(props: {
             )}
           </Field>
           {/* Fixed for each codec, not a setting (issue #86) */}
-          <span class="hint">{t("ui.profile.sbc_channel_mode", t(`ui.diag.cd_mode.${sbcMode()}`))}</span>
+          <Field label={t("ui.diag.cd_channel_mode")}>
+            {(id) => <input id={id} class="input readonly" readOnly value={t(`ui.diag.cd_mode.${sbcMode()}`)} />}
+          </Field>
         </Show>
       </div>
     </Dialog>
