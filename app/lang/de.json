@@ -387,6 +387,7 @@
   "ui.dev.auto_codec_settings_hint": "Ist die automatische Auswahl an, verbindet der gewählte Codec mit den Einstellungen aus dem … seiner Karte.",
   "ui.dev.match_source": "Abtastrate und Bittiefe an die PC-Ausgabe anpassen",
   "ui.dev.match_source_hint": "Steht Abtastrate oder Bittiefe eines Codecs auf Automatisch, gilt das Format des Ausgabegeräts in Windows.",
+  "ui.dev.lhdcv5_ignore_sink_max": "LHDC V5: maximale Bitrate des Geräts ignorieren",
   "ui.dev.volume_mixer": "Lautstärkemixer verwenden",
   "ui.dev.volume_mixer_hint": "Nicht empfohlen: kann von der Windows-Lautstärkeregelung abweichen. Nutze VB-Cable.",
   "ui.dev.rtp_marker": "RTP-Marker-Bit",

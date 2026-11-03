@@ -11,4 +11,8 @@ auto_codec_settings: boolean,
 /**
  * Rate and bit depth on Auto follow the captured output's format
  */
-match_source: boolean, };
+match_source: boolean, 
+/**
+ * LHDC V5 ignores the maximum bit rate the device lists
+ */
+lhdcv5_ignore_sink_max: boolean, };

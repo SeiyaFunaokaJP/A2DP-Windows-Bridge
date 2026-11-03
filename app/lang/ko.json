@@ -387,6 +387,7 @@
   "ui.dev.auto_codec_settings_hint": "코덱 화면에서 자동 선택이 켜져 있으면 선택된 코덱이 카드의 … 설정으로 연결됩니다.",
   "ui.dev.match_source": "샘플 레이트와 비트 깊이를 PC 출력에 맞추기",
   "ui.dev.match_source_hint": "코덱의 샘플 레이트나 비트 깊이가 자동이면 Windows 사운드 설정의 출력 장치 형식을 따릅니다.",
+  "ui.dev.lhdcv5_ignore_sink_max": "LHDC V5: 장치의 최대 비트레이트 무시",
   "ui.dev.volume_mixer": "볼륨 믹서 사용",
   "ui.dev.volume_mixer_hint": "권장하지 않습니다. Windows 볼륨 조작과 어긋날 수 있습니다. VB-Cable 사용을 강력히 권장합니다.",
   "ui.dev.rtp_marker": "RTP 마커 비트",
