@@ -109,7 +109,8 @@ export const CODECS: CodecSpec[] = [
     ],
     abr: true,
     hiRes: true,
-    rates: [0, 44100, 48000, 88200, 96000, 192000],
+    // No 88.2 kHz: the device lists 44.1, 48, 96 and 192 kHz only (issue #86)
+    rates: [0, 44100, 48000, 96000, 192000],
   },
   {
     id: "aptxhd",
@@ -435,15 +436,15 @@ export function capsOf(caps: readonly CodecCaps[], codec: string): CodecCaps | n
   return caps.find((c) => c.codec.toLowerCase() === codec.toLowerCase()) ?? null;
 }
 
-/** Whether the device lists a sample rate (anything goes while not known;
- *  LHDC V5's 88.2 kHz runs as 96 kHz). aptX Adaptive's 96 kHz only when
+/** Whether the device lists a sample rate (anything goes while not known).
+ *  aptX Adaptive's 96 kHz only when
  *  the device lists it: few do (an R2 one with a 96 kHz bit; issue #86, a
  *  Bose QC Ultra has none), and the core streams 48 kHz to the others */
 export function rateOffered(codec: string, rate: number, caps: CodecCaps | null): boolean {
   if (rate === 0) return true;
   if (codec === "aptxad" && rate === 96000) return caps?.sample_rates.includes(rate) ?? false;
   if (!caps || caps.sample_rates.length === 0) return true;
-  return caps.sample_rates.includes(codec === "lhdcv5" && rate === 88200 ? 96000 : rate);
+  return caps.sample_rates.includes(rate);
 }
 
 /** The sample rates the dialog offers (issue #86): the codec's, as far as
