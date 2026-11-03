@@ -34,6 +34,7 @@ const NO_OVERRIDES: DevOverrides = {
   force_codec: false,
   auto_codec_settings: false,
   match_source: false,
+  lhdcv5_ignore_sink_max: false,
 };
 
 export function Developer() {
@@ -144,6 +145,11 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
           hint={t("ui.dev.match_source_hint")}
           checked={props.value.match_source}
           onChange={(v) => set({ match_source: v })}
+        />
+        <Toggle
+          label={t("ui.dev.lhdcv5_ignore_sink_max")}
+          checked={props.value.lhdcv5_ignore_sink_max}
+          onChange={(v) => set({ lhdcv5_ignore_sink_max: v })}
         />
       </Section>
       <Section

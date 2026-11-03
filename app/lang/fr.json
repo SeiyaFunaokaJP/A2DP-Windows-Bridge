@@ -387,6 +387,7 @@
   "ui.dev.auto_codec_settings_hint": "Avec la sélection auto, le codec choisi se connecte avec les réglages du … de sa carte.",
   "ui.dev.match_source": "Adapter la fréquence et la profondeur de bits à la sortie du PC",
   "ui.dev.match_source_hint": "Si la fréquence ou la profondeur de bits d'un codec est sur Auto, elle suit le format de la sortie dans Windows.",
+  "ui.dev.lhdcv5_ignore_sink_max": "LHDC V5 : ignorer le débit maximal de l'appareil",
   "ui.dev.volume_mixer": "Utiliser le mélangeur de volume",
   "ui.dev.volume_mixer_hint": "Déconseillé : peut contredire les réglages de volume de Windows. Utilisez VB-Cable.",
   "ui.dev.rtp_marker": "Bit marqueur RTP",

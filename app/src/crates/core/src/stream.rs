@@ -1056,8 +1056,16 @@ fn peer_params(remote: &RemoteCaps, kind: CodecKind, channels: u32, req: &Stream
         remote.aac_max_bitrate(),
         remote.lhdcv5_bitrate_limits()
     );
+    // Developer mode: no maximum (P7[5:4] 0) for the encoder; the
+    // SET_CONFIGURATION still echoes the sink's (issue #237)
+    let mut lhdcv5_bitrate_limits = remote.lhdcv5_bitrate_limits();
+    if kind == CodecKind::LhdcV5 && codec::dev::overrides().lhdcv5_ignore_sink_max && lhdcv5_bitrate_limits & 0x30 != 0
+    {
+        tracing::warn!("LHDC V5: ignoring the sink's maximum bit rate (developer mode)");
+        lhdcv5_bitrate_limits &= !0x30;
+    }
     PeerParams {
-        lhdcv5_bitrate_limits: remote.lhdcv5_bitrate_limits(),
+        lhdcv5_bitrate_limits,
         sbc_min_bitpool: remote.sbc_min_bitpool(),
         sbc_max_bitpool: remote.sbc_max_bitpool(),
         sbc_bitpool: match kind {

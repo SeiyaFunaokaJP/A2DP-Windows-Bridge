@@ -612,6 +612,8 @@ pub struct DevOverrides {
     pub auto_codec_settings: bool,
     /// Rate and bit depth on Auto follow the captured output's format
     pub match_source: bool,
+    /// LHDC V5 ignores the maximum bit rate the device lists
+    pub lhdcv5_ignore_sink_max: bool,
 }
 
 /// Developer mode's logging (a2dpwb_core::settings::DevLog), in force while

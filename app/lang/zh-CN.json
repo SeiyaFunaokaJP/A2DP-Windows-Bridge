@@ -387,6 +387,7 @@
   "ui.dev.auto_codec_settings_hint": "编解码器页面开启自动选择时，选中的编解码器按其卡片 … 中的设置连接。",
   "ui.dev.match_source": "让采样率和位深度匹配电脑的输出",
   "ui.dev.match_source_hint": "编解码器的采样率或位深度为“自动”时，跟随 Windows 声音设置中输出设备的格式。",
+  "ui.dev.lhdcv5_ignore_sink_max": "LHDC V5：忽略设备的最大比特率",
   "ui.dev.volume_mixer": "使用音量合成器",
   "ui.dev.volume_mixer_hint": "不推荐：可能与 Windows 的音量控制不一致。强烈建议改用 VB-Cable。",
   "ui.dev.rtp_marker": "RTP 标记位",
