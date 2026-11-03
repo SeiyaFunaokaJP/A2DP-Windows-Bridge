@@ -293,6 +293,16 @@ pub enum ReconnectError {
 struct LastStream {
     addr: [u8; 6],
     config: Configuration,
+    /// What the device offered then
+    caps: RemoteCaps,
+}
+
+/// An A2DP connection the device opened itself
+enum DeviceA2dp {
+    /// With the capabilities BTstack discovered
+    Caps(RemoteCaps),
+    /// The device also configured and opened the stream
+    Stream((u8, Option<Vec<u8>>)),
 }
 
 pub struct BtHost {
@@ -1344,12 +1354,18 @@ impl BtHost {
             return Err(ConfigureError::Refused);
         }
         let mtu = s.media_mtu;
+        let caps = s.remote_caps.clone();
         drop(s);
         tracing::debug!("configure: stream established, media payload {mtu}");
-        if let Some(addr) = *self.remote_addr.lock().unwrap_or_else(|e| e.into_inner()) {
-            *self.last.lock().unwrap_or_else(|e| e.into_inner()) = Some(LastStream { addr, config: config.clone() });
-        }
+        self.remember_stream(config, caps);
         Ok(mtu)
+    }
+
+    fn remember_stream(&self, config: &Configuration, caps: RemoteCaps) {
+        if let Some(addr) = *self.remote_addr.lock().unwrap_or_else(|e| e.into_inner()) {
+            *self.last.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(LastStream { addr, config: config.clone(), caps });
+        }
     }
 
     /// AVDTP Start; waits until it is acknowledged
@@ -1469,8 +1485,12 @@ impl BtHost {
         &self,
         rebuild: &dyn Fn(&RemoteCaps) -> Option<Configuration>,
     ) -> Result<Reconnected, ReconnectError> {
-        let Some((addr, config)) =
-            self.last.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|l| (l.addr, l.config.clone()))
+        let Some((addr, config, caps)) = self
+            .last
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|l| (l.addr, l.config.clone(), l.caps.clone()))
         else {
             tracing::warn!("cannot reconnect: no earlier stream");
             return Err(ReconnectError::Failed);
@@ -1485,15 +1505,23 @@ impl BtHost {
             tracing::info!("reconnect aborted (cancel requested)");
             return Err(ReconnectError::Failed);
         }
-        if let Some(remote) = self.a2dp_from_device(addr) {
-            tracing::info!("{} connected A2DP itself, starting the stream on it", addr_str(&addr));
-            self.shared.update(|s| {
-                s.disconnect_occurred = false;
-                s.stream_done = None;
-                s.start_done = None;
-                s.last_connect_failure = None;
-            });
-            return self.configure_and_start(remote, &config, rebuild);
+        match self.a2dp_from_device(addr) {
+            Some(DeviceA2dp::Caps(remote)) => {
+                tracing::info!("{} connected A2DP itself, starting the stream on it", addr_str(&addr));
+                self.shared.update(|s| {
+                    s.disconnect_occurred = false;
+                    s.stream_done = None;
+                    s.start_done = None;
+                    s.last_connect_failure = None;
+                });
+                return self.configure_and_start(remote, &config, rebuild);
+            }
+            Some(DeviceA2dp::Stream(configured)) => {
+                if let Some(r) = self.start_device_stream(addr, caps, &configured, rebuild) {
+                    return r;
+                }
+            }
+            None => {}
         }
         self.shared.update(|s| {
             s.connected = false;
@@ -1515,20 +1543,69 @@ impl BtHost {
         self.configure_and_start(remote, &config, rebuild)
     }
 
-    /// What the device offers on an A2DP connection it opened itself, as
-    /// headphones turned back on may do: closing it to open our own makes
-    /// them announce a disconnect (issue #270). None without one, or when
-    /// its capabilities do not come.
-    fn a2dp_from_device(&self, addr: [u8; 6]) -> Option<RemoteCaps> {
+    /// An A2DP connection the device opened itself, as headphones turned
+    /// back on may do: closing it to open our own makes them announce a
+    /// disconnect (issue #270). BTstack first gives the device a moment to
+    /// configure the stream; when it does, BTstack discovers no
+    /// capabilities. None without such a connection, or when neither comes.
+    fn a2dp_from_device(&self, addr: [u8; 6]) -> Option<DeviceA2dp> {
         if self.call(Duration::from_secs(2), move |app, s| app.has_a2dp_from_device(s, addr)) != Some(true) {
             return None;
         }
-        // BTstack first gives the device a moment to configure the stream
-        if self.shared.wait(DEVICE_A2DP_TIMEOUT, true, |s| s.connected) != Wait::Done {
+        let opened = |s: &shared::State| s.stream_done == Some(true) && s.stream_config.is_some();
+        if self.shared.wait(DEVICE_A2DP_TIMEOUT, true, |s| s.connected || opened(s)) != Wait::Done {
             tracing::debug!("the A2DP connection of {} reported no capabilities", addr_str(&addr));
             return None;
         }
-        Some(self.shared.lock().remote_caps.clone())
+        let s = self.shared.lock();
+        if s.connected {
+            Some(DeviceA2dp::Caps(s.remote_caps.clone()))
+        } else {
+            s.stream_config.clone().map(DeviceA2dp::Stream)
+        }
+    }
+
+    /// Streams on the stream the device configured and opened itself, when
+    /// it is the one we would set up: the capabilities of the last stream
+    /// stand in for the ones not discovered. None: it is not, and the
+    /// connection is replaced by ours.
+    fn start_device_stream(
+        &self,
+        addr: [u8; 6],
+        remote: RemoteCaps,
+        configured: &(u8, Option<Vec<u8>>),
+        rebuild: &dyn Fn(&RemoteCaps) -> Option<Configuration>,
+    ) -> Option<Result<Reconnected, ReconnectError>> {
+        let config = rebuild(&remote)?;
+        let c = config.clone();
+        let theirs = configured.clone();
+        if self.call(Duration::from_secs(2), move |app, _| app.adopt_device_stream(&c, &theirs)) != Some(true) {
+            tracing::info!(
+                "{} configured the stream itself (local SEID {}, {:02X?}), not as {} would be: replacing it",
+                addr_str(&addr),
+                configured.0,
+                configured.1.as_deref().unwrap_or_default(),
+                config.kind.name()
+            );
+            return None;
+        }
+        tracing::info!("{} opened the stream itself, starting {} on it", addr_str(&addr), config.kind.name());
+        self.shared.update(|s| {
+            s.remote_caps = remote.clone();
+            s.connected = true;
+            s.disconnect_occurred = false;
+            s.start_done = None;
+            s.last_connect_failure = None;
+        });
+        let mtu = self.media_mtu();
+        self.remember_stream(&config, remote.clone());
+        if !self.start_stream() {
+            tracing::warn!("reconnect: stream start failed");
+            self.disconnect();
+            return Some(Err(ReconnectError::Failed));
+        }
+        tracing::info!("reconnected and streaming (mtu {mtu})");
+        Some(Ok(Reconnected { remote, config, mtu }))
     }
 
     /// The stream of a connection just (re)established, with a configuration
