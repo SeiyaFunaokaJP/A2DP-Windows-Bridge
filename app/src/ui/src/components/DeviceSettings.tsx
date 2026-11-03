@@ -141,7 +141,7 @@ export function DeviceSettings(props: { device: Device }) {
 
   return (
     <div class="device-settings" aria-busy={saving() ? "true" : undefined}>
-      <Field label={t("capture.mode")}>
+      <Field label={t("capture.mode")} stacked>
         {(id) => (
           <div class="inline capture-source">
             <Icon name={captureText(shown()).icon} />

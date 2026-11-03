@@ -24,6 +24,8 @@ pub enum AclState {
     /// Create Connection not finished (no connection handle yet)
     Paging,
     Open(u16),
+    /// HCI Disconnect asked for, Disconnection Complete not in yet
+    Closing,
     Other,
 }
 
@@ -460,6 +462,7 @@ impl Stack {
             -1 => AclState::None,
             0 => AclState::Paging,
             1 => AclState::Open(handle),
+            3 => AclState::Closing,
             _ => AclState::Other,
         }
     }

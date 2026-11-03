@@ -55,6 +55,7 @@ Outputs go to tools/emu/out/scan-<case>/.
 """
 
 import argparse
+import json
 import math
 import os
 import queue
@@ -113,6 +114,8 @@ CONFIG_PATTERN = {  # bluecaster_decode's "Configuration :" line
 # Frame headers are validated, audio is not decoded (aptX Adaptive: its RTP
 # header, packet sizes and frame types)
 NO_DECODER = {'ldac', 'ldac-96k', 'ldac-48k', 'lhdcv5', 'aptxad', 'aptxad-r2', 'aptxad-r2-96k'}
+# Cases run with the developer override on
+FORCED = {'force-ldac'}
 APTXAD_SINK = ['--codecs', 'sbc', 'aac', 'aptx', 'aptxad']
 HUAWEI_SINK = ['--codecs', 'sbc', 'aac', '--log-level', 'INFO']  # LOG_CHECKS read its log
 HUAWEI_NAME = ['--device-name', 'HUAWEI FreeBuds Pro 4']
@@ -122,6 +125,8 @@ OPPO_NAME = ['--device-name', 'OPPO Enco Free4']
 # more BlueCaster arguments)
 NEGOTIATION = {
     'sbcxq-44k': ('sbcxq', [], 'sbcxq', ['--rate', '44100']),            # bitpool 47
+    # Developer mode's force_codec (FORCED): LDAC to a sink that lists SBC only
+    'force-ldac': ('ldac', ['--codecs', 'sbc'], 'ldac', []),
     'auto-sbcxq': ('auto', ['--codecs', 'sbc'], 'sbcxq', []),            # Auto takes SBC XQ over SBC
     'auto-sbc-no-xq': ('auto', ['--codecs', 'sbc', '--sbc-no-dual'], 'sbc', []),  # no dual channel: SBC
     # Dual channel listed but refused: SBC XQ falls back to SBC
@@ -441,6 +446,10 @@ def run_codec(args, codec, port):
     sink = start_sink(port, sink_capture, os.path.join(out, 'sink.log'), extra=sink_args)
     try:
         env = dict(os.environ, BLUECASTER_CONFIG_DIR=os.path.join(out, 'config'))  # isolated link keys
+        if codec in FORCED:
+            os.makedirs(env['BLUECASTER_CONFIG_DIR'])
+            with open(os.path.join(env['BLUECASTER_CONFIG_DIR'], 'settings.json'), 'w', encoding='utf-8') as f:
+                json.dump({'debug_mode': True, 'dev_overrides': {'force_codec': True}}, f)
         with open(os.path.join(out, 'bluecaster.log'), 'w', encoding='utf-8', errors='replace') as log:
             try:
                 rc = subprocess.run(
@@ -710,7 +719,31 @@ SCAN_CASES = {
 SCAN_SECONDS = 10
 SCAN_LISTED_MAX_S = 3.0
 SINK_NAME = 'BlueCaster Test Sink'
-LOG_TIME = re.compile(r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})')
+# Link cases: sink arguments, BlueCaster arguments, (log, pattern, found or not).
+# Disconnect after the 10 s in which BTstack ends an idle link by itself; the
+# headphones turned back on open A2DP themselves, or leave it to the PC.
+LINK_CASES = {
+    'disconnect': ([], ['--duration', '12', '--sessions', '2'], [
+        ('bluecaster.log', r'Disconnecting \(session 1.*dropping the ACL link.*HCI disconnection.*Connecting again', True),
+    ]),
+    'device-link': (['--turn-off-after', '4'], ['--duration', '16', '--wait-off'], [
+        ('bluecaster.log', r'the headphones connected again.*reconnected on attempt 1', True),
+        ('sink.log', r'turned on', True),
+    ]),
+    'device-a2dp': (['--turn-off-after', '4', '--opens-a2dp'], ['--duration', '16', '--wait-off'], [
+        ('bluecaster.log', r'connected A2DP itself.*reconnected on attempt 1', True),
+        ('bluecaster.log', r'closing a leftover AVDTP', False),
+        ('sink.log', r'A2DP opened', True),
+        ('sink.log', r'A2DP closed.*turned off|turned on.*A2DP closed.*A2DP opened', False),
+    ]),
+    # A setting changed just after the link came up: the next connection
+    # starts while that link goes down
+    'restart-on-link': (['--disconnect-delay', '0.5'], ['--duration', '3', '--restart-on-link'], [
+        ('bluecaster.log', r'Starting again.*HCI disconnection.*state Streaming', True),
+        ('bluecaster.log', r'Bluetooth stack stalled', False),
+    ]),
+}
+LOG_TIME =re.compile(r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})')
 
 
 def log_time(log, pattern):
@@ -790,6 +823,54 @@ def main_scan(args):
     sys.exit(0 if passed == len(results) else 1)
 
 
+def run_link_case(args, case, port):
+    """bluecaster-core --cli with the sink ending or opening links: each pattern
+    of the case is found, or not, in bluecaster.log / sink.log."""
+    sink_args, bluecaster_args, checks = LINK_CASES[case]
+    out = os.path.join(args.out, 'link-' + case)
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(out)
+    failures = []
+    sink = start_sink(port, os.path.join(out, 'sink.pklg'), os.path.join(out, 'sink.log'), extra=sink_args)
+    try:
+        env = dict(os.environ, BLUECASTER_CONFIG_DIR=os.path.join(out, 'config'), BLUECASTER_LOG='debug')
+        with open(os.path.join(out, 'bluecaster.log'), 'w', encoding='utf-8', errors='replace') as log:
+            try:
+                rc = subprocess.run(
+                    [args.bluecaster, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '-d', SINK_ADDRESS, '-c', 'sbc',
+                     '--test-tone', '--hci-capture', os.path.join(out, 'bluecaster.pklg')] + bluecaster_args,
+                    stdout=log, stderr=subprocess.STDOUT, env=env, timeout=120).returncode
+            except subprocess.TimeoutExpired:
+                rc = 'timeout'
+    finally:
+        sink.terminate()
+        sink.wait(10)
+    if rc != 0:
+        failures.append(f'BlueCaster exited with {rc} (see bluecaster.log)')
+    for name, pattern, present in checks:
+        if bool(re.search(pattern, read_text(os.path.join(out, name)), re.S)) != present:
+            failures.append(f'{name}: "{pattern}" {"missing" if present else "found"}')
+    return failures, ''
+
+
+def main_link(args):
+    wanted = args.link or list(LINK_CASES)
+    unknown = [n for n in wanted if n not in LINK_CASES]
+    if unknown:
+        sys.exit(f'Unknown link case(s) {unknown}; known: {list(LINK_CASES)}')
+    results = []
+    for index, case in enumerate(wanted):
+        print(f'--- link {case} ...', flush=True)
+        failures, detail = run_link_case(args, case, args.base_port + 300 + index)
+        results.append((case, failures))
+        print(f'    {"PASS" if not failures else "FAIL"}  {detail}')
+        for failure in failures:
+            print(f'      - {failure}')
+    passed = sum(1 for _, f in results if not f)
+    print(f'\n{passed}/{len(results)} link cases passed. Details: {args.out}')
+    sys.exit(0 if passed == len(results) else 1)
+
+
 def main():
     parser = argparse.ArgumentParser(description='End-to-end A2DP test of BlueCaster against a virtual sink')
     parser.add_argument('--codecs', nargs='+', choices=CODECS + list(NEGOTIATION),
@@ -799,6 +880,8 @@ def main():
                         help='run the LE Audio (experimental) cases instead (default: all of them)')
     parser.add_argument('--scan', nargs='*', metavar='CASE',
                         help=f'run the device scan cases instead ({", ".join(SCAN_CASES)}; default: all of them)')
+    parser.add_argument('--link', nargs='*', metavar='CASE',
+                        help=f'run the link cases instead ({", ".join(LINK_CASES)}; default: all of them)')
     parser.add_argument('--duration', type=int, default=5, help='seconds of streaming per codec')
     parser.add_argument('--max-packet', type=int, help='passed to BlueCaster --max-packet (default: its own)')
     parser.add_argument('--build-dir', default=os.path.join(REPO, 'build'),
@@ -814,14 +897,16 @@ def main():
     args.decoder = args.decoder or os.path.join(args.build_dir, 'a2dp_decode', args.config, 'bluecaster_decode.exe')
     for path, hint in ((VENV_PYTHON, 'run: python tools/emu/setup_env.py'),
                        (args.bluecaster, 'build BlueCaster'), (args.decoder, 'build bluecaster_decode')):
-        if path == args.decoder and args.scan is not None:
-            continue  # a scan streams nothing
+        if path == args.decoder and (args.scan is not None or args.link is not None):
+            continue  # a scan streams nothing, a link case decodes nothing
         if not os.path.exists(path):
             sys.exit(f'Missing {path} ({hint})')
     if args.le_audio is not None:
         main_le(args)
     if args.scan is not None:
         main_scan(args)
+    if args.link is not None:
+        main_link(args)
 
     results = []
     for index, codec in enumerate(args.codecs):

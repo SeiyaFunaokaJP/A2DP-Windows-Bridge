@@ -99,6 +99,20 @@ pub struct Profile {
     /// The same for SBC XQ
     #[serde(skip_serializing_if = "is_zero")]
     pub sbcxq_min_bitpool: u8,
+    /// SBC / SBC XQ: block length 4, 8, 12, 16 (0 = 16). The frame setup
+    /// counts in developer mode only ([`crate::settings::Settings::sbc_frame`])
+    #[serde(skip_serializing_if = "is_zero")]
+    pub sbc_blocks: u8,
+    /// SBC / SBC XQ: subbands 4, 8 (0 = 8)
+    #[serde(skip_serializing_if = "is_zero")]
+    pub sbc_subbands: u8,
+    /// SBC / SBC XQ: loudness, snr ("" = loudness)
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub sbc_allocation: String,
+    /// SBC: joint_stereo, stereo, mono ("" = joint stereo; dual channel is
+    /// SBC XQ's, which is always dual channel)
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub sbc_channel_mode: String,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub le_audio: bool,
     /// LE Audio: GMAP low-latency presets with a gaming headset. On by
@@ -148,6 +162,10 @@ impl Default for Profile {
             sbcxq_bitpool: 0,
             sbc_min_bitpool: 0,
             sbcxq_min_bitpool: 0,
+            sbc_blocks: 0,
+            sbc_subbands: 0,
+            sbc_allocation: String::new(),
+            sbc_channel_mode: String::new(),
             le_audio: false,
             le_low_latency: true,
             codec_settings: BTreeMap::new(),
@@ -174,6 +192,14 @@ pub struct CodecValues {
     pub sbc_min_bitpool: u8,
     #[serde(skip_serializing_if = "is_zero")]
     pub sbcxq_min_bitpool: u8,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub sbc_blocks: u8,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub sbc_subbands: u8,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub sbc_allocation: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub sbc_channel_mode: String,
 }
 
 impl Default for CodecValues {
@@ -187,6 +213,10 @@ impl Default for CodecValues {
             sbcxq_bitpool: 0,
             sbc_min_bitpool: 0,
             sbcxq_min_bitpool: 0,
+            sbc_blocks: 0,
+            sbc_subbands: 0,
+            sbc_allocation: String::new(),
+            sbc_channel_mode: String::new(),
         }
     }
 }
@@ -209,6 +239,10 @@ impl Profile {
             sbcxq_bitpool: self.sbcxq_bitpool,
             sbc_min_bitpool: self.sbc_min_bitpool,
             sbcxq_min_bitpool: self.sbcxq_min_bitpool,
+            sbc_blocks: self.sbc_blocks,
+            sbc_subbands: self.sbc_subbands,
+            sbc_allocation: self.sbc_allocation.clone(),
+            sbc_channel_mode: self.sbc_channel_mode.clone(),
         }
     }
 
@@ -232,6 +266,10 @@ impl Profile {
             sbcxq_bitpool: d.sbcxq_bitpool,
             sbc_min_bitpool: d.sbc_min_bitpool,
             sbcxq_min_bitpool: d.sbcxq_min_bitpool,
+            sbc_blocks: d.sbc_blocks,
+            sbc_subbands: d.sbc_subbands,
+            sbc_allocation: d.sbc_allocation,
+            sbc_channel_mode: d.sbc_channel_mode,
             // Auto-select's order is the default one
             codec_order: Vec::new(),
             ..self.clone()
@@ -340,7 +378,14 @@ impl Profile {
             sbcxq_bitpool: self.sbcxq_bitpool,
             sbc_min_bitpool: self.sbc_min_bitpool,
             sbcxq_min_bitpool: self.sbcxq_min_bitpool,
-            sbc: codec::sbc::SbcParams::default(),
+            // Whoever starts the stream passes it through Settings::sbc_frame
+            sbc: codec::sbc::SbcParams {
+                blocks: self.sbc_blocks,
+                subbands: self.sbc_subbands,
+                allocation: codec::sbc::Allocation::from_key(&self.sbc_allocation),
+                channel_mode: codec::sbc::ChannelMode::from_key(&self.sbc_channel_mode),
+                min_bitpool: 0,
+            },
             sample_rate: (self.sample_rate != 0).then_some(self.sample_rate),
             bit_depth: match self.bit_depth {
                 16 => Some(16),
@@ -613,15 +658,23 @@ mod tests {
 
     #[test]
     fn sbc_setup_in_the_request_and_written_only_when_set() {
-        use codec::sbc::SbcParams;
-        // The frame setup an earlier version saved is no longer used (issue #86)
+        use codec::sbc::{Allocation, ChannelMode, SbcParams};
         let text = r#"{"name":"WH","device_address":"00:A2:D0:00:00:02","codec":"sbc","sbc_bitpool":40,
             "sbc_min_bitpool":20,"sbcxq_min_bitpool":30,
             "sbc_blocks":8,"sbc_subbands":4,"sbc_allocation":"snr","sbc_channel_mode":"stereo"}"#;
         let p: Profile = serde_json::from_str(text).unwrap();
         let r = p.to_request(1023).unwrap();
         assert_eq!(r.sbc_bitpool, 40);
-        assert!(r.sbc.is_default(), "{:?}", r.sbc);
+        assert_eq!(
+            r.sbc,
+            SbcParams {
+                blocks: 8,
+                subbands: 4,
+                allocation: Some(Allocation::Snr),
+                channel_mode: Some(ChannelMode::Stereo),
+                min_bitpool: 0,
+            }
+        );
         // Each codec its own minimum bitpool
         assert_eq!(r.sbc_params(CodecKind::Sbc), SbcParams { min_bitpool: 20, ..r.sbc });
         assert_eq!(r.sbc_params(CodecKind::SbcXq).min_bitpool, 30);
@@ -632,6 +685,12 @@ mod tests {
         let json = serde_json::to_string(&plain).unwrap();
         assert!(!json.contains("sbc_"), "{json}");
         assert!(plain.to_request(1023).unwrap().sbc.is_default());
+        // Unknown values are Auto
+        let odd = Profile { sbc_allocation: "max".into(), sbc_channel_mode: "auto".into(), ..plain };
+        assert!(odd.to_request(1023).unwrap().sbc.is_default());
+        // Auto-select streams the defaults, the profile keeps its own
+        assert!(p.as_auto().to_request(1023).unwrap().sbc.is_default());
+        assert_eq!(p.sbc_blocks, 8);
     }
 
     fn named(names: &[&str]) -> Vec<Profile> {

@@ -334,6 +334,12 @@ p {
 .btn-strong:hover:not(:disabled) {
   background: color-mix(in srgb, var(--strong-bg) 85%, var(--bg));
 }
+/* Black at half strength still looks like a button to press */
+.btn-strong:disabled {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
 .btn-danger {
   background: transparent;
   color: var(--bad-text);
@@ -460,7 +466,6 @@ option {
   min-width: 0;
 }
 .field-label {
-  font-weight: 600;
   font-size: var(--fs-14);
 }
 /* The label, and an info button that shows the details (issue #86) */
@@ -468,6 +473,26 @@ option {
   display: flex;
   align-items: center;
   gap: var(--s1);
+}
+/* Label and hint on the left, control on the right, as a Toggle (issue #86) */
+.field.side {
+  gap: 0;
+}
+.field.side > .row > :last-child {
+  flex: 0 1 auto;
+  max-width: 60%;
+}
+.field.side > .row > .input:not(.narrow) {
+  flex: none;
+  width: 12rem;
+}
+.field + .field.side,
+.row + .field,
+.field.side + .row {
+  border-top: 1px solid var(--border);
+}
+.row + .field:not(.side) {
+  padding-top: var(--s2);
 }
 .field-more-btn {
   width: 1.5rem;
@@ -1968,6 +1993,24 @@ option {
   flex-direction: column;
   gap: var(--s3);
 }
+/* SBC's blocks, subbands, allocation and channel mode, two per row */
+.sbc-frame {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.sbc-frame legend,
+.sbc-frame .hint {
+  grid-column: 1 / -1;
+}
+.sbc-frame legend {
+  padding: 0;
+  margin-bottom: var(--s2);
+}
 .sbc-bitrate {
   margin: 0;
   font-weight: 600;
@@ -2123,15 +2166,6 @@ option {
 }
 .codec-card.on .cbar-fill {
   background: var(--text);
-}
-
-.advanced-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: var(--s4);
-}
-.advanced-grid .field:has(.input.narrow) {
-  grid-column: 1 / -1;
 }
 
 /* ---------------------------------------------------------------- */

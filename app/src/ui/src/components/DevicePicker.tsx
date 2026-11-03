@@ -402,6 +402,7 @@ export function DevicePicker(props: {
 
   const manualField = () => (
     <Field
+      stacked
       label={t("connection.manual")}
       hint={t("ui.devices.manual_hint")}
       error={
@@ -563,6 +564,7 @@ export function DevicePicker(props: {
         onCancel={() => setRenaming(null)}
       >
         <Field
+          stacked
           label={t("device.enter_name")}
           hint={
             renaming()

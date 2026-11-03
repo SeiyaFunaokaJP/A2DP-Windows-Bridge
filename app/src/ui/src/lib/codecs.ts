@@ -10,6 +10,8 @@
 // kHz for aptX Adaptive, whose "ll" quality is its low latency mode.
 // aptX HD and aptX Adaptive always carry 24-bit (no choice).
 
+import type { Settings } from "../ipc/types";
+
 export type CodecId =
   | "auto"
   | "ldac"
@@ -45,11 +47,14 @@ export interface CodecSpec {
   hiRes: boolean;
   /** The only capture rates it takes (0 = auto), when not the usual ones */
   rates?: number[];
+  /** Its one bit rate at 44.1 / 48 kHz when it has no qualities (core:
+   *  Encoder::bitrate_kbps) */
+  fixedKbps?: [number, number];
   /** The bit depth it always carries when there is no choice (16 if not set) */
   bits?: number;
   /** Variable bit rate (where the headphones list it), on the "abr" setting */
   vbr?: boolean;
-  /** The SBC bitpool can be chosen */
+  /** The SBC bitpool and frame setup (blocks, subbands, allocation) can be chosen */
   bitpool?: boolean;
   /** Not yet confirmed with real headphones (the README's 🧪; core:
    *  CodecKind::experimental). The app offers and uses them as any other
@@ -111,17 +116,27 @@ export const CODECS: CodecSpec[] = [
     label: "codec.aptx_hd",
     bars: { quality: 4, latency: 3, stability: 3 },
     qualities: [],
+    fixedKbps: [529, 576],
     abr: false,
     hiRes: false,
     bits: 24,
     experimental: true,
   },
-  { id: "aptx", label: "codec.aptx", bars: { quality: 3, latency: 3, stability: 4 }, qualities: [], abr: false, hiRes: false },
+  {
+    id: "aptx",
+    label: "codec.aptx",
+    bars: { quality: 3, latency: 3, stability: 4 },
+    qualities: [],
+    fixedKbps: [352, 384],
+    abr: false,
+    hiRes: false,
+  },
   {
     id: "aptxll",
     label: "codec.aptx_ll",
     bars: { quality: 2, latency: 5, stability: 4 },
     qualities: [],
+    fixedKbps: [352, 384],
     abr: false,
     hiRes: false,
     experimental: true,
@@ -194,6 +209,7 @@ export const CODECS: CodecSpec[] = [
     label: "codec.faststream",
     bars: { quality: 1, latency: 4, stability: 4 },
     qualities: [],
+    fixedKbps: [198, 216],
     abr: false,
     hiRes: false,
     experimental: true,
@@ -257,6 +273,12 @@ export function codecSupport(codec: string, known: readonly string[], onRequest:
   const id = codec.toLowerCase();
   if (known.some((k) => k.toLowerCase() === id)) return "offered";
   return onRequest.includes(id) ? "unknown" : "not_offered";
+}
+
+/** Developer mode's override: a codec the device does not offer can be
+ *  chosen, and the core asks for it instead of falling back */
+export function forcesCodec(s: Pick<Settings, "developer_mode" | "dev_overrides">): boolean {
+  return s.developer_mode && s.dev_overrides.force_codec;
 }
 
 /**
@@ -435,14 +457,18 @@ export function abrCarries(from: string, to: string): boolean {
 
 /**
  * A codec's starting values from another codec's (`p.codec`): what does
- * not carry over (ABR across families) is left at the default, then the
- * values are fitted to the codec
+ * not carry over (ABR across families, SBC's frame setup to SBC XQ and
+ * back) is left at the default, then the values are fitted to the codec
  */
 export function carryToCodec<T extends CodecFields>(p: T, to: string): T {
+  const same = p.codec === to;
   return fitToCodec({
     ...p,
     codec: to,
     abr: abrCarries(p.codec, to) ? p.abr : false,
+    ...(same || p.sbc_blocks === undefined ? {} : { sbc_blocks: 0 }),
+    ...(same || p.sbc_subbands === undefined ? {} : { sbc_subbands: 0 }),
+    ...(same || p.sbc_allocation === undefined ? {} : { sbc_allocation: "" }),
   });
 }
 
@@ -476,6 +502,13 @@ export function qualityKbps(codec: string, quality: string, sampleRate: number, 
   const kbps = table[spec.id]?.[q.id] ?? q.kbps;
   const cap = Math.floor(maxBitrate / 1000);
   return kbps && cap > 0 && /^\d+$/.test(kbps) && Number(kbps) > cap ? String(cap) : kbps;
+}
+
+/** "384 kbps": a codec's one bit rate at a sample rate of 44.1 or 48 kHz, for
+ *  one without qualities (issue #86) */
+export function fixedKbpsText(codec: string, sampleRate: number): string {
+  const kbps = codecSpec(codec).fixedKbps;
+  return kbps ? `${kbps[sampleRate === 44100 ? 0 : 1]} kbps` : "";
 }
 
 /**
@@ -549,12 +582,19 @@ interface CodecFields {
   sbcxq_bitpool?: number;
   sbc_min_bitpool?: number;
   sbcxq_min_bitpool?: number;
+  sbc_blocks?: number;
+  sbc_subbands?: number;
+  sbc_allocation?: string;
+  sbc_channel_mode?: string;
 }
 
 /** Values the codec cannot use go back to the defaults (v1 did the same when the codec changed) */
 export function fitToCodec<T extends CodecFields>(p: T): T {
   const spec = codecSpec(p.codec);
   const quality = spec.qualities.length === 0 || spec.qualities.some((m) => m.id === p.quality) ? p.quality : "hq";
+  // The frame setup is SBC's and SBC XQ's; the channel mode SBC's only (XQ
+  // is dual channel, and plain SBC has no dual channel: issue #86)
+  const sbc = p.codec === "sbc" || p.codec === "sbcxq";
   return {
     ...p,
     quality,
@@ -565,6 +605,10 @@ export function fitToCodec<T extends CodecFields>(p: T): T {
     ...(p.sbcxq_bitpool === undefined ? {} : { sbcxq_bitpool: p.codec === "sbcxq" ? p.sbcxq_bitpool : 0 }),
     ...(p.sbc_min_bitpool === undefined ? {} : { sbc_min_bitpool: p.codec === "sbc" ? p.sbc_min_bitpool : 0 }),
     ...(p.sbcxq_min_bitpool === undefined ? {} : { sbcxq_min_bitpool: p.codec === "sbcxq" ? p.sbcxq_min_bitpool : 0 }),
+    ...(p.sbc_blocks === undefined ? {} : { sbc_blocks: sbc ? p.sbc_blocks : 0 }),
+    ...(p.sbc_subbands === undefined ? {} : { sbc_subbands: sbc ? p.sbc_subbands : 0 }),
+    ...(p.sbc_allocation === undefined ? {} : { sbc_allocation: sbc ? p.sbc_allocation : "" }),
+    ...(p.sbc_channel_mode === undefined ? {} : { sbc_channel_mode: p.codec === "sbc" && p.sbc_channel_mode !== "dual_channel" ? p.sbc_channel_mode : "" }),
   };
 }
 

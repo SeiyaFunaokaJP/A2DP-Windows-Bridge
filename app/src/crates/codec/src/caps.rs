@@ -589,6 +589,9 @@ pub struct RemoteCaps {
     /// codec streaming to another device is missing from the above)
     pub audio_sinks: u8,
     pub audio_sinks_in_use: u8,
+    /// Vendor SEPs of a known codec that were not taken
+    /// ([`VendorCapability::Ignored`]): what [`Self::forcing`] asks first
+    pub ignored: Vec<(CodecKind, RemoteSep)>,
 }
 
 /// How a vendor codec capability was taken, for the log
@@ -768,6 +771,14 @@ impl RemoteCaps {
 
     /// A vendor codec capability (media codec information) of SEP `seid`
     pub fn add_vendor(&mut self, seid: u8, info: &[u8]) -> VendorCapability {
+        let taken = self.take_vendor(seid, info);
+        if let VendorCapability::Ignored(kind, _) = taken {
+            self.ignored.push((kind, RemoteSep { seid }));
+        }
+        taken
+    }
+
+    fn take_vendor(&mut self, seid: u8, info: &[u8]) -> VendorCapability {
         let Some((vid, cid)) = read_vendor(info) else {
             return VendorCapability::TooShort;
         };
@@ -1079,6 +1090,66 @@ impl RemoteCaps {
         } else {
             None
         }
+    }
+
+    /// These capabilities with `kind` usable even though the sink does not
+    /// list it (developer mode's force_codec): it is taken to list what
+    /// BlueCaster offers itself, and the SET_CONFIGURATION goes to the SEP
+    /// that has the codec in a form BlueCaster does not use, else to any SEP
+    /// (SBC's first). None without an encoder for it or a SEP to ask.
+    pub fn forcing(&self, kind: CodecKind) -> Option<RemoteCaps> {
+        if !kind.available() {
+            return None;
+        }
+        if self.has(kind) {
+            return Some(self.clone());
+        }
+        let own = self.ignored.iter().find(|(k, _)| *k == kind).map(|&(_, sep)| sep);
+        let seid = own.or(self.any_sep())?.seid;
+        let mut caps = self.clone();
+        match kind {
+            CodecKind::Sbc => caps.add_sbc(seid),
+            CodecKind::SbcXq => {
+                caps.sbc = Some(RemoteSep { seid });
+                let listed = self.sbc_caps.unwrap_or_default();
+                caps.sbc_caps = Some(SbcCapabilities {
+                    sampling_frequency: listed.sampling_frequency | SBC_FREQ_44100 | SBC_FREQ_48000,
+                    channel_mode: listed.channel_mode | SBC_CH_DUAL,
+                    block_length: listed.block_length | SBC_BLOCKS_16,
+                    subbands: listed.subbands | SBC_SUBBANDS_8,
+                    allocation_method: listed.allocation_method | SBC_ALLOC_LOUDNESS,
+                    min_bitpool: listed.min_bitpool.min(SBC_XQ_MIN_MAX_BITPOOL),
+                    max_bitpool: listed.max_bitpool.max(sbc::xq_max_bitpool(48000)),
+                });
+            }
+            CodecKind::Aac => caps.add_aac(seid),
+            _ => {
+                let ep = local_endpoints().into_iter().find(|e| e.kind == kind)?;
+                caps.add_vendor(seid, &ep.caps);
+            }
+        }
+        caps.has(kind).then_some(caps)
+    }
+
+    /// A SEP of the sink, whatever its codec: SBC's when it has one
+    fn any_sep(&self) -> Option<RemoteSep> {
+        [
+            self.sbc,
+            self.aac,
+            self.ldac,
+            self.aptx,
+            self.aptx_hd,
+            self.aptx_ll,
+            self.aptxad,
+            self.lhdcv5,
+            self.opus,
+            self.opus05,
+            self.faststream,
+        ]
+        .into_iter()
+        .flatten()
+        .next()
+        .or(self.ignored.first().map(|&(_, sep)| sep))
     }
 
     /// The best codec both sides have (Auto)
@@ -1554,6 +1625,32 @@ pub fn choose_in(
 mod tests {
     use super::*;
     use crate::Quality;
+
+    #[test]
+    fn forcing_makes_every_codec_configurable_on_a_sbc_only_sink() {
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc(3);
+        for kind in CodecKind::ALL.into_iter().filter(|k| k.available()) {
+            let forced = caps.forcing(kind).unwrap();
+            assert!(forced.has(kind), "{kind}");
+            assert_eq!(forced.configuration(kind, 48000, 2, 16).unwrap().remote_seid, 3, "{kind}");
+        }
+    }
+
+    #[test]
+    fn forcing_keeps_what_the_sink_lists_and_asks_the_codec_s_own_sep() {
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc(1);
+        assert_eq!(caps.forcing(CodecKind::Sbc), Some(caps.clone()));
+        // Mono-only aptX: not offered, but its SEP is the one to ask
+        caps.add_vendor(7, &[0x4F, 0, 0, 0, 0x01, 0x00, 0x21]);
+        assert!(!caps.has(CodecKind::Aptx));
+        if CodecKind::Aptx.available() {
+            let c = caps.forcing(CodecKind::Aptx).unwrap().configuration(CodecKind::Aptx, 48000, 2, 16).unwrap();
+            assert_eq!(c.remote_seid, 7);
+        }
+        assert_eq!(RemoteCaps::default().forcing(CodecKind::Sbc), None);
+    }
 
     #[test]
     fn auto_prefers_ldac_then_aptx_family() {

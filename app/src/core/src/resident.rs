@@ -129,6 +129,7 @@ fn link_sample(
         acl_packet: air.map(|a| AclPacket { name: a.packet.into(), slots: a.slots }),
         bandwidth_share: air.map(|a| a.bandwidth_share),
         queue_capacity: iso.is_none().then_some(bt_host::stats::MEDIA_QUEUE_PACKETS as u32),
+        queue_ms: iso.is_none().then(|| stats.queue_wait_ms.load(Ordering::Relaxed)),
         source_rate: Some(source_rate),
         counters: Some(LinkCounters { total, stream_start: start, stream_starts: starts }),
         iso,
