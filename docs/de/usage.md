@@ -431,7 +431,7 @@ Dies zeigt, was A2DPWB gesendet hat und dass es für den ausgehandelten Codec g�
 
 ## Verbindungsqualität und AFH {#link-quality}
 
-**Diagnose > Verbindungsqualität** zeigt, was A2DPWB während des Streamings sendet: die tatsächliche Bitrate, gesendete Pakete, vor dem Senden verworfene Pakete (Sendewarteschlange voll: die Funkverbindung kam nicht nach), bei der Aufnahme verworfenes Audio, die Sendewarteschlange, die genutzte Funkzeit und das **Signal**: den RSSI der Verbindung, relativ zum Golden Receive Range des Controllers (0 = gut, negativ = zu schwach; kein absoluter Pegel), und auf wie vielen der 79 Bluetooth-Kanäle die Verbindung springt (AFH). Die Seite Start und das Flyout im Infobereich fassen dies als Gut, Mittel oder Schwach zusammen.
+**Diagnose > Verbindungsqualität** zeigt, was A2DPWB während des Streamings sendet: die tatsächliche Bitrate, gesendete Pakete, vor dem Senden verworfene Pakete (Sendewarteschlange voll: die Funkverbindung kam nicht nach), bei der Aufnahme verworfenes Audio, die Sendewarteschlange, die genutzte Funkzeit und das **Signal zum Idealwert**: den RSSI der Verbindung, relativ zum Golden Receive Range des Controllers (0 = gut, negativ = zu schwach; kein absoluter Pegel; darunter folgt in dBm, wie hoch der tatsächliche Pegel höchstens sein kann), und auf wie vielen der 79 Bluetooth-Kanäle die Verbindung springt (AFH). Die Seite Start und das Flyout im Infobereich fassen dies als Gut, Mittel oder Schwach zusammen.
 
 Bluetooth meidet belegte Kanäle von selbst (AFH), erfährt von Wi-Fi aber nur über Fehler. A2DPWB teilt seinem Controller zusätzlich mit, welche Kanäle zu meiden sind (AFH-Host-Kanalklassifizierung), und zwar für jede Verbindung:
 

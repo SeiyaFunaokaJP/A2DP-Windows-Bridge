@@ -71,6 +71,8 @@ export function LineChart(props: {
   min?: number;
   max?: number;
   format: (v: number) => string;
+  /** The latest value in the header, when it says more than the scale */
+  formatValue?: (v: number) => string;
   /** The status colour of the latest value */
   status?: (v: number) => "good" | "warn" | "bad";
 }) {
@@ -83,12 +85,13 @@ export function LineChart(props: {
     }
     return null;
   });
+  const lastText = () => (last() === null ? "–" : (props.formatValue ?? props.format)(last()!));
   return (
     <figure class="chart card">
       <figcaption class="chart-head">
         <span class="chart-title">{props.title}</span>
         <span class={`chart-value num ${last() !== null && props.status ? `st-${props.status(last()!)}` : ""}`}>
-          {last() === null ? "–" : props.format(last()!)}
+          {lastText()}
         </span>
       </figcaption>
       <svg
@@ -96,7 +99,7 @@ export function LineChart(props: {
         viewBox="0 0 300 100"
         preserveAspectRatio="none"
         role="img"
-        aria-label={`${props.title}: ${last() === null ? "–" : props.format(last()!)}`}
+        aria-label={`${props.title}: ${lastText()}`}
       >
         <line class="grid" x1="0" x2="300" y1="2" y2="2" vector-effect="non-scaling-stroke" />
         <line class="grid" x1="0" x2="300" y1="50" y2="50" vector-effect="non-scaling-stroke" />

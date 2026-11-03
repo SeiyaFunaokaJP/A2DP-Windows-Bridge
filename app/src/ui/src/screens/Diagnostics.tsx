@@ -436,6 +436,19 @@ function Row(props: { label: string; value: string; class?: string; children?: J
 
 const DASH = "–";
 
+/** The highest the golden receive range's lower edge may sit (Core spec):
+ *  a reading below the range is at most this plus the reading */
+const GOLDEN_LOW_MAX_DBM = -56;
+
+function rssiDb(v: number): string {
+  return `${v > 0 ? "+" : ""}${Math.round(v)} dB`;
+}
+
+/** The reading, and below the range the most the actual level can be */
+function rssiValue(v: number): string {
+  return v < 0 ? t("ui.diag.rssi_value", rssiDb(v), Math.round(v) + GOLDEN_LOW_MAX_DBM) : rssiDb(v);
+}
+
 function LinkPanel() {
   const { core } = useApp();
   onCleanup(core.wantLink());
@@ -488,7 +501,7 @@ function LinkPanel() {
   };
   const rssiText = () => {
     const s = live();
-    return !s || s.rssi === null ? DASH : `${s.rssi > 0 ? "+" : ""}${s.rssi} dB`;
+    return !s || s.rssi === null ? DASH : rssiValue(s.rssi);
   };
   const afhText = () => {
     const s = live();
@@ -533,7 +546,8 @@ function LinkPanel() {
           values={samples().map((s) => s.rssi)}
           min={-40}
           max={10}
-          format={(v) => `${v > 0 ? "+" : ""}${Math.round(v)} dB`}
+          format={rssiDb}
+          formatValue={rssiValue}
         />
         <LineChart
           title={t("quality.bitrate")}
