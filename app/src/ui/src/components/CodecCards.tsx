@@ -402,8 +402,10 @@ export function CodecSettings(props: {
     values: T[],
     current: T,
     label: (v: T) => string,
+    // What Auto takes (core: SbcParams' defaults), shown beside it (issue #86)
+    auto: T,
   ) => [
-    { value: (typeof current === "number" ? 0 : "") as T, label: t("codec.auto") },
+    { value: (typeof current === "number" ? 0 : "") as T, label: t("codec.auto_value", label(auto)) },
     ...values
       .filter((x) => x === current || sbcOffered(props.sbcCaps, field, x))
       .map((x) => ({
@@ -571,7 +573,7 @@ export function CodecSettings(props: {
                   <Select
                     id={id}
                     value={v.sbc_blocks}
-                    options={sbcChoice("blocks", SBC_BLOCKS, v.sbc_blocks, String)}
+                    options={sbcChoice("blocks", SBC_BLOCKS, v.sbc_blocks, String, 16)}
                     onChange={(x) => set("sbc_blocks", x)}
                   />
                 )}
@@ -581,7 +583,7 @@ export function CodecSettings(props: {
                   <Select
                     id={id}
                     value={v.sbc_subbands}
-                    options={sbcChoice("subbands", SBC_SUBBANDS, v.sbc_subbands, String)}
+                    options={sbcChoice("subbands", SBC_SUBBANDS, v.sbc_subbands, String, 8)}
                     onChange={(x) => set("sbc_subbands", x)}
                   />
                 )}
@@ -591,7 +593,7 @@ export function CodecSettings(props: {
                   <Select
                     id={id}
                     value={v.sbc_allocation}
-                    options={sbcChoice("allocations", SBC_ALLOCATIONS, v.sbc_allocation, (a) => t(`ui.diag.cd_alloc.${a}`))}
+                    options={sbcChoice("allocations", SBC_ALLOCATIONS, v.sbc_allocation, (a) => t(`ui.diag.cd_alloc.${a}`), "loudness")}
                     onChange={(x) => set("sbc_allocation", x)}
                   />
                 )}
@@ -603,13 +605,12 @@ export function CodecSettings(props: {
                     <Select
                       id={id}
                       value={v.sbc_channel_mode}
-                      options={sbcChoice("channel_modes", SBC_CHANNEL_MODES, v.sbc_channel_mode, (m) => t(`ui.diag.cd_mode.${m}`))}
+                      options={sbcChoice("channel_modes", SBC_CHANNEL_MODES, v.sbc_channel_mode, (m) => t(`ui.diag.cd_mode.${m}`), "joint_stereo")}
                       onChange={(x) => set("sbc_channel_mode", x)}
                     />
                   )}
                 </Field>
               </Show>
-              <p class="hint">{t(v.codec === "sbc" ? "ui.profile.sbc_frame_hint" : "ui.profile.sbc_frame_hint_xq")}</p>
             </fieldset>
           </Show>
           {/* Fixed for each codec, unless chosen above (issue #86) */}
