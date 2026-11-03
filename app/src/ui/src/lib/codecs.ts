@@ -10,6 +10,8 @@
 // kHz for aptX Adaptive, whose "ll" quality is its low latency mode.
 // aptX HD and aptX Adaptive always carry 24-bit (no choice).
 
+import type { Settings } from "../ipc/types";
+
 export type CodecId =
   | "auto"
   | "ldac"
@@ -271,6 +273,12 @@ export function codecSupport(codec: string, known: readonly string[], onRequest:
   const id = codec.toLowerCase();
   if (known.some((k) => k.toLowerCase() === id)) return "offered";
   return onRequest.includes(id) ? "unknown" : "not_offered";
+}
+
+/** Developer mode's override: a codec the device does not offer can be
+ *  chosen, and the core asks for it instead of falling back */
+export function forcesCodec(s: Pick<Settings, "developer_mode" | "dev_overrides">): boolean {
+  return s.developer_mode && s.dev_overrides.force_codec;
 }
 
 /**

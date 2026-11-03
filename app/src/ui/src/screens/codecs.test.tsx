@@ -251,6 +251,29 @@ describe("the Codecs screen", () => {
     expect(within(wh).queryByText(t("error.codec_not_supported", "aptX HD"))).toBeNull();
   });
 
+  it("chooses an unsupported card while developer mode forces it", async () => {
+    const { calls, core } = start("#/codecs");
+    const wh = await section("WH-1000XM5");
+    const settings = core.state.snap!.settings;
+    await core.request("settings.set", {
+      settings: { ...settings, developer_mode: true, dev_overrides: { ...settings.dev_overrides, force_codec: true } },
+    });
+    fireEvent.click(hideSwitch());
+    fireEvent.click(autoSwitch());
+    await waitFor(() => expect(autoSwitch()).toBeChecked());
+    const hd = await within(wh).findByRole("radio", { name: /aptX HD/ });
+    await waitFor(() => expect(hd).toBeDisabled());
+    // Auto-select stands in the way, as for any other card
+    fireEvent.click(hd.closest("label")!);
+    fireEvent.click(within(await autoDialog()).getByRole("button", { name: t("ui.codecs.auto_dialog_disable") }));
+    await waitFor(() => expect(saves(calls)).toHaveLength(1));
+    expect(saves(calls)[0].profile).toMatchObject({ codec: "aptxhd" });
+    await waitFor(() => expect(within(wh).getByRole("radio", { name: /aptX HD/ })).toBeChecked());
+    // Developer mode off: the one used instead again
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: false } });
+    await waitFor(() => expect(within(wh).getByRole("radio", { name: /aptX HD/ })).not.toBeChecked());
+  });
+
   it("does not offer to turn Auto-select off for an unsupported card (issue #86)", async () => {
     start("#/codecs");
     const wh = await section("WH-1000XM5");

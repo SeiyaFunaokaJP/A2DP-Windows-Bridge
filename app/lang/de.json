@@ -378,6 +378,8 @@
   "ui.dev.active": "Überschreibungen sind aktiv. Schalten Sie sie vor einer Problemmeldung aus.",
   "ui.dev.section_media": "Medienpakete (alle Codecs)",
   "ui.dev.reset": "Alle ausschalten",
+  "ui.dev.force_codec": "Mit nicht unterstützten Codecs verbinden",
+  "ui.dev.force_codec_hint": "Sie lassen sich dann unter Codecs wählen. Die meisten Geräte lehnen sie ab.",
   "ui.dev.rtp_marker": "RTP-Marker-Bit",
   "ui.dev.packet_dump": "Die ersten Pakete protokollieren",
   "ui.dev.packet_dump_hint": "Größe, Zeitstempel und erste Bytes im Protokoll.",

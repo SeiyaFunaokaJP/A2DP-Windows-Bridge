@@ -378,6 +378,8 @@
   "ui.dev.active": "上書き設定がオンです。不具合を報告するときはオフに戻してください。",
   "ui.dev.section_media": "メディアパケット（全コーデック）",
   "ui.dev.reset": "すべてオフ",
+  "ui.dev.force_codec": "非対応のコーデックで強制的に接続",
+  "ui.dev.force_codec_hint": "コーデック画面で選べるようになります。多くのデバイスは受け付けません。",
   "ui.dev.rtp_marker": "RTP マーカービット",
   "ui.dev.packet_dump": "最初のパケットをログに出す",
   "ui.dev.packet_dump_hint": "サイズ、タイムスタンプ、先頭バイトをログに書きます。",

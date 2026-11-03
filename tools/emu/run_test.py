@@ -55,6 +55,7 @@ Outputs go to tools/emu/out/scan-<case>/.
 """
 
 import argparse
+import json
 import math
 import os
 import queue
@@ -113,6 +114,8 @@ CONFIG_PATTERN = {  # a2dpwb_decode's "Configuration :" line
 # Frame headers are validated, audio is not decoded (aptX Adaptive: its RTP
 # header, packet sizes and frame types)
 NO_DECODER = {'ldac', 'ldac-96k', 'ldac-48k', 'lhdcv5', 'aptxad', 'aptxad-r2', 'aptxad-r2-96k'}
+# Cases run with the developer override on
+FORCED = {'force-ldac'}
 APTXAD_SINK = ['--codecs', 'sbc', 'aac', 'aptx', 'aptxad']
 HUAWEI_SINK = ['--codecs', 'sbc', 'aac', '--log-level', 'INFO']  # LOG_CHECKS read its log
 HUAWEI_NAME = ['--device-name', 'HUAWEI FreeBuds Pro 4']
@@ -122,6 +125,8 @@ OPPO_NAME = ['--device-name', 'OPPO Enco Free4']
 # more A2DPWB arguments)
 NEGOTIATION = {
     'sbcxq-44k': ('sbcxq', [], 'sbcxq', ['--rate', '44100']),            # bitpool 47
+    # Developer mode's force_codec (FORCED): LDAC to a sink that lists SBC only
+    'force-ldac': ('ldac', ['--codecs', 'sbc'], 'ldac', []),
     'auto-sbcxq': ('auto', ['--codecs', 'sbc'], 'sbcxq', []),            # Auto takes SBC XQ over SBC
     'auto-sbc-no-xq': ('auto', ['--codecs', 'sbc', '--sbc-no-dual'], 'sbc', []),  # no dual channel: SBC
     # Dual channel listed but refused: SBC XQ falls back to SBC
@@ -441,6 +446,10 @@ def run_codec(args, codec, port):
     sink = start_sink(port, sink_capture, os.path.join(out, 'sink.log'), extra=sink_args)
     try:
         env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'))  # isolated link keys
+        if codec in FORCED:
+            os.makedirs(env['A2DPWB_CONFIG_DIR'])
+            with open(os.path.join(env['A2DPWB_CONFIG_DIR'], 'settings.json'), 'w', encoding='utf-8') as f:
+                json.dump({'debug_mode': True, 'dev_overrides': {'force_codec': True}}, f)
         with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8', errors='replace') as log:
             try:
                 rc = subprocess.run(

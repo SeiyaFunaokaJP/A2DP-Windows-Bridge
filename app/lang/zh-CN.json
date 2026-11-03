@@ -378,6 +378,8 @@
   "ui.dev.active": "覆盖设置已开启。报告问题前请将其关闭。",
   "ui.dev.section_media": "媒体数据包（所有编解码器）",
   "ui.dev.reset": "全部关闭",
+  "ui.dev.force_codec": "强制使用不支持的编解码器连接",
+  "ui.dev.force_codec_hint": "可在编解码器页面中选择。多数设备会拒绝。",
   "ui.dev.rtp_marker": "RTP 标记位",
   "ui.dev.packet_dump": "记录最初的数据包",
   "ui.dev.packet_dump_hint": "大小、时间戳和开头字节，记录在日志中。",

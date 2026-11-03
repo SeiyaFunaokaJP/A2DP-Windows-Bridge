@@ -3,4 +3,4 @@
 /**
  * Developer mode's overrides (codec::dev::DevOverrides)
  */
-export type DevOverrides = { rtp_marker: boolean, packet_dump: boolean, aac_config_bitrate0: boolean, aac_bitrate_kbps: number, aac_no_peak: boolean, aac_no_afterburner: boolean, aac_latm_v0: boolean, };
+export type DevOverrides = { rtp_marker: boolean, packet_dump: boolean, aac_config_bitrate0: boolean, aac_bitrate_kbps: number, aac_no_peak: boolean, aac_no_afterburner: boolean, aac_latm_v0: boolean, force_codec: boolean, };
