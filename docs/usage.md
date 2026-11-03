@@ -404,6 +404,8 @@ and the error says that endpoints are in use by another device. Disconnect the h
 
 Sony headphones such as the WH-1000XM4 do not offer LDAC while **Connect to 2 devices simultaneously** (multipoint) is on: turn it off in the Sony Sound Connect app, then connect again. Some models, such as the WH-1000XM6, support LDAC together with multipoint.
 
+The headphones' own app (battery, noise control, EQ) needs a link of its own to the headphones, from the phone or from this PC's built-in Bluetooth. While it is connected, the headphones are on a dual connection, and codec changes in A2DPWB can take longer or fail. Disconnect the phone, or close the app, before changing codecs. [EncoDeck](works-with) controls the headphones over A2DPWB's own link instead, so it adds no second connection.
+
 ### Sample Rate
 
 aptX, aptX HD and aptX LL support only 44.1 kHz and 48 kHz (aptX Adaptive 48 kHz; 96 kHz when chosen, if the headphones list it). A2DPWB picks one of the rates the headphones advertise (on Auto 48 kHz, else 44.1 kHz) and lets WASAPI resample the capture. You do not need to change the Windows Sound settings for aptX.

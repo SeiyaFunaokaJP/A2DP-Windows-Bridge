@@ -375,6 +375,8 @@ capability discovery complete (LDAC=false ... , 1 of 6 audio sink SEP(s) in use)
 
 WH-1000XM4 같은 Sony 헤드폰은 **2대의 기기와 동시 연결**(멀티포인트)이 켜져 있으면 LDAC을 제공하지 않습니다. Sony Sound Connect 앱에서 끈 후 다시 연결하십시오. WH-1000XM6 등 일부 모델은 멀티포인트와 LDAC을 함께 지원합니다.
 
+헤드폰 전용 앱(배터리, 노이즈 컨트롤, EQ)은 휴대폰이나 이 PC의 내장 Bluetooth에서 헤드폰으로 가는 별도의 링크가 필요합니다. 앱이 연결된 동안 헤드폰은 2대 동시 연결 상태가 되어, A2DPWB의 코덱 변경이 오래 걸리거나 실패할 수 있습니다. 코덱을 바꾸기 전에 휴대폰 연결을 끊거나 앱을 닫으세요. [EncoDeck](works-with)는 A2DPWB 자체 링크로 헤드폰을 제어하므로 두 번째 연결을 추가하지 않습니다.
+
 ### 샘플링 속도
 
 aptX, aptX HD, aptX LL은 44.1 kHz와 48 kHz만 지원합니다(aptX Adaptive는 48 kHz, 96 kHz를 선택했고 헤드폰이 알리면 96 kHz). A2DPWB는 헤드폰이 알리는 속도 중 하나를 선택하고(자동이면 48 kHz, 없으면 44.1 kHz), 캡처는 WASAPI가 리샘플링하도록 합니다. aptX를 위해 Windows 소리 설정을 변경할 필요는 없습니다.

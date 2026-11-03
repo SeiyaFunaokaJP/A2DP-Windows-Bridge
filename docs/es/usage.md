@@ -376,6 +376,8 @@ y el error indica que hay extremos en uso por otro dispositivo. Desconecte los a
 
 Los auriculares Sony como los WH-1000XM4 no ofrecen LDAC mientras **Conectar a 2 dispositivos simultáneamente** (multipunto) está activado: desactívelo en la aplicación Sony Sound Connect y vuelva a conectar. Algunos modelos, como los WH-1000XM6, admiten LDAC junto con multipunto.
 
+La app de los auriculares (batería, cancelación de ruido, EQ) necesita su propio enlace con los auriculares, desde el teléfono o desde el Bluetooth integrado de este PC. Mientras está conectada, los auriculares están en conexión dual, y los cambios de códec en A2DPWB tardan más o fallan. Desconecte el teléfono, o cierre la app, antes de cambiar de códec. [EncoDeck](works-with) controla los auriculares por el propio enlace de A2DPWB, así que no añade una segunda conexión.
+
 ### Frecuencia de muestreo
 
 aptX, aptX HD y aptX LL solo admiten 44.1 kHz y 48 kHz (aptX Adaptive 48 kHz, o 96 kHz si se elige y los auriculares lo anuncian). A2DPWB elige una de las frecuencias que anuncian los auriculares (en Automático 48 kHz, si no 44.1 kHz) y deja que WASAPI remuestree la captura. No es necesario cambiar la configuración de Sonido de Windows para aptX.

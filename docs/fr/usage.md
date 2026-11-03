@@ -376,6 +376,8 @@ et l'erreur indique que des endpoints sont utilisés par un autre appareil. Déc
 
 Les casques Sony comme le WH-1000XM4 ne proposent pas LDAC lorsque **Connexion simultanée à 2 appareils** (multipoint) est activée : désactivez-la dans l'application Sony Sound Connect, puis reconnectez-vous. Certains modèles, comme le WH-1000XM6, prennent en charge LDAC avec le multipoint.
 
+L'application des écouteurs (batterie, réduction de bruit, EQ) a besoin de sa propre liaison avec les écouteurs, depuis le téléphone ou depuis le Bluetooth intégré de ce PC. Tant qu'elle est connectée, les écouteurs sont en connexion double, et les changements de codec dans A2DPWB prennent plus de temps ou échouent. Déconnectez le téléphone, ou fermez l'application, avant de changer de codec. [EncoDeck](works-with) pilote les écouteurs par la liaison d'A2DPWB elle-même et n'ajoute donc pas de seconde connexion.
+
 ### Fréquence d'échantillonnage
 
 aptX, aptX HD et aptX LL ne prennent en charge que 44,1 kHz et 48 kHz (aptX Adaptive 48 kHz, ou 96 kHz s'il est choisi et que le casque l'annonce). A2DPWB choisit l'une des fréquences annoncées par le casque (sur Auto 48 kHz, sinon 44,1 kHz) et laisse WASAPI rééchantillonner la capture. Vous n'avez pas besoin de modifier les paramètres Son de Windows pour l'aptX.
