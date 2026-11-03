@@ -202,6 +202,31 @@ pub struct CodecValues {
     pub sbc_channel_mode: String,
 }
 
+impl CodecValues {
+    /// Puts these settings into `req` (one codec's, under Auto-select)
+    pub fn apply_to(&self, req: &mut StreamRequest) {
+        req.quality = Quality::from_key(&self.quality);
+        req.abr = self.abr;
+        req.sbc_bitpool = self.sbc_bitpool;
+        req.sbcxq_bitpool = self.sbcxq_bitpool;
+        req.sbc_min_bitpool = self.sbc_min_bitpool;
+        req.sbcxq_min_bitpool = self.sbcxq_min_bitpool;
+        req.sbc = codec::sbc::SbcParams {
+            blocks: self.sbc_blocks,
+            subbands: self.sbc_subbands,
+            allocation: codec::sbc::Allocation::from_key(&self.sbc_allocation),
+            channel_mode: codec::sbc::ChannelMode::from_key(&self.sbc_channel_mode),
+            min_bitpool: 0,
+        };
+        req.sample_rate = (self.sample_rate != 0).then_some(self.sample_rate);
+        req.bit_depth = match self.bit_depth {
+            16 => Some(16),
+            24 => Some(24),
+            _ => None,
+        };
+    }
+}
+
 impl Default for CodecValues {
     fn default() -> Self {
         CodecValues {
@@ -244,6 +269,15 @@ impl Profile {
             sbc_allocation: self.sbc_allocation.clone(),
             sbc_channel_mode: self.sbc_channel_mode.clone(),
         }
+    }
+
+    /// Each codec's settings: the codec in use's, then the others' kept
+    /// ones (what Auto-select streams with in developer mode,
+    /// `DevOverrides::auto_codec_settings`)
+    pub fn all_codec_values(&self) -> Vec<(CodecKind, CodecValues)> {
+        let current = CodecKind::from_key(&self.codec);
+        let kept = self.codec_settings.iter().filter_map(|(key, v)| Some((CodecKind::from_key(key)?, v.clone())));
+        current.map(|k| (k, self.codec_values())).into_iter().chain(kept.filter(|(k, _)| Some(*k) != current)).collect()
     }
 
     /// The profile as Auto streams it while "Auto-select" is on for every
@@ -392,6 +426,7 @@ impl Profile {
                 24 => Some(24),
                 _ => None,
             },
+            codec_values: Vec::new(),
             source,
             volume_sync,
             mute_output: false,
@@ -638,6 +673,37 @@ mod tests {
         assert_eq!(a.to_request(1023).unwrap().codec, None);
         let le = Profile { le_audio: true, ..p };
         assert_eq!(le.as_auto(), le);
+    }
+
+    #[test]
+    fn every_codec_values_for_auto_select_in_developer_mode() {
+        let aac = CodecValues { quality: "sq".into(), abr: true, ..CodecValues::default() };
+        let p = Profile {
+            device_address: "AA:BB:CC:DD:EE:FF".into(),
+            codec: "ldac".into(),
+            sample_rate: 96000,
+            bit_depth: 24,
+            codec_settings: BTreeMap::from([
+                ("aac".to_string(), aac.clone()),
+                // Stale copy of the codec in use, and a key no codec has
+                ("ldac".to_string(), CodecValues::default()),
+                ("nope".to_string(), CodecValues::default()),
+            ]),
+            ..Profile::default()
+        };
+        let all = p.all_codec_values();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0], (CodecKind::Ldac, p.codec_values()));
+        assert_eq!(all[1], (CodecKind::Aac, aac.clone()));
+
+        // Put into an Auto request, as stream.rs does for the codec picked
+        let mut req = p.as_auto().to_request(1023).unwrap();
+        assert_eq!((req.sample_rate, req.bit_depth), (None, None));
+        all[0].1.apply_to(&mut req);
+        assert_eq!((req.sample_rate, req.bit_depth), (Some(96000), Some(24)));
+        aac.apply_to(&mut req);
+        assert_eq!((req.quality, req.abr, req.sample_rate), (Quality::Standard, true, None));
+        assert_eq!(req.codec, None);
     }
 
     #[test]

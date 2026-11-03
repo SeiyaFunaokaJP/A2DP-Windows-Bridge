@@ -1465,11 +1465,17 @@ mod tests {
 
     #[test]
     fn the_output_mute_takes_developer_mode_and_spares_the_test_tone() {
-        let settings =
-            |debug_mode, mute_output| crate::settings::Settings { debug_mode, mute_output, ..Default::default() };
-        assert!(settings(true, true).mutes_output());
-        assert!(!settings(true, false).mutes_output());
-        assert!(!settings(false, true).mutes_output());
+        let settings = |debug_mode, volume_mixer, mute_output| crate::settings::Settings {
+            debug_mode,
+            volume_mixer,
+            mute_output,
+            ..Default::default()
+        };
+        assert!(settings(true, true, true).mutes_output());
+        assert!(!settings(true, true, false).mutes_output());
+        assert!(!settings(false, true, true).mutes_output());
+        // The mixer turned off in Developer takes the mute with it
+        assert!(!settings(true, false, true).mutes_output());
 
         let req = StreamRequest { mute_output: true, ..request() };
         let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: false };

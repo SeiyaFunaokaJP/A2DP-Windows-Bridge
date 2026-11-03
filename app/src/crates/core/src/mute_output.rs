@@ -4,14 +4,24 @@
 //! volume_sync.rs), so a session mutes it and unmutes it at the end.
 //!
 //! Only a device this session muted is unmuted: one the user had muted stays
-//! so. An unmute by the user while streaming is left alone until the default
-//! device changes. If A2DPWB exits unexpectedly, the device stays muted.
+//! so. If A2DPWB exits unexpectedly, the device stays muted.
+//!
+//! Windows' mute key (or the mute in its volume flyout) unmutes that device,
+//! and the PC would play (issue #86). An unmute of the device this session
+//! muted is taken as that key: the device is muted again at once and the
+//! headphones go silent ([`key_silenced`]); pressed again, they play again.
+//! Windows' volume keys unmute too: an unmute with a new volume is taken as
+//! one of them, so the output is muted again and the headphones play.
+//! A watcher thread looks every [`KEY_WATCH`] so the speakers hardly sound.
 //!
 //! [`OutputMute`] lives on the session thread, like the
 //! [`VolumeSyncer`](crate::volume_sync::VolumeSyncer), and uses the same
 //! [`EndpointProvider`], so the logic is tested with fakes.
 
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::thread::JoinHandle;
+use std::time::Duration;
 
 use crate::volume_sync::{Endpoint, EndpointProvider, WindowsEndpoints};
 
@@ -28,8 +38,103 @@ pub struct MuteHandover {
 
 static HANDOVER: Mutex<MuteHandover> = Mutex::new(MuteHandover { next: false, device: None });
 
-fn lock(handover: &Mutex<MuteHandover>) -> MutexGuard<'_, MuteHandover> {
-    handover.lock().unwrap_or_else(|e| e.into_inner())
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The headphones are silent: Windows' mute key was pressed while this
+/// session keeps the output muted (one session streams at a time)
+static KEY_SILENCE: AtomicBool = AtomicBool::new(false);
+
+/// Whether the stream sends silence for Windows' mute key (the encode
+/// thread asks, as for volume 0)
+pub(crate) fn key_silenced() -> bool {
+    KEY_SILENCE.load(Ordering::Acquire)
+}
+
+/// How often the watcher thread looks at the device's mute
+const KEY_WATCH: Duration = Duration::from_millis(15);
+
+/// The device this session muted and its volume when last looked at, for
+/// the watcher; the lock also keeps the session thread and the watcher from
+/// taking one key press twice
+#[derive(Debug, Default)]
+struct Watched {
+    device: Option<String>,
+    volume: Option<f32>,
+}
+
+type Ours = Arc<Mutex<Watched>>;
+
+/// Looks at the device this session muted, under the [`Ours`] lock. Unmuted
+/// in Windows: muted again; with the volume as it was, the mute key (the
+/// headphones' silence turns over), else a volume key (they play).
+fn key_pressed<E: Endpoint>(endpoint: &E, watched: &mut Watched, silence: &AtomicBool) {
+    let volume = endpoint.volume();
+    let changed = volume != watched.volume;
+    watched.volume = volume;
+    if endpoint.muted() != Some(false) {
+        return;
+    }
+    if !endpoint.set_muted(true) {
+        tracing::warn!("output mute: unmuted in Windows and cannot be muted again");
+        return;
+    }
+    let silent = if changed {
+        silence.store(false, Ordering::Release);
+        false
+    } else {
+        !silence.fetch_xor(true, Ordering::AcqRel)
+    };
+    tracing::info!(
+        "output mute: Windows' {} key, the output stays muted and the headphones {}",
+        if changed { "volume" } else { "mute" },
+        if silent { "go silent" } else { "play" }
+    );
+}
+
+/// Watches the device this session muted between the session's ticks
+struct KeyWatch {
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl KeyWatch {
+    fn start(ours: Ours) -> Option<KeyWatch> {
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let thread = std::thread::Builder::new()
+            .name("mute-key".into())
+            .spawn(move || {
+                let mut open: Option<audio_capture::EndpointVolume> = None;
+                while !flag.load(Ordering::Acquire) {
+                    std::thread::sleep(KEY_WATCH);
+                    let mut watched = lock(&ours);
+                    let Some(id) = watched.device.clone() else {
+                        open = None;
+                        continue;
+                    };
+                    if open.as_ref().map(audio_capture::EndpointVolume::device_id) != Some(id.as_str()) {
+                        open = audio_capture::EndpointVolume::open(Some(&id)).ok();
+                    }
+                    if let Some(e) = &open {
+                        key_pressed(e, &mut watched, &KEY_SILENCE);
+                    }
+                }
+            })
+            .map_err(|e| tracing::warn!("output mute: no mute key watcher: {e}"))
+            .ok()?;
+        Some(KeyWatch { stop, thread: Some(thread) })
+    }
+}
+
+impl Drop for KeyWatch {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+    }
 }
 
 /// Whether the session about to start mutes: set while the running one stops
@@ -102,11 +207,17 @@ pub struct OutputMute<P: EndpointProvider = WindowsEndpoints> {
     /// Device that could not be opened (logged once, not every tick)
     failed: Option<String>,
     handover: &'static Mutex<MuteHandover>,
+    /// The device this session muted, shared with the watcher
+    ours: Ours,
+    silence: &'static AtomicBool,
+    watch: Option<KeyWatch>,
 }
 
 impl OutputMute<WindowsEndpoints> {
     pub fn new() -> Self {
-        OutputMute::with_provider(WindowsEndpoints, &HANDOVER)
+        let mut m = OutputMute::with_provider(WindowsEndpoints, &HANDOVER, &KEY_SILENCE);
+        m.watch = KeyWatch::start(m.ours.clone());
+        m
     }
 }
 
@@ -117,9 +228,19 @@ impl Default for OutputMute<WindowsEndpoints> {
 }
 
 impl<P: EndpointProvider> OutputMute<P> {
-    pub fn with_provider(provider: P, handover: &'static Mutex<MuteHandover>) -> Self {
+    pub fn with_provider(provider: P, handover: &'static Mutex<MuteHandover>, silence: &'static AtomicBool) -> Self {
         let inherited = lock(handover).device.take();
-        OutputMute { provider, attached: None, inherited, failed: None, handover }
+        silence.store(false, Ordering::Release);
+        OutputMute {
+            provider,
+            attached: None,
+            inherited,
+            failed: None,
+            handover,
+            ours: Ours::default(),
+            silence,
+            watch: None,
+        }
     }
 
     /// One step. `enabled` false unmutes (another source, the headphones
@@ -132,7 +253,11 @@ impl<P: EndpointProvider> OutputMute<P> {
         let Some(id) = self.provider.default_device() else {
             return;
         };
-        if self.attached.as_ref().is_some_and(|a| a.endpoint.device_id() == id) {
+        if let Some(a) = self.attached.as_ref().filter(|a| a.endpoint.device_id() == id) {
+            // Unmuted in Windows (its mute key): the watcher may have been first
+            if a.ours {
+                key_pressed(&a.endpoint, &mut lock(&self.ours), self.silence);
+            }
             return;
         }
         let endpoint = match self.provider.open(&id) {
@@ -153,6 +278,9 @@ impl<P: EndpointProvider> OutputMute<P> {
         } else {
             mute(&endpoint)
         };
+        if ours {
+            *lock(&self.ours) = Watched { device: Some(id), volume: endpoint.volume() };
+        }
         self.attached = Some(Attached { endpoint, ours });
         self.release_inherited();
     }
@@ -163,6 +291,9 @@ impl<P: EndpointProvider> OutputMute<P> {
     }
 
     fn release_attached(&mut self) {
+        // The watcher lets go first, so it does not take the unmute for the key
+        *lock(&self.ours) = Watched::default();
+        self.silence.store(false, Ordering::Release);
         if let Some(a) = self.attached.take().filter(|a| a.ours) {
             unmute(&a.endpoint);
         }
@@ -177,6 +308,7 @@ impl<P: EndpointProvider> OutputMute<P> {
 
 impl<P: EndpointProvider> Drop for OutputMute<P> {
     fn drop(&mut self) {
+        self.watch = None;
         {
             let mut h = lock(self.handover);
             if h.next {
@@ -207,6 +339,8 @@ mod tests {
         muted: RefCell<HashMap<String, bool>>,
         /// Muting fails
         refuse: RefCell<bool>,
+        /// Device -> volume scalar
+        volume: RefCell<HashMap<String, f32>>,
     }
 
     impl Devices {
@@ -239,7 +373,7 @@ mod tests {
             &self.id
         }
         fn volume(&self) -> Option<f32> {
-            None
+            self.devices.volume.borrow().get(&self.id).copied()
         }
         fn set_volume(&self, _scalar: f32) -> bool {
             false
@@ -276,7 +410,7 @@ mod tests {
     }
 
     fn session(devices: &Rc<Devices>, h: &'static Mutex<MuteHandover>) -> OutputMute<FakeProvider> {
-        OutputMute::with_provider(FakeProvider(devices.clone()), h)
+        OutputMute::with_provider(FakeProvider(devices.clone()), h, Box::leak(Box::default()))
     }
 
     #[test]
@@ -300,13 +434,57 @@ mod tests {
     }
 
     #[test]
-    fn an_unmute_by_the_user_is_left_alone() {
+    fn windows_mute_key_silences_the_headphones_and_keeps_the_output_muted() {
         let d = Devices::with(&["a"]);
+        let mut m = session(&d, handover());
+        m.tick(true);
+        assert!(!m.silence.load(Ordering::Acquire));
+        // The key unmutes the device: muted again, the headphones silent
+        d.set("a", false);
+        m.tick(true);
+        assert!(d.muted("a") && m.silence.load(Ordering::Acquire));
+        // Pressed again: they play again, the output still muted
+        d.set("a", false);
+        m.tick(true);
+        assert!(d.muted("a") && !m.silence.load(Ordering::Acquire));
+        d.set("a", false);
+        m.tick(true);
+        assert!(m.silence.load(Ordering::Acquire));
+        // The session ends (or the mute is turned off): silence ends too
+        m.tick(false);
+        assert!(!d.muted("a") && !m.silence.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn windows_volume_keys_keep_the_output_muted_and_the_headphones_playing() {
+        let d = Devices::with(&["a"]);
+        d.volume.borrow_mut().insert("a".into(), 0.5);
+        let mut m = session(&d, handover());
+        m.tick(true);
+        // The mute key: silent
+        d.set("a", false);
+        m.tick(true);
+        assert!(m.silence.load(Ordering::Acquire));
+        // Volume up unmutes too, with a new volume: muted again, playing
+        d.volume.borrow_mut().insert("a".into(), 0.6);
+        d.set("a", false);
+        m.tick(true);
+        assert!(d.muted("a") && !m.silence.load(Ordering::Acquire));
+        // A volume change alone (volume sync) changes nothing
+        d.volume.borrow_mut().insert("a".into(), 0.4);
+        m.tick(true);
+        assert!(d.muted("a") && !m.silence.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn a_device_the_user_had_muted_is_not_watched() {
+        let d = Devices::with(&["a"]);
+        d.set("a", true);
         let mut m = session(&d, handover());
         m.tick(true);
         d.set("a", false);
         m.tick(true);
-        assert!(!d.muted("a"));
+        assert!(!d.muted("a") && !m.silence.load(Ordering::Acquire));
     }
 
     #[test]

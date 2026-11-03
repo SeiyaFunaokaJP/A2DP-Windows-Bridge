@@ -21,8 +21,9 @@ import { audioEntries, entryByKey, type AudioEntry } from "../lib/profile";
 import { Settings } from "../screens/Settings";
 import { Mixer } from "../screens/Mixer";
 import { Setup, needsSetup } from "../screens/Setup";
-import { applyTheme } from "../theme";
+import { applyTheme, followAccent } from "../theme";
 import { AppProvider, useApp, type RouteName } from "./context";
+import { mixerShown } from "./settings";
 import { CaptureSign, CrashNotice, UpdateNotice } from "./indicators";
 import "./shell.css";
 
@@ -37,6 +38,7 @@ export function App(props: { core: Core }) {
     const theme = core.state.snap?.settings.theme ?? "system";
     onCleanup(applyTheme(theme, core.transport));
   });
+  followAccent(core.transport);
   if (core.transport.mica) document.documentElement.classList.add("mica");
   document.documentElement.classList.add(`win-${core.transport.window}`);
 
@@ -105,7 +107,8 @@ function MainWindow() {
   const app = useApp();
   const { core, route } = app;
   const shown = (n: { name: RouteName }) => {
-    return (n.name !== "developer" && n.name !== "mixer") || core.state.snap?.settings.developer_mode;
+    if (n.name === "mixer") return mixerShown(core.state.snap?.settings);
+    return n.name !== "developer" || core.state.snap?.settings.developer_mode;
   };
   const [collapsed, setCollapsed] = createSignal<boolean | null>(null);
 
@@ -213,7 +216,7 @@ function MainWindow() {
               <Match when={route().name === "diagnostics"}>
                 <Diagnostics />
               </Match>
-              <Match when={route().name === "mixer" && core.state.snap?.settings.developer_mode}>
+              <Match when={route().name === "mixer" && mixerShown(core.state.snap?.settings)}>
                 <Mixer />
               </Match>
               <Match when={route().name === "developer" && core.state.snap?.settings.developer_mode}>

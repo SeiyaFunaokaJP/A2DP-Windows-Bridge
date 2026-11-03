@@ -275,6 +275,12 @@ export function codecSupport(codec: string, known: readonly string[], onRequest:
   return onRequest.includes(id) ? "unknown" : "not_offered";
 }
 
+/** Developer mode's override: each codec's "..." settings apply under
+ *  Auto-select too, and open without turning it off */
+export function autoKeepsCodecSettings(s: Pick<Settings, "developer_mode" | "dev_overrides">): boolean {
+  return s.developer_mode && s.dev_overrides.auto_codec_settings;
+}
+
 /** Developer mode's override: a codec the device does not offer can be
  *  chosen, and the core asks for it instead of falling back */
 export function forcesCodec(s: Pick<Settings, "developer_mode" | "dev_overrides">): boolean {
@@ -434,6 +440,27 @@ export function rateOffered(codec: string, rate: number, caps: CodecCaps | null)
  *  the device lists them */
 export function offeredSampleRates(codec: string, caps: CodecCaps | null): number[] {
   return sampleRates(codec).filter((r) => rateOffered(codec, r, caps));
+}
+
+/** The sample rate Auto streams `codec` at, shown beside "Auto" (issue
+ *  #86), as the core picks it (stream.rs): 48 kHz, else what the device
+ *  lists, 44.1 kHz first; SBC, SBC XQ and Opus always 48 kHz */
+export function autoSampleRate(codec: string, caps: CodecCaps | null): number {
+  if (["sbc", "sbcxq", "opus", "opus05"].includes(codec)) return 48000;
+  const listed = offeredSampleRates(codec, caps).filter((r) => r > 0);
+  if (listed.length === 0 || listed.includes(48000)) return 48000;
+  return listed.includes(44100) ? 44100 : listed[0];
+}
+
+/** The bit depth Auto streams `codec` with (stream.rs): 24-bit for LDAC,
+ *  aptX HD and aptX Adaptive, LHDC V5 when the device lists it, else 16 */
+export function autoBitDepth(codec: string, caps: CodecCaps | null): number {
+  if (codec === "ldac" || codec === "aptxhd" || codec === "aptxad") return 24;
+  if (codec === "lhdcv5") {
+    const listed = caps?.bit_depths ?? [];
+    return listed.length === 0 || listed.includes(24) ? 24 : 16;
+  }
+  return 16;
 }
 
 /** The bit depths the dialog offers: the codec's, as far as the device

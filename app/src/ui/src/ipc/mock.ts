@@ -168,6 +168,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     auto_reconnect: true,
     volume_sync: true,
     mute_output: false,
+    volume_mixer: false,
     developer_mode: false,
     dev_overrides: {
       rtp_marker: false,
@@ -178,6 +179,8 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
       aac_no_afterburner: false,
       aac_latm_v0: false,
       force_codec: false,
+      auto_codec_settings: false,
+      match_source: false,
     },
     dev_log: { keep_days: 7, day_cap_mb: 100, always_verbose: null, health_every_interval: false },
     bt_chip_pid: 0,
@@ -586,6 +589,8 @@ function sourceOf(mode: string, id: string, name: string): SourceInfo {
 
 export class MockCore implements Transport {
   private mixer = MIXER_APPS;
+  /** Addresses paired in Windows' Bluetooth (device.windows_paired) */
+  windowsPaired: string[] = [];
   readonly window: WindowKind;
   readonly mica = false;
   readonly version = "2.0.0-alpha.1";
@@ -687,6 +692,8 @@ export class MockCore implements Transport {
         return null;
       case "device.scan":
         return this.scan(Number(p.seconds ?? 10));
+      case "device.windows_paired":
+        return this.windowsPaired;
       case "device.scan_stop":
         this.scanStop?.();
         return null;

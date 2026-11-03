@@ -5,8 +5,10 @@ import type { LogLine } from "../ipc/types";
 import {
   abrCarries,
   AUTO_ORDER,
+  autoBitDepth,
   autoOrder,
   autoPick,
+  autoSampleRate,
   bitDepths,
   bitrateNoteKey,
   capsOf,
@@ -635,5 +637,26 @@ describe("A device's codec order (issue #86 round 8)", () => {
     expect(effectiveCodec("opus", earfun, true, cardOrder(["sbcxq", "sbc", "aptxad", "aac", "aptx"]))).toBe("sbcxq");
     // FastStream first: never Auto's pick nor a fallback
     expect(effectiveCodec("ldac", ["sbc", "faststream"], true, cardOrder(["faststream"]))).toBe("sbc");
+  });
+});
+
+describe("Auto's value shown beside Auto (issue #86)", () => {
+  const caps = (codec: string, sample_rates: number[], bit_depths: number[] = []) => ({
+    codec,
+    sample_rates,
+    bit_depths,
+    max_bitrate: 0,
+  });
+  it("is 48 kHz unless the device lacks it", () => {
+    expect(autoSampleRate("aac", null)).toBe(48000);
+    expect(autoSampleRate("aac", caps("aac", [44100]))).toBe(44100);
+    expect(autoSampleRate("ldac", caps("ldac", [44100, 48000, 96000]))).toBe(48000);
+    expect(autoSampleRate("sbc", caps("sbc", [44100]))).toBe(48000);
+  });
+  it("is 24-bit where the codec carries it", () => {
+    expect(autoBitDepth("ldac", null)).toBe(24);
+    expect(autoBitDepth("aac", null)).toBe(16);
+    expect(autoBitDepth("lhdcv5", caps("lhdcv5", [48000], [16]))).toBe(16);
+    expect(autoBitDepth("lhdcv5", caps("lhdcv5", [48000], [16, 24]))).toBe(24);
   });
 });

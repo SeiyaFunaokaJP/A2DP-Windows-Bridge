@@ -39,6 +39,7 @@ export async function createTauriTransport(): Promise<Transport> {
     openFolder: (path) => invoke("open_folder", { path }),
     revealPath: (path) => invoke("reveal_path", { path }),
     setTheme: (theme) => invoke("set_theme", { theme }),
+    accentColors: () => invoke("accent_colors"),
     onNavigate(cb) {
       void listen<string>("ui://navigate", (e) => cb(e.payload));
     },

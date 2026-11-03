@@ -51,6 +51,11 @@ volume_sync: boolean,
  */
 mute_output: boolean, 
 /**
+ * Developer > Volume Mixer (off by default): the mixer screen, the
+ * flyout's app list and mute_output take effect only with it on
+ */
+volume_mixer: boolean, 
+/**
  * Developer mode: receiver test, HCI capture, debug details
  */
 developer_mode: boolean, 

@@ -526,6 +526,7 @@ pub fn run(args: &[String]) -> i32 {
         sbc: a.sbc,
         sample_rate: a.rate,
         bit_depth: a.bits,
+        codec_values: Vec::new(),
         source,
         volume_sync: VolumeSync::Off,
         mute_output: false,

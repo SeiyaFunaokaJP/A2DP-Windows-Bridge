@@ -296,6 +296,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         auto_reconnect: s.auto_reconnect,
         volume_sync: s.volume_sync,
         mute_output: s.mute_output,
+        volume_mixer: s.volume_mixer,
         developer_mode: s.debug_mode,
         dev_overrides: DevOverrides {
             rtp_marker: s.dev_overrides.rtp_marker,
@@ -306,6 +307,8 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
             aac_no_afterburner: s.dev_overrides.aac_no_afterburner,
             aac_latm_v0: s.dev_overrides.aac_latm_v0,
             force_codec: s.dev_overrides.force_codec,
+            auto_codec_settings: s.dev_overrides.auto_codec_settings,
+            match_source: s.dev_overrides.match_source,
         },
         dev_log: DevLog {
             keep_days: s.dev_log.keep_days,
@@ -350,6 +353,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.auto_reconnect = s.auto_reconnect;
     c.volume_sync = s.volume_sync;
     c.mute_output = s.mute_output;
+    c.volume_mixer = s.volume_mixer;
     c.debug_mode = s.developer_mode;
     c.dev_overrides = codec::dev::DevOverrides {
         rtp_marker: s.dev_overrides.rtp_marker,
@@ -364,6 +368,8 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
         aac_no_afterburner: s.dev_overrides.aac_no_afterburner,
         aac_latm_v0: s.dev_overrides.aac_latm_v0,
         force_codec: s.dev_overrides.force_codec,
+        auto_codec_settings: s.dev_overrides.auto_codec_settings,
+        match_source: s.dev_overrides.match_source,
     };
     c.dev_log = a2dpwb_core::settings::DevLog {
         keep_days: s.dev_log.keep_days,
@@ -417,6 +423,20 @@ fn adapter_chip(vendor: ChipVendor, realtek_pid: Option<u16>, settings: &CoreSet
         return (0, "");
     }
     (chips::resolve_chip_pid(settings.bt_chip_pid, &settings.bt_chip_fw_stem, [realtek_pid]), &settings.bt_chip_fw_stem)
+}
+
+/// The devices paired in Windows' Bluetooth (its list is one for all its
+/// radios): what A2DPWB adds may then be taken by both
+fn windows_paired() -> Vec<String> {
+    match win_sys::bt_paired::paired_devices() {
+        Ok(list) => {
+            list.iter().filter(|d| d.remembered || d.authenticated).map(|d| bt_host::addr_str(&d.address)).collect()
+        }
+        Err(e) => {
+            tracing::debug!("Windows' paired devices: {e}");
+            Vec::new()
+        }
+    }
 }
 
 /// A radio Windows' Bluetooth has switched on while A2DPWB has an adapter of
@@ -1029,6 +1049,42 @@ fn restart_for_auto(stream: &StreamStatus, p: &CoreProfile) -> bool {
     restart_after_save(stream, &p.name) && !p.le_audio && (p.codec != "auto" || !p.order().is_default())
 }
 
+/// Auto-select just turned `auto_now`: whether the profile streaming would
+/// stream the same anyway (issue #86: no reconnect then). The codec streaming
+/// is the one the other side takes among those the device offered (`known`),
+/// with the same settings: Auto's defaults, or each codec's own under
+/// Auto-select in developer mode (`own_settings`). Unsure (no codec list, not
+/// streaming yet): not the same.
+fn same_after_auto_toggle(
+    stream: &StreamStatus,
+    p: &CoreProfile,
+    auto_now: bool,
+    known: Option<&a2dpwb_core::stream::KnownCodecs>,
+    own_settings: bool,
+) -> bool {
+    let (Some(info), Some(known)) = (stream.info.as_ref(), known) else {
+        return false;
+    };
+    if stream.state != StreamState::Streaming {
+        return false;
+    }
+    let offered = |k: &codec::CodecKind| known.keys.iter().any(|key| key == k.key());
+    let pick = |order: codec::AutoOrder| order.codecs().iter().copied().find(offered);
+    let Some(running) = codec::CodecKind::ALL.into_iter().find(|k| k.name() == info.codec) else {
+        return false;
+    };
+    // The profile's own: its codec when offered, else Auto in its order
+    let chosen = codec::CodecKind::from_key(&p.codec).filter(offered).or_else(|| pick(p.order()));
+    let auto = pick(codec::AutoOrder::default());
+    let next = if auto_now { auto } else { chosen };
+    // The settings each side streams that codec with
+    let auto_values = own_settings
+        .then(|| p.all_codec_values().into_iter().find(|(k, _)| Some(*k) == next).map(|(_, v)| v))
+        .flatten()
+        .unwrap_or_default();
+    next == Some(running) && auto_values == p.codec_values()
+}
+
 /// Whether a new codec order of the device (its cards dragged, issue #86
 /// round 8) may change the codec of the profile in use (`p` as it streams):
 /// it is Auto or fell back (the fallback takes the first codec in the
@@ -1586,6 +1642,9 @@ impl CoreState {
         req.volume_sync = effective_volume_sync(settings.volume_sync, req.volume_sync);
         req.mute_output = settings.mutes_output();
         req.sbc = settings.sbc_frame(req.sbc);
+        if auto.is_some() && settings.debug_mode {
+            req.codec_values = p.all_codec_values();
+        }
         self.set_active_profile(Some(name.to_string()));
         self.begin_stream(req, Some(name.to_string()));
         Ok(())
@@ -2010,6 +2069,7 @@ impl CoreState {
                 self.service.stop_scan();
                 Ok(Value::Null)
             }
+            Method::DeviceWindowsPaired => blocking(Box::new(|_| Ok(json(&windows_paired())))).await,
             Method::DeviceForget { address, le_audio } => {
                 blocking(Box::new(move |me| me.forget_device(&address, le_audio == Some(true)))).await
             }
@@ -2149,8 +2209,22 @@ impl CoreState {
                         let (_, s) = me.snapshot();
                         let list = profiles::load(&me.config_dir());
                         let in_use = s.stream.profile.as_deref().and_then(|n| list.iter().find(|p| p.name == n));
+                        let known = me.service.device_codecs();
+                        let own_settings = settings.developer_mode && settings.dev_overrides.auto_codec_settings;
+                        let auto_changes = |p: &CoreProfile| {
+                            let codecs = known.get(&p.device_address.to_uppercase());
+                            let same = same_after_auto_toggle(&s.stream, p, settings.auto_codec, codecs, own_settings);
+                            if same {
+                                tracing::info!(
+                                    "Auto-select {}: profile {} streams the same, no restart",
+                                    if settings.auto_codec { "on" } else { "off" },
+                                    a2dpwb_core::diag::quoted(&p.name)
+                                );
+                            }
+                            restart_for_auto(&s.stream, p) && !same
+                        };
                         let restart = |p: &&CoreProfile| {
-                            (auto_toggled && restart_for_auto(&s.stream, p))
+                            (auto_toggled && auto_changes(p))
                                 || (sync_toggled && restart_after_save(&s.stream, &p.name))
                         };
                         if let Some(p) = in_use.filter(restart) {
@@ -2849,6 +2923,41 @@ mod tests {
         assert!(!restart_for_auto(&streaming, &CoreProfile { name: "Buds".into(), ..profile("aac") }));
         assert!(!restart_for_auto(&StreamStatus::default(), &profile("aac")));
         assert!(!restart_for_auto(&streaming, &CoreProfile { le_audio: true, ..profile("aac") }));
+    }
+
+    #[test]
+    fn auto_select_on_or_off_keeps_a_stream_that_would_stay_the_same() {
+        use a2dpwb_core::stream::KnownCodecs;
+        let profile = |codec: &str| CoreProfile { name: "WH".into(), codec: codec.into(), ..CoreProfile::default() };
+        let streaming = |codec: &str| StreamStatus {
+            state: StreamState::Streaming,
+            profile: Some("WH".into()),
+            info: Some(ipc::StreamInfo { codec: codec.into(), requested_codec: None, ..sbc_abr_info() }),
+            ..StreamStatus::default()
+        };
+        let known = KnownCodecs { keys: vec!["sbc".into(), "aac".into(), "ldac".into()], ..KnownCodecs::default() };
+        let same = |s: &StreamStatus, p: &CoreProfile, on: bool, own: bool| {
+            same_after_auto_toggle(s, p, on, Some(&known), own)
+        };
+
+        // LDAC chosen, which is what Auto takes, with Auto's settings
+        assert!(same(&streaming("LDAC"), &profile("ldac"), true, false));
+        assert!(same(&streaming("LDAC"), &profile("ldac"), false, false));
+        // Another codec, or other settings
+        assert!(!same(&streaming("AAC"), &profile("aac"), true, false));
+        let sq = CoreProfile { quality: "sq".into(), ..profile("ldac") };
+        assert!(!same(&streaming("LDAC"), &sq, true, false));
+        // ... which developer mode keeps under Auto-select
+        assert!(same(&streaming("LDAC"), &sq, true, true));
+        // Turned off: AAC chosen while Auto streams LDAC
+        assert!(!same(&streaming("LDAC"), &profile("aac"), false, false));
+        // A codec not offered falls back to the profile's order
+        let order = CoreProfile { codec_order: vec!["aac".into()], ..profile("aptxhd") };
+        assert!(same(&streaming("AAC"), &order, false, false));
+        // Unknown codecs, or not streaming yet: restart
+        assert!(!same_after_auto_toggle(&streaming("LDAC"), &profile("ldac"), true, None, false));
+        let connecting = StreamStatus { state: StreamState::Connecting, ..streaming("LDAC") };
+        assert!(!same(&connecting, &profile("ldac"), true, false));
     }
 
     #[test]

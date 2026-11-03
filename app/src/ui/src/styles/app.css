@@ -2,9 +2,15 @@
  * A2DPWB v2 UI styles (design.md "ビジュアル言語").
  *
  * - Dark by default; light from the same tokens (html[data-theme]).
- * - The accent gradient #4F8CFF -> #8B5CF6 appears only on the Connect
- *   button and the streaming ring. Everything else is neutral, so the one
- *   colourful thing on screen is the thing to press.
+ * - Controls take the Windows accent colour, as Windows' own do (issue
+ *   #86): the Connect button, strong buttons, switches, sliders and what is
+ *   selected. --accent-fill is AccentDark1 on light and AccentLight2 on dark
+ *   (theme.ts reads them; the defaults are Windows' blue).
+ * - The bitpool chart keeps two hues of its own (--chart-1, --chart-2).
+ * - States as Windows draws them (issue #86): a control that cannot be used
+ *   now keeps its outline with dimmed text (--disabled-text) and no fill; a
+ *   value that is never chosen is an outlined box without fill or arrow
+ *   (.input.readonly), not a list.
  * - Status colours: good #34D399, warning #FBBF24, error #F87171 (in light
  *   mode text uses darker shades of the same hues for WCAG AA contrast).
  * - Type: 12 / 14 / 16 / 20 / 28 px (in rem, so Windows' 100-200 % scaling
@@ -15,9 +21,8 @@
  */
 
 :root {
-  --accent-1: #4f8cff;
-  --accent-2: #8b5cf6;
-  --accent: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  --chart-1: #4f8cff;
+  --chart-2: #8b5cf6;
   --good: #34d399;
   --warn: #fbbf24;
   --bad: #f87171;
@@ -63,6 +68,9 @@
   --text-3: #8c94a3;
   --strong-bg: #eceef3;
   --strong-fg: #121418;
+  --accent-fill: var(--sys-accent-dark, #60cdff);
+  --on-accent: #000000;
+  --disabled-text: rgb(255 255 255 / 0.36);
   --good-text: var(--good);
   --warn-text: var(--warn);
   --bad-text: var(--bad);
@@ -84,6 +92,9 @@
   --text-3: #5d6471;
   --strong-bg: #15171c;
   --strong-fg: #ffffff;
+  --accent-fill: var(--sys-accent-light, #005fb8);
+  --on-accent: #ffffff;
+  --disabled-text: rgb(0 0 0 / 0.36);
   --good-text: #047857;
   --warn-text: #92400e;
   --bad-text: #b91c1c;
@@ -118,6 +129,8 @@ html.mica.win-flyout .flyout {
 html {
   font-size: 100%;
   -webkit-text-size-adjust: 100%;
+  /* Native check boxes and radios */
+  accent-color: var(--accent-fill);
 }
 
 html,
@@ -316,10 +329,13 @@ p {
   transform: translateY(1px);
 }
 .btn:disabled {
-  opacity: 0.5;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--disabled-text);
   cursor: default;
 }
-.btn-subtle {
+.btn-subtle,
+.btn-subtle:disabled {
   background: transparent;
   border-color: transparent;
 }
@@ -327,18 +343,18 @@ p {
   background: var(--surface-2);
 }
 .btn-strong {
-  background: var(--strong-bg);
-  color: var(--strong-fg);
-  border-color: var(--strong-bg);
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  border-color: var(--accent-fill);
 }
 .btn-strong:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--strong-bg) 85%, var(--bg));
+  background: color-mix(in srgb, var(--accent-fill) 90%, var(--bg));
 }
-/* Black at half strength still looks like a button to press */
+/* As Windows' accent buttons: grey when they cannot be pressed */
 .btn-strong:disabled {
   background: var(--surface-2);
-  color: var(--text);
-  border-color: var(--border-strong);
+  color: var(--disabled-text);
+  border-color: var(--border);
 }
 .btn-danger {
   background: transparent;
@@ -421,7 +437,9 @@ p {
 .input::placeholder {
   color: var(--text-3);
 }
-.input:hover,
+/* Only what can be changed reacts to the pointer (issue #86): not a
+   read-only field, nor a shown value */
+.input:read-write:hover,
 .select select:hover:not(:disabled) {
   border-color: var(--text-3);
 }
@@ -442,9 +460,15 @@ p {
   padding-right: 2rem;
   cursor: pointer;
 }
-.select select:disabled {
-  opacity: 0.6;
+.select select:disabled,
+.input:disabled {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--disabled-text);
   cursor: default;
+}
+.select:has(select:disabled) .select-chevron {
+  color: var(--disabled-text);
 }
 .select-chevron {
   position: absolute;
@@ -500,7 +524,7 @@ option {
   color: var(--text-3);
 }
 .field-more-btn.on {
-  color: var(--accent-1);
+  color: var(--accent-fill);
 }
 /* "?" with its text on hover or focus */
 .help-tip {
@@ -642,12 +666,12 @@ option {
     background-color var(--t-fast) var(--ease);
 }
 .switch:checked {
-  background: var(--strong-bg);
-  border-color: var(--strong-bg);
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
 }
 .switch:checked::after {
   left: calc(100% - 0.95rem);
-  background: var(--strong-fg);
+  background: var(--on-accent);
 }
 .switch:disabled {
   opacity: 0.5;
@@ -707,7 +731,7 @@ option {
   margin: 0;
   cursor: pointer;
 }
-.seg:hover {
+.seg:not(.disabled):hover {
   color: var(--text);
 }
 .seg.on {
@@ -1043,7 +1067,7 @@ option {
   bottom: 25%;
   width: 3px;
   border-radius: 2px;
-  background: var(--text);
+  background: var(--accent-fill);
 }
 .nav-label {
   white-space: nowrap;
@@ -1323,15 +1347,12 @@ option {
 .ring-error {
   border-color: var(--bad);
 }
-/* Streaming: the gradient ring, glowing a little more at higher volume */
+/* Streaming: the accent ring, glowing a little more at higher volume */
 .ring-streaming {
-  border-color: transparent;
-  background:
-    linear-gradient(var(--surface), var(--surface)) padding-box,
-    var(--accent) border-box;
+  border-color: var(--accent-fill);
   box-shadow:
-    0 0 calc(10px + 18px * var(--glow)) calc(-2px + 4px * var(--glow)) color-mix(in srgb, var(--accent-2) 45%, transparent),
-    0 0 calc(6px * var(--glow)) 0 color-mix(in srgb, var(--accent-1) 50%, transparent);
+    0 0 calc(10px + 18px * var(--glow)) calc(-2px + 4px * var(--glow)) color-mix(in srgb, var(--accent-fill) 45%, transparent),
+    0 0 calc(6px * var(--glow)) 0 color-mix(in srgb, var(--accent-fill) 50%, transparent);
 }
 .ring-streaming .ring-inner {
   color: var(--text);
@@ -1353,8 +1374,8 @@ option {
   min-height: 4rem;
   border: none;
   border-radius: var(--r-card);
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font: inherit;
   font-family: var(--font-display);
   font-size: var(--fs-20);
@@ -1370,7 +1391,7 @@ option {
   height: 1.5rem;
 }
 .connect-btn:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background: color-mix(in srgb, var(--accent-fill) 90%, var(--bg));
 }
 .connect-btn:active:not(:disabled) {
   transform: scale(0.99);
@@ -1381,7 +1402,8 @@ option {
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 .connect-btn:disabled {
-  opacity: 0.55;
+  background: var(--surface-2);
+  color: var(--disabled-text);
   cursor: default;
 }
 .connect-btn.compact {
@@ -1455,7 +1477,7 @@ option {
 .volume input::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
-  background: linear-gradient(to right, var(--text-2) var(--fill, 0%), var(--surface-3) var(--fill, 0%));
+  background: linear-gradient(to right, var(--accent-fill) var(--fill, 0%), var(--surface-3) var(--fill, 0%));
 }
 .volume input::-webkit-slider-thumb {
   appearance: none;
@@ -1463,7 +1485,7 @@ option {
   height: 1rem;
   margin-top: calc(2px - 0.5rem);
   border-radius: 50%;
-  background: var(--text);
+  background: var(--accent-fill);
   border: 2px solid var(--bg);
 }
 .volume input::-moz-range-track {
@@ -1473,13 +1495,13 @@ option {
 }
 .volume input::-moz-range-progress {
   height: 4px;
-  background: var(--text-2);
+  background: var(--accent-fill);
 }
 .volume input::-moz-range-thumb {
   width: 1rem;
   height: 1rem;
   border-radius: 50%;
-  background: var(--text);
+  background: var(--accent-fill);
   border: 2px solid var(--bg);
 }
 .volume input:disabled {
@@ -1836,7 +1858,7 @@ option {
 .device-row.on,
 .choice.on {
   background: var(--surface-2);
-  box-shadow: inset 3px 0 0 var(--text);
+  box-shadow: inset 3px 0 0 var(--accent-fill);
 }
 /* Listed, not chosen: an adapter A2DPWB cannot use (issue #86) */
 .choice.ro,
@@ -1902,11 +1924,11 @@ option {
   margin: 0;
   cursor: pointer;
 }
-.codec-card:hover {
+.codec-card:hover:not(:has(input:disabled)) {
   border-color: var(--border-strong);
 }
 .codec-card.on {
-  border-color: var(--text);
+  border-color: var(--accent-fill);
   background: var(--surface-2);
 }
 /* Auto chooses: the cards only show its pick (a click offers to turn
@@ -2060,7 +2082,7 @@ option {
 .bp-fill {
   left: calc(0.5rem + (100% - 1rem) * var(--lo, 0));
   right: calc(0.5rem + (100% - 1rem) * (1 - var(--hi, 1)));
-  background: var(--text-2);
+  background: var(--accent-fill);
 }
 .bp-track input {
   position: absolute;
@@ -2095,7 +2117,7 @@ option {
   height: 1rem;
   margin-top: calc(2px - 0.5rem);
   border-radius: 50%;
-  background: var(--text);
+  background: var(--accent-fill);
   border: 2px solid var(--bg);
   cursor: pointer;
 }
@@ -2165,7 +2187,7 @@ option {
   background: var(--text-2);
 }
 .codec-card.on .cbar-fill {
-  background: var(--text);
+  background: var(--accent-fill);
 }
 
 /* ---------------------------------------------------------------- */
@@ -2196,7 +2218,7 @@ option {
 }
 .tab[aria-selected="true"] {
   color: var(--text);
-  border-bottom-color: var(--text);
+  border-bottom-color: var(--accent-fill);
   font-weight: 600;
 }
 .tab-panel {
@@ -2471,10 +2493,10 @@ option {
   cursor: default;
 }
 .log-line.selected {
-  background: color-mix(in srgb, var(--accent-1) 18%, transparent);
+  background: color-mix(in srgb, var(--accent-fill) 18%, transparent);
 }
 .log-line.jumped {
-  box-shadow: inset 3px 0 0 var(--accent-1);
+  box-shadow: inset 3px 0 0 var(--accent-fill);
 }
 .log-tools-gap {
   flex: 1;
@@ -2579,7 +2601,7 @@ option {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: var(--st, var(--accent-1));
+  background: var(--st, var(--accent-fill));
   transition: width var(--t-mid) var(--ease);
 }
 
@@ -2615,10 +2637,9 @@ option {
   white-space: nowrap;
 }
 .cd-chip.cd-used {
-  border-color: var(--accent-1);
-  background: var(--accent-1);
-  /* Dark text: 12 px white on the accent is below 4.5:1 */
-  color: #0b1220;
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
+  color: var(--on-accent);
   font-weight: 600;
 }
 .cd-chip.cd-off {
@@ -2647,7 +2668,7 @@ option {
 }
 .bitpool-range.device,
 .bitpool-swatch.device {
-  background: color-mix(in srgb, var(--accent-2) 35%, transparent);
+  background: color-mix(in srgb, var(--chart-2) 35%, transparent);
 }
 .bitpool-range.config {
   top: 0.1875rem;
@@ -2655,7 +2676,7 @@ option {
 }
 .bitpool-range.config,
 .bitpool-swatch.config {
-  background: var(--accent-2);
+  background: var(--chart-2);
 }
 .bitpool-used {
   position: absolute;
@@ -2664,23 +2685,23 @@ option {
   width: 0.25rem;
   margin-left: -0.125rem;
   border-radius: 2px;
-  background: var(--accent-1);
+  background: var(--chart-1);
   box-shadow: 0 0 0 2px var(--surface);
 }
 .bitpool-swatch.used {
-  background: var(--accent-1);
+  background: var(--chart-1);
 }
 /* SBC ABR: the range the bitpool moves in, drawn around the track */
 .bitpool-range.abr {
   top: -0.25rem;
   bottom: -0.25rem;
-  border: 2px dashed var(--accent-1);
+  border: 2px dashed var(--chart-1);
   border-radius: 4px;
   background: transparent;
 }
 .bitpool-swatch.abr {
   box-sizing: border-box;
-  border: 2px dashed var(--accent-1);
+  border: 2px dashed var(--chart-1);
 }
 /* Under ABR the mark moves with the bitpool */
 .bitpool.live .bitpool-used {
@@ -2900,7 +2921,7 @@ option {
   font-size: var(--fs-12);
 }
 .stepper li.on {
-  border-top-color: var(--text);
+  border-top-color: var(--accent-fill);
   color: var(--text);
   font-weight: 600;
 }

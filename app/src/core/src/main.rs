@@ -219,6 +219,7 @@ pub(crate) fn diag_text(state: &state::CoreState, mask: bool) -> String {
         adapter_addresses: &adapter_addresses,
         le_audio: le_audio.as_ref(),
         logging: Some(&logging_line(&state.config_dir())),
+        clients: &server::clients(),
     })
 }
 

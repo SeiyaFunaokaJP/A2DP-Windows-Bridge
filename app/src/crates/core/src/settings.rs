@@ -148,6 +148,10 @@ pub struct Settings {
     /// earlier versions was on by default.
     #[serde(rename = "output_mute")]
     pub mute_output: bool,
+    /// Developer > "Volume Mixer" (off by default, issue #86): the mixer
+    /// screen, the flyout's app list and the output mute above are there
+    /// only with this on as well as debug_mode
+    pub volume_mixer: bool,
 
     pub debug_mode: bool,
     /// Developer mode: overrides of the codec and media path (in force only
@@ -290,6 +294,7 @@ impl Default for Settings {
             device_options: None,
             volume_sync: true,
             mute_output: false,
+            volume_mixer: false,
             debug_mode: false,
             dev_overrides: codec::dev::DevOverrides::default(),
             dev_log: DevLog::default(),
@@ -376,7 +381,7 @@ impl Settings {
 
     /// Whether a stream mutes the default output device
     pub fn mutes_output(&self) -> bool {
-        self.mute_output && self.debug_mode
+        self.mute_output && self.volume_mixer && self.debug_mode
     }
 
     /// The SBC frame setup a stream takes from its profile: the fixed one

@@ -13,6 +13,8 @@ import { createStore } from "solid-js/store";
 import { t } from "../i18n";
 import type { Profile } from "../ipc/types";
 import {
+  autoBitDepth,
+  autoSampleRate,
   capsOf,
   carryToCodec,
   fixedBitDepth,
@@ -302,6 +304,9 @@ export function CodecSettings(props: {
   caps?: readonly CodecCaps[];
   /** Offers the SBC frame setup, which only counts then */
   developer?: boolean;
+  /** Developer mode: Auto follows the PC's output format (no value beside
+   *  Auto then) */
+  matchSource?: boolean;
   /** Who listed what is offered, once it did */
   deviceName?: string;
   onChange: (values: CodecChoice) => void;
@@ -477,7 +482,13 @@ export function CodecSettings(props: {
               describedBy={described}
               value={v.sample_rate}
               options={rates().map((r) => {
-                const label = r === 0 ? t("codec.auto") : `${r} Hz`;
+                // Auto with the rate it streams at (issue #86)
+                const label =
+                  r === 0
+                    ? props.matchSource
+                      ? t("codec.auto")
+                      : t("codec.auto_value", `${autoSampleRate(v.codec, caps())} Hz`)
+                    : `${r} Hz`;
                 const listed = offeredSampleRates(v.codec, caps()).includes(r);
                 return { value: r, label: listed ? label : t("ui.profile.sbc_not_offered", label) };
               })}
@@ -485,28 +496,38 @@ export function CodecSettings(props: {
             />
           )}
         </Field>
-        <Field label={t("connection.bit_depth")} hint={t("tooltip.bit_depth")}>
-          {(id, described) => (
-            <Select
-              id={id}
-              describedBy={described}
-              value={v.bit_depth}
-              disabled={depths().length === 1}
-              options={depths().map((b) => ({
-                value: b,
-                label:
-                  b === 0
-                    ? depths().length > 1
-                      ? t("codec.auto")
-                      : t(`bitdepth.${fixedBitDepth(v.codec)}`)
-                    : offeredBitDepths(v.codec, caps()).includes(b)
-                      ? t(`bitdepth.${b}`)
-                      : t("ui.profile.sbc_not_offered", t(`bitdepth.${b}`)),
-              }))}
-              onChange={(x) => set("bit_depth", x)}
-            />
-          )}
-        </Field>
+        {/* One bit depth (SBC, AAC, aptX, Opus: 16-bit; aptX Adaptive:
+            24-bit): shown as a value, not as a list to open (issue #86) */}
+        <Show
+          when={depths().length > 1}
+          fallback={
+            <Field label={t("connection.bit_depth")}>
+              {(id) => <input id={id} class="input readonly" readOnly value={t(`bitdepth.${fixedBitDepth(v.codec)}`)} />}
+            </Field>
+          }
+        >
+          <Field label={t("connection.bit_depth")} hint={t("tooltip.bit_depth")}>
+            {(id, described) => (
+              <Select
+                id={id}
+                describedBy={described}
+                value={v.bit_depth}
+                options={depths().map((b) => ({
+                  value: b,
+                  label:
+                    b === 0
+                      ? props.matchSource
+                        ? t("codec.auto")
+                        : t("codec.auto_value", t(`bitdepth.${autoBitDepth(v.codec, caps())}`))
+                      : offeredBitDepths(v.codec, caps()).includes(b)
+                        ? t(`bitdepth.${b}`)
+                        : t("ui.profile.sbc_not_offered", t(`bitdepth.${b}`)),
+                }))}
+                onChange={(x) => set("bit_depth", x)}
+              />
+            )}
+          </Field>
+        </Show>
         <Show when={spec().abr}>
           <Toggle label={t("connection.abr")} hint={t("tooltip.abr")} checked={v.abr} onChange={(x) => set("abr", x)} />
         </Show>
