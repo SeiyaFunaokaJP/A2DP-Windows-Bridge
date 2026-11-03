@@ -100,6 +100,10 @@ A2DPWB lui-même ne fonctionne que sous Windows (Windows 10 22H2 ou Windows 11),
 
 Windows 10 n'a pas encore été essayé sur du vrai matériel. Autres adaptateurs : voir [Adaptateurs recommandés](setup#adapters).
 
+## Coupures et problèmes de connexion
+
+Ce que les rapports de coupures et de connexion se sont avérés être, les vérifications à faire avant de signaler, et comment lire la Qualité de liaison : **[Coupures et problèmes de connexion](wireless)**.
+
 ## Modes de capture audio
 
 A2DPWB capture l'audio via WASAPI et propose trois modes :

@@ -100,6 +100,10 @@ A2DPWB selbst läuft nur unter Windows (Windows 10 22H2 oder Windows 11), als Bu
 
 Windows 10 wurde noch nicht auf echter Hardware getestet. Andere Adapter: siehe [Empfohlene Adapter](setup#adapters).
 
+## Aussetzer und Verbindungsprobleme
+
+Was sich hinter den Berichten über Aussetzer und Verbindungsprobleme verbarg, die Prüfungen vor dem Melden und wie die Verbindungsqualität zu lesen ist: **[Aussetzer und Verbindungsprobleme](wireless)**.
+
 ## Aufnahmemodi
 
 A2DPWB nimmt das Audio über WASAPI auf und bietet drei Modi:

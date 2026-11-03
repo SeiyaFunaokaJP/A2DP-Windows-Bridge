@@ -457,6 +457,8 @@ A2DPWB prüft GitHub Releases höchstens einmal am Tag (**Einstellungen > Beim S
 
 ## Fehlerbehebung
 
+Ton, der aussetzt oder stottert, eine Verbindung, die fehlschlägt, oder eine Bitrate, die niedriger ist als erwartet: siehe **[Aussetzer und Verbindungsprobleme](wireless)**, eine Zusammenfassung dessen, was sich hinter den bisherigen Berichten verbarg und was zuerst zu prüfen ist.
+
 ### Das Fenster meldet, dass der Kern nicht läuft
 
 Das Fenster benötigt `a2dpwb-core.exe` im selben Ordner und startet es selbst. „Der A2DPWB-Kern läuft nicht“ bedeutet, dass es nicht gestartet werden konnte: Installieren Sie A2DPWB erneut (oder entpacken Sie das portable ZIP erneut). „Der Kern hat eine andere Version“ bedeutet, dass die beiden Programme aus verschiedenen Versionen stammen: Installieren Sie für beide dieselbe Version (das neueste Release erledigt das).
@@ -477,7 +479,7 @@ Damit ein Adapter nicht hängen bleibt, setzt A2DPWB beim Öffnen seine USB-Pipe
 
 A2DPWB koppelt per SSP (Just Works) mit **General Bonding**, und die Link Keys werden gespeichert, sodass sich die Kopfhörer ohne erneutes Koppeln wieder verbinden können (v2 liest die Link Keys von v1). Haben Sie die Kopfhörer mit einer älteren A2DPWB-Version gekoppelt und verbinden sie sich nicht mehr, entfernen Sie die A2DPWB-Kopplung an den Kopfhörern (wie die Kopplungsliste gelöscht wird, steht in der Anleitung der Kopfhörer) und koppeln Sie erneut.
 
-### Zeitüberschreitungen beim Verbinden
+### Zeitüberschreitungen beim Verbinden {#connection-timeouts}
 
 A2DPWB registriert SDP-Einträge (A2DP Source, AVRCP Controller / Target), damit die Kopfhörer es als Audioquelle erkennen können. Läuft ein Verbindungsversuch in eine Zeitüberschreitung, wird die halboffene Verbindung abgebaut, sodass Sie es einfach erneut versuchen können, ohne A2DPWB neu zu starten. Stellen Sie sicher, dass die Kopfhörer eingeschaltet, in Reichweite und nicht mit einem anderen Gerät verbunden sind.
 
