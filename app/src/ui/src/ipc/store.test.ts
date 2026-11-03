@@ -192,6 +192,49 @@ describe("core store", () => {
     expect(subs()[2]).toEqual({ logs: null, link: false, receiver: false });
   });
 
+  it("starts the link samples afresh when they are asked for again", async () => {
+    const f = fakeTransport();
+    const core = createRoot(() => createCore(f.transport));
+    await tick();
+    f.status({ state: "connected", server: "core" });
+    f.send({ type: "snapshot", rev: 1, state: sampleSnapshot() });
+    const sample = (time_ms: number) => ({
+      kind: "link" as const,
+      value: {
+        time_ms,
+        rssi: -3,
+        afh_in_use: 79,
+        afh_usable: 79,
+        afh_avoided: "",
+        bytes_per_second: 1000,
+        packets_per_second: 10,
+        queue_depth: 1,
+        dropped: 0,
+        capture_dropped: 0,
+        airtime: 0.3,
+      },
+    });
+    let release = core.wantLink();
+    await tick();
+    f.event(1, sample(1));
+    f.event(1, sample(2));
+    // Another view taking over in the same tick keeps them
+    release();
+    release = core.wantLink();
+    await tick();
+    expect(core.link()).toHaveLength(2);
+    release();
+    await tick();
+    expect(core.link()).toHaveLength(2);
+    // Asked for again later: the old ones would join across the gap
+    release = core.wantLink();
+    await tick();
+    expect(core.link()).toHaveLength(0);
+    f.event(1, sample(9));
+    expect(core.link().map((s) => s.time_ms)).toEqual([9]);
+    release();
+  });
+
   it("follows the receiver test while a view wants it", async () => {
     const f = fakeTransport();
     const core = createRoot(() => createCore(f.transport));
