@@ -135,7 +135,13 @@ pub fn command_status(opcode: u16, status: u8) -> Vec<u8> {
 
 /// A vendor event (code 0xFF) with these parameters
 pub fn vendor_event(params: &[u8]) -> Vec<u8> {
-    let mut e = vec![0xFF, params.len() as u8];
+    event(0xFF, params)
+}
+
+/// Any event: code, length, parameters (a vendor's own event code, such as
+/// 0xE4)
+pub fn event(code: u8, params: &[u8]) -> Vec<u8> {
+    let mut e = vec![code, params.len() as u8];
     e.extend_from_slice(params);
     e
 }

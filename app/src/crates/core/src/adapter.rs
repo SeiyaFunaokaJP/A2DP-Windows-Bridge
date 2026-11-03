@@ -199,9 +199,9 @@ pub fn configure(config: &mut HostConfig, settings: &Settings, _config_dir: &Pat
             config.broadcom_ids
         );
         for a in &winusb {
-            if matches!(a.vendor, ChipVendor::MediaTek | ChipVendor::Qualcomm) {
+            if !chips::chip_supported(a.vendor, a.device.vid, a.device.pid) {
                 tracing::warn!(
-                    "{} adapter {:04X}:{:04X}: firmware loading for this vendor is not implemented; it may not work",
+                    "{} adapter {:04X}:{:04X}: firmware loading for this chip is not implemented; it may not work",
                     a.vendor.name(),
                     a.device.vid,
                     a.device.pid

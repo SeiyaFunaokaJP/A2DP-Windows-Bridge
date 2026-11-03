@@ -52,7 +52,12 @@ HCI capture as a log line, keeping the whole sequence in order there.
 `bringup.rs` also has `hci_command` / `parse_event`, and `bringup/sim.rs`
 runs a loader against a simulated controller with the runner's rules (the
 timer, `UsbControl` before the next action), so loader tests do not copy
-their own driver. `bringup/sample.rs` is a complete loader for a made-up
+their own driver. Support is decided per chip: `chips::LOADER_CHIPS` lists the chips of an
+otherwise unsupported vendor that have a loader, and `chip_supported` /
+`chip_support_tag` drive the name tag, the adapter note (and with it
+WinUSB on the Adapters screen) and the "not implemented" warning.
+
+`bringup/sample.rs` is a complete loader for a made-up
 chip with tests
 against a simulated controller. It is compiled for the tests only.
 

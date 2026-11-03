@@ -117,13 +117,61 @@ impl ChipVendor {
         }
     }
 
-    /// Tag shown after the name: loaders that are experimental or missing
+    /// Tag shown after the name: loaders that are experimental or missing,
+    /// for the whole vendor ([`chip_support_tag`] for one adapter)
     pub fn support_tag(self) -> Option<&'static str> {
         match self {
             ChipVendor::Intel | ChipVendor::Broadcom => Some("experimental"),
             ChipVendor::MediaTek | ChipVendor::Qualcomm => Some("unsupported"),
             _ => None,
         }
+    }
+}
+
+/// Chips with a loader of a vendor that has none for its other chips
+/// (vendor, VID, PID): a loader that covers only some of a vendor's chips
+/// lists them here, and only they leave "unsupported" (docs/chip-support.md)
+pub const LOADER_CHIPS: &[(ChipVendor, u16, u16)] = &[];
+
+/// A2DPWB can bring this adapter up: its vendor needs no loader or has one
+/// for every chip, or the chip is in [`LOADER_CHIPS`]
+pub fn chip_supported(vendor: ChipVendor, vid: u16, pid: u16) -> bool {
+    supported_in(LOADER_CHIPS, vendor, vid, pid)
+}
+
+/// Tag shown after one adapter's name: its vendor's, except "experimental"
+/// for a chip in [`LOADER_CHIPS`]
+pub fn chip_support_tag(vendor: ChipVendor, vid: u16, pid: u16) -> Option<&'static str> {
+    tag_in(LOADER_CHIPS, vendor, vid, pid)
+}
+
+fn supported_in(table: &[(ChipVendor, u16, u16)], vendor: ChipVendor, vid: u16, pid: u16) -> bool {
+    vendor.support_tag() != Some("unsupported") || table.contains(&(vendor, vid, pid))
+}
+
+fn tag_in(table: &[(ChipVendor, u16, u16)], vendor: ChipVendor, vid: u16, pid: u16) -> Option<&'static str> {
+    match vendor.support_tag() {
+        Some("unsupported") if supported_in(table, vendor, vid, pid) => Some("experimental"),
+        tag => tag,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_loader_for_some_chips_leaves_the_others_unsupported() {
+        let table = [(ChipVendor::MediaTek, 0x0E8D, 0x7999)];
+        assert!(supported_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7999));
+        assert_eq!(tag_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7999), Some("experimental"));
+        assert!(!supported_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7925));
+        assert_eq!(tag_in(&table, ChipVendor::MediaTek, 0x0E8D, 0x7925), Some("unsupported"));
+        // Vendors with a loader for all their chips, or none needed
+        assert!(supported_in(&[], ChipVendor::Intel, 0x8087, 0x0033));
+        assert_eq!(tag_in(&[], ChipVendor::Intel, 0x8087, 0x0033), Some("experimental"));
+        assert!(supported_in(&[], ChipVendor::Realtek, 0x0BDA, 0x8771));
+        assert_eq!(tag_in(&[], ChipVendor::Csr, 0x0A12, 0x0001), None);
     }
 }
 
@@ -223,7 +271,7 @@ pub fn display_name(vid: u16, pid: u16, realtek_pid: Option<u16>, vendor: ChipVe
         return format!("{chip} (0x{vid:04X}:0x{pid:04X})");
     }
     if vendor != ChipVendor::Unknown && vendor != ChipVendor::Realtek {
-        let tag = vendor.support_tag().map(|t| format!(" [{t}]")).unwrap_or_default();
+        let tag = chip_support_tag(vendor, vid, pid).map(|t| format!(" [{t}]")).unwrap_or_default();
         return format!("{} (0x{vid:04X}:0x{pid:04X}){tag}", vendor.name());
     }
     format!("0x{vid:04X}:0x{pid:04X}")
