@@ -62,7 +62,7 @@ a2dpwb-core.exe --cli --scan                                  # Find nearby devi
 a2dpwb-core.exe --cli -h                                      # All options
 ```
 
-To stream LDAC at 96 kHz, set the playback device's format to 96 kHz in Windows Sound settings. Everything else — profiles, capture modes, volume sync, link quality and AFH, diagnostics, start with Windows, troubleshooting — is in the [Usage guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/usage).
+To stream LDAC at 96 kHz, set the playback device's format to 96 kHz in Windows Sound settings. Everything else — profiles, capture modes, volume sync, link quality and AFH, diagnostics, start with Windows, troubleshooting — is in the [Usage guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/usage). Sound that drops out, or a connection that fails: [Dropouts and Connection Problems](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/wireless).
 
 ## Features
 

@@ -98,6 +98,10 @@ A2DPWB itself runs on Windows only (Windows 10 22H2 or Windows 11), built for x6
 
 Windows 10 has not been tried on real hardware yet. Other adapters: see [Recommended Adapters](setup#adapters).
 
+## Dropouts and Connection Problems
+
+What the dropout and connection reports turned out to be, the checks to run before reporting, and how to read Link Quality: **[Dropouts and Connection Problems](wireless)**.
+
 ## Audio Capture Modes
 
 A2DPWB captures audio via WASAPI and offers three modes:

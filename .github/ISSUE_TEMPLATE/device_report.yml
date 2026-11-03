@@ -79,4 +79,4 @@ body:
     id: notes
     attributes:
       label: Notes
-      description: Dropouts, latency, stability, sample rate, impressions — anything you noticed.
+      description: Dropouts, latency, stability, sample rate, impressions — anything you noticed. For dropouts, the checks in [Dropouts and Connection Problems](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/wireless) tell the radio from the app.
