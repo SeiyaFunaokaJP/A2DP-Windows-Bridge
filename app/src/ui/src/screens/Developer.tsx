@@ -361,7 +361,7 @@ function Logging(props: { value: DevLog; save: (v: DevLog) => Promise<boolean> }
         />
       </Section>
       <Section title={t("ui.dev.mark")}>
-        <Field label={t("ui.dev.mark_note")} hint={t("ui.dev.mark_hint")}>
+        <Field label={t("ui.dev.mark_note")} hint={t("ui.dev.mark_hint")} stacked>
           {(id, describedBy) => (
             <input
               id={id}

@@ -12,9 +12,9 @@
 // with Alt+arrow keys) into the device's own order (its profile's
 // codec_order, issue #86 round 8). A codec the device does not offer falls
 // back to the first card it offers in that order (lib/codecs.ts
-// effectiveCodec, as the core), which is also what Auto picks then: a click
-// on such a card chooses that one instead, and a profile left with one shows
-// that one chosen (issue #86: no note below the cards). A codec it may offer
+// effectiveCodec, as the core), which is also what Auto picks then: a profile
+// left with one shows that one chosen (issue #86: no note below the cards), and
+// a click on such a card changes nothing (issue #86). A codec it may offer
 // only once chosen (Device.codecs_on_request) stays a card of its own, chosen
 // also while another one streams instead (issue #30). The codec chosen
 // stays in the device's profile while Auto-select is on. The device is
@@ -335,8 +335,6 @@ function DeviceCodecs(props: {
   // Its cards' order: Auto-select's is the default one (highest sound
   // quality first), read-only
   const order = (): CodecId[] => (props.auto ? [...CARD_ORDER] : (dragOrder() ?? cardOrder(shown().codec_order)));
-  // The order Auto and the fallback go by
-  const pickOrder = (): readonly string[] => (props.auto ? AUTO_ORDER : order());
   const picked = () => pickedCodec(snap(), e(), props.auto, order());
   const cards = () =>
     order()
@@ -354,24 +352,29 @@ function DeviceCodecs(props: {
     saving = done.catch(() => undefined);
     return done;
   };
+  // The card clicked is checked by the browser: back to the one chosen
+  // (nothing saved, or the save failed)
+  const showPicked = () => {
+    for (const r of grid?.querySelectorAll<HTMLInputElement>("input[type=radio]") ?? []) r.checked = r.value === picked();
+  };
   const choose = async (id: string, values?: Omit<CodecChoice, "codec">, live = false) => {
+    // A card the device does not offer: nothing changes (issue #86: the
+    // stream keeps its codec). Settings made for it in its "..." are saved
+    // as they are (the card shown chosen is still the one used).
+    if (!values && support(id) === "not_offered") {
+      showPicked();
+      return;
+    }
     // A "..." dialog's change while the cards wait: applied after (the cards
     // themselves are disabled meanwhile)
     if (settling()) await untilSettled();
-    // A card the device does not offer: the first card it offers instead
-    // (issue #86). Settings made for it in its "..." are saved as they are
-    // (the card shown chosen is still the one used).
-    const instead = !values && support(id) === "not_offered" ? effectiveCodec(id, known(), true, pickOrder()) : null;
-    if (instead) id = instead;
     // The device's stream starts again with the codec: give it time first
     const running = state() !== "idle" && state() !== "error";
     setBusy(true);
     // An order moved but not back from the core yet goes with it
     const saved = await queued(() => chooseCodec(app, e(), id, values, props.auto ? null : dragOrder()));
     setBusy(false);
-    // The card clicked is checked by the browser: back to the one chosen
-    // (another one instead, nothing saved, or the save failed)
-    for (const r of grid?.querySelectorAll<HTMLInputElement>("input[type=radio]") ?? []) r.checked = r.value === picked();
+    showPicked();
     if (saved && running && mounted && !live) settle(app);
   };
   // ---- a "..." dialog's changes (issue #86: applied at once) ----
@@ -662,7 +665,11 @@ function DeviceCodecs(props: {
                 dragging={dragging() === c.id}
                 describedBy={hintId}
                 onPick={() => void choose(c.id)}
-                onReadOnly={(settings) => props.onLocked(() => (settings ? setSettingsOf(c) : void choose(c.id)))}
+                onReadOnly={(settings) => {
+                  // No reason to turn Auto-select off for a card that changes nothing
+                  if (settings || support(c.id) !== "not_offered")
+                    props.onLocked(() => (settings ? setSettingsOf(c) : void choose(c.id)));
+                }}
                 onSettings={() => setSettingsOf(c)}
                 onMove={(by) => moveBy(c.id, by)}
               />

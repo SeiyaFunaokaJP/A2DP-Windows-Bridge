@@ -45,6 +45,9 @@ export interface CodecSpec {
   hiRes: boolean;
   /** The only capture rates it takes (0 = auto), when not the usual ones */
   rates?: number[];
+  /** Its one bit rate at 44.1 / 48 kHz when it has no qualities (core:
+   *  Encoder::bitrate_kbps) */
+  fixedKbps?: [number, number];
   /** The bit depth it always carries when there is no choice (16 if not set) */
   bits?: number;
   /** Variable bit rate (where the headphones list it), on the "abr" setting */
@@ -111,17 +114,27 @@ export const CODECS: CodecSpec[] = [
     label: "codec.aptx_hd",
     bars: { quality: 4, latency: 3, stability: 3 },
     qualities: [],
+    fixedKbps: [529, 576],
     abr: false,
     hiRes: false,
     bits: 24,
     experimental: true,
   },
-  { id: "aptx", label: "codec.aptx", bars: { quality: 3, latency: 3, stability: 4 }, qualities: [], abr: false, hiRes: false },
+  {
+    id: "aptx",
+    label: "codec.aptx",
+    bars: { quality: 3, latency: 3, stability: 4 },
+    qualities: [],
+    fixedKbps: [352, 384],
+    abr: false,
+    hiRes: false,
+  },
   {
     id: "aptxll",
     label: "codec.aptx_ll",
     bars: { quality: 2, latency: 5, stability: 4 },
     qualities: [],
+    fixedKbps: [352, 384],
     abr: false,
     hiRes: false,
     experimental: true,
@@ -194,6 +207,7 @@ export const CODECS: CodecSpec[] = [
     label: "codec.faststream",
     bars: { quality: 1, latency: 4, stability: 4 },
     qualities: [],
+    fixedKbps: [198, 216],
     abr: false,
     hiRes: false,
     experimental: true,
@@ -476,6 +490,13 @@ export function qualityKbps(codec: string, quality: string, sampleRate: number, 
   const kbps = table[spec.id]?.[q.id] ?? q.kbps;
   const cap = Math.floor(maxBitrate / 1000);
   return kbps && cap > 0 && /^\d+$/.test(kbps) && Number(kbps) > cap ? String(cap) : kbps;
+}
+
+/** "384 kbps": a codec's one bit rate at a sample rate of 44.1 or 48 kHz, for
+ *  one without qualities (issue #86) */
+export function fixedKbpsText(codec: string, sampleRate: number): string {
+  const kbps = codecSpec(codec).fixedKbps;
+  return kbps ? `${kbps[sampleRate === 44100 ? 0 : 1]} kbps` : "";
 }
 
 /**

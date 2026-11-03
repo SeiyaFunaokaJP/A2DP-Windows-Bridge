@@ -22,6 +22,7 @@ import {
   fixedBitDepth,
   moved,
   offeredBitDepths,
+  fixedKbpsText,
   offeredQualities,
   offeredSampleRates,
   qualityIgnored,
@@ -298,6 +299,9 @@ describe("profiles", () => {
     expect(qualityKbps("aac", "hq", 0, capsOf(caps, "aac")!.max_bitrate)).toBe("131");
     expect(qualityKbps("aac", "hq", 0, 320000)).toBe("256");
     // LHDC V5 at most 500 kbps: High is 500, Medium the same (left out)
+    expect(fixedKbpsText("aptx", 44100)).toBe("352 kbps");
+    expect(fixedKbpsText("aptxll", 48000)).toBe("384 kbps");
+    expect(fixedKbpsText("faststream", 48000)).toBe("216 kbps");
     expect(offeredQualities("lhdcv5", 48000).map((q) => [q.id, q.kbps])).toEqual([
       ["hq", "1000"],
       ["mhq", "900"],
