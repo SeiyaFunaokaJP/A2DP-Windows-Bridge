@@ -45,7 +45,7 @@ The codec of each saved audio device, one section per device (a dot that is gree
   - **Sample Rate**: Auto is 48 kHz, or the best rate the device lists if it has no 48 kHz (96 kHz adds latency and is less compatible, with no audible gain, and Windows mixes at 48 kHz); choose 96 kHz here to use it. Only the rates the device lists are offered (aptX Adaptive's 96 kHz only to a device that lists it, see [aptX Adaptive](#aptx-adaptive))
   - **Bit Depth**: 16 or 24 bit for LDAC and LHDC V5 (Auto: 24 bit), as far as the device lists them; 16 bit for the others
   - **Bitpool** (SBC, SBC XQ): one slider with two handles, the minimum and the maximum bitpool, within the range the device lists. The maximum is the bitpool used; the minimum is the lowest one used (the bottom of the range the connection is set up with, and how far ABR may go down). **Auto** sets both back: the maximum by quality, the minimum the device's and ABR's own. The line below it shows the channel mode, fixed for each codec: joint stereo for SBC, dual channel for SBC XQ.
-  - **Frame setup** (SBC and SBC XQ, developer mode only): blocks, subbands, bit allocation and, for SBC, the channel mode. Auto keeps 16 blocks, 8 subbands, Loudness and Joint stereo. A value the device does not take falls back to Auto when connecting. With a Sony device a user tested, 12 blocks garbles the sound and may disconnect (the encoder's output decodes correctly; the other block counts play). The choices stay saved but are not used once developer mode is off AAC's and LHDC V5's bit rates stay within the maximum the device lists
+  - **Frame setup** (SBC and SBC XQ, developer mode only): blocks, subbands, bit allocation and, for SBC, the channel mode. Auto keeps 16 blocks, 8 subbands, Loudness and Joint stereo. A value the device does not take falls back to Auto when connecting. With a Sony device a user tested, 12 blocks garbles the sound and may disconnect (the encoder's output decodes correctly; the other block counts play). The choices stay saved but are not used once developer mode is off. AAC's and LHDC V5's bit rates stay within the maximum the device lists
 
 The defaults give the best sound; most devices need nothing but **Auto**. An LE Audio device (experimental) has one card, LC3, and **Low latency for gaming audio devices (experimental)** (see [LE Audio](#le-audio)).
 
@@ -53,7 +53,7 @@ Behind the scenes A2DPWB keeps one entry per device in `profiles.json` (its code
 
 ### Audio Devices
 
-The headphones and speakers A2DPWB can stream to, each with its own settings: **Scan Devices** finds nearby devices with the USB adapter (30 seconds, listed as they answer; **Stop** ends it; put the headphones into pairing mode). Devices A2DPWB paired with before are tagged **Paired**. If the scan does not find them, enter the address under **Manual:** and click **Use**; typed or pasted addresses are formatted as you go (`aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` and `AA BB CC DD EE FF` all become `AA:BB:CC:DD:EE:FF`). A saved device can be renamed or removed (removing it also removes its settings and pairing, so it cannot connect again until it is paired again), and has:
+The headphones and speakers A2DPWB can stream to, each with its own settings: **Scan Devices** finds nearby devices with the USB adapter (30 seconds, listed as they answer; **Stop Scanning** ends it; put the headphones into pairing mode). Devices A2DPWB paired with before are tagged **Paired**. If the scan does not find them, enter the address under **Manual:** and click **Use**; typed or pasted addresses are formatted as you go (`aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` and `AA BB CC DD EE FF` all become `AA:BB:CC:DD:EE:FF`). A saved device can be renamed or removed (removing it also removes its settings and pairing, so it cannot connect again until it is paired again), and has:
 
 - **Output Source**: System Loopback (a new device's default), Virtual Device or Application (see [Capture Modes](#capture-modes)). Beside it, the format Windows mixes the captured device in (sample rate and bit depth, read only), in amber when the device's codec settings ask for another one, with a line below saying which (it still streams, converted); below it, what the source does
 - **Set as Windows default output while connected**, with a virtual device
@@ -80,7 +80,7 @@ A2DPWB also records some things all the time, so that a problem that happened on
 
 Disk use stays bounded: a normal day's log is well under 1 MB and 7 days are kept; with verbose logging a day's file takes at most 100 MB of debug and trace lines (then only info and above go on until the next day); the flight recorder files are a few MB at most, 10 kept.
 
-### Developer
+### Developer {#developer}
 
 Shown while **Settings > Developer mode** is on; most users never need it. It is for testing devices and troubleshooting: some of its settings work only with some devices. Five tabs:
 
