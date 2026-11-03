@@ -18,6 +18,7 @@ use codec::CodecKind;
 use codec::caps::{AacCapabilities, AacObjectType, ConfigRequest, Configuration, SbcCapabilities, VendorCapability};
 use codec::sbc::{Allocation, ChannelMode};
 
+use crate::bringup::{self, ChipLoader};
 use crate::events::{addr_at, addr_str, event_type, hci_error_string, le16, le24, subevent, u8_at};
 use crate::intel;
 use crate::le::core::LeCore;
@@ -35,8 +36,8 @@ pub(crate) const TIMER_AFH: u32 = 1;
 pub(crate) const TIMER_PLAYBACK: u32 = 2;
 /// Read the version again after a Realtek download (HCI was busy)
 const TIMER_RTK_VERIFY: u32 = 5;
-/// The Intel firmware loader's answer timeout
-const TIMER_INTEL: u32 = 7;
+/// The chip loader's answer timeout (crate::bringup)
+const TIMER_LOADER: u32 = 7;
 const RTK_VERIFY_RETRY_MS: u32 = 100;
 const RTK_VERIFY_TRIES: u8 = 20;
 
@@ -126,8 +127,9 @@ pub(crate) struct HostApp {
     /// Version reads left before the download stays "not verified"
     rtk_verify_tries: u8,
     bcm_checked: bool,
-    /// The Intel firmware download before HCI init (raw transport)
-    intel: Option<intel::Loader>,
+    /// The chip bring-up before HCI init (raw transport): Intel's firmware
+    /// download
+    loader: Option<Box<dyn ChipLoader>>,
 
     // ---- AVRCP ----
     volume_in_flight: Option<Instant>,
@@ -214,7 +216,7 @@ impl HostApp {
             rtk_verify_pending: false,
             rtk_verify_tries: 0,
             bcm_checked: false,
-            intel: None,
+            loader: None,
             volume_in_flight: None,
             playback_status: AVRCP_PLAYBACK_STATUS_STOPPED,
             playback_prev_frames: 0,
@@ -239,67 +241,73 @@ impl HostApp {
     // Setup
     // ======================================================================
 
-    /// The Intel firmware download (crate::intel) on the transport
-    /// installed already, then HCI init. Intel controllers start in a
-    /// bootloader after a cold boot; with the firmware running the loader
-    /// is done after one command.
+    /// The Intel firmware download (crate::intel), then HCI init. Intel
+    /// controllers start in a bootloader after a cold boot; with the
+    /// firmware running the loader is done after one command.
     pub fn start_intel_loader(&mut self, stack: &Stack) {
         let dir = self.setup.firmware_dir.clone();
         tracing::info!("Intel adapter: checking bootloader firmware (experimental), folder {}", dir.display());
+        let loader = intel::Loader::new(Box::new(move |name| read_firmware_file(&dir, "intel", name)));
+        self.start_loader(stack, Box::new(loader));
+    }
+
+    /// A chip bring-up (crate::bringup) on the transport installed already,
+    /// then HCI init
+    fn start_loader(&mut self, stack: &Stack, mut loader: Box<dyn ChipLoader>) {
         if !stack.raw_begin() {
             tracing::error!("could not open the Bluetooth adapter");
             self.init_failed(InitFailure::Failed);
             return;
         }
-        let mut loader = intel::Loader::new(Box::new(move |name| read_firmware_file(&dir, name)));
         let actions = loader.start();
-        self.intel = Some(loader);
-        self.run_intel(stack, actions);
+        self.loader = Some(loader);
+        self.run_loader(stack, actions);
     }
 
-    fn run_intel(&mut self, stack: &Stack, actions: Vec<intel::Action>) {
+    fn run_loader(&mut self, stack: &Stack, actions: Vec<bringup::Action>) {
         for action in actions {
             let failed = match action {
-                intel::Action::Command(c) => {
+                bringup::Action::Command(c) => {
                     (!stack.raw_send(HCI_COMMAND_DATA_PACKET, &c)).then_some("the adapter does not take commands")
                 }
-                intel::Action::BulkCommand(c) => {
+                bringup::Action::BulkCommand(c) => {
                     (!stack.raw_send_bulk_command(&c)).then_some("the adapter does not take commands")
                 }
-                intel::Action::Bootloader(on) => {
+                bringup::Action::Bootloader(on) => {
                     stack.set_bootloader(on);
                     None
                 }
-                intel::Action::Timer(ms) => {
-                    (!stack.timer_start(TIMER_INTEL, ms)).then_some("the loader's timer could not be started")
+                bringup::Action::Timer(ms) => {
+                    (!stack.timer_start(TIMER_LOADER, ms)).then_some("the loader's timer could not be started")
                 }
-                intel::Action::Done(result) => {
-                    self.intel_done(stack, result);
+                bringup::Action::Done(result) => {
+                    self.loader_done(stack, result);
                     return;
                 }
             };
             if let Some(why) = failed {
-                self.intel_done(stack, Err(intel::LoadError::Host(why)));
+                self.loader_done(stack, Err(bringup::LoadError::Host(why)));
                 return;
             }
         }
     }
 
-    fn intel_done(&mut self, stack: &Stack, result: Result<intel::Outcome, intel::LoadError>) {
-        stack.timer_stop(TIMER_INTEL);
-        self.intel = None;
+    fn loader_done(&mut self, stack: &Stack, result: Result<bringup::Outcome, bringup::LoadError>) {
+        stack.timer_stop(TIMER_LOADER);
+        let Some(loader) = self.loader.take() else { return };
+        let vendor = loader.vendor();
         match result {
             Ok(outcome) => {
                 stack.raw_end();
                 match outcome {
-                    intel::Outcome::AlreadyRunning => tracing::info!("Intel controller: firmware running already"),
-                    intel::Outcome::Loaded { firmware, ddc } => {
-                        tracing::info!(
-                            "Intel controller: firmware {firmware} loaded (DDC {})",
-                            if ddc { "applied" } else { "not applied" }
-                        )
+                    bringup::Outcome::AlreadyRunning => tracing::info!("{vendor} controller: firmware running already"),
+                    bringup::Outcome::Loaded { firmware, detail: Some(detail) } => {
+                        tracing::info!("{vendor} controller: firmware {firmware} loaded ({detail})")
                     }
-                    intel::Outcome::Rom => tracing::info!("Intel controller: ROM firmware, nothing to load"),
+                    bringup::Outcome::Loaded { firmware, detail: None } => {
+                        tracing::info!("{vendor} controller: firmware {firmware} loaded")
+                    }
+                    bringup::Outcome::Rom => tracing::info!("{vendor} controller: ROM firmware, nothing to load"),
                 }
                 self.setup_hci_and_power_on(stack, None);
             }
@@ -310,20 +318,14 @@ impl HostApp {
             Err(e) => {
                 let dir = self.setup.firmware_dir.display();
                 match &e {
-                    intel::LoadError::MissingFile(file) => {
-                        let stem = file.strip_suffix(".sfi").unwrap_or(file);
-                        // An intermediate loader has no .ddc
-                        let files = if stem.ends_with("-iml") {
-                            format!("{stem}.sfi")
-                        } else {
-                            format!("{stem}.sfi and {stem}.ddc")
-                        };
+                    bringup::LoadError::MissingFile(file) => {
+                        let files = loader.missing_file_hint(file);
                         tracing::error!(
-                            "Intel firmware download failed: {file} is not in {dir}. Put {files} from linux-firmware \
-                             (intel/) there and connect again."
+                            "{vendor} firmware download failed: {file} is not in {dir}. Put {files} there and \
+                             connect again."
                         );
                     }
-                    e => tracing::error!("Intel firmware download failed: {e} (firmware folder {dir})"),
+                    e => tracing::error!("{vendor} firmware download failed: {e} (firmware folder {dir})"),
                 }
                 self.init_failed(InitFailure::Failed);
             }
@@ -2153,10 +2155,10 @@ impl App for HostApp {
                 stack.timer_start(TIMER_PLAYBACK, PLAYBACK_TICK_MS);
             }
             TIMER_RTK_VERIFY => self.verify_realtek_download(stack),
-            TIMER_INTEL => {
-                if let Some(loader) = self.intel.as_mut() {
+            TIMER_LOADER => {
+                if let Some(loader) = self.loader.as_mut() {
                     let actions = loader.on_timeout();
-                    self.run_intel(stack, actions);
+                    self.run_loader(stack, actions);
                 }
             }
             TIMER_RFCOMM => self.rfcomm.on_timer(stack),
@@ -2178,9 +2180,9 @@ impl App for HostApp {
         if packet_type != HCI_EVENT_PACKET {
             return;
         }
-        if let Some(loader) = self.intel.as_mut() {
+        if let Some(loader) = self.loader.as_mut() {
             let actions = loader.on_event(packet);
-            self.run_intel(stack, actions);
+            self.run_loader(stack, actions);
         }
     }
 
@@ -2236,10 +2238,10 @@ fn remove_alias(dir: &Path, stem: &str) {
     }
 }
 
-/// An Intel firmware file (ibt-*.sfi / .ddc) from the firmware folder, or
-/// from an "intel" folder in it (as linux-firmware has them)
-fn read_firmware_file(dir: &Path, name: &str) -> Option<Vec<u8>> {
-    [dir.join(name), dir.join("intel").join(name)].iter().find_map(|path| match std::fs::read(path) {
+/// A firmware file of a chip loader from the firmware folder, or from the
+/// vendor's folder in it as linux-firmware has them ("intel")
+fn read_firmware_file(dir: &Path, vendor_dir: &str, name: &str) -> Option<Vec<u8>> {
+    [dir.join(name), dir.join(vendor_dir).join(name)].iter().find_map(|path| match std::fs::read(path) {
         Ok(data) => {
             tracing::debug!("firmware file {}: {} bytes", path.display(), data.len());
             Some(data)

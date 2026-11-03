@@ -11,6 +11,7 @@
 
 pub mod afh;
 mod app;
+pub mod bringup;
 pub mod capture;
 pub mod chips;
 pub mod events;
