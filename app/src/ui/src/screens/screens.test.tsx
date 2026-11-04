@@ -313,7 +313,9 @@ describe("every screen renders", () => {
 
   it("diagnostics tabs", async () => {
     start("#/diagnostics");
-    for (const name of ["Connection Flow", "Log", "Link Quality"]) {
+    // The stream tab first
+    expect(await screen.findByRole("tab", { name: "Stream" })).toHaveAttribute("aria-selected", "true");
+    for (const name of ["Radio", "Audio capture", "Connection Flow", "Log", "Stream"]) {
       fireEvent.click(await screen.findByRole("tab", { name }));
       expect(screen.getByRole("tab", { name })).toHaveAttribute("aria-selected", "true");
     }

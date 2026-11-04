@@ -2343,6 +2343,84 @@ option {
   color: var(--text-3);
   text-align: right;
 }
+/* Time charts: a legend for more than one series, the time axis, limits
+   and targets as dashed lines, the hover cursor shared by a tab's charts */
+.chart {
+  /* One scale width, so the time axes of a tab line up */
+  grid-template-columns: 1fr 4.5rem;
+  grid-template-rows: auto 6rem auto;
+}
+.chart.multi {
+  grid-template-rows: auto auto 6rem auto;
+}
+.chart-readout {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+.chart-ago {
+  font-size: var(--fs-12);
+  color: var(--text-3);
+}
+.chart-legend {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-12);
+  color: var(--text-2);
+}
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.chart-legend .chart-value {
+  font-size: var(--fs-14);
+  color: var(--text);
+}
+.chart-swatch {
+  width: 0.75rem;
+  height: 0.1875rem;
+  border-radius: 999px;
+  background: var(--text);
+}
+.chart-plot {
+  touch-action: pan-y;
+}
+.chart.multi .chart-plot polyline.s0,
+.chart-legend .s0 .chart-swatch {
+  stroke: var(--chart-1);
+  background: var(--chart-1);
+}
+.chart.multi .chart-plot polyline.s1,
+.chart-legend .s1 .chart-swatch {
+  stroke: var(--chart-2);
+  background: var(--chart-2);
+}
+.chart-plot .ref {
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+.chart-plot .ref-limit {
+  stroke: var(--warn-text);
+}
+.chart-plot .ref-target {
+  stroke: var(--text-3);
+}
+.chart-plot .cursor {
+  stroke: var(--text-2);
+  stroke-width: 1;
+}
+.chart-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-12);
+  color: var(--text-3);
+}
 .stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
@@ -2602,6 +2680,22 @@ option {
 }
 .lq-group h2 {
   font-size: var(--fs-14);
+}
+.lq-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s1) var(--s3);
+  margin: 0;
+}
+.lq-verdict-label {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  color: var(--st-text, var(--text));
+}
+.lq-verdict-causes {
+  font-size: var(--fs-12);
+  color: var(--text-2);
 }
 .lq-group-head {
   display: flex;
@@ -3242,8 +3336,17 @@ html.win-flyout body {
     outline-offset: -2px;
   }
   .sparkline polyline,
-  .chart-plot polyline {
+  .chart-plot polyline,
+  .chart.multi .chart-plot polyline.s0 {
     stroke: CanvasText;
+  }
+  .chart.multi .chart-plot polyline.s1 {
+    stroke: CanvasText;
+    stroke-dasharray: 3 2;
+  }
+  .chart-swatch {
+    forced-color-adjust: none;
+    background: CanvasText;
   }
   :focus-visible {
     outline: 2px solid Highlight;
