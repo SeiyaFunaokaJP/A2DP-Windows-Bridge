@@ -145,4 +145,79 @@ describe("Diagnostics", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Current attempt only" }));
     await waitFor(() => expect(view.container.querySelector(".log-line")).toHaveTextContent("stream: device"));
   });
+
+  it("moves between the tabs with the arrow keys", async () => {
+    start();
+    const first = await screen.findByRole("tab", { name: "Stream" });
+    expect(first).toHaveAttribute("aria-selected", "true");
+    const names = ["Stream", "Radio", "Audio capture", "Connection Flow", "Log"];
+    for (const name of [...names.slice(1), names[0]]) {
+      fireEvent.keyDown(document.activeElement === document.body ? first : document.activeElement!, { key: "ArrowRight" });
+      const tab = screen.getByRole("tab", { name });
+      expect(tab).toHaveAttribute("aria-selected", "true");
+      expect(tab).toHaveAttribute("tabindex", "0");
+      expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", tab.id);
+    }
+    fireEvent.keyDown(first, { key: "End" });
+    expect(screen.getByRole("tab", { name: "Log" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(first, { key: "Home" });
+    expect(first).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("graphs the stream, the radio and the capture on one time axis with a shared cursor", async () => {
+    const { core, view } = start();
+    await waitFor(() => expect(core.state.snap).not.toBeNull());
+    await core.request("stream.start", { profile: core.state.snap!.profiles[0].name });
+    await waitFor(() => expect(core.state.snap!.stream.state).toBe("streaming"));
+    await waitFor(() => expect(core.link().length).toBeGreaterThan(8));
+
+    // Stream: bitrate, packets, queue depth and wait, drops
+    const charts = () => [...view.container.querySelectorAll<HTMLElement>(".chart")];
+    await waitFor(() => expect(charts().map((c) => c.querySelector(".chart-title")!.textContent)).toEqual([
+      "Actual bitrate",
+      "Packets",
+      "Send queue",
+      "Send queue wait",
+      "Packets dropped before sending",
+    ]));
+    await waitFor(() => expect(charts()[0].querySelector(".chart-value")).toHaveTextContent(/^\d+ kbps$/));
+    expect(charts()[3].querySelector(".chart-value")).toHaveTextContent(/^\d+ ms$/);
+    // The encoder's bitrate as the target, the queue's limit
+    expect(charts()[0].querySelector(".ref-target")).not.toBeNull();
+    expect(charts()[3].querySelector(".ref-limit")).not.toBeNull();
+    expect(charts()[0].querySelector(".chart-axis")).toHaveTextContent("−60 s0 s");
+
+    // Hovering one chart puts the cursor on every chart of the tab
+    const plot = charts()[1].querySelector("svg")!;
+    plot.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 100, right: 300, bottom: 100, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerMove(plot, { clientX: 299, clientY: 50 });
+    await waitFor(() => expect(view.container.querySelectorAll(".chart .cursor").length).toBe(5));
+    for (const c of charts()) expect(c.querySelector(".chart-ago")).toHaveTextContent(/^−?\d+\.\d s$/);
+    fireEvent.pointerLeave(plot);
+    await waitFor(() => expect(view.container.querySelectorAll(".chart .cursor").length).toBe(0));
+
+    // Radio: the quality and what lowers it, RSSI, AFH, radio time
+    fireEvent.click(screen.getByRole("tab", { name: "Radio" }));
+    await waitFor(() => expect(charts().map((c) => c.querySelector(".chart-title")!.textContent)).toEqual([
+      "Signal vs. ideal",
+      "Channel hopping (AFH)",
+      "Bluetooth bandwidth (estimate)",
+    ]));
+    expect(view.container.querySelector(".lq-verdict-label")!.textContent).toMatch(/^(Good|Fair|Poor|PC busy)$/);
+    const afh = charts()[1];
+    expect(afh.querySelectorAll(".chart-legend li")).toHaveLength(2);
+    await waitFor(() => expect(afh.querySelector(".chart-legend")).toHaveTextContent(/In use\s*58\s*Usable\s*79/));
+    expect(screen.getByRole("heading", { name: "Bluetooth bandwidth (estimate)" })).toBeInTheDocument();
+    expect(charts()[2].querySelector(".chart-legend")).toHaveTextContent(/Radio time used.*Share of theoretical max/);
+
+    // Audio capture: the rate against the source's, drops as audio time
+    fireEvent.click(screen.getByRole("tab", { name: "Audio capture" }));
+    await waitFor(() => expect(charts().map((c) => c.querySelector(".chart-title")!.textContent)).toEqual([
+      "Capture rate",
+      "Audio dropped at capture",
+    ]));
+    expect(charts()[1].querySelector(".chart-value")).toHaveTextContent(/^0 ms$/);
+    expect(screen.getByText("Output Source").closest(".lq-row")).toHaveTextContent("System Loopback");
+    expect(view.container.querySelector(".lq-group .hint")).toHaveTextContent(/^Output source format: \d+ Hz/);
+  });
 });
