@@ -472,6 +472,75 @@ impl Stack {
         status
     }
 
+    pub fn cmd_read_failed_contact_counter(&self, con_handle: u16) -> u8 {
+        // SAFETY: on the BTstack thread.
+        let status = unsafe { ffi::a2dpwb_cmd_read_failed_contact_counter(con_handle) };
+        tracing::trace!(target: "btstack", "read failed contact counter 0x{con_handle:04X}: 0x{status:02X}");
+        status
+    }
+
+    pub fn cmd_read_link_quality(&self, con_handle: u16) -> u8 {
+        // SAFETY: on the BTstack thread.
+        let status = unsafe { ffi::a2dpwb_cmd_read_link_quality(con_handle) };
+        tracing::trace!(target: "btstack", "read link quality 0x{con_handle:04X}: 0x{status:02X}");
+        status
+    }
+
+    /// Answered by a Read Remote Version Information Complete event
+    pub fn cmd_read_remote_version(&self, con_handle: u16) -> u8 {
+        // SAFETY: on the BTstack thread.
+        let status = unsafe { ffi::a2dpwb_cmd_read_remote_version(con_handle) };
+        tracing::trace!(target: "btstack", "read remote version 0x{con_handle:04X}: 0x{status:02X}");
+        status
+    }
+
+    pub fn cmd_read_link_supervision_timeout(&self, con_handle: u16) -> u8 {
+        // SAFETY: on the BTstack thread.
+        let status = unsafe { ffi::a2dpwb_cmd_read_link_supervision_timeout(con_handle) };
+        tracing::trace!(target: "btstack", "read link supervision timeout 0x{con_handle:04X}: 0x{status:02X}");
+        status
+    }
+
+    /// ACL packets of the link handed to the controller and not yet reported
+    /// sent by Number Of Completed Packets (None: no such link)
+    pub fn acl_packets_in_controller(&self, con_handle: u16) -> Option<u32> {
+        // SAFETY: on the BTstack thread.
+        let n = unsafe { ffi::a2dpwb_acl_packets_in_controller(con_handle) };
+        u32::try_from(n).ok()
+    }
+
+    /// The link's role as BTstack keeps it: Some(true) central, Some(false)
+    /// peripheral, None without the link
+    pub fn acl_role_central(&self, con_handle: u16) -> Option<bool> {
+        // SAFETY: on the BTstack thread.
+        match unsafe { ffi::a2dpwb_acl_role(con_handle) } {
+            0 => Some(true),
+            1 => Some(false),
+            _ => None,
+        }
+    }
+
+    /// The encryption key size BTstack read for the link (None: no link or
+    /// not encrypted yet)
+    pub fn acl_encryption_key_size(&self, con_handle: u16) -> Option<u8> {
+        // SAFETY: on the BTstack thread.
+        let n = unsafe { ffi::a2dpwb_acl_encryption_key_size(con_handle) };
+        u8::try_from(n).ok().filter(|&n| n > 0)
+    }
+
+    /// Asks BTstack for the remote features unless it has them (its own
+    /// query, once per link); the answer is an HCI event
+    pub fn remote_features_query(&self, con_handle: u16) {
+        // SAFETY: on the BTstack thread.
+        unsafe { ffi::a2dpwb_remote_features_query(con_handle) }
+    }
+
+    /// The controller's ACL buffer: longer L2CAP packets go out in several
+    pub fn max_acl_data_packet_length(&self) -> u16 {
+        // SAFETY: on the BTstack thread, after hci_init.
+        unsafe { ffi::a2dpwb_max_acl_data_packet_length() }
+    }
+
     /// Ends a page still running: its Connection Complete follows at once
     pub fn cmd_create_connection_cancel(&self, addr: &[u8; 6]) -> u8 {
         // SAFETY: on the BTstack thread; addr is 6 bytes.

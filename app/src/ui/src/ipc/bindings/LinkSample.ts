@@ -2,6 +2,8 @@
 import type { AclPacket } from "./AclPacket";
 import type { IsoCounters } from "./IsoCounters";
 import type { LinkCounters } from "./LinkCounters";
+import type { LinkDetails } from "./LinkDetails";
+import type { RemoteChip } from "./RemoteChip";
 
 /**
  * Link quality, 4 times a second while subscribed
@@ -34,13 +36,15 @@ airtime: number,
  */
 avg_packet_bytes?: number | null, 
 /**
- * The ACL packet type that size takes on an EDR 3 Mbps link; None
- * while nothing is sent
+ * The ACL packet type that size takes: on the fastest packet types the
+ * remote device's features allow, on an EDR 3 Mbps link while they are
+ * not known (AclPacket.from_features); None while nothing is sent
  */
 acl_packet?: AclPacket | null, 
 /**
- * Share of the EDR 3 Mbps link's usable rate (2178 kbps: 1021 bytes
- * every 6 slots) the stream takes, L2CAP headers included
+ * Share of the link's usable rate the stream takes, L2CAP headers
+ * included: the largest packet the remote device allows and its reply
+ * slot (EDR 3 Mbps: 2178 kbps, 1021 bytes every 6 slots)
  */
 bandwidth_share?: number | null, 
 /**
@@ -67,4 +71,26 @@ counters?: LinkCounters | null,
  * An LE Audio stream's isochronous channels (None for A2DP; the A2DP
  * fields above stay at 0 / None then)
  */
-iso?: IsoCounters | null, };
+iso?: IsoCounters | null, 
+/**
+ * The most ACL packets of the A2DP link the controller held over the
+ * last interval: handed to it and not yet sent. Audio waits there
+ * after the send queue (queue_ms). For everyone. None while not
+ * streaming A2DP.
+ */
+controller_backlog?: number | null, 
+/**
+ * controller_backlog in ms of audio, at the interval's ACL packet rate;
+ * None while nothing is sent
+ */
+controller_backlog_ms?: number | null, 
+/**
+ * The connected device's Bluetooth chip. For everyone. None without
+ * an A2DP link or before its controller answered.
+ */
+remote_chip?: RemoteChip | null, 
+/**
+ * The A2DP link's state and readings: developer mode only. None
+ * without an A2DP link.
+ */
+link_details?: LinkDetails | null, };

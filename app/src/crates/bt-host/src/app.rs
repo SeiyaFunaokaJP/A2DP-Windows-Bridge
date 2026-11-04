@@ -23,6 +23,7 @@ use crate::events::{addr_at, addr_str, event_type, hci_error_string, le16, le24,
 use crate::intel;
 use crate::le::core::LeCore;
 use crate::le::iso_send::TIMER_ISO;
+use crate::link_details::LinkTracker;
 use crate::link_keys::FileLinkKeyStore;
 use crate::media::{MediaPacket, RTP_HEADER_SIZE};
 use crate::probe::ProbeReport;
@@ -42,6 +43,8 @@ const TIMER_RTK_VERIFY: u32 = 5;
 const TIMER_LOADER: u32 = 7;
 const RTK_VERIFY_RETRY_MS: u32 = 100;
 const RTK_VERIFY_TRIES: u8 = 20;
+/// Each L2CAP packet starts with a 4-byte header
+const L2CAP_HEADER_SIZE: usize = 4;
 
 /// One radio reading per tick (RSSI and the AFH map in turn)
 const AFH_TICK_MS: u32 = 2500;
@@ -157,6 +160,11 @@ pub(crate) struct HostApp {
     /// The next radio reading is RSSI (else the AFH map). Its own toggle: a
     /// classification sent on a tick must not always skip the same reading
     read_rssi_next: bool,
+
+    // ---- link details ----
+    link: LinkTracker,
+    /// ACL handle of the started stream (its controller backlog)
+    media_acl: Option<u16>,
 }
 
 /// Why the signaling connection failed. Page timeout, or a device that never
@@ -240,6 +248,21 @@ impl HostApp {
             afh_policy_version_seen: None,
             afh_ticks: 0,
             read_rssi_next: true,
+            link: LinkTracker::default(),
+            media_acl: None,
+        }
+    }
+
+    /// The A2DP link's details into the stats (cleared without one)
+    fn publish_link(&self) {
+        let handle = self.shared.lock().a2dp_con_handle;
+        self.link.publish(&self.stats, handle);
+    }
+
+    /// What the controller holds of the stream's link now
+    fn sample_controller_backlog(&self, stack: &Stack) {
+        if let Some(n) = self.media_acl.and_then(|h| stack.acl_packets_in_controller(h)) {
+            self.stats.record_controller_backlog(n);
         }
     }
 
@@ -943,6 +966,11 @@ impl HostApp {
                     self.stats.packets_sent.fetch_add(1, Ordering::Relaxed);
                     let bytes = payload.len() + if packet.rtp { RTP_HEADER_SIZE } else { 0 };
                     self.stats.bytes_sent.fetch_add(bytes as u64, Ordering::Relaxed);
+                    // The L2CAP packet in ACL packets of the controller's size
+                    let acl_len = usize::from(stack.max_acl_data_packet_length()).max(1);
+                    let acl = (bytes + L2CAP_HEADER_SIZE).div_ceil(acl_len);
+                    self.stats.acl_packets_sent.fetch_add(acl as u64, Ordering::Relaxed);
+                    self.sample_controller_backlog(stack);
                     tracing::trace!(
                         "media: sent {} bytes, ts {}, marker {}, rtp {}, queued {depth}",
                         payload.len(),
@@ -992,6 +1020,11 @@ impl HostApp {
                 self.stats.timing.completed_gap_us.record_duration(now - last);
             }
             self.stats.timing.completed_events.fetch_add(1, Ordering::Relaxed);
+            // BTstack counted the completed packets before passing it on
+            self.sample_controller_backlog(stack);
+        }
+        if self.link.on_hci(ev, p, self.streaming) {
+            self.publish_link();
         }
         if ev == HCI_EVENT_NUMBER_OF_COMPLETED_PACKETS {
             tracing::trace!("HCI completed packets: {:02X?}", p.get(2..));
@@ -1006,6 +1039,9 @@ impl HostApp {
                     stack.timer_stop(TIMER_PLAYBACK);
                     stack.timer_stop(TIMER_RTK_VERIFY);
                     self.stats.with_radio(|r| *r = Default::default());
+                    self.link.reset();
+                    self.media_acl = None;
+                    self.publish_link();
                     self.shared.update(|s| {
                         s.hci_ready = false;
                         s.hci_off = true;
@@ -1024,6 +1060,7 @@ impl HostApp {
                         self.shared.update(|s| s.inquiry_done = true);
                     }
                 }
+                self.link.send_next(stack);
             }
             HCI_EVENT_COMMAND_COMPLETE => {
                 let opcode = le16(p, 3).unwrap_or(0);
@@ -1055,6 +1092,7 @@ impl HostApp {
                     });
                 }
                 self.on_radio_command_complete(opcode, p);
+                self.link.send_next(stack);
             }
             HCI_EVENT_USER_CONFIRMATION_REQUEST => {
                 // Just Works
@@ -1173,6 +1211,7 @@ impl HostApp {
                     );
                 } else {
                     tracing::info!("HCI ACL connection established to {}", addr_str(&addr));
+                    self.link.connected(stack, handle & 0x0FFF, addr);
                     let target = self.remote_addr == Some(addr);
                     self.shared.update(|s| {
                         s.acl_up_from = Some(addr);
@@ -1269,6 +1308,12 @@ impl HostApp {
                     }
                     false
                 });
+                self.link.disconnected(handle);
+                self.publish_link();
+                if self.media_acl == Some(handle) {
+                    self.media_acl = None;
+                    self.stats.controller_backlog.store(0, Ordering::Relaxed);
+                }
                 tracing::debug!(
                     "disconnection of handle 0x{handle:04X}: a2dp link lost {lost}, hfp acl {:?}, streaming {}",
                     self.hfp_acl,
@@ -1350,6 +1395,7 @@ impl HostApp {
         self.afh_ticks = 0;
         self.afh_policy_version_seen = None;
         self.afh_sent_map = None;
+        self.link.reset();
         stack.timer_start(TIMER_AFH, 200);
     }
 
@@ -1520,6 +1566,9 @@ impl HostApp {
                         s.stream_config = None;
                         s.stream_done = None;
                     });
+                    self.link.a2dp_opened(stack, handle & 0x0FFF);
+                    self.publish_link();
+                    self.link.send_next(stack);
                 }
             }
             Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CAPABILITY) => {
@@ -1703,7 +1752,11 @@ impl HostApp {
             }
             Some(A2DP_SUBEVENT_STREAM_STARTED) => {
                 tracing::info!("streaming started");
+                self.media_acl = self.shared.lock().a2dp_con_handle;
+                self.sample_controller_backlog(stack);
                 self.stats.mark_stream_start();
+                self.link.stream_started(self.media_acl);
+                self.publish_link();
                 self.set_streaming(true);
                 self.can_send_requested = false;
                 self.shared.update(|s| {
@@ -2107,6 +2160,7 @@ impl HostApp {
                 r.rssi = None;
                 r.afh_in_use = None;
             });
+            self.publish_link();
             return;
         };
         if !stack.can_send_command_now() {
@@ -2115,6 +2169,9 @@ impl HostApp {
         self.read_rssi_next = !self.read_rssi_next;
         if !self.read_rssi_next {
             stack.cmd_read_rssi(handle);
+            // Failed contacts and link quality follow, one command at a time
+            self.link.poll(stack, handle);
+            self.publish_link();
         } else {
             stack.cmd_read_afh_channel_map(handle);
         }

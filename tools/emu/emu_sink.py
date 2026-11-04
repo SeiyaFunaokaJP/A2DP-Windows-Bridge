@@ -119,6 +119,44 @@ class EmuController(Controller):
     # link stays up meanwhile, as with headphones that take their time
     disconnect_delay = 0
 
+    # Link details A2DPWB reads, none of which Bumble answers: link quality,
+    # supervision timeout and the remote version as a controller has them,
+    # the failed contact counter refused as unknown (the unsupported path)
+    supported_commands = Controller.supported_commands | {
+        hci.HCI_READ_LINK_QUALITY_COMMAND,
+        hci.HCI_READ_LINK_SUPERVISION_TIMEOUT_COMMAND,
+        hci.HCI_READ_FAILED_CONTACT_COUNTER_COMMAND,
+    }
+    REMOTE_VERSION = (12, 0x0094, 0x2209)  # Bluetooth 5.3, Airoha
+
+    def _complete(self, command, data):
+        self.send_hci_packet(hci.HCI_Command_Complete_Event(
+            num_hci_command_packets=1,
+            command_opcode=command.op_code,
+            return_parameters=hci.HCI_GenericReturnParameters(data),
+        ))
+
+    def on_hci_read_link_quality_command(self, command):
+        self._complete(command, bytes([0]) + bytes(command.parameters[:2]) + bytes([230]))
+
+    def on_hci_read_link_supervision_timeout_command(self, command):
+        self._complete(command, bytes([0]) + bytes(command.parameters[:2]) + (0x7D00).to_bytes(2, 'little'))
+
+    def on_hci_read_failed_contact_counter_command(self, command):
+        self._complete(command, bytes([hci.HCI_ErrorCode.UNKNOWN_HCI_COMMAND_ERROR]))
+
+    def on_hci_read_remote_version_information_command(self, command):
+        handle = command.connection_handle
+        if self.find_classic_connection_by_handle(handle) is None:
+            self._send_hci_command_status(hci.HCI_ErrorCode.UNKNOWN_CONNECTION_IDENTIFIER_ERROR, command.op_code)
+            return None
+        self._send_hci_command_status(hci.HCI_COMMAND_STATUS_PENDING, command.op_code)
+        version, company, subversion = self.REMOTE_VERSION
+        self.send_hci_packet(hci.HCI_Read_Remote_Version_Information_Complete_Event(
+            status=hci.HCI_ErrorCode.SUCCESS, connection_handle=handle,
+            version=version, manufacturer_name=company, subversion=subversion))
+        return None
+
     def on_hci_read_afh_channel_map_command(self, command):
         # Bumble does not answer it, and BTstack then sends no other command
         self.send_hci_packet(hci.HCI_Command_Complete_Event(

@@ -788,6 +788,16 @@ LINK_CASES = {
         ('sink.log', r'stream opened \(ldac\)', True),
         ('sink.log', r'A2DP closed.*stream opened', False),
     ]),
+    # The link details: the remote chip and the readings the virtual
+    # controller answers; the failed contact counter it refuses is left
+    # out without holding up the other commands or the stream
+    'details': ([], ['--duration', '12'], [
+        ('a2dpwb.log', r'remote controller of .*company 0x0094 \(Airoha\), LMP version 12', True),
+        ('a2dpwb.log', r'remote features of ', True),
+        ('a2dpwb.log', r'supervision timeout Some\(32000\) slots', True),
+        ('a2dpwb.log', r'does not support command 0x1401', True),
+        ('a2dpwb.log', r'Bluetooth stack stalled', False),
+    ]),
     # A setting changed just after the link came up: the next connection
     # starts while that link goes down
     'restart-on-link': (['--disconnect-delay', '0.5'], ['--duration', '3', '--restart-on-link'], [

@@ -78,6 +78,15 @@ unsafe extern "C" {
     pub fn a2dpwb_cmd_set_afh_classification(map: *const u8) -> u8;
     pub fn a2dpwb_cmd_read_afh_channel_map(con_handle: u16) -> u8;
     pub fn a2dpwb_cmd_read_rssi(con_handle: u16) -> u8;
+    pub fn a2dpwb_cmd_read_failed_contact_counter(con_handle: u16) -> u8;
+    pub fn a2dpwb_cmd_read_link_quality(con_handle: u16) -> u8;
+    pub fn a2dpwb_cmd_read_remote_version(con_handle: u16) -> u8;
+    pub fn a2dpwb_cmd_read_link_supervision_timeout(con_handle: u16) -> u8;
+    pub fn a2dpwb_acl_packets_in_controller(con_handle: u16) -> c_int;
+    pub fn a2dpwb_acl_role(con_handle: u16) -> c_int;
+    pub fn a2dpwb_acl_encryption_key_size(con_handle: u16) -> c_int;
+    pub fn a2dpwb_remote_features_query(con_handle: u16);
+    pub fn a2dpwb_max_acl_data_packet_length() -> u16;
     pub fn a2dpwb_cmd_read_bd_addr() -> u8;
     pub fn a2dpwb_cmd_read_local_version() -> u8;
     pub fn a2dpwb_cmd_remote_name_request(addr: *const u8) -> u8;

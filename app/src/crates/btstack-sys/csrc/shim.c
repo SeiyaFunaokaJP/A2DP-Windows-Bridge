@@ -696,6 +696,50 @@ uint8_t a2dpwb_cmd_read_rssi(uint16_t con_handle) {
     return hci_send_cmd(&hci_read_rssi, con_handle);
 }
 
+/* Link diagnostics: polled with RSSI (failed contacts, link quality) or read
+   once per connection (remote version, supervision timeout) */
+uint8_t a2dpwb_cmd_read_failed_contact_counter(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_failed_contact_counter, con_handle);
+}
+
+uint8_t a2dpwb_cmd_read_link_quality(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_link_quality, con_handle);
+}
+
+uint8_t a2dpwb_cmd_read_remote_version(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_remote_version_information, con_handle);
+}
+
+uint8_t a2dpwb_cmd_read_link_supervision_timeout(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_link_supervision_timeout, con_handle);
+}
+
+/* What BTstack holds of a link; -1 when it has no such connection */
+int a2dpwb_acl_packets_in_controller(uint16_t con_handle) {
+    hci_connection_t *c = hci_connection_for_handle(con_handle);
+    return c ? (int)c->num_packets_sent : -1;
+}
+
+int a2dpwb_acl_role(uint16_t con_handle) {
+    hci_role_t r = gap_get_role(con_handle);
+    return r == HCI_ROLE_INVALID ? -1 : (int)r;
+}
+
+int a2dpwb_acl_encryption_key_size(uint16_t con_handle) {
+    if (hci_connection_for_handle(con_handle) == NULL) return -1;
+    return gap_encryption_key_size(con_handle);
+}
+
+/* BTstack's own remote features query: once per link, nothing is sent when it
+   has them already; the answer comes as its HCI event */
+void a2dpwb_remote_features_query(uint16_t con_handle) {
+    hci_remote_features_query(con_handle);
+}
+
+uint16_t a2dpwb_max_acl_data_packet_length(void) {
+    return hci_max_acl_data_packet_length();
+}
+
 uint8_t a2dpwb_cmd_read_bd_addr(void) {
     return hci_send_cmd(&hci_read_bd_addr);
 }
