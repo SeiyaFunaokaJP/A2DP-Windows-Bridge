@@ -640,6 +640,7 @@
   "ui.adapter.restore_driver": "Originaltreiber wiederherstellen",
   "ui.adapter.restore_title": "Adapter an Windows zurückgeben",
   "ui.adapter.restore_explain": "Windows kann den Adapter wieder nutzen. A2DP Windows Bridge kann nicht darüber streamen, bis WinUSB erneut zugewiesen wird.",
+  "ui.adapter.restore_repair": "%s verbindet sich in Windows möglicherweise nicht. Dann in den Windows-Einstellungen entfernen und neu koppeln.",
   "ui.adapter.restore_short": "Gibt den Adapter an das Bluetooth von Windows zurück",
   "ui.adapter.probe": "Chip-Infos lesen",
   "ui.adapter.import_windows": "Kopplungen aus Windows übernehmen",

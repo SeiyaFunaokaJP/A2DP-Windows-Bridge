@@ -640,6 +640,7 @@
   "ui.adapter.restore_driver": "恢复原始驱动程序",
   "ui.adapter.restore_title": "将适配器交还给 Windows",
   "ui.adapter.restore_explain": "Windows 可以再次使用该适配器。在重新分配 WinUSB 之前，A2DP Windows Bridge 无法通过它串流。",
+  "ui.adapter.restore_repair": "%s 可能无法在 Windows 中连接。如果这样，请在 Windows 设置中删除它，然后重新配对。",
   "ui.adapter.restore_short": "将适配器交还给 Windows 的 Bluetooth",
   "ui.adapter.probe": "读取芯片信息",
   "ui.adapter.import_windows": "导入 Windows 的配对",

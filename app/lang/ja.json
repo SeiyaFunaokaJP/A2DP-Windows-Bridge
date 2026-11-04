@@ -640,6 +640,7 @@
   "ui.adapter.restore_driver": "元のドライバに戻す",
   "ui.adapter.restore_title": "アダプタを Windows に戻す",
   "ui.adapter.restore_explain": "Windows がこのアダプタをまた使えます。WinUSB を割り当て直すまで、A2DP Windows Bridge はこのアダプタで配信できません。",
+  "ui.adapter.restore_repair": "%s は Windows でつながらないことがあります。そのときは Windows の設定で削除して、ペアリングし直してください。",
   "ui.adapter.restore_short": "アダプタを Windows の Bluetooth に戻します",
   "ui.adapter.probe": "チップ情報を読む",
   "ui.adapter.import_windows": "Windows のペアリングを取り込む",
