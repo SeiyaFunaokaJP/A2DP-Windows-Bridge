@@ -133,6 +133,8 @@ fn link_sample(
         source_rate: Some(source_rate),
         counters: Some(LinkCounters { total, stream_start: start, stream_starts: starts }),
         iso,
+        capture_discontinuities: Some(since.capture_discontinuities),
+        capture_lost: Some(since.capture_lost),
     };
     (sample, total)
 }
@@ -475,6 +477,12 @@ mod tests {
         stats.packets_sent.store(120, r);
         stats.bytes_sent.store(120 * 1005, r);
         stats.queue_drops.store(2, r);
+        // Two Windows capture gaps, one of them 10 ms long, before the
+        // stream started and three more since
+        stats.start_capture_discontinuities.store(2, r);
+        stats.start_capture_lost.store(480, r);
+        stats.capture_discontinuities.store(5, r);
+        stats.capture_lost_frames.store(480 + 960, r);
         let (s, _) = link_sample(1000, &stats, Some((t0, total)), t0 + Duration::from_secs(1), 48000, None);
         assert!((s.packets_per_second - 120.0).abs() < 1e-6);
         assert_eq!(s.acl_packet, Some(AclPacket { name: "3-DH5".into(), slots: 6 }));
@@ -485,6 +493,8 @@ mod tests {
         assert_eq!((c.total.packets, c.stream_start.packets, c.stream_starts), (120, 10, 1));
         assert_eq!(s.source_rate, Some(48000));
         assert!(s.iso.is_none());
+        assert_eq!((s.capture_discontinuities, s.capture_lost), (Some(3), Some(960)));
+        assert_eq!((c.total.capture_discontinuities, c.total.capture_lost), (5, 1440));
     }
 
     #[test]

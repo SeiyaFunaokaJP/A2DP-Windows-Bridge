@@ -468,6 +468,8 @@ This shows what A2DPWB sent and that it is valid for the negotiated codec. Since
 
 **Diagnostics > Link Quality** shows what A2DPWB sends while streaming: the actual bitrate, packets sent, packets dropped before sending (they waited too long in the send queue: the radio link could not keep up), audio dropped at capture (the PC fell behind), the send queue, the radio time used, and the **Signal vs. ideal**: the RSSI of the connection, relative to the controller's golden receive range (0 = fine, negative = too weak; not an absolute level; below the range, the most the actual level can be follows in dBm), and how many of the 79 Bluetooth channels the link hops on (AFH). Home and the tray flyout sum it up as Good, Fair or Poor, or PC busy when the link is fine but the PC dropped audio.
 
+Windows itself can also skip audio before A2DPWB gets it, when its audio engine glitches (heavy load, or other audio software holding it up). **Copy Diagnostics** counts these gaps, and the audio they lost, apart from PC busy and from the radio: a dropout counted there is not the link's fault.
+
 Bluetooth avoids busy channels by itself (AFH), but it only learns about Wi-Fi from errors. A2DPWB also tells its controller which channels to avoid (AFH host channel classification), for every connection:
 
 | AFH | |

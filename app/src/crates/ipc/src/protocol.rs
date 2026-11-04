@@ -1013,6 +1013,17 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub iso: Option<IsoCounters>,
+    /// Gaps Windows reported in the captured audio since the stream started
+    /// (its own glitches: neither the encoder falling behind, which is
+    /// capture_dropped, nor the radio)
+    #[ts(optional = nullable, type = "number | null")]
+    #[serde(default)]
+    pub capture_discontinuities: Option<u64>,
+    /// Captured frames lost in those gaps, where the capture could tell (at
+    /// source_rate, like capture_dropped)
+    #[ts(optional = nullable, type = "number | null")]
+    #[serde(default)]
+    pub capture_lost: Option<u64>,
 }
 
 /// An LE Audio stream's send counters (since the stream was set up; a
@@ -1067,6 +1078,15 @@ pub struct LinkTotals {
     pub capture_frames: u64,
     #[ts(type = "number")]
     pub capture_dropped: u64,
+    /// Gaps Windows reported in the captured audio (its own glitches), and
+    /// the frames lost in them where the capture could tell (at the capture
+    /// rate, like capture_dropped). 0 from a core before these.
+    #[ts(type = "number")]
+    #[serde(default)]
+    pub capture_discontinuities: u64,
+    #[ts(type = "number")]
+    #[serde(default)]
+    pub capture_lost: u64,
 }
 
 impl LinkTotals {
@@ -1078,6 +1098,8 @@ impl LinkTotals {
             dropped: self.dropped.saturating_sub(base.dropped),
             capture_frames: self.capture_frames.saturating_sub(base.capture_frames),
             capture_dropped: self.capture_dropped.saturating_sub(base.capture_dropped),
+            capture_discontinuities: self.capture_discontinuities.saturating_sub(base.capture_discontinuities),
+            capture_lost: self.capture_lost.saturating_sub(base.capture_lost),
         }
     }
 }
@@ -2036,11 +2058,35 @@ mod tests {
 
     #[test]
     fn totals_since_a_baseline() {
-        let now = LinkTotals { packets: 10, bytes: 1000, dropped: 2, capture_frames: 480, capture_dropped: 0 };
-        let base = LinkTotals { packets: 4, bytes: 400, dropped: 3, capture_frames: 0, capture_dropped: 0 };
+        let now = LinkTotals {
+            packets: 10,
+            bytes: 1000,
+            dropped: 2,
+            capture_frames: 480,
+            capture_dropped: 0,
+            capture_discontinuities: 3,
+            capture_lost: 960,
+        };
+        let base = LinkTotals {
+            packets: 4,
+            bytes: 400,
+            dropped: 3,
+            capture_frames: 0,
+            capture_dropped: 0,
+            capture_discontinuities: 1,
+            capture_lost: 0,
+        };
         assert_eq!(
             now.since(&base),
-            LinkTotals { packets: 6, bytes: 600, dropped: 0, capture_frames: 480, capture_dropped: 0 }
+            LinkTotals {
+                packets: 6,
+                bytes: 600,
+                dropped: 0,
+                capture_frames: 480,
+                capture_dropped: 0,
+                capture_discontinuities: 2,
+                capture_lost: 960,
+            }
         );
     }
 }

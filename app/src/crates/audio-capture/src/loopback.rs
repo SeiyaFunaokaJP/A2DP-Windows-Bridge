@@ -20,6 +20,7 @@ use win_sys::audio_policy::ComApartment;
 use win_sys::process::ProcessWatch;
 
 use crate::format::{self, FormatPlan, MixFormat};
+use crate::gaps::GapCount;
 use crate::silence::SilenceFill;
 use crate::{APP_CAPTURE_MIN_BUILD, CaptureError, CaptureOptions, EndReason, Format, Shared, Sink};
 
@@ -202,11 +203,12 @@ fn thread_main(
         tracing::debug!("audio capture: stopping the stream failed: {e}");
     }
     tracing::debug!(
-        "audio capture: totals: {} frames, {} silence frames ({} filled), {} discontinuities",
+        "audio capture: totals: {} frames, {} silence frames ({} filled), {} discontinuities ({} frames lost)",
         shared.frames.load(Ordering::Relaxed),
         shared.silence_frames.load(Ordering::Relaxed),
         shared.filled_frames.load(Ordering::Relaxed),
-        shared.discontinuities.load(Ordering::Relaxed)
+        shared.discontinuities.load(Ordering::Relaxed),
+        shared.lost_frames.load(Ordering::Relaxed)
     );
     if let Some(reason) = reason {
         tracing::info!("audio capture ended: {reason:?}");
@@ -441,6 +443,7 @@ fn capture_loop(
     // stream health log)
     let mut last_packet: Option<Duration> = None;
     let mut stats = LoopStats::default();
+    let mut gaps = GapCount::new(fmt.sample_rate);
     let mut clock: Option<(u64, u64)> = None;
     // Since when the silence fill has been running (None while packets come)
     let mut filling: Option<Duration> = None;
@@ -501,6 +504,13 @@ fn capture_loop(
                 info.flags.timestamp_error
             );
             stats.packet(frames, &info, last_packet.map(|last| now.saturating_sub(last)));
+            let lost = gaps.packet(
+                frames as u64,
+                info.index,
+                info.timestamp,
+                info.flags.timestamp_error,
+                info.flags.data_discontinuity,
+            );
             if clock.is_none() && !info.flags.timestamp_error {
                 clock = Some((info.index, info.timestamp));
             }
@@ -513,10 +523,17 @@ fn capture_loop(
             }
             if info.flags.data_discontinuity && now >= DISCONTINUITY_GRACE {
                 if stats.discontinuities <= MAX_EVENT_LOGS {
-                    tracing::debug!("audio capture: discontinuity at {} ms, index {}", now.as_millis(), info.index);
+                    tracing::debug!(
+                        "audio capture: discontinuity at {} ms, index {}, {} frames lost",
+                        now.as_millis(),
+                        info.index,
+                        lost.map_or_else(|| "unknown".to_owned(), |n| n.to_string())
+                    );
                 }
                 // A gap in the captured audio (CPU load, other audio apps)
                 shared.discontinuities.fetch_add(1, Ordering::Relaxed);
+                shared.lost_frames.fetch_add(lost.unwrap_or(0), Ordering::Relaxed);
+                sink.discontinuity(lost);
             }
             if info.flags.silent && fill.is_some() {
                 // The engine says the buffer is silent (whatever it holds):
@@ -569,6 +586,7 @@ fn capture_loop(
                     }
                 }
                 sink.silence(n, fmt);
+                gaps.reset();
                 shared.silence_frames.fetch_add(n as u64, Ordering::Relaxed);
                 shared.filled_frames.fetch_add(n as u64, Ordering::Relaxed);
                 // A silent device sends no packets: not a gap of the

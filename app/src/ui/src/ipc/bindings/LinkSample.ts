@@ -67,4 +67,15 @@ counters?: LinkCounters | null,
  * An LE Audio stream's isochronous channels (None for A2DP; the A2DP
  * fields above stay at 0 / None then)
  */
-iso?: IsoCounters | null, };
+iso?: IsoCounters | null, 
+/**
+ * Gaps Windows reported in the captured audio since the stream started
+ * (its own glitches: neither the encoder falling behind, which is
+ * capture_dropped, nor the radio)
+ */
+capture_discontinuities?: number | null, 
+/**
+ * Captured frames lost in those gaps, where the capture could tell (at
+ * source_rate, like capture_dropped)
+ */
+capture_lost?: number | null, };

@@ -74,6 +74,7 @@ fn run(label: &str, source: &Source, options: &CaptureOptions) {
     let elapsed = start.elapsed();
     let ended = running.end_reason();
     let discontinuities = running.discontinuities();
+    let lost = running.lost_frames();
     let t_stop = Instant::now();
     running.stop();
     let stop_time = t_stop.elapsed();
@@ -91,7 +92,7 @@ fn run(label: &str, source: &Source, options: &CaptureOptions) {
         (audio + silence) as f64 * 100.0 / expected.max(1) as f64
     );
     println!(
-        "   peak {:.3}, discontinuities {discontinuities}, ended {ended:?}, stop took {stop_time:?}",
+        "   peak {:.3}, discontinuities {discontinuities} ({lost} frames lost), ended {ended:?}, stop took {stop_time:?}",
         f32::from_bits(counters.peak_bits.load(Ordering::Relaxed) as u32),
     );
 }

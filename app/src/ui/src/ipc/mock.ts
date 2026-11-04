@@ -562,7 +562,15 @@ function lc3Info(lowLatency: boolean, set: boolean): StreamInfo {
 /** What a connection to the mock's devices learns: the codecs they offer */
 const DEVICE_CODECS = ["sbc", "aac", "ldac"];
 
-const ZERO: LinkTotals = { packets: 0, bytes: 0, dropped: 0, capture_frames: 0, capture_dropped: 0 };
+const ZERO: LinkTotals = {
+  packets: 0,
+  bytes: 0,
+  dropped: 0,
+  capture_frames: 0,
+  capture_dropped: 0,
+  capture_discontinuities: 0,
+  capture_lost: 0,
+};
 
 function errorInfo(code: string, key: string, args: string[] = []): ErrorInfo {
   return { code, message: { key, args } };
@@ -1558,6 +1566,8 @@ export class MockCore implements Transport {
       dropped: a.dropped - b.dropped,
       capture_frames: a.capture_frames - b.capture_frames,
       capture_dropped: a.capture_dropped - b.capture_dropped,
+      capture_discontinuities: a.capture_discontinuities - b.capture_discontinuities,
+      capture_lost: a.capture_lost - b.capture_lost,
     };
   }
 
@@ -1573,12 +1583,18 @@ export class MockCore implements Transport {
     const frames = Math.round((info?.source_sample_rate ?? 48000) * dt);
     const drops = Math.random() < 0.04 * dt * 4 ? 1 + Math.floor(Math.random() * 3) : 0;
     this.dropped += drops;
+    // Now and then Windows' own audio glitches: 10-30 ms lost in the capture
+    const glitch = Math.random() < 0.01 * dt;
+    const rate = info?.source_sample_rate ?? 48000;
+    const lost = glitch ? Math.round((rate / 100) * (1 + Math.floor(Math.random() * 3))) : 0;
     this.totals = {
       packets: this.totals.packets + packets,
       bytes: this.totals.bytes + bytes,
       dropped: this.totals.dropped + drops,
       capture_frames: this.totals.capture_frames + frames,
       capture_dropped: this.totals.capture_dropped,
+      capture_discontinuities: this.totals.capture_discontinuities + (glitch ? 1 : 0),
+      capture_lost: this.totals.capture_lost + lost,
     };
     if (info?.le) {
       this.iso.sets += Math.round((1_000_000 / info.le.frame_us) * dt);
@@ -1658,6 +1674,8 @@ export class MockCore implements Transport {
       queue_ms: streaming ? Math.max(0, Math.round(10 + 10 * Math.sin(t))) : 0,
       source_rate: streaming ? (this.snap.stream.info?.source_sample_rate ?? 0) : 0,
       counters: { total: { ...this.totals }, stream_start: { ...this.streamStart }, stream_starts: this.streamStarts },
+      capture_discontinuities: this.since(this.totals, this.streamStart).capture_discontinuities,
+      capture_lost: this.since(this.totals, this.streamStart).capture_lost,
     };
     this.onMessage({ type: "event", rev: this.rev, event: { kind: "link", value: sample } });
   }
@@ -1692,6 +1710,8 @@ export class MockCore implements Transport {
         dropped: 0,
         prefill: this.iso.prefill,
       },
+      capture_discontinuities: this.since(this.totals, this.streamStart).capture_discontinuities,
+      capture_lost: this.since(this.totals, this.streamStart).capture_lost,
     };
   }
 
