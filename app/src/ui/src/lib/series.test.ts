@@ -8,6 +8,8 @@ const totals = (over: Partial<LinkTotals> = {}): LinkTotals => ({
   dropped: 0,
   capture_frames: 0,
   capture_dropped: 0,
+  capture_discontinuities: 0,
+  capture_lost: 0,
   ...over,
 });
 const sample = (time_ms: number, total: Partial<LinkTotals>, over: Partial<LinkSample> = {}): LinkSample => ({
