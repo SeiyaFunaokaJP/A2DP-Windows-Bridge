@@ -1625,6 +1625,16 @@ impl CoreState {
         self.publish(Event::Profiles { profiles: snap.profiles, active_profile: name });
     }
 
+    /// The USB device of the adapter with this address
+    pub(crate) fn adapter_instance(&self, address: &str) -> Option<String> {
+        let (_, s) = self.snapshot();
+        s.adapter
+            .adapters
+            .iter()
+            .find(|a| a.address.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(address)))
+            .map(|a| a.instance_id.clone())
+    }
+
     pub fn refresh_adapters(&self) -> Vec<AdapterInfo> {
         let (list, fixed) = self.list_adapters();
         if fixed {
@@ -2157,18 +2167,16 @@ impl CoreState {
             }
             Method::DeviceWindowsPaired => blocking(Box::new(|_| Ok(json(&windows_paired())))).await,
             Method::DeviceWindowsPairedThrough { adapter } => {
-                // The USB device of the adapter with that address
-                let (_, s) = self.snapshot();
-                let instance_id = s
-                    .adapter
-                    .adapters
-                    .iter()
-                    .find(|a| a.address.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(&adapter)))
-                    .map(|a| a.instance_id.clone());
-                let Some(instance_id) = instance_id else { return Ok(json(&Vec::<String>::new())) };
+                let Some(instance_id) = self.adapter_instance(&adapter) else {
+                    return Ok(json(&Vec::<String>::new()));
+                };
+                // The audio devices: only those are saved by an import
                 blocking(Box::new(move |_| {
-                    let list: Vec<String> =
-                        win_sys::bt_paired::paired_through(&instance_id).iter().map(bt_host::addr_str).collect();
+                    let list: Vec<String> = win_sys::bt_paired::paired_through(&instance_id)
+                        .iter()
+                        .filter(|d| d.is_a2dp_sink())
+                        .map(|d| bt_host::addr_str(&d.address))
+                        .collect();
                     Ok(json(&list))
                 }))
                 .await

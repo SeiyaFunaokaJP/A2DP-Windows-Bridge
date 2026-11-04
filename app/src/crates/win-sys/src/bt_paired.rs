@@ -43,6 +43,11 @@ impl PairedDevice {
     pub fn address_string(&self) -> String {
         format_address(&self.address)
     }
+
+    /// BTH_ADDR
+    pub fn bth_addr(&self) -> u64 {
+        self.address.iter().fold(0u64, |a, &b| (a << 8) | u64::from(b))
+    }
 }
 
 /// v1 `check_a2dp_sink`: a device whose major class is Audio/Video
@@ -90,6 +95,16 @@ fn device_from_info(info: &BLUETOOTH_DEVICE_INFO) -> PairedDevice {
 /// Ok(empty) when there are none; Err with the Win32 error otherwise
 /// (e.g. no Bluetooth support at all).
 pub fn paired_devices() -> windows::core::Result<Vec<PairedDevice>> {
+    // All radios
+    search(HANDLE::default())
+}
+
+/// The devices of one radio (a handle `bt_radios` opened); empty on errors
+pub(crate) fn devices_of(radio: HANDLE) -> Vec<PairedDevice> {
+    search(radio).unwrap_or_default()
+}
+
+fn search(radio: HANDLE) -> windows::core::Result<Vec<PairedDevice>> {
     let params = BLUETOOTH_DEVICE_SEARCH_PARAMS {
         dwSize: size_of::<BLUETOOTH_DEVICE_SEARCH_PARAMS>() as u32,
         fReturnAuthenticated: true.into(),
@@ -98,8 +113,7 @@ pub fn paired_devices() -> windows::core::Result<Vec<PairedDevice>> {
         fReturnConnected: true.into(),
         fIssueInquiry: false.into(),
         cTimeoutMultiplier: 0,
-        // All radios
-        hRadio: HANDLE::default(),
+        hRadio: radio,
     };
     let mut info = BLUETOOTH_DEVICE_INFO { dwSize: size_of::<BLUETOOTH_DEVICE_INFO>() as u32, ..Default::default() };
     // SAFETY: both structs are initialised with their dwSize; the handle
@@ -152,14 +166,20 @@ pub fn paired_devices() -> windows::core::Result<Vec<PairedDevice>> {
 /// radio's, also once the radio has left its stack. Unlike
 /// `paired_devices`, this needs no running radio, and it leaves out what
 /// other radios paired (their keys are no use on this adapter). Read
-/// without administrator rights, unlike the keys themselves.
-pub fn paired_through(instance_id: &str) -> Vec<[u8; 6]> {
+/// without administrator rights, unlike the keys themselves. The name and
+/// class of device come from the node too (not connected, not otherwise
+/// known: `connected`, `remembered` and `authenticated` are false).
+pub fn paired_through(instance_id: &str) -> Vec<PairedDevice> {
     use crate::usb_adapters::DevInfoSet;
     use windows::Win32::Devices::DeviceAndDriverInstallation::{
         DIGCF_ALLCLASSES, SP_DEVINFO_DATA, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW,
     };
-    use windows::Win32::Devices::Properties::DEVPKEY_Device_Parent;
-    use windows::core::w;
+    use windows::Win32::Devices::Properties::{DEVPKEY_Device_FriendlyName, DEVPKEY_Device_Parent};
+    use windows::Win32::Foundation::DEVPROPKEY;
+    use windows::core::{GUID, w};
+    /// DEVPKEY_Bluetooth_ClassOfDevice (bthdef.h)
+    const CLASS_OF_DEVICE: DEVPROPKEY =
+        DEVPROPKEY { fmtid: GUID::from_u128(0x2BD67D8B_8BEB_48D5_87E0_6CDA3428040A), pid: 10 };
 
     // Present or not: the adapter's own driver is WinUSB now
     // SAFETY: no class, enumerator "BTHENUM", no window.
@@ -174,7 +194,7 @@ pub fn paired_through(instance_id: &str) -> Vec<[u8; 6]> {
         let (set, data) = DevInfoSet::open(id).ok()?;
         set.property_string(&data, &DEVPKEY_Device_Parent)
     };
-    let mut found = Vec::new();
+    let mut found: Vec<PairedDevice> = Vec::new();
     for index in 0.. {
         let mut data = SP_DEVINFO_DATA { cbSize: size_of::<SP_DEVINFO_DATA>() as u32, ..Default::default() };
         // SAFETY: valid set; out structure with its size.
@@ -189,8 +209,15 @@ pub fn paired_through(instance_id: &str) -> Vec<[u8; 6]> {
         for _ in 0..4 {
             let Some(p) = parent else { break };
             if p.eq_ignore_ascii_case(instance_id) {
-                if !found.contains(&address) {
-                    found.push(address);
+                if !found.iter().any(|d| d.address == address) {
+                    found.push(PairedDevice {
+                        address,
+                        name: set.property_string(&data, &DEVPKEY_Device_FriendlyName).unwrap_or_default(),
+                        class_of_device: set.property_u32(&data, &CLASS_OF_DEVICE).unwrap_or(0),
+                        connected: false,
+                        remembered: false,
+                        authenticated: false,
+                    });
                 }
                 break;
             }
@@ -199,7 +226,11 @@ pub fn paired_through(instance_id: &str) -> Vec<[u8; 6]> {
     }
     tracing::debug!(
         "bt_paired: paired through {instance_id}: {}",
-        found.iter().map(format_address).collect::<Vec<_>>().join(", ")
+        found
+            .iter()
+            .map(|d| format!("{} \u{201C}{}\u{201D} CoD 0x{:06X}", d.address_string(), d.name, d.class_of_device))
+            .collect::<Vec<_>>()
+            .join(", ")
     );
     found
 }
@@ -318,8 +349,14 @@ mod tests {
     #[ignore = "reads this PC's Bluetooth devices"]
     fn list_paired_through() {
         let id = std::env::var("A2DPWB_ADAPTER").unwrap_or_default();
-        for a in paired_through(&id) {
-            println!("{}", format_address(&a));
+        for d in paired_through(&id) {
+            println!(
+                "{} \u{201C}{}\u{201D} CoD 0x{:06X} audio {}",
+                d.address_string(),
+                d.name,
+                d.class_of_device,
+                d.is_a2dp_sink()
+            );
         }
     }
 

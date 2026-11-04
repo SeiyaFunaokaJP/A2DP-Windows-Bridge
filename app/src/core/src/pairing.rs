@@ -143,7 +143,13 @@ pub fn import_windows(state: &Arc<CoreState>, adapter: &str) -> Result<Value, Er
             tracing::warn!("Windows' key of {} not stored: the stack did not answer", bt_host::addr_str(&addr));
         }
     }
-    let added = add_audio_devices(state, &imported);
+    // A kept key (taken before, its device since forgotten) still adds its
+    // device: the button stays while one is unsaved
+    let have_key: Vec<String> = imported.iter().chain(&kept).cloned().collect();
+    let added = match state.adapter_instance(adapter) {
+        Some(instance_id) => add_audio_devices(state, &instance_id, &have_key),
+        None => Vec::new(),
+    };
     tracing::info!(
         "Windows' keys of {radio}: adapter found {adapter_found}, {} taken, {} kept, {} added",
         imported.len(),
@@ -153,19 +159,20 @@ pub fn import_windows(state: &Arc<CoreState>, adapter: &str) -> Result<Value, Er
     Ok(serde_json::to_value(WindowsImport { adapter_found, imported, kept, added }).unwrap_or(Value::Null))
 }
 
-/// The audio devices among `imported` that are not saved yet, saved with the
-/// name Windows knows them by (they then show on Audio Devices, ready to
-/// connect); the addresses added
-fn add_audio_devices(state: &Arc<CoreState>, imported: &[String]) -> Vec<String> {
-    let Ok(windows) = win_sys::bt_paired::paired_devices() else {
-        return Vec::new();
-    };
+/// The audio devices Windows paired through the adapter's USB device
+/// `instance_id` that have a key in `with_key` and are not saved yet, saved
+/// with the name Windows knows them by (they then show on Audio Devices,
+/// ready to connect); the addresses added. Read from Windows' device nodes,
+/// which stay while the adapter is on WinUSB (Windows' device search needs
+/// a running radio).
+fn add_audio_devices(state: &Arc<CoreState>, instance_id: &str, with_key: &[String]) -> Vec<String> {
+    let windows = win_sys::bt_paired::paired_through(instance_id);
     let dir = state.config_dir();
     let saved: Vec<String> = a2dpwb_core::devices::load(&dir).into_iter().map(|d| d.address.to_uppercase()).collect();
     let mut added = Vec::new();
     for d in windows.iter().filter(|d| d.is_a2dp_sink()) {
         let address = bt_host::addr_str(&d.address);
-        if !imported.contains(&address) || saved.contains(&address.to_uppercase()) {
+        if !with_key.contains(&address) || saved.contains(&address.to_uppercase()) {
             continue;
         }
         match a2dpwb_core::devices::save(&dir, &address, d.name.trim()) {
