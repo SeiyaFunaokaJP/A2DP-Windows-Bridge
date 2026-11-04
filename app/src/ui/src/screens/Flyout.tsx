@@ -2,7 +2,7 @@
 // As Home's card (issue #86): the ring, and beside it the device chooser
 // in the title's place, battery and state, the codec (chosen right there)
 // and link quality;
-// then the volume, the big Connect / Disconnect and "Open app". No close
+// then the volume, the big Connect / Disconnect with "Open app" beside it. No close
 // button: the flyout hides on Escape and when it loses the focus. Its
 // window is as tall as the page (issue #86: no empty space).
 
@@ -43,6 +43,8 @@ export function Flyout() {
   const profile = () => currentProfile(snap());
   const entry = () => entryOf(audioEntries(snap()), profile());
   const noDevice = () => audioEntries(snap()).length === 0;
+  /** Connect is shown, with "Open app" beside it */
+  const actionsShown = () => !noDevice() && !!profile();
   const [reqError, setReqError] = createSignal<IpcError | null>(null);
   const { fixFor, dialog } = useFixes();
   onCleanup(core.wantLink());
@@ -120,7 +122,11 @@ export function Flyout() {
           <Show when={stream().state !== "idle"}>
             <VolumeControl />
           </Show>
-          <ConnectButton compact onError={(e) => setReqError(IpcError.from(e))} />
+          {/* "Open app" beside Connect: no row of its own (issue #86) */}
+          <div class="fly-actions">
+            <IconButton icon="open" class="fly-open" label={t("ui.flyout.open_app")} onClick={() => void openMain()} />
+            <ConnectButton compact onError={(e) => setReqError(IpcError.from(e))} />
+          </div>
         </Show>
       </Show>
       {/* One click from the taskbar (issue #223) */}
@@ -181,17 +187,22 @@ export function Flyout() {
         }}
       </Show>
 
-      <footer class="fly-foot">
-        <Show when={snap().update.available}>
-          <Button kind="subtle" icon="arrow_sync" onClick={() => void openMain("settings")}>
-            {t("update.available_title")}
-          </Button>
-          <span class="spacer" />
-        </Show>
-        <Button icon="open" onClick={() => void openMain()}>
-          {t("ui.flyout.open_app")}
-        </Button>
-      </footer>
+      {/* Only when there is something to show: an update, or "Open app" with no Connect beside it */}
+      <Show when={snap().update.available || !actionsShown()}>
+        <footer class="fly-foot">
+          <Show when={snap().update.available}>
+            <Button kind="subtle" icon="arrow_sync" onClick={() => void openMain("settings")}>
+              {t("update.available_title")}
+            </Button>
+            <span class="spacer" />
+          </Show>
+          <Show when={!actionsShown()}>
+            <Button icon="open" onClick={() => void openMain()}>
+              {t("ui.flyout.open_app")}
+            </Button>
+          </Show>
+        </footer>
+      </Show>
       {dialog()}
       <NoticeLine />
     </div>

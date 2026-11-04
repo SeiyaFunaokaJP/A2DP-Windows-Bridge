@@ -163,6 +163,29 @@ pub struct HostConfig {
     /// Told where a chip loader (Intel's download) is while the adapter
     /// starts, for the Adapters screen
     pub on_loader: Option<bringup::LoaderHook>,
+    /// The adapter's Bluetooth name, as headphones show it ([`local_name`])
+    pub local_name: String,
+}
+
+/// The name without a computer name
+pub const APP_LOCAL_NAME: &str = "A2DPWB";
+/// HCI Write Local Name: at most 248 bytes of UTF-8
+const LOCAL_NAME_MAX: usize = 248;
+
+/// The adapter's Bluetooth name: the computer's, as Windows' own Bluetooth
+/// shows it, with the app's beside it so the two can be told apart
+/// (issue #86): "Taro-PC (A2DPWB)"; no computer name: "A2DPWB"
+pub fn local_name(computer: &str) -> String {
+    let computer = computer.trim();
+    if computer.is_empty() {
+        return APP_LOCAL_NAME.into();
+    }
+    let suffix = format!(" ({APP_LOCAL_NAME})");
+    let mut end = computer.len().min(LOCAL_NAME_MAX - suffix.len());
+    while !computer.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{suffix}", computer[..end].trim_end())
 }
 
 impl HostConfig {
@@ -181,6 +204,7 @@ impl HostConfig {
             le_audio: None,
             battery: false,
             on_loader: None,
+            local_name: APP_LOCAL_NAME.into(),
         }
     }
 }
@@ -502,6 +526,7 @@ impl BtHost {
                         le_audio,
                         battery,
                         on_loader,
+                        local_name,
                     } = config;
                     let failed_shared = shared.clone();
                     let result = btstack_sys::run(move |stack, remote| {
@@ -512,7 +537,15 @@ impl BtHost {
                         }
                         let le = le_audio.map(|cfg| {
                             let poster = le::core::LePoster::new(le_jobs, remote);
-                            le::core::LeCore::new(cfg, le_shared, controls.clone(), poster, le_events, battery)
+                            le::core::LeCore::new(
+                                cfg,
+                                le_shared,
+                                controls.clone(),
+                                poster,
+                                le_events,
+                                battery,
+                                local_name.clone(),
+                            )
                         });
                         capture.reset_tracking();
                         let logger = capture.clone();
@@ -530,6 +563,7 @@ impl BtHost {
                             battery,
                             on_loader,
                             probe,
+                            local_name,
                         };
                         let mut app = HostApp::new(
                             shared,
@@ -1893,5 +1927,26 @@ impl BtHost {
 impl Drop for BtHost {
     fn drop(&mut self) {
         self.stop_thread(false);
+    }
+}
+
+#[cfg(test)]
+mod local_name_tests {
+    use super::local_name;
+
+    #[test]
+    fn the_computer_name_with_the_app_beside_it() {
+        assert_eq!(local_name("Taro-PC"), "Taro-PC (A2DPWB)");
+        assert_eq!(local_name("  "), "A2DPWB");
+        assert_eq!(local_name("太郎のPC"), "太郎のPC (A2DPWB)");
+    }
+
+    #[test]
+    fn at_most_248_bytes_cut_on_a_character() {
+        let long = "あ".repeat(100); // 300 bytes
+        let name = local_name(&long);
+        assert!(name.len() <= 248, "{}", name.len());
+        assert!(name.ends_with(" (A2DPWB)"));
+        assert!(name.starts_with("あああ"));
     }
 }

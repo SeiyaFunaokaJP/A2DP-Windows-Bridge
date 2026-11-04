@@ -534,11 +534,16 @@ void a2dpwb_sdp_client_deinit(void) {
 /* GAP, SDP records, stream endpoints                                       */
 /* ======================================================================== */
 
-void a2dpwb_gap_setup(uint32_t class_of_device, uint16_t page_timeout) {
+/* BTstack keeps the pointer: the name lives here (HCI's 248 bytes + NUL) */
+static char local_name[249];
+
+void a2dpwb_gap_setup(uint32_t class_of_device, uint16_t page_timeout, const char *name) {
     /* SSP: Just Works (no display, no keyboard), General Bonding without MITM */
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
     gap_ssp_set_authentication_requirement(SSP_IO_AUTHREQ_MITM_PROTECTION_NOT_REQUIRED_GENERAL_BONDING);
-    gap_set_local_name("A2DPWB");  /* BTstack keeps the pointer: a literal */
+    strncpy(local_name, (name && name[0]) ? name : "A2DPWB", sizeof(local_name) - 1);
+    local_name[sizeof(local_name) - 1] = 0;
+    gap_set_local_name(local_name);
     gap_set_class_of_device(class_of_device);
     gap_set_allow_role_switch(true);
     gap_set_default_link_policy_settings(0x0005);  /* role switch + sniff */

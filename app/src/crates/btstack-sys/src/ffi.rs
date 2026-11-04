@@ -35,7 +35,7 @@ unsafe extern "C" {
     pub fn a2dpwb_sdp_client_deinit();
 
     // ---- shim.c: GAP, SDP, endpoints, configuration ----
-    pub fn a2dpwb_gap_setup(class_of_device: u32, page_timeout: u16);
+    pub fn a2dpwb_gap_setup(class_of_device: u32, page_timeout: u16, name: *const c_char);
     pub fn a2dpwb_sdp_register_records(controller_features: u16, target_features: u16);
     pub fn a2dpwb_create_stream_endpoint(
         slot: c_int,

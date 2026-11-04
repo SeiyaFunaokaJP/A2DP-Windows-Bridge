@@ -132,12 +132,14 @@ impl Stack {
         LOGGER.with(|l| *l.borrow_mut() = logger);
     }
 
-    /// SSP Just Works, General Bonding, name "A2DPWB", role switch and
-    /// sniff allowed
-    pub fn gap_setup(&self, class_of_device: u32, page_timeout: u16) {
+    /// SSP Just Works, General Bonding, the local name (UTF-8, at most 248
+    /// bytes; empty: "A2DPWB"), role switch and sniff allowed
+    pub fn gap_setup(&self, class_of_device: u32, page_timeout: u16, name: &str) {
         tracing::debug!(target: "btstack", "gap setup: CoD 0x{class_of_device:06X}, page timeout 0x{page_timeout:04X}");
-        // SAFETY: on the BTstack thread, after hci_init.
-        unsafe { ffi::a2dpwb_gap_setup(class_of_device, page_timeout) };
+        let name = CString::new(name.replace('\0', "")).unwrap_or_default();
+        // SAFETY: on the BTstack thread, after hci_init; the shim copies the
+        // name.
+        unsafe { ffi::a2dpwb_gap_setup(class_of_device, page_timeout, name.as_ptr()) };
     }
 
     pub fn l2cap_init(&self) {

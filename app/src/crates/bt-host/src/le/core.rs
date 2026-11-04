@@ -249,6 +249,8 @@ pub struct LeCore {
     poster: LePoster,
     events: std::sync::mpsc::Sender<crate::HostEvent>,
     battery: bool,
+    /// The GAP Device Name (HostConfig::local_name)
+    local_name: String,
     /// Taken at stack init (the modules get it)
     config: Option<LeConfig>,
     initialized: bool,
@@ -1642,10 +1644,12 @@ impl LeCore {
         poster: LePoster,
         events: std::sync::mpsc::Sender<crate::HostEvent>,
         battery: bool,
+        local_name: String,
     ) -> LeCore {
         LeCore {
             events,
             battery,
+            local_name,
             iso: IsoSender::new(shared.stats.clone()),
             shared,
             controls,
@@ -1737,7 +1741,7 @@ impl LeCore {
         self.run(stack, |ctx| ctx.each_module(|m, ctx| m.on_stack_init(ctx)));
 
         self.server = GattServer::new();
-        self.server.build_base();
+        self.server.build_base(&self.local_name);
         for i in 0..self.modules.len() {
             if let Some(mut m) = self.modules[i].take() {
                 m.add_gatt_services(&mut self.server.builder(i));

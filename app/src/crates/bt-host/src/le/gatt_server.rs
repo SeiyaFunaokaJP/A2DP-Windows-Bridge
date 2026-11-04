@@ -227,11 +227,11 @@ impl GattServer {
     }
 
     /// GAP and GATT services (Service Changed, Database Hash)
-    pub(crate) fn build_base(&mut self) {
-        // GAP: device name and appearance (Generic Computer)
+    pub(crate) fn build_base(&mut self, device_name: &str) {
+        // GAP: device name (as on BR/EDR) and appearance (Generic Computer)
         self.add_service(AttUuid::Uuid16(UUID_SERVICE_GAP), true);
         let name = self.add_char(AttUuid::Uuid16(UUID_CHR_DEVICE_NAME), ATT_PROPERTY_READ, 0, 0, None, None);
-        self.core_values.insert(name, b"A2DPWB".to_vec());
+        self.core_values.insert(name, device_name.as_bytes().to_vec());
         let appearance = self.add_char(AttUuid::Uuid16(UUID_CHR_APPEARANCE), ATT_PROPERTY_READ, 0, 0, None, None);
         self.core_values.insert(appearance, vec![0x80, 0x00]);
         // GATT: Service Changed (the DB never changes while connected;
@@ -589,7 +589,7 @@ mod tests {
     #[test]
     fn handles_follow_att_db_util() {
         let mut s = GattServer::new();
-        s.build_base();
+        s.build_base("A2DPWB");
         // GAP 1, name 2/3, appearance 4/5, GATT 6, Service Changed 7/8 +
         // CCC 9, Database Hash 10/11
         assert_eq!(s.service_changed, 8);
@@ -610,7 +610,7 @@ mod tests {
     #[test]
     fn ccc_and_prepared_writes() {
         let mut s = GattServer::new();
-        s.build_base();
+        s.build_base("A2DPWB");
         let h =
             s.builder(0).add_characteristic(AttUuid::Uuid16(0x2BA4), ATT_PROPERTY_WRITE | ATT_PROPERTY_NOTIFY, 1, 1);
         s.started = true;

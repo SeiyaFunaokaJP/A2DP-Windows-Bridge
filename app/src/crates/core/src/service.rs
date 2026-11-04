@@ -412,6 +412,8 @@ impl Inner {
         let cli = self.le_cli.lock().unwrap_or_else(|e| e.into_inner()).clone();
         c.le_audio = le_config(le_on, cli.as_ref(), &self.opts);
         c.battery = true;
+        // The computer's name, as Windows' own Bluetooth (issue #86)
+        c.local_name = bt_host::local_name(&win_sys::computer::computer_name().unwrap_or_default());
         // The Adapters screen shows a loader's progress while the adapter
         // starts (the stack's handle comes only after)
         let events = self.events.lock().unwrap_or_else(|e| e.into_inner()).clone();
