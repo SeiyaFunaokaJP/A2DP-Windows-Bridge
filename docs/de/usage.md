@@ -488,6 +488,12 @@ Mindestens 20 Bluetooth-Kanäle bleiben immer in Gebrauch. Einstellen lässt sic
 
 Im Entwicklermodus fordert **Suchen** eine neue WLAN-Suche von Windows an und zeichnet jedes 2,4-GHz-Netz über das Band, je lauter, desto höher. Ab Windows 11 24H2 gilt die Liste als Standortdaten: Windows fragt eventuell nach Standortzugriff und liefert ohne **Desktop-Apps Zugriff auf Ihren Standort gewähren** keine Liste. Die Suche ändert AFH nicht: Automatisch meidet weiterhin nur den Kanal des PCs selbst (Gründe siehe oben).
 
+### Kombiniert (experimentell) {#afh-blend}
+
+Im Entwicklermodus bietet **Wi-Fi-Kanäle meiden** zusätzlich **Kombiniert** mit **Mild**, **Mittel** oder **Streng**. Es meidet, was Automatisch meidet, und dazu die Bluetooth-Kanäle, auf die zwei Signale als Störung hindeuten: die gehörten WLAN-Netze innerhalb von 11 MHz (ab -90 dBm, voll bei -50 dBm) und wie oft der Adapter selbst den Kanal in seinen letzten Kanalkarten ausgelassen hat. Ein lautes Netz, das der Adapter ohne Probleme weiter nutzt, reicht bei Mild und Mittel allein nicht. Je strenger die Einstellung, desto eher wird ein Kanal gemieden und desto weniger bleiben immer in Gebrauch: 56 (Mild), 48 (Mittel) oder 40 (Streng) von 79.
+
+Solange Kombiniert läuft, sucht A2DPWB alle 2 Minuten nach WLAN-Netzen; das braucht wie **Suchen** den Standortzugriff, ohne ihn entscheidet die Kanalkarte des Adapters allein. Kombiniert wurde noch nicht mit echten Adaptern gemessen und kann die Verbindung schlechter machen als Automatisch: vor dem Beibehalten mit dem [Peer-Empfängertest](#receiver) vergleichen. Ohne Entwicklermodus läuft es als Automatisch. In `settings.json` und mit `--afh` heißt es `blend-mild`, `blend-medium` oder `blend-strong`.
+
 ## Peer-Empfängertest (tools/linux_sink) {#receiver}
 
 Die Verbindungsqualität zeigt, was A2DPWB sendet. Um zu sehen, was tatsächlich ankommt, führen Sie `tools/linux_sink/a2dpwb_sink.py` auf einem zweiten PC mit Linux aus. Das Skript steuert den gewöhnlichen Bluetooth-Adapter dieses PCs - der integrierte genügt - direkt (Bumble über den HCI User Channel) als A2DP-Senke für alle Codecs einschließlich LDAC, misst jedes ankommende Medienpaket und stellt die Statistik über das Netzwerk bereit:

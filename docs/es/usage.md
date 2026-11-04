@@ -488,6 +488,12 @@ Siempre quedan en uso al menos 20 canales Bluetooth. Configúrelo en la pantalla
 
 En modo desarrollador, **Escanear** pide a Windows un escaneo Wi-Fi nuevo y dibuja cada red de 2,4 GHz sobre la banda, más alta cuanto más fuerte. En Windows 11 24H2 y posteriores la lista cuenta como datos de ubicación: Windows puede pedir acceso a la ubicación y, sin **Permitir que las aplicaciones de escritorio accedan a la ubicación**, no da la lista. El escaneo no cambia AFH: Automático sigue evitando solo el canal del propio PC (ver arriba por qué).
 
+### Combinado (experimental) {#afh-blend}
+
+En modo desarrollador, **Evitar canales Wi-Fi** ofrece además **Combinado**, con **Suave**, **Medio** o **Estricto**. Evita lo que evita Automático y, además, los canales Bluetooth en los que dos señales apuntan a interferencias: las redes Wi-Fi que se oyen a menos de 11 MHz (cuentan desde -90 dBm, del todo a -50 dBm) y la frecuencia con la que el propio adaptador dejó fuera el canal en sus mapas de canales recientes. Una red fuerte que el adaptador sigue usando sin problemas no basta por sí sola con Suave o Medio. Cuanto más estricto, antes se evita un canal y menos quedan siempre en uso: 56 (Suave), 48 (Medio) o 40 (Estricto) de 79.
+
+Mientras Combinado está activo, A2DPWB busca redes Wi-Fi cada 2 minutos, lo que necesita acceso a la ubicación igual que **Escanear**; sin él decide solo el mapa del adaptador. Combinado aún no se ha medido con adaptadores reales y puede empeorar el enlace respecto a Automático: compárelo con la [prueba con receptor par](#receiver) antes de quedárselo. Sin modo desarrollador funciona como Automático. En `settings.json` y con `--afh` es `blend-mild`, `blend-medium` o `blend-strong`.
+
 ## Prueba con receptor par (tools/linux_sink) {#receiver}
 
 La vista de calidad del enlace muestra lo que envía A2DPWB. Para ver lo que llega realmente, ejecute `tools/linux_sink/a2dpwb_sink.py` en un segundo PC con Linux. Controla directamente el adaptador Bluetooth normal de ese PC (sirve el integrado) mediante Bumble sobre el canal de usuario HCI, como receptor A2DP para todos los códecs incluido LDAC, mide cada paquete multimedia que llega y ofrece las estadísticas por la red:

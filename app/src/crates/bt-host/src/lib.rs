@@ -121,8 +121,9 @@ pub enum TransportConfig {
 /// implements it with win-sys); called on the BTstack thread every 30 s or
 /// when the policy changes
 pub trait AfhSource: Send {
-    /// None: nothing to avoid (policy "off", no Wi-Fi)
-    fn classify(&mut self, policy: &str) -> Option<AfhClassification>;
+    /// None: nothing to avoid (policy "off", no Wi-Fi). `controller` holds
+    /// the current link's recent AFH maps (for "blend-*").
+    fn classify(&mut self, policy: &str, controller: &afh::ControllerHistory) -> Option<AfhClassification>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1859,7 +1860,8 @@ impl BtHost {
         self.controls.media_keys.store(enabled, Ordering::Release);
     }
 
-    /// AFH policy: "auto", "off" or Wi-Fi channels such as "6,11"; takes
+    /// AFH policy: "auto", "off", Wi-Fi channels such as "6,11" or
+    /// "blend-mild" / "-medium" / "-strong" (experimental); takes
     /// effect within seconds, also on a running link
     pub fn set_afh_policy(&self, policy: &str) {
         let mut p = self.controls.afh_policy.lock().unwrap_or_else(|e| e.into_inner());
