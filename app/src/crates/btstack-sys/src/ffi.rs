@@ -80,6 +80,7 @@ unsafe extern "C" {
     pub fn a2dpwb_cmd_read_rssi(con_handle: u16) -> u8;
     pub fn a2dpwb_cmd_read_bd_addr() -> u8;
     pub fn a2dpwb_cmd_read_local_version() -> u8;
+    pub fn a2dpwb_cmd_remote_name_request(addr: *const u8) -> u8;
     pub fn a2dpwb_cmd_remote_name_request_cancel(addr: *const u8) -> u8;
     pub fn a2dpwb_hci_get_state() -> c_int;
     pub fn a2dpwb_hci_can_send_command_now() -> c_int;

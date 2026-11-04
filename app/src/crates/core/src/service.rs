@@ -776,16 +776,34 @@ impl Inner {
     }
 
     /// What a device offered (after capability discovery)
-    pub fn record_codecs(&self, addr: &str, codecs: stream::KnownCodecs) {
+    pub fn record_codecs(&self, addr: &str, mut codecs: stream::KnownCodecs) {
         tracing::debug!("codecs of {addr}: {:?}, sbc {:?}", codecs.keys, codecs.sbc);
         let mut known = self.codecs.lock().unwrap_or_else(|e| e.into_inner());
+        // Kept with what it offers until the record is cleared
+        codecs.hi_res_asked |= known.get(&addr.to_uppercase()).is_some_and(|k| k.hi_res_asked);
         if known.get(&addr.to_uppercase()) == Some(&codecs) {
             return;
         }
         known.insert(addr.to_uppercase(), codecs);
-        if let Err(e) = crate::devices::save_codecs(&self.opts.config_dir, &known) {
+        self.save_codecs(&known);
+    }
+
+    fn save_codecs(&self, known: &BTreeMap<String, stream::KnownCodecs>) {
+        if let Err(e) = crate::devices::save_codecs(&self.opts.config_dir, known) {
             tracing::warn!("cannot save the devices' codecs: {e}");
         }
+    }
+
+    /// OPPO earbuds took the Hi-Res request already (issue #237)
+    pub fn hi_res_asked(&self, addr: &str) -> bool {
+        let known = self.codecs.lock().unwrap_or_else(|e| e.into_inner());
+        known.get(&addr.to_uppercase()).is_some_and(|k| k.hi_res_asked)
+    }
+
+    pub fn set_hi_res_asked(&self, addr: &str) {
+        let mut known = self.codecs.lock().unwrap_or_else(|e| e.into_inner());
+        known.entry(addr.to_uppercase()).or_default().hi_res_asked = true;
+        self.save_codecs(&known);
     }
 
     pub fn save_device(&self, addr: &str, name: &str) {
@@ -1193,6 +1211,18 @@ impl Service {
     /// connected
     pub fn device_codecs(&self) -> BTreeMap<String, stream::KnownCodecs> {
         self.inner.codecs.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Forgets what a device offered, and that it was asked for Hi-Res: its
+    /// next connection reads and asks again (issue #237). False: nothing kept.
+    pub fn forget_device_codecs(&self, address: &str) -> bool {
+        let mut known = self.inner.codecs.lock().unwrap_or_else(|e| e.into_inner());
+        if known.remove(&address.to_uppercase()).is_none() {
+            return false;
+        }
+        tracing::info!("device {address}: what it offered forgotten");
+        self.inner.save_codecs(&known);
+        true
     }
 
     pub fn settings(&self) -> Settings {

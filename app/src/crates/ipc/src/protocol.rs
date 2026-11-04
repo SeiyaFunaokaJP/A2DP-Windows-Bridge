@@ -293,6 +293,10 @@ pub struct StreamInfo {
     /// The device's maximum bit rate lowered the profile's (LHDC V5)
     #[serde(default)]
     pub bitrate_capped: bool,
+    /// OPPO earbuds turned Hi-Res on for this connection, after one
+    /// reconnect for it
+    #[serde(default)]
+    pub hi_res_set: bool,
     /// Where the audio comes from
     #[serde(default)]
     pub source: Option<SourceInfo>,
@@ -1226,6 +1230,10 @@ pub enum Method {
         #[serde(default)]
         le_audio: Option<bool>,
     },
+    /// Forgets what a classic device offered (and that OPPO earbuds were
+    /// asked for Hi-Res): its next connection reads it again
+    #[serde(rename = "device.forget_codecs")]
+    DeviceForgetCodecs { address: String },
     /// Adds or replaces a profile (`original_name`: the one renamed)
     #[serde(rename = "profile.save")]
     ProfileSave { profile: Box<Profile>, original_name: Option<String> },

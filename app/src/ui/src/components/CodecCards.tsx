@@ -309,6 +309,9 @@ export function CodecSettings(props: {
   matchSource?: boolean;
   /** Who listed what is offered, once it did */
   deviceName?: string;
+  /** Forgets what the device listed (LHDC V5: OPPO earbuds are then asked
+   *  for Hi-Res again, issue #237) */
+  onForgetReport?: () => void;
   onChange: (values: CodecChoice) => void;
   onClose: () => void;
 }) {
@@ -619,6 +622,15 @@ export function CodecSettings(props: {
               {(id) => <input id={id} class="input readonly" readOnly value={t(`ui.diag.cd_mode.${sbcMode()}`)} />}
             </Field>
           </Show>
+        </Show>
+        <Show when={v.codec === "lhdcv5" && listed() && props.onForgetReport}>
+          {(forget) => (
+            <div>
+              <Button icon="arrow_reset" onClick={() => forget()()}>
+                {t("ui.profile.forget_report")}
+              </Button>
+            </div>
+          )}
         </Show>
       </div>
     </Dialog>

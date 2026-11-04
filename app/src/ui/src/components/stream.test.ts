@@ -91,6 +91,7 @@ const SBC_INFO: StreamInfo = {
   requested_in_use: false,
   abr: true,
   bitrate_capped: false,
+  hi_res_set: false,
   source: null,
   le: null,
   details: SBC_ABR,

@@ -25,6 +25,11 @@ abr: boolean,
  */
 bitrate_capped: boolean, 
 /**
+ * OPPO earbuds turned Hi-Res on for this connection, after one
+ * reconnect for it
+ */
+hi_res_set: boolean, 
+/**
  * Where the audio comes from
  */
 source: SourceInfo | null, 

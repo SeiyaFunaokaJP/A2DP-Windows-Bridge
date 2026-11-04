@@ -4,6 +4,7 @@ import { App } from "../app/App";
 import { FALLBACK_NOTE_MS } from "../components/stream";
 import { setLanguage, t } from "../i18n";
 import { MockCore, type MockOptions } from "../ipc/mock";
+import type { Snapshot } from "../ipc/types";
 import { createCore } from "../ipc/store";
 import { endSettle } from "./Codecs";
 
@@ -30,6 +31,22 @@ afterEach(async () => {
 const homeCard = (name: string) => screen.findByRole("group", { name });
 
 describe("Home", () => {
+  it("says Hi-Res was turned on in the earbuds until dismissed (issue #237)", async () => {
+    start("#/home");
+    const wh = await homeCard("WH-1000XM5");
+    fireEvent.click(within(wh).getByRole("button", { name: "Connect" }));
+    await within(wh).findByRole("button", { name: "Disconnect" });
+    expect(screen.queryByText(t("ui.home.hi_res_set"))).toBeNull();
+    // The stream the reconnect for it brought
+    const m = mock as unknown as { snap: Snapshot; emit: (e: unknown) => void };
+    await waitFor(() => expect(m.snap.stream.info).toBeTruthy());
+    m.snap.stream = { ...m.snap.stream, info: { ...m.snap.stream.info!, hi_res_set: true } };
+    m.emit({ kind: "stream", value: m.snap.stream });
+    const text = await screen.findByText(t("ui.home.hi_res_set"));
+    fireEvent.click(within(text.closest(".banner") as HTMLElement).getByRole("button", { name: t("modal.close") }));
+    await waitFor(() => expect(screen.queryByText(t("ui.home.hi_res_set"))).toBeNull());
+  });
+
   it("connects and disconnects with the device's own button", async () => {
     const { calls } = start("#/home");
     const wh = await homeCard("WH-1000XM5");

@@ -1404,6 +1404,7 @@ impl CoreState {
                     requested_in_use: i.requested_in_use,
                     abr: i.abr,
                     bitrate_capped: i.bitrate_capped,
+                    hi_res_set: i.hi_res_set,
                     source: Some(to_ipc_source(&i.source)),
                     le,
                     details: i.details.map(|d| Box::new(to_ipc_codec_details(*d))),
@@ -2128,6 +2129,15 @@ impl CoreState {
             Method::DeviceForget { address, le_audio } => {
                 blocking(Box::new(move |me| me.forget_device(&address, le_audio == Some(true)))).await
             }
+            Method::DeviceForgetCodecs { address } => {
+                if bt_host::parse_addr(&address).is_none() {
+                    return Err(err("device.invalid_address", "error.invalid_address_format"));
+                }
+                if self.service.forget_device_codecs(&address) {
+                    self.refresh_devices();
+                }
+                Ok(Value::Null)
+            }
             Method::DeviceRename { address, name, le_audio } => {
                 let name = name.trim();
                 let Some(addr) = bt_host::parse_addr(&address) else {
@@ -2807,6 +2817,7 @@ mod tests {
                 requested_in_use: false,
                 abr,
                 bitrate_capped: false,
+                hi_res_set: false,
                 source: None,
                 le: None,
                 details: None,
@@ -2879,6 +2890,7 @@ mod tests {
                 requested_in_use: false,
                 abr: false,
                 bitrate_capped: false,
+                hi_res_set: false,
                 source: a2dpwb_core::SourceInfo { kind: "tone", name: String::new(), waiting: false },
                 details: None,
             }))
@@ -3032,6 +3044,7 @@ mod tests {
                 requested_in_use: false,
                 abr: false,
                 bitrate_capped: false,
+                hi_res_set: false,
                 source: None,
                 le: None,
                 details: None,
@@ -3420,6 +3433,7 @@ mod tests {
                     sample_rates: vec![44100, 48000],
                     ..Default::default()
                 }],
+                hi_res_asked: false,
             },
         );
         let list = saved_devices(&dir, &scanned, &codecs);
