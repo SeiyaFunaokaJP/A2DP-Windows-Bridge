@@ -813,18 +813,19 @@ describe("codec settings within what the device lists (issue #86: moto buds+)", 
     start("#/codecs", "capped");
     const rates = async (device: string) => {
       const dialog = await codecSettings(await section(device), "codec.aptx_adaptive");
-      const list = within(within(dialog).getByLabelText(t("connection.sample_rate")))
-        .getAllByRole("option")
-        .map((o) => o.textContent);
+      // One rate: shown fixed, not Auto and that rate to choose between
+      const field = within(dialog).getByLabelText(t("connection.sample_rate"));
+      const list =
+        field instanceof HTMLInputElement ? [field.value] : within(field).getAllByRole("option").map((o) => o.textContent);
       fireEvent.click(within(dialog).getByRole("button", { name: t("modal.close") }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       return list;
     };
     // A Bose QC Ultra lists 44.1 / 48 kHz only (issue #86); an EarFun Air
     // Pro 4+ 96 kHz too; a device not connected yet is not offered 96 kHz
-    expect(await rates("QC Ultra Earbuds")).toEqual([t("codec.auto_value", "48000 Hz"), "48000 Hz"]);
+    expect(await rates("QC Ultra Earbuds")).toEqual(["48000 Hz"]);
     expect(await rates("EarFun Air Pro 4+")).toEqual([t("codec.auto_value", "48000 Hz"), "48000 Hz", "96000 Hz"]);
-    expect(await rates("SRS-XB13")).toEqual([t("codec.auto_value", "48000 Hz"), "48000 Hz"]);
+    expect(await rates("SRS-XB13")).toEqual(["48000 Hz"]);
   });
 });
 
@@ -837,11 +838,10 @@ describe("SBC settings", () => {
     const rate = within(dialog).getByRole("status");
     expect(rate).toHaveTextContent("≈ 357 kbps");
 
-    // The WH-1000XM5 lists 8 subbands and loudness only (the mock's XM5_SBC)
-    const subbands = within(dialog).getByLabelText(t("ui.diag.cd_subbands"));
-    expect(within(subbands).getAllByRole("option").map((o) => o.textContent)).toEqual([t("codec.auto_value", "8"), "8"]);
-    const alloc = within(dialog).getByLabelText(t("ui.diag.cd_allocation"));
-    expect(within(alloc).queryByRole("option", { name: t("ui.diag.cd_alloc.snr") })).toBeNull();
+    // The WH-1000XM5 lists 8 subbands and loudness only (the mock's
+    // XM5_SBC): each shown fixed, nothing to choose
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_subbands"))).toHaveValue("8");
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_allocation"))).toHaveValue(t("ui.diag.cd_alloc.loudness"));
     const blocks = within(dialog).getByLabelText(t("ui.diag.cd_blocks"));
     expect(within(blocks).getAllByRole("option")).toHaveLength(5);
     // Dual channel is SBC XQ
