@@ -465,6 +465,15 @@ export function rateOffered(codec: string, rate: number, caps: CodecCaps | null)
   return caps.sample_rates.includes(rate);
 }
 
+/** The one value a setting can take when there is nothing to choose (Auto
+ *  could only pick it): shown as a fixed value, without Auto. Undefined when
+ *  there is a choice, or when the value kept is one the device did not list
+ *  (the list stays, to move off it) */
+export function onlyChoice<T>(offered: readonly T[], current: T, auto: T): T | undefined {
+  const values = offered.filter((x) => x !== auto);
+  return values.length === 1 && (current === auto || current === values[0]) ? values[0] : undefined;
+}
+
 /** The sample rates the dialog offers (issue #86): the codec's, as far as
  *  the device lists them */
 export function offeredSampleRates(codec: string, caps: CodecCaps | null): number[] {

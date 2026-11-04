@@ -29,6 +29,7 @@ import {
   fixedKbpsText,
   offeredQualities,
   offeredSampleRates,
+  onlyChoice,
   qualityIgnored,
   qualityKbps,
   qualityTag,
@@ -354,6 +355,13 @@ describe("profiles", () => {
     expect(offeredSampleRates("aptxad", aptxad([48000, 96000]))).toEqual([0, 48000, 96000]);
     expect(offeredSampleRates("aptxad", null)).toEqual([0, 48000]);
     expect(offeredSampleRates("aptxad", aptxad([]))).toEqual([0, 48000]);
+    // One value to take: fixed, no Auto to choose beside it
+    expect(onlyChoice(offeredSampleRates("aptxad", aptxad([48000])), 0, 0)).toBe(48000);
+    expect(onlyChoice(offeredSampleRates("aptxad", aptxad([48000])), 48000, 0)).toBe(48000);
+    expect(onlyChoice(offeredSampleRates("aptxad", aptxad([48000, 96000])), 0, 0)).toBeUndefined();
+    // A kept value the device did not list keeps the list, to move off it
+    expect(onlyChoice([0, 48000], 96000, 0)).toBeUndefined();
+    expect(onlyChoice(["", "loudness"], "", "")).toBe("loudness");
   });
 
   it("says why the bit rate is below the profile's", () => {
