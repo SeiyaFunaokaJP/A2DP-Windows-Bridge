@@ -18,7 +18,7 @@ pub mod profiles;
 mod service;
 pub mod settings;
 pub mod stream;
-mod vendor;
+pub mod vendor;
 
 pub use le_stream::{LeAudioPath, LeStreamDetails, le_silence_set, le_stats_line};
 pub use messages::Msg;

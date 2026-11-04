@@ -45,6 +45,8 @@ pub struct State {
     pub acl_down: bool,
     pub inquiry_done: bool,
     pub name_done: bool,
+    /// The last remote name answered, and whose
+    pub remote_name: Option<([u8; 6], String)>,
     pub probe_answered: bool,
     pub probe_pending: bool,
 

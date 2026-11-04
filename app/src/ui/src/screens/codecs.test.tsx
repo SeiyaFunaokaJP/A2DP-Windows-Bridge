@@ -664,6 +664,26 @@ async function codecSettings(where: HTMLElement, label: string) {
 }
 
 describe("codec settings", () => {
+  it("LHDC V5 forgets what the device reported (issue #237)", async () => {
+    const { calls } = start("#/codecs", "capped");
+    const moto = await section("moto buds+");
+    const dialog = await codecSettings(moto, "codec.lhdc_v5");
+    expect(within(dialog).getByText(t("ui.profile.codec_settings_device", "moto buds+"))).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: t("ui.profile.forget_report") }));
+    await waitFor(() => expect(calls.some((c) => c.method === "device.forget_codecs")).toBe(true));
+    expect(calls.find((c) => c.method === "device.forget_codecs")?.params).toEqual({ address: "34:1C:F0:AA:BB:CC" });
+    // Nothing reported any more: the button goes with the note
+    await waitFor(() => expect(within(dialog).queryByRole("button", { name: t("ui.profile.forget_report") })).toBeNull());
+    expect(within(dialog).queryByText(t("ui.profile.codec_settings_device", "moto buds+"))).toBeNull();
+  });
+
+  it("other codecs keep what the device reported", async () => {
+    start("#/codecs", "capped");
+    const moto = await section("moto buds+");
+    const dialog = await codecSettings(moto, "codec.aac");
+    expect(within(dialog).queryByRole("button", { name: t("ui.profile.forget_report") })).toBeNull();
+  });
+
   it("LHDC V5 offers 192 kHz and greys out the quality while ABR is on", async () => {
     start("#/codecs");
     // A device whose codecs are not known yet: all of them offered

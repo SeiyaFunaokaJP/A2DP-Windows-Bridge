@@ -1524,6 +1524,36 @@ impl BtHost {
         }
     }
 
+    /// The name `addr` gives now, asked over the link the stack has to it:
+    /// a profile may carry another (issue #237: an old one without it).
+    /// None when it does not answer.
+    pub fn remote_name(&self, addr: [u8; 6]) -> Option<String> {
+        self.shared.update(|s| {
+            s.name_done = false;
+            s.remote_name = None;
+        });
+        // Sent directly: a command in flight may hold it back a moment
+        let mut sent = false;
+        for _ in 0..10 {
+            if self.call(JOB_TIMEOUT, move |_, s| s.cmd_remote_name_request(&addr)) == Some(0) {
+                sent = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        if !sent {
+            tracing::warn!("remote name request to {} not sent", addr_str(&addr));
+            return None;
+        }
+        if self.shared.wait(NAME_REQUEST_TIMEOUT, true, |s| s.name_done) != Wait::Done {
+            tracing::warn!("remote name request to {} timed out", addr_str(&addr));
+            self.call(JOB_TIMEOUT, move |_, s| s.cmd_remote_name_request_cancel(&addr));
+            let _ = self.shared.wait(NAME_CANCEL_TIMEOUT, false, |s| s.name_done);
+            return None;
+        }
+        self.shared.lock().remote_name.take().filter(|(a, _)| *a == addr).map(|(_, name)| name)
+    }
+
     pub fn is_connected(&self) -> bool {
         self.shared.lock().connected
     }

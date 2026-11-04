@@ -515,7 +515,7 @@ async def main(args):
     host = Host(sink_controller, AsyncPipeSink(sink_controller))
     if args.capture:
         host.snooper = PacketLoggerSnooper(args.capture)
-    device = Device(name='A2DPWB Test Sink', address=SINK_ADDRESS, host=host)
+    device = Device(name=args.name, address=SINK_ADDRESS, host=host)
     device.classic_enabled = True
     device.class_of_device = 0x240404  # Audio / Video, wearable headset
     device.sdp_service_records = {
@@ -657,6 +657,8 @@ if __name__ == '__main__':
                         help='with --opens-a2dp, also configure and open the last stream')
     parser.add_argument('--disconnect-delay', type=float, default=0, metavar='S',
                         help="seconds until an HCI Disconnect from A2DPWB takes effect")
+    parser.add_argument('--name', default='A2DPWB Test Sink',
+                        help='the Bluetooth name, as an inquiry or a name request gets it')
     parser.add_argument('--no-eir-name', action='store_true',
                         help='answer inquiries without the name in the EIR (A2DPWB asks for it)')
     parser.add_argument('--dual-mode', action='store_true',

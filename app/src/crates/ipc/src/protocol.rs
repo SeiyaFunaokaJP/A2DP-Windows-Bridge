@@ -293,6 +293,10 @@ pub struct StreamInfo {
     /// The device's maximum bit rate lowered the profile's (LHDC V5)
     #[serde(default)]
     pub bitrate_capped: bool,
+    /// OPPO earbuds turned Hi-Res on for this connection, after one
+    /// reconnect for it
+    #[serde(default)]
+    pub hi_res_set: bool,
     /// Where the audio comes from
     #[serde(default)]
     pub source: Option<SourceInfo>,
@@ -616,6 +620,37 @@ pub struct DevOverrides {
     pub ignore_sink_max: bool,
 }
 
+/// Developer mode's override of one vendor's protocol
+/// (a2dpwb_core::vendor::Override)
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default)]
+pub struct VendorOverride {
+    pub mode: VendorMode,
+    /// Its options turned on (VendorInfo.options)
+    pub options: Vec<String>,
+}
+
+/// When earbuds are spoken to over their vendor's protocol: by their name,
+/// always, or never
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum VendorMode {
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+
+/// A vendor whose earbuds A2DPWB speaks to over their own protocol
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct VendorInfo {
+    /// Key of its overrides (Settings.dev_vendors)
+    pub id: String,
+    pub name: String,
+    /// Developer mode's switches of its own (the UI labels them)
+    pub options: Vec<String>,
+}
+
 /// Developer mode's logging (a2dpwb_core::settings::DevLog), in force while
 /// developer_mode is on
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -695,6 +730,10 @@ pub struct Settings {
     /// while developer_mode is on (read when the next stream is set up)
     #[serde(default)]
     pub dev_overrides: DevOverrides,
+    /// Developer mode: when each vendor's own protocol is used, and its
+    /// options, by vendor id (Snapshot.vendors); absent: the default
+    #[serde(default)]
+    pub dev_vendors: std::collections::BTreeMap<String, VendorOverride>,
     /// Developer mode: log retention, the daily size cap, verbose logging
     /// that stays on, the stream health line every interval
     #[serde(default)]
@@ -796,6 +835,9 @@ pub struct Snapshot {
     /// yet (diag.crashes_seen), newest first
     #[serde(default)]
     pub crashes: Vec<CrashReport>,
+    /// The vendors with protocols of their own (developer mode's overrides)
+    #[serde(default)]
+    pub vendors: Vec<VendorInfo>,
 }
 
 /// A crash report (logs\crash\<process>-<stamp>.txt): a panic or a crash
@@ -1226,6 +1268,10 @@ pub enum Method {
         #[serde(default)]
         le_audio: Option<bool>,
     },
+    /// Forgets what a classic device offered (and that OPPO earbuds were
+    /// asked for Hi-Res): its next connection reads it again
+    #[serde(rename = "device.forget_codecs")]
+    DeviceForgetCodecs { address: String },
     /// Adds or replaces a profile (`original_name`: the one renamed)
     #[serde(rename = "profile.save")]
     ProfileSave { profile: Box<Profile>, original_name: Option<String> },
@@ -1933,6 +1979,7 @@ mod tests {
             v1_running: false,
             verbose: None,
             crashes: Vec::new(),
+            vendors: Vec::new(),
         })
         .unwrap();
         snap.as_object_mut().unwrap().remove("le_scanning");

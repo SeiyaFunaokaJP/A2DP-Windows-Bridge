@@ -527,6 +527,15 @@ impl Stack {
         r
     }
 
+    /// A remote name request to a connected device, sent at once (0) or not
+    /// (the controller takes no command now)
+    pub fn cmd_remote_name_request(&self, addr: &[u8; 6]) -> u8 {
+        // SAFETY: on the BTstack thread; addr is 6 bytes.
+        let status = unsafe { ffi::a2dpwb_cmd_remote_name_request(addr.as_ptr()) };
+        tracing::debug!(target: "btstack", "remote name request (connected) {}: 0x{status:02X}", addr_str(addr));
+        status
+    }
+
     /// Ends a remote name request early (BTstack has no call for it): the
     /// controller then completes it with an error status
     pub fn cmd_remote_name_request_cancel(&self, addr: &[u8; 6]) -> u8 {

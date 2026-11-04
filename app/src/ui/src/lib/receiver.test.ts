@@ -43,6 +43,7 @@ const SBC: StreamInfo = {
   requested_in_use: false,
   abr: false,
   bitrate_capped: false,
+  hi_res_set: false,
   source: null,
   le: null,
   details: null,

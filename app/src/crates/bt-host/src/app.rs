@@ -1223,6 +1223,7 @@ impl HostApp {
                 self.shared.update(|s| {
                     if status == 0 && !name.is_empty() {
                         s.set_found_name(&addr, &name);
+                        s.remote_name = Some((addr, name));
                     }
                     s.name_done = true;
                 });

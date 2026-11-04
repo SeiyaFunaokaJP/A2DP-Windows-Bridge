@@ -183,6 +183,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
       match_source: false,
       ignore_sink_max: false,
     },
+    dev_vendors: {},
     dev_log: { keep_days: 7, day_cap_mb: 100, always_verbose: null, health_every_interval: false },
     bt_chip_pid: 0,
     bt_chip_fw_stem: "",
@@ -371,6 +372,10 @@ export function sampleSnapshot(scenario: MockScenario = "normal"): Snapshot {
             },
           ]
         : [],
+    vendors: [
+      { id: "huawei", name: "Huawei", options: [] },
+      { id: "oppo", name: "OPPO", options: ["every_connection"] },
+    ],
   };
 }
 
@@ -508,10 +513,10 @@ const LDAC_DETAILS: CodecDetails = {
 };
 
 const CODEC_INFO: Record<string, StreamInfo> = {
-  ldac: { codec: "LDAC", bitrate_kbps: 990, sample_rate: 96000, channels: 2, bits: 24, source_sample_rate: 48000, source_channels: 2, source_bits: 32, requested_codec: null, requested_in_use: false, abr: false, bitrate_capped: false, source: null, le: null, details: LDAC_DETAILS },
-  aac: { codec: "AAC", bitrate_kbps: 256, sample_rate: 44100, channels: 2, bits: 16, source_sample_rate: 48000, source_channels: 2, source_bits: 32, requested_codec: null, requested_in_use: false, abr: false, bitrate_capped: false, source: null, le: null, details: AAC_DETAILS },
-  sbc: { codec: "SBC", bitrate_kbps: 328, sample_rate: 48000, channels: 2, bits: 16, source_sample_rate: 48000, source_channels: 2, source_bits: 32, requested_codec: null, requested_in_use: false, abr: false, bitrate_capped: false, source: null, le: null, details: SBC_DETAILS },
-  auto: { codec: "LDAC", bitrate_kbps: 990, sample_rate: 48000, channels: 2, bits: 24, source_sample_rate: 48000, source_channels: 2, source_bits: 32, requested_codec: null, requested_in_use: false, abr: false, bitrate_capped: false, source: null, le: null, details: { ...LDAC_DETAILS, frame_samples: 128 } },
+  ldac: { codec: "LDAC", bitrate_kbps: 990, sample_rate: 96000, channels: 2, bits: 24, source_sample_rate: 48000, source_channels: 2, source_bits: 32, requested_codec: null, requested_in_use: false, abr: false, bitrate_capped: false, hi_res_set: false, source: null, le: null, details: LDAC_DETAILS },
+  aac: { codec: "AAC", bitrate_kbps: 256, sample_rate: 44100, channels: 2, bits: 16, source_sample_rate: 48000, source_channels: 2, source_bits: 32, requested_codec: null, requested_in_use: false, abr: false, bitrate_capped: false, hi_res_set: false, source: null, le: null, details: AAC_DETAILS },
+  sbc: { codec: "SBC", bitrate_kbps: 328, sample_rate: 48000, channels: 2, bits: 16, source_sample_rate: 48000, source_channels: 2, source_bits: 32, requested_codec: null, requested_in_use: false, abr: false, bitrate_capped: false, hi_res_set: false, source: null, le: null, details: SBC_DETAILS },
+  auto: { codec: "LDAC", bitrate_kbps: 990, sample_rate: 48000, channels: 2, bits: 24, source_sample_rate: 48000, source_channels: 2, source_bits: 32, requested_codec: null, requested_in_use: false, abr: false, bitrate_capped: false, hi_res_set: false, source: null, le: null, details: { ...LDAC_DETAILS, frame_samples: 128 } },
 };
 
 /** SBC under ABR: the bitpool moves within 19..53 (sbcAbrStep) */
@@ -539,6 +544,7 @@ function lc3Info(lowLatency: boolean, set: boolean): StreamInfo {
     requested_in_use: false,
     abr: false,
     bitrate_capped: false,
+    hi_res_set: false,
     source: null,
     le: {
       preset,
@@ -726,6 +732,15 @@ export class MockCore implements Transport {
         if (!this.snap.profiles.some((x) => x.name === this.snap.active_profile)) this.snap.active_profile = null;
         this.emit({ kind: "profiles", value: { profiles: this.snap.profiles, active_profile: this.snap.active_profile } });
         return null;
+      case "device.forget_codecs": {
+        // A new entry: the sample devices are shared between mocks
+        const address = String(p.address).toUpperCase();
+        this.snap.devices = this.snap.devices.map((x) =>
+          sameEntry(x, address, false) ? { ...x, codecs: [], codec_caps: [], sbc: null } : x,
+        );
+        this.emit({ kind: "devices", value: this.snap.devices });
+        return null;
+      }
       case "device.rename": {
         const name = String(p.name ?? "").trim();
         if (!name) throw errorInfo("device.invalid_name", "ipc.error.bad_request", ["device.rename", `name "${name}"`]);

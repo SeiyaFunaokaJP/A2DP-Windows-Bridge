@@ -2,7 +2,9 @@
 // the peer receiver test,
 // overrides of the codec and the media path for finding out why a sink stays
 // silent (issue #87; read when the next stream is set up), each saved
-// device's max media packet size (issue #86), and how the core
+// device's max media packet size (issue #86), when vendors' own protocols
+// are used (issue #237: kept by vendor id, the vendors as the core lists
+// them, so a new vendor needs only its option labels here), and how the core
 // logs: retention, the daily size cap, verbose logging that stays on, the
 // stream health line every interval (issue #84) and marker lines.
 
@@ -14,14 +16,14 @@ import { Banner, Button, Field, Section, Select, Toggle } from "../components/co
 import { Icon } from "../components/Icon";
 import type { IconName } from "../components/icons";
 import { t } from "../i18n";
-import type { DevLog, DevOverrides, LogLevel } from "../ipc/types";
+import type { DevLog, DevOverrides, LogLevel, VendorInfo, VendorMode, VendorOverride } from "../ipc/types";
 import { PACKET_DEFAULT, PACKET_MAX, PACKET_MIN } from "../lib/codecs";
 import { audioEntries, entryByKey, normalizeProfile, profilesOf } from "../lib/profile";
 import { ChipTools } from "./ChipTools";
 import { ReceiverTest } from "./ReceiverTest";
 
 // The app's own settings apart from the codec and media path (issue #86)
-type Tab = "app" | "receiver" | "overrides" | "logging" | "chip";
+type Tab = "app" | "receiver" | "overrides" | "vendors" | "logging" | "chip";
 
 const NO_OVERRIDES: DevOverrides = {
   rtp_marker: false,
@@ -45,6 +47,7 @@ export function Developer() {
   const tabs = (): { id: Tab; label: string; icon: IconName }[] => [
     { id: "app", label: t("ui.dev.app_settings"), icon: "settings" },
     { id: "overrides", label: t("ui.dev.codec_settings"), icon: "wrench" },
+    { id: "vendors", label: t("ui.dev.vendors"), icon: "headphones" },
     { id: "logging", label: t("ui.dev.logging"), icon: "record" },
     { id: "receiver", label: t("receiver.title"), icon: "beaker" },
     { id: "chip", label: t("ui.dev.chip"), icon: "usb_stick" },
@@ -102,6 +105,13 @@ export function Developer() {
         <Show when={tab() === "overrides"}>
           <Overrides value={settings().dev_overrides} save={(dev_overrides) => saveSettings(app, { dev_overrides })} />
         </Show>
+        <Show when={tab() === "vendors"}>
+          <Vendors
+            vendors={core.state.snap!.vendors}
+            value={settings().dev_vendors}
+            save={(dev_vendors) => saveSettings(app, { dev_vendors })}
+          />
+        </Show>
         <Show when={tab() === "logging"}>
           <Logging value={settings().dev_log} save={(dev_log) => saveSettings(app, { dev_log })} />
         </Show>
@@ -111,6 +121,68 @@ export function Developer() {
         <Show when={tab() === "chip"}>
           <ChipTools />
         </Show>
+      </div>
+    </div>
+  );
+}
+
+const NO_VENDOR: VendorOverride = { mode: "auto", options: [] };
+const VENDOR_MODES: VendorMode[] = ["auto", "always", "never"];
+
+/** Whether vendor overrides are on (defaults left in the map count as off) */
+export function vendorsActive(value: Partial<Record<string, VendorOverride>>): boolean {
+  return Object.values(value).some((o) => !!o && (o.mode !== "auto" || o.options.length > 0));
+}
+
+/** Each vendor's protocol: by the device's name, always or never, and its
+ *  own options, one section a vendor */
+function Vendors(props: {
+  vendors: VendorInfo[];
+  value: Partial<Record<string, VendorOverride>>;
+  save: (v: Record<string, VendorOverride>) => Promise<boolean>;
+}) {
+  const of = (id: string) => props.value[id] ?? NO_VENDOR;
+  const set = (id: string, patch: Partial<VendorOverride>) => {
+    const next: Record<string, VendorOverride> = {};
+    for (const [k, v] of Object.entries(props.value)) if (v) next[k] = v;
+    next[id] = { ...of(id), ...patch };
+    void props.save(next);
+  };
+  const active = () => vendorsActive(props.value);
+  return (
+    <div>
+      <Banner kind={active() ? "warn" : "info"} title={active() ? t("ui.dev.active") : t("ui.dev.vendors_intro")} />
+      <For each={props.vendors}>
+        {(v) => (
+          <Section title={v.name}>
+            <Field label={t("ui.dev.vendor_mode")}>
+              {(id) => (
+                <Select
+                  id={id}
+                  value={of(v.id).mode}
+                  options={VENDOR_MODES.map((m) => ({ value: m, label: t(`ui.dev.vendor_mode.${m}`) }))}
+                  onChange={(mode) => set(v.id, { mode })}
+                />
+              )}
+            </Field>
+            <For each={v.options}>
+              {(o) => (
+                <Toggle
+                  label={t(`ui.dev.vendor_option.${v.id}.${o}`)}
+                  checked={of(v.id).options.includes(o)}
+                  onChange={(on) =>
+                    set(v.id, { options: on ? [...of(v.id).options, o] : of(v.id).options.filter((x) => x !== o) })
+                  }
+                />
+              )}
+            </For>
+          </Section>
+        )}
+      </For>
+      <div>
+        <Button icon="arrow_reset" disabled={!active()} onClick={() => void props.save({})}>
+          {t("ui.dev.reset")}
+        </Button>
       </div>
     </div>
   );

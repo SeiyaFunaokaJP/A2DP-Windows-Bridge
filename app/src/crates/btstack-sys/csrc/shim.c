@@ -705,6 +705,15 @@ uint8_t a2dpwb_cmd_create_connection_cancel(const uint8_t *addr) {
     return hci_send_cmd(&hci_create_connection_cancel, a);
 }
 
+/* A remote name request to a connected device: GAP's queue leaves it unsent
+   while the link is up (seen in the emulator), so it goes out directly. Page
+   settings do not matter over a link: R1, no clock offset */
+uint8_t a2dpwb_cmd_remote_name_request(const uint8_t *addr) {
+    bd_addr_t a;
+    memcpy(a, addr, 6);
+    return hci_send_cmd(&hci_remote_name_request, a, 1, 0, 0);
+}
+
 uint8_t a2dpwb_cmd_remote_name_request_cancel(const uint8_t *addr) {
     bd_addr_t a;
     memcpy(a, addr, 6);

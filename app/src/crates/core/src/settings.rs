@@ -157,6 +157,10 @@ pub struct Settings {
     /// Developer mode: overrides of the codec and media path (in force only
     /// while debug_mode is on)
     pub dev_overrides: codec::dev::DevOverrides,
+    /// Developer mode: when each vendor's own protocol is used, and its
+    /// options, by vendor id (in force only while debug_mode is on)
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub dev_vendors: crate::vendor::Overrides,
     /// Developer mode: how the core logs (in force only while debug_mode is
     /// on; otherwise [`DevLog::default`])
     pub dev_log: DevLog,
@@ -297,6 +301,7 @@ impl Default for Settings {
             volume_mixer: false,
             debug_mode: false,
             dev_overrides: codec::dev::DevOverrides::default(),
+            dev_vendors: Default::default(),
             dev_log: DevLog::default(),
             bt_chip_pid: 0,
             bt_chip_fw_stem: String::new(),

@@ -115,18 +115,20 @@ CONFIG_PATTERN = {  # a2dpwb_decode's "Configuration :" line
 # header, packet sizes and frame types)
 NO_DECODER = {'ldac', 'ldac-96k', 'ldac-48k', 'lhdcv5', 'aptxad', 'aptxad-r2', 'aptxad-r2-96k'}
 # Cases run with the developer override on
-FORCED = {'force-ldac'}
 APTXAD_SINK = ['--codecs', 'sbc', 'aac', 'aptx', 'aptxad']
-HUAWEI_SINK = ['--codecs', 'sbc', 'aac', '--log-level', 'INFO']  # LOG_CHECKS read its log
+# The name they give tells the vendor (issue #237); LOG_CHECKS read the sink's log
+HUAWEI_SINK = ['--codecs', 'sbc', 'aac', '--log-level', 'INFO', '--name', 'HUAWEI FreeBuds Pro 4']
 HUAWEI_NAME = ['--device-name', 'HUAWEI FreeBuds Pro 4']
-OPPO_SINK = ['--codecs', 'sbc', 'aac', 'lhdcv5', '--log-level', 'INFO']
+OPPO_SINK = ['--codecs', 'sbc', 'aac', 'lhdcv5', '--log-level', 'INFO', '--name', 'OPPO Enco Free4']
+# A device that gives another name, whatever it is saved as
+OTHER_NAME = ['--name', 'Other Buds']
 OPPO_NAME = ['--device-name', 'OPPO Enco Free4']
 OPPO_TWICE = OPPO_NAME + ['--sessions', '2']
 # Further cases: name -> (A2DPWB -c, emu_sink.py arguments, the codec expected,
 # more A2DPWB arguments)
 NEGOTIATION = {
     'sbcxq-44k': ('sbcxq', [], 'sbcxq', ['--rate', '44100']),            # bitpool 47
-    # Developer mode's force_codec (FORCED): LDAC to a sink that lists SBC only
+    # Developer mode's force_codec (DEV_SETTINGS): LDAC to a sink that lists SBC only
     'force-ldac': ('ldac', ['--codecs', 'sbc'], 'ldac', []),
     'auto-sbcxq': ('auto', ['--codecs', 'sbc'], 'sbcxq', []),            # Auto takes SBC XQ over SBC
     'auto-sbc-no-xq': ('auto', ['--codecs', 'sbc', '--sbc-no-dual'], 'sbc', []),  # no dual channel: SBC
@@ -214,7 +216,7 @@ NEGOTIATION = {
     'huawei-ldac-drop': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-drop'], 'ldac', HUAWEI_NAME),
     'huawei-no-mode': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-silent'], 'aac',
                        HUAWEI_NAME + ['--fallback']),
-    'huawei-other-name': ('ldac', HUAWEI_SINK + ['--huawei', 'off'], 'aac', ['--fallback']),
+    'huawei-other-name': ('ldac', HUAWEI_SINK + ['--huawei', 'off'] + OTHER_NAME, 'aac', HUAWEI_NAME + ['--fallback']),
     # The write taken and still no LDAC: AAC, the mode back off when it was off
     'huawei-no-ldac': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-no-ldac'], 'aac',
                        HUAWEI_NAME + ['--fallback']),
@@ -226,17 +228,17 @@ NEGOTIATION = {
     'huawei-channel-1': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-channel', '1'], 'ldac', HUAWEI_NAME),
     'huawei-channel-16': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-channel', '16'], 'ldac', HUAWEI_NAME),
     # Enco Free4 earbuds that cap LHDC V5 until asked for Hi-Res (issue #237):
-    # the first stream stays at 400 kbps with no new connection for the write,
-    # the second gets 1000 kbps; with the mode off or on already, by whichever
-    # write they advertise. Earbuds that end the link at the write get it at once
+    # one new connection for the write gives the first stream 1000 kbps, the
+    # second goes by what they list, with no write; with the mode off or on
+    # already, by whichever write they advertise, or ending the link for it
     'oppo-hi-res': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_TWICE),
     'oppo-hi-res-on': ('lhdcv5', OPPO_SINK + ['--oppo', 'on'], 'lhdcv5', OPPO_TWICE),
     'oppo-codec-write': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-codec-write'], 'lhdcv5', OPPO_TWICE),
     'oppo-drop': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-drop'], 'lhdcv5', OPPO_NAME),
-    # Asked once a run: three streams, one read of the earbuds
+    # Asked once: three streams, one read of the earbuds
     'oppo-once': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_NAME + ['--sessions', '3']),
-    # Nothing gained, seen on the second stream: Hi-Res back off when it was
-    # off, as it was when it was on
+    # Nothing gained, seen after the new connection: Hi-Res back off when it
+    # was off, as it was when it was on
     'oppo-no-change': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-change'], 'lhdcv5', OPPO_TWICE),
     'oppo-no-change-on': ('lhdcv5', OPPO_SINK + ['--oppo', 'on', '--oppo-no-change'], 'lhdcv5', OPPO_TWICE),
     # Another model (an Enco X4) asked the same way
@@ -245,7 +247,25 @@ NEGOTIATION = {
     # Left alone: no feature write listed, spatial audio on, another name
     'oppo-no-write': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-write'], 'lhdcv5', OPPO_NAME),
     'oppo-spatial': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-spatial'], 'lhdcv5', OPPO_NAME),
-    'oppo-other-name': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', []),
+    'oppo-other-name': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'] + OTHER_NAME, 'lhdcv5', OPPO_NAME),
+    # Auto picks LHDC V5: asked the same way
+    'oppo-auto': ('auto', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_NAME),
+    # Saved under another name (issue #237): the name they give tells them
+    'oppo-renamed': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', ['--device-name', 'test', '--sessions', '2']),
+    'huawei-renamed': ('ldac', HUAWEI_SINK + ['--huawei', 'off'], 'ldac', ['--device-name', 'test']),
+    # Developer mode's vendor settings (DEV_SETTINGS): OPPO's protocol for
+    # earbuds of any name, for none, and Hi-Res asked on every connection
+    'oppo-always': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'] + OTHER_NAME, 'lhdcv5', []),
+    'oppo-never': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_NAME),
+    # (earbuds that keep their limit: each stream asks, gains nothing, undoes it)
+    'oppo-every-connection': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-change'], 'lhdcv5', OPPO_TWICE),
+}
+# The settings.json a case starts with (developer mode)
+DEV_SETTINGS = {
+    'force-ldac': {'debug_mode': True, 'dev_overrides': {'force_codec': True}},
+    'oppo-always': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'always'}}},
+    'oppo-never': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'never'}}},
+    'oppo-every-connection': {'debug_mode': True, 'dev_vendors': {'oppo': {'options': ['every_connection']}}},
 }
 QUALITY_ON, QUALITY_OFF = 'Huawei control: 2BA2 010101', 'Huawei control: 2BA2 010100'
 HI_RES_ON, HI_RES_OFF, HI_RES_CODEC = 'OPPO control: 0403 1801', 'OPPO control: 0403 1800', 'OPPO control: 041A 080100'
@@ -260,22 +280,30 @@ LOG_CHECKS = {
     'huawei-no-ldac': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
     'huawei-no-ldac-drop': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
     'huawei-no-ldac-mode-on': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, False)],
-    'oppo-hi-res': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, 1), ('a2dpwb.log', ENCODED_1000, 1),
-                    ('sink.log', 'AVDTP connection', 2)],
-    'oppo-hi-res-on': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, 1), ('a2dpwb.log', ENCODED_1000, 1)],
+    'oppo-hi-res': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2),
+                    ('sink.log', 'AVDTP connection', 3)],
+    'oppo-hi-res-on': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2)],
     'oppo-codec-write': [('sink.log', HI_RES_CODEC, 1), ('sink.log', HI_RES_ON, False),
-                         ('a2dpwb.log', ENCODED_400, 1), ('a2dpwb.log', ENCODED_1000, 1)],
+                         ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2)],
     'oppo-drop': [('sink.log', HI_RES_ON, True), ('a2dpwb.log', ENCODED_1000, True), ('a2dpwb.log', ENCODED_400, False)],
-    'oppo-once': [('sink.log', 'OPPO control: 0100', 1), ('a2dpwb.log', ENCODED_1000, 2)],
+    'oppo-once': [('sink.log', 'OPPO control: 0100', 1), ('a2dpwb.log', ENCODED_1000, 3)],
     'oppo-no-change': [('sink.log', HI_RES_ON, 1), ('sink.log', HI_RES_OFF, 1), ('a2dpwb.log', ENCODED_400, 2),
-                       ('sink.log', 'AVDTP connection', 2)],
+                       ('sink.log', 'AVDTP connection', 3)],
     'oppo-no-change-on': [('sink.log', HI_RES_ON, 1), ('sink.log', HI_RES_OFF, False),
                           ('a2dpwb.log', ENCODED_400, 2)],
-    'oppo-other-product': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, 1),
-                           ('a2dpwb.log', ENCODED_1000, 1)],
+    'oppo-other-product': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False),
+                           ('a2dpwb.log', ENCODED_1000, 2)],
     'oppo-no-write': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
     'oppo-spatial': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
     'oppo-other-name': [('sink.log', 'OPPO control', False), ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-auto': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_1000, 1), ('a2dpwb.log', ENCODED_400, False)],
+    'oppo-renamed': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2),
+                     ('a2dpwb.log', 'name=“OPPO Enco Free4”', 1)],
+    'huawei-renamed': [('sink.log', QUALITY_ON, True), ('a2dpwb.log', 'name=“HUAWEI FreeBuds Pro 4”', True)],
+    'oppo-always': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_1000, 1), ('a2dpwb.log', 'remote name of', False)],
+    'oppo-never': [('sink.log', 'OPPO control', False), ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-every-connection': [('sink.log', HI_RES_ON, 2), ('sink.log', HI_RES_OFF, 2), ('a2dpwb.log', ENCODED_400, 2),
+                              ('sink.log', 'AVDTP connection', 4)],
 }
 TONES = ((1000.0, 0.5), (1500.0, 0.5))  # (frequency, amplitude) per channel, as --test-tone
 LATE_SDU_FAILURE = 'reached the controller after their SDU interval began'  # LE Audio cases run once more
@@ -457,10 +485,10 @@ def run_codec(args, codec, port):
     sink = start_sink(port, sink_capture, os.path.join(out, 'sink.log'), extra=sink_args)
     try:
         env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'))  # isolated link keys
-        if codec in FORCED:
+        if codec in DEV_SETTINGS:
             os.makedirs(env['A2DPWB_CONFIG_DIR'])
             with open(os.path.join(env['A2DPWB_CONFIG_DIR'], 'settings.json'), 'w', encoding='utf-8') as f:
-                json.dump({'debug_mode': True, 'dev_overrides': {'force_codec': True}}, f)
+                json.dump(DEV_SETTINGS[codec], f)
         with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8', errors='replace') as log:
             try:
                 rc = subprocess.run(

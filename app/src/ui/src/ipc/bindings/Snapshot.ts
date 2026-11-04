@@ -7,6 +7,7 @@ import type { Profile } from "./Profile";
 import type { Settings } from "./Settings";
 import type { StreamStatus } from "./StreamStatus";
 import type { UpdateState } from "./UpdateState";
+import type { VendorInfo } from "./VendorInfo";
 import type { VerboseState } from "./VerboseState";
 
 /**
@@ -49,4 +50,8 @@ verbose?: VerboseState | null,
  * Crash reports of A2DPWB's own processes the user has not dismissed
  * yet (diag.crashes_seen), newest first
  */
-crashes: Array<CrashReport>, };
+crashes: Array<CrashReport>, 
+/**
+ * The vendors with protocols of their own (developer mode's overrides)
+ */
+vendors: Array<VendorInfo>, };

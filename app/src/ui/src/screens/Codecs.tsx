@@ -715,6 +715,7 @@ function DeviceCodecs(props: {
           developer={snap().settings.developer_mode}
           matchSource={snap().settings.developer_mode && snap().settings.dev_overrides.match_source}
           deviceName={e().name}
+          onForgetReport={() => void app.run(() => app.core.request("device.forget_codecs", { address: e().address }))}
           onChange={(values) => {
             pending = values;
             clearTimeout(saveTimer);
