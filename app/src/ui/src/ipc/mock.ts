@@ -181,7 +181,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
       force_codec: false,
       auto_codec_settings: false,
       match_source: false,
-      lhdcv5_ignore_sink_max: false,
+      ignore_sink_max: false,
     },
     dev_log: { keep_days: 7, day_cap_mb: 100, always_verbose: null, health_every_interval: false },
     bt_chip_pid: 0,

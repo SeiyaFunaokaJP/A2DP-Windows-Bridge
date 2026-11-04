@@ -11,6 +11,7 @@
 // aptX HD and aptX Adaptive always carry 24-bit (no choice).
 
 import type { Settings } from "../ipc/types";
+import type { SbcCaps } from "./sbc";
 
 export type CodecId =
   | "auto"
@@ -287,14 +288,31 @@ export function forcesCodec(s: Pick<Settings, "developer_mode" | "dev_overrides"
   return s.developer_mode && s.dev_overrides.force_codec;
 }
 
-/** What the codec settings go by: without LHDC V5's maximum bit rate while
- *  developer mode's override ignores it, so every quality is offered */
+/** Developer mode's override: every codec runs at its quality's bit rate,
+ *  whatever maximum the device lists (core: DevOverrides::ignore_sink_max) */
+export function ignoresSinkMax(s: Pick<Settings, "developer_mode" | "dev_overrides">): boolean {
+  return s.developer_mode && s.dev_overrides.ignore_sink_max;
+}
+
+/** What the codec settings go by: without the device's maximum bit rates
+ *  while developer mode's override ignores them, so every quality is offered */
 export function capsForSettings(
   caps: readonly CodecCaps[],
   s: Pick<Settings, "developer_mode" | "dev_overrides">,
 ): readonly CodecCaps[] {
-  if (!(s.developer_mode && s.dev_overrides.lhdcv5_ignore_sink_max)) return caps;
-  return caps.map((c) => (c.codec === "lhdcv5" ? { ...c, max_bitrate: 0 } : c));
+  if (!ignoresSinkMax(s)) return caps;
+  return caps.map((c) => (c.max_bitrate > 0 ? { ...c, max_bitrate: 0 } : c));
+}
+
+/** The SBC setup the codec settings go by: no device maximum bitpool while
+ *  the override ignores it (the device's minimum still applies, as in the
+ *  core) */
+export function sbcCapsForSettings(
+  caps: SbcCaps | null,
+  s: Pick<Settings, "developer_mode" | "dev_overrides">,
+): SbcCaps | null {
+  if (!caps || caps.max_bitpool < 2 || !ignoresSinkMax(s)) return caps;
+  return { ...caps, max_bitpool: 255 };
 }
 
 /**

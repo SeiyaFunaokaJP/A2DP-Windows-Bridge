@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { setLanguage, t } from "../i18n";
-import { sampleProfile, sampleSettings } from "../ipc/mock";
+import { sampleProfile, sampleSettings, XM5_SBC } from "../ipc/mock";
 import type { LogLine } from "../ipc/types";
 import {
   abrCarries,
@@ -12,6 +12,7 @@ import {
   bitDepths,
   bitrateNoteKey,
   capsForSettings,
+  sbcCapsForSettings,
   capsOf,
   CARD_ORDER,
   cardOrder,
@@ -326,19 +327,24 @@ describe("profiles", () => {
       ["mq", "400"],
     ]);
     expect(offeredQualities("lhdcv5", 48000, 500000, "sq").map((q) => q.id)).toEqual(["hq", "sq", "mq"]);
-    // Developer mode's override: LHDC V5's maximum goes, the others' stays
-    // (issue #237: 400 kbps listed)
+    // Developer mode's override: every codec's maximum goes (issue #237:
+    // LHDC V5 400 kbps listed), the SBC bitpool's too but not its minimum
     const listed = [
       { codec: "lhdcv5", sample_rates: [48000], bit_depths: [24], max_bitrate: 400000 },
       { codec: "aac", sample_rates: [48000], bit_depths: [], max_bitrate: 262144 },
+      { codec: "ldac", sample_rates: [48000], bit_depths: [], max_bitrate: 0 },
     ];
     const dev = (on: boolean, developer_mode = true) => ({
       developer_mode,
-      dev_overrides: { ...sampleSettings().dev_overrides, lhdcv5_ignore_sink_max: on },
+      dev_overrides: { ...sampleSettings().dev_overrides, ignore_sink_max: on },
     });
     expect(capsForSettings(listed, dev(false))).toBe(listed);
     expect(capsForSettings(listed, dev(true, false))).toBe(listed);
-    expect(capsForSettings(listed, dev(true)).map((c) => c.max_bitrate)).toEqual([0, 262144]);
+    expect(capsForSettings(listed, dev(true)).map((c) => c.max_bitrate)).toEqual([0, 0, 0]);
+    const sbc = { ...XM5_SBC, min_bitpool: 10, max_bitpool: 39 };
+    expect(sbcCapsForSettings(sbc, dev(false))).toBe(sbc);
+    expect(sbcCapsForSettings(null, dev(true))).toBeNull();
+    expect(sbcCapsForSettings(sbc, dev(true))).toEqual({ ...sbc, max_bitpool: 255 });
     // aptX Adaptive's 96 kHz only when the device lists it (issue #86: a
     // Bose QC Ultra, 0x51, does not; an EarFun Air Pro 4+ does), also
     // while not known
