@@ -13,8 +13,9 @@
 //! - send: packets handed to L2CAP and the longest gap between them, the
 //!   longest wait for BTstack to allow one (controller buffers full)
 //! - air: the longest gap between Number Of Completed Packets events (the
-//!   controller got nothing out), and the longest USB write
-//! - radio: RSSI and the AFH channels in use
+//!   controller got nothing out), the most ACL packets the controller held,
+//!   and the longest USB write
+//! - radio: RSSI, the AFH channels in use, link quality and failed contacts
 //! - process: CPU, threads (a thread left from an earlier stream shows as
 //!   more threads and CPU), the system timer resolution
 //!
@@ -87,6 +88,7 @@ struct Peaks {
     completed_gap: Duration,
     usb_write: Duration,
     usb_in_flight: usize,
+    controller_backlog: u64,
 }
 
 impl Peaks {
@@ -99,6 +101,7 @@ impl Peaks {
         self.completed_gap = self.completed_gap.max(o.completed_gap);
         self.usb_write = self.usb_write.max(o.usb_write);
         self.usb_in_flight = self.usb_in_flight.max(o.usb_in_flight);
+        self.controller_backlog = self.controller_backlog.max(o.controller_backlog);
     }
 }
 
@@ -225,7 +228,13 @@ impl StreamHealth {
         if let (Some(a), Some(b)) = (self.first_threads, threads) {
             process.push(format!("threads {a} -> {b}"));
         }
-        tracing::info!("stream health {} summary: {line} | process: {}", self.stream, process.join(", "));
+        let link = self.stats.link();
+        let link = crate::link::link_state_text(&link)
+            .map(|t| {
+                format!(" | link: {t}, {} role change(s), {} sniff entries", link.role_changes, link.sniff_entries)
+            })
+            .unwrap_or_default();
+        tracing::info!("stream health {} summary: {line}{link} | process: {}", self.stream, process.join(", "));
     }
 
     fn line(&self, elapsed: Duration, d: &Delta, p: &Peaks, process: Option<&Process>) -> String {
@@ -238,7 +247,8 @@ impl StreamHealth {
             "{secs:.1} s | capture: audio {audio_pct:.1}%, silence {silence_pct:.1}% (filled {} frames), \
              packet gaps <= {} ms, discontinuities {}, behind {} frames | encode: gaps <= {} ms, queue <= {}/{}, \
              drops {} | send: {} pkt ({:.1}/s, {:.0} kbps), gaps <= {} ms, can-send waits <= {} ms, errors {} | \
-             air: completed gaps <= {} ms ({} events), USB writes <= {} ms ({} in flight)",
+             air: completed gaps <= {} ms ({} events), controller backlog <= {} ACL packets, USB writes <= {} ms \
+             ({} in flight)",
             d.filled_frames,
             ms(p.capture_gap),
             d.discontinuities,
@@ -255,6 +265,7 @@ impl StreamHealth {
             d.send_errors,
             ms(p.completed_gap),
             d.completed_events,
+            p.controller_backlog,
             ms(p.usb_write),
             p.usb_in_flight,
         );
@@ -267,6 +278,13 @@ impl StreamHealth {
         }
         if !radio.afh_avoided.is_empty() {
             radio_parts.push(format!("avoiding Wi-Fi {}", radio.afh_avoided));
+        }
+        let link = self.stats.link();
+        if let Some(q) = link.link_quality {
+            radio_parts.push(format!("link quality {q}"));
+        }
+        if link.failed_contacts.is_some() {
+            radio_parts.push(format!("failed contacts {} this stream", link.failed_contacts_stream));
         }
         if !radio_parts.is_empty() {
             s += &format!(" | radio: {}", radio_parts.join(", "));
@@ -326,6 +344,7 @@ fn take_peaks(s: &LinkStats, capture: CaptureReading) -> Peaks {
         completed_gap: us(t.completed_gap_us.take()),
         usb_write,
         usb_in_flight,
+        controller_backlog: t.controller_backlog_max.take(),
     }
 }
 
