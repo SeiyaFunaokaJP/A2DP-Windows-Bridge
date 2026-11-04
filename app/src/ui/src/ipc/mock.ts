@@ -974,6 +974,8 @@ export class MockCore implements Transport {
   async setTheme() {}
   /** Windows has no virtual device (tests) */
   noVirtual = false;
+  /** Now and then the capture falls behind (?capturedrops): audio dropped at capture */
+  captureDrops = false;
 
   setOtherRadio(radio: Snapshot["adapter"]["other_radio"]) {
     this.snap.adapter.other_radio = radio;
@@ -1578,7 +1580,7 @@ export class MockCore implements Transport {
       bytes: this.totals.bytes + bytes,
       dropped: this.totals.dropped + drops,
       capture_frames: this.totals.capture_frames + frames,
-      capture_dropped: this.totals.capture_dropped,
+      capture_dropped: this.totals.capture_dropped + (this.captureDrops && Math.random() < 0.1 * dt * 4 ? 480 : 0),
     };
     if (info?.le) {
       this.iso.sets += Math.round((1_000_000 / info.le.frame_us) * dt);
@@ -1649,7 +1651,7 @@ export class MockCore implements Transport {
       packets_per_second: pps,
       queue_depth: streaming ? Math.max(0, Math.round(2 + 3 * Math.sin(t) + Math.random() * 2)) : 0,
       dropped: this.since(this.totals, this.streamStart).dropped,
-      capture_dropped: 0,
+      capture_dropped: this.since(this.totals, this.streamStart).capture_dropped,
       airtime: streaming ? pps * slots * 625e-6 : 0,
       avg_packet_bytes: avg,
       acl_packet: avg === null ? null : { name: avg + 4 <= 83 ? "3-DH1" : avg + 4 <= 552 ? "3-DH3" : "3-DH5", slots },
@@ -1753,6 +1755,7 @@ export function mockFromUrl(): MockCore {
   const win = q.get("window") === "flyout" ? "flyout" : "main";
   const mock = new MockCore({ scenario, window: win });
   mock.noVirtual = q.has("novirtual");
+  mock.captureDrops = q.has("capturedrops");
   if (q.has("otherradio")) {
     mock.setOtherRadio({ name: "MediaTek Bluetooth Adapter", paired: q.get("otherradio") === "paired" });
   }
