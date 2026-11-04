@@ -3104,6 +3104,30 @@ html.win-flyout body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+/* "Open app" beside Connect, as tall as it (issue #86) */
+.fly-actions {
+  display: flex;
+  gap: var(--s2);
+}
+.fly-actions .connect-btn {
+  flex: 1;
+  min-width: 0;
+}
+.btn-icon.fly-open {
+  flex: none;
+  width: 3.25rem;
+  min-height: 3.25rem;
+  border-radius: var(--r-card);
+  border-color: var(--border);
+  background: var(--surface);
+}
+.btn-icon.fly-open .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+.btn-icon.fly-open:hover:not(:disabled) {
+  background: var(--surface-2);
+}
 .fly-foot {
   margin-top: auto;
   display: flex;

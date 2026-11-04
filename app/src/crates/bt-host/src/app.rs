@@ -70,6 +70,8 @@ pub(crate) struct Setup {
     pub on_loader: Option<crate::bringup::LoaderHook>,
     /// Run the chip probe instead of HCI init (BtHost::probe): its report
     pub probe: Option<mpsc::Sender<ProbeReport>>,
+    /// HostConfig::local_name
+    pub local_name: String,
 }
 
 /// LMP subversions Realtek chips report while running their ROM code,
@@ -452,7 +454,7 @@ impl HostApp {
         }
         // Audio (major 0x04), Hi-Fi audio device (minor 0x28), A2DP source;
         // page timeout ~20 s (0x8000 * 0.625 ms)
-        stack.gap_setup(0x200428, 0x8000);
+        stack.gap_setup(0x200428, 0x8000, &self.setup.local_name);
         // L2CAP before any profile: it registers with HCI for Connection
         // Complete events
         stack.l2cap_init();

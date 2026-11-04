@@ -596,7 +596,7 @@ mod tests {
     /// A module with GTBS built after GAP / GATT (as in a session)
     fn built() -> CcpModule {
         let mut s = GattServer::new();
-        s.build_base();
+        s.build_base("A2DPWB");
         let mut m = CcpModule::default();
         m.add_gatt_services(&mut s.builder(3));
         m
