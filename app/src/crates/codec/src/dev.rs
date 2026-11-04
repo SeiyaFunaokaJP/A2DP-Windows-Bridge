@@ -40,7 +40,15 @@ pub struct DevOverrides {
     /// Saved under its old name by 2.0.2-beta.17, when it was LHDC V5's
     #[serde(alias = "lhdcv5_ignore_sink_max")]
     pub ignore_sink_max: bool,
+    /// Longest a media packet waits in the send queue before it is dropped,
+    /// in ms (QUEUE_WAIT_MIN..=QUEUE_WAIT_MAX); 0 = the default (350 ms).
+    /// Takes effect when the next stream starts
+    pub queue_max_wait_ms: u32,
 }
+
+/// Range of [`DevOverrides::queue_max_wait_ms`] (ms)
+pub const QUEUE_WAIT_MIN: u32 = 50;
+pub const QUEUE_WAIT_MAX: u32 = 2000;
 
 impl DevOverrides {
     pub fn is_default(&self) -> bool {
@@ -60,6 +68,7 @@ static CURRENT: RwLock<DevOverrides> = RwLock::new(DevOverrides {
     auto_codec_settings: false,
     match_source: false,
     ignore_sink_max: false,
+    queue_max_wait_ms: 0,
 });
 
 /// The overrides in force

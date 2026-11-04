@@ -1530,6 +1530,9 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
             ls.capture_frames.load(Relaxed),
             ls.capture_dropped_frames.load(Relaxed)
         );
+        if let Some(d) = ls.sink_delay() {
+            let _ = writeln!(out, "  Device delay report {:.1} ms", d.as_secs_f64() * 1000.0);
+        }
         let radio = ls.radio();
         let mut parts = Vec::new();
         if let Some(rssi) = radio.rssi {
@@ -2196,6 +2199,7 @@ mod tests {
         };
         let stats = LinkStats::default();
         stats.packets_sent.store(1500, std::sync::atomic::Ordering::Relaxed);
+        stats.set_sink_delay(Some(1875));
         let adapters = vec!["Realtek RTL8761B [0BDA:8771], driver WinUsb".to_string()];
         let mut input = DiagInput {
             clients: &[],
@@ -2252,6 +2256,7 @@ mod tests {
             "  Device SBC: 44.1/48 kHz; mono/joint_stereo; blocks 4/8/12/16; subbands 4/8; snr/loudness; bitpool 2-53\n"
         ));
         assert!(text.contains("  Media packets sent 1500 (0 bytes), queue drops 0, send errors 0\n"));
+        assert!(text.contains("  Device delay report 187.5 ms\n"), "{text}");
         // Masked: the path from the app's folder on
         assert!(text.contains("  HCI capture running: <path>\\a2dpwb\\hci.pklg (3.0 MB)\n"), "{text}");
         assert!(text.contains("[Flow]\nConnection flow: attempt #1, started T+1.001\n"));
