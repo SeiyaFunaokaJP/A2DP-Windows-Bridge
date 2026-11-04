@@ -806,6 +806,8 @@ pub fn link_totals(s: &LinkStats) -> (LinkTotals, LinkTotals, u32) {
         dropped: s.start_dropped.load(r),
         capture_frames: s.start_capture_frames.load(r),
         capture_dropped: s.start_capture_dropped.load(r),
+        capture_discontinuities: s.start_capture_discontinuities.load(r),
+        capture_lost: s.start_capture_lost.load(r),
     };
     let total = LinkTotals {
         packets: s.packets_sent.load(r),
@@ -813,6 +815,8 @@ pub fn link_totals(s: &LinkStats) -> (LinkTotals, LinkTotals, u32) {
         dropped: s.queue_drops.load(r) + s.send_errors.load(r),
         capture_frames: s.capture_frames.load(r),
         capture_dropped: s.capture_dropped_frames.load(r),
+        capture_discontinuities: s.capture_discontinuities.load(r),
+        capture_lost: s.capture_lost_frames.load(r),
     };
     (total, start, starts)
 }

@@ -99,6 +99,13 @@ impl CaptureInput {
         }
     }
 
+    /// Windows reported a gap in the captured audio, `lost_frames` long
+    /// when known
+    pub fn discontinuity(&mut self, lost_frames: Option<u64>) {
+        self.stats.capture_discontinuities.fetch_add(1, Ordering::Relaxed);
+        self.stats.capture_lost_frames.fetch_add(lost_frames.unwrap_or(0), Ordering::Relaxed);
+    }
+
     /// Silence the capture inserted while nothing played: encoded like
     /// audio, but not counted as audio (AVRCP playback status)
     pub fn push_silence(&mut self, frames: usize) {

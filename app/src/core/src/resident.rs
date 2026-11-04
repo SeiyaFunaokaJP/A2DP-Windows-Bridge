@@ -169,6 +169,8 @@ fn link_sample(
         controller_backlog_ms: a2dp.then(|| a2dpwb_core::link::backlog_ms(backlog, acl_ps)).flatten(),
         remote_chip: remote_chip(&link).map(Box::new),
         link_details: link_details(&link).map(Box::new),
+        capture_discontinuities: Some(since.capture_discontinuities),
+        capture_lost: Some(since.capture_lost),
     };
     (sample, SampleCounters { at: now, totals: total, acl_packets })
 }
@@ -518,6 +520,12 @@ mod tests {
         // 240 ACL packets (two per media packet), the controller held 12 at most
         stats.acl_packets_sent.store(240, r);
         stats.controller_backlog_peak.record(12);
+        // Two Windows capture gaps, one of them 10 ms long, before the
+        // stream started and three more since
+        stats.start_capture_discontinuities.store(2, r);
+        stats.start_capture_lost.store(480, r);
+        stats.capture_discontinuities.store(5, r);
+        stats.capture_lost_frames.store(480 + 960, r);
         let (s, _) = link_sample(1000, &stats, Some(total), t0 + Duration::from_secs(1), 48000, None);
         assert!((s.packets_per_second - 120.0).abs() < 1e-6);
         assert_eq!(s.acl_packet, Some(AclPacket { name: "3-DH5".into(), slots: 6, from_features: Some(false) }));
@@ -530,6 +538,8 @@ mod tests {
         assert_eq!((c.total.packets, c.stream_start.packets, c.stream_starts), (120, 10, 1));
         assert_eq!(s.source_rate, Some(48000));
         assert!(s.iso.is_none());
+        assert_eq!((s.capture_discontinuities, s.capture_lost), (Some(3), Some(960)));
+        assert_eq!((c.total.capture_discontinuities, c.total.capture_lost), (5, 1440));
     }
 
     #[test]

@@ -93,4 +93,15 @@ remote_chip?: RemoteChip | null,
  * The A2DP link's state and readings: developer mode only. None
  * without an A2DP link.
  */
-link_details?: LinkDetails | null, };
+link_details?: LinkDetails | null, 
+/**
+ * Gaps Windows reported in the captured audio since the stream started
+ * (its own glitches: neither the encoder falling behind, which is
+ * capture_dropped, nor the radio)
+ */
+capture_discontinuities?: number | null, 
+/**
+ * Captured frames lost in those gaps, where the capture could tell (at
+ * source_rate, like capture_dropped)
+ */
+capture_lost?: number | null, };

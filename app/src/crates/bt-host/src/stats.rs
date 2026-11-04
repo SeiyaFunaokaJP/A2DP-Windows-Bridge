@@ -27,6 +27,10 @@ pub struct LinkStats {
     /// those dropped because the encoder fell behind
     pub capture_frames: AtomicU64,
     pub capture_dropped_frames: AtomicU64,
+    /// Gaps Windows reported in the captured audio (its own glitches, not
+    /// ours), and the frames lost in them where the capture could tell
+    pub capture_discontinuities: AtomicU64,
+    pub capture_lost_frames: AtomicU64,
     /// Silence frames inserted while nothing played
     pub silence_frames: AtomicU64,
     /// Instantaneous send queue fill (packets)
@@ -40,6 +44,8 @@ pub struct LinkStats {
     pub start_dropped: AtomicU64,
     pub start_capture_frames: AtomicU64,
     pub start_capture_dropped: AtomicU64,
+    pub start_capture_discontinuities: AtomicU64,
+    pub start_capture_lost: AtomicU64,
     pub stream_starts: AtomicU32,
     /// Radio readings of the link (BTstack thread, every few seconds)
     pub radio: Mutex<LinkRadio>,
@@ -146,6 +152,8 @@ impl LinkStats {
         self.start_capture_dropped.store(self.capture_dropped_frames.load(r), r);
         self.start_acl_packets.store(self.acl_packets_sent.load(r), r);
         self.controller_backlog_stream_max.store(self.controller_backlog.load(r), r);
+        self.start_capture_discontinuities.store(self.capture_discontinuities.load(r), r);
+        self.start_capture_lost.store(self.capture_lost_frames.load(r), r);
         self.stream_starts.fetch_add(1, Ordering::Release);
     }
 

@@ -306,7 +306,7 @@ describe("receiver comparison", () => {
     const r = state({
       streaming: true,
       stream: recv(5, { packets: 990, lost: 10, late: 1, interval_packets: 120, interval_bytes: 40000, underruns: 2, underrun_ms: 40 }),
-      sent: { packets: 1000, bytes: 345000, dropped: 2, capture_frames: 480000, capture_dropped: 480 },
+      sent: { packets: 1000, bytes: 345000, dropped: 2, capture_frames: 480000, capture_dropped: 480, capture_discontinuities: 0, capture_lost: 0 },
       stream_starts: 3,
     });
     const rows = compare({ receiver: r, stream: STREAMING, link, base: noBaseline(), lastInfo: null });
@@ -332,7 +332,7 @@ describe("receiver comparison", () => {
   it("keeps the final counts after the stream stopped", () => {
     const r = state({
       stream: recv(5, { packets: 995, idle: true, pauses: 1, decoding: false, frame_errors: 2 }),
-      sent: { packets: 1000, bytes: 0, dropped: 0, capture_frames: 0, capture_dropped: 0 },
+      sent: { packets: 1000, bytes: 0, dropped: 0, capture_frames: 0, capture_dropped: 0, capture_discontinuities: 0, capture_lost: 0 },
       stream_starts: 3,
     });
     const rows = compare({ receiver: r, stream: IDLE, link, base: noBaseline(), lastInfo: SBC });
@@ -349,14 +349,14 @@ describe("receiver comparison", () => {
     const r = state({
       streaming: true,
       stream: recv(5, { packets: 600, lost: 3 }),
-      sent: { packets: 610, bytes: 0, dropped: 1, capture_frames: 0, capture_dropped: 0 },
+      sent: { packets: 610, bytes: 0, dropped: 1, capture_frames: 0, capture_dropped: 0, capture_discontinuities: 0, capture_lost: 0 },
       stream_starts: 3,
     });
     const base = takeBaseline(r);
     const later = state({
       streaming: true,
       stream: recv(5, { packets: 700, lost: 4 }),
-      sent: { packets: 712, bytes: 0, dropped: 1, capture_frames: 0, capture_dropped: 0 },
+      sent: { packets: 712, bytes: 0, dropped: 1, capture_frames: 0, capture_dropped: 0, capture_discontinuities: 0, capture_lost: 0 },
       stream_starts: 3,
     });
     let rows = compare({ receiver: later, stream: STREAMING, link, base, lastInfo: null });
@@ -369,7 +369,7 @@ describe("receiver comparison", () => {
     const next = state({
       streaming: true,
       stream: recv(6, { packets: 50 }),
-      sent: { packets: 52, bytes: 0, dropped: 0, capture_frames: 0, capture_dropped: 0 },
+      sent: { packets: 52, bytes: 0, dropped: 0, capture_frames: 0, capture_dropped: 0, capture_discontinuities: 0, capture_lost: 0 },
       stream_starts: 4,
     });
     rows = compare({ receiver: next, stream: STREAMING, link, base, lastInfo: null });

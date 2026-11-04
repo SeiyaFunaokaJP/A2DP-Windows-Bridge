@@ -7,7 +7,8 @@
 //!
 //! - capture: audio delivered against the clock, silence the fill added
 //!   (no packet for two periods), the longest wait between packets, WASAPI
-//!   discontinuities, frames the encoder fell behind on
+//!   discontinuities and the audio lost in them, frames the encoder fell
+//!   behind on
 //! - encode: the longest wait between rounds, the send queue's fill and
 //!   drops
 //! - send: packets handed to L2CAP and the longest gap between them, the
@@ -56,7 +57,6 @@ static STREAMS: AtomicU32 = AtomicU32::new(0);
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct CaptureReading {
     pub filled_frames: u64,
-    pub discontinuities: u64,
     /// The longest wait between packets since the last reading
     pub packet_gap: Duration,
 }
@@ -73,6 +73,7 @@ struct Counters {
     silence_frames: u64,
     filled_frames: u64,
     discontinuities: u64,
+    lost_frames: u64,
     completed_events: u64,
     cpu: Option<Duration>,
 }
@@ -245,13 +246,14 @@ impl StreamHealth {
         let radio = self.stats.radio();
         let mut s = format!(
             "{secs:.1} s | capture: audio {audio_pct:.1}%, silence {silence_pct:.1}% (filled {} frames), \
-             packet gaps <= {} ms, discontinuities {}, behind {} frames | encode: gaps <= {} ms, queue <= {}/{}, \
+             packet gaps <= {} ms, discontinuities {} ({} ms lost), behind {} frames | encode: gaps <= {} ms, queue <= {}/{}, \
              drops {} | send: {} pkt ({:.1}/s, {:.0} kbps), gaps <= {} ms, can-send waits <= {} ms, errors {} | \
              air: completed gaps <= {} ms ({} events), controller backlog <= {} ACL packets, USB writes <= {} ms \
              ({} in flight)",
             d.filled_frames,
             ms(p.capture_gap),
             d.discontinuities,
+            ms(Duration::from_secs_f64(d.lost_frames as f64 / f64::from(self.sample_rate.max(1)))),
             d.capture_dropped,
             ms(p.encode_gap),
             p.queue_depth,
@@ -326,7 +328,8 @@ fn counters(s: &LinkStats, capture: CaptureReading) -> Counters {
         capture_dropped: s.capture_dropped_frames.load(r),
         silence_frames: s.silence_frames.load(r),
         filled_frames: capture.filled_frames,
-        discontinuities: capture.discontinuities,
+        discontinuities: s.capture_discontinuities.load(r),
+        lost_frames: s.capture_lost_frames.load(r),
         completed_events: s.timing.completed_events.load(r),
         cpu: win_sys::perf::process_cpu_time(),
     }
@@ -360,6 +363,7 @@ struct Delta {
     silence_frames: u64,
     filled_frames: u64,
     discontinuities: u64,
+    lost_frames: u64,
     completed_events: u64,
 }
 
@@ -376,7 +380,8 @@ impl Delta {
             // A new capture (an application that started again) counts
             // from 0
             filled_frames: b.filled_frames.checked_sub(a.filled_frames).unwrap_or(b.filled_frames),
-            discontinuities: b.discontinuities.checked_sub(a.discontinuities).unwrap_or(b.discontinuities),
+            discontinuities: b.discontinuities.saturating_sub(a.discontinuities),
+            lost_frames: b.lost_frames.saturating_sub(a.lost_frames),
             completed_events: b.completed_events.saturating_sub(a.completed_events),
         }
     }
@@ -400,13 +405,15 @@ mod tests {
 
     #[test]
     fn deltas_between_counters() {
-        let a = Counters { packets: 10, filled_frames: 5, discontinuities: 2, ..Default::default() };
-        let b = Counters { packets: 25, filled_frames: 9, discontinuities: 1, ..Default::default() };
+        let a = Counters { packets: 10, filled_frames: 5, discontinuities: 2, lost_frames: 480, ..Default::default() };
+        let b = Counters { packets: 25, filled_frames: 9, discontinuities: 3, lost_frames: 1440, ..Default::default() };
         let d = Delta::between(&a, &b);
         assert_eq!(d.packets, 15);
         assert_eq!(d.filled_frames, 4);
+        assert_eq!((d.discontinuities, d.lost_frames), (1, 960));
         // The capture started anew
-        assert_eq!(d.discontinuities, 1);
+        let c = Counters { filled_frames: 2, ..b };
+        assert_eq!(Delta::between(&b, &c).filled_frames, 2);
     }
 
     #[test]
