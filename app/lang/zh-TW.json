@@ -640,6 +640,7 @@
   "ui.adapter.restore_driver": "還原原始驅動程式",
   "ui.adapter.restore_title": "將介面卡交還給 Windows",
   "ui.adapter.restore_explain": "Windows 可以再次使用此介面卡。在重新指派 WinUSB 之前，A2DP Windows Bridge 無法透過它串流。",
+  "ui.adapter.restore_repair": "%s 可能無法在 Windows 中連線。如果這樣，請在 Windows 設定中移除它，然後重新配對。",
   "ui.adapter.restore_short": "將介面卡交還給 Windows 的藍牙",
   "ui.adapter.probe": "讀取晶片資訊",
   "ui.adapter.import_windows": "匯入 Windows 的配對",

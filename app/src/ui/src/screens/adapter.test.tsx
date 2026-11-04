@@ -156,6 +156,25 @@ describe("Adapter firmware", () => {
     await waitFor(() => expect(calls.filter((c) => c.method === "adapter.list").length).toBe(2));
   });
 
+  it("names the saved devices Windows has paired too before giving the adapter back", async () => {
+    const { mock } = start();
+    await screen.findByRole("heading", { level: 1, name: "Adapters" });
+    const m = mock as any;
+    const saved = m.snap.devices.filter((d: { saved: boolean; le_audio: boolean }) => d.saved && !d.le_audio);
+    expect(saved.length).toBeGreaterThan(0);
+    m.windowsPaired = [saved[0].address.toLowerCase(), "00:11:22:33:44:55"];
+    fireEvent.click((await screen.findAllByRole("button", { name: "Restore original driver" }))[0]);
+    const dialog = await screen.findByRole("dialog", { name: "Give the adapter back to Windows" });
+    expect(await within(dialog).findByText(new RegExp(`^${saved[0].name} may not connect in Windows`))).toBeInTheDocument();
+    // None of them paired in Windows: nothing to say
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    m.windowsPaired = ["00:11:22:33:44:55"];
+    fireEvent.click(screen.getAllByRole("button", { name: "Restore original driver" })[0]);
+    const again = await screen.findByRole("dialog", { name: "Give the adapter back to Windows" });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(within(again).queryByText(/may not connect in Windows/)).toBeNull();
+  });
+
   it("adapter names", () => {
     const a = { display_name: "RTL8761BU (0x0BDA:0xA729)", vendor: "Realtek", windows_name: null, realtek_chip: "RTL8761BU" };
     // Windows' Bluetooth never ran it: vendor and chip

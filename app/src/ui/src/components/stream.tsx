@@ -2,7 +2,7 @@
 // ring, the Connect / Disconnect button, volume, codec badge, link quality
 // and the error panel with its fix.
 
-import { createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
+import { createMemo, createResource, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
 import { errorText, useApp, type AppContext } from "../app/context";
 import { t, tm } from "../i18n";
 import { bitrateNoteKey, codecLabelKey } from "../lib/codecs";
@@ -728,6 +728,19 @@ export function ErrorPanel(props: { code?: string | null; message: Msg; title?: 
 export function WinusbDialog(props: { adapter: AdapterInfo | null; mode: "assign" | "restore"; onClose: (done: boolean) => void }) {
   const app = useApp();
   const [busy, setBusy] = createSignal(false);
+  // Restore: saved devices Windows has paired too. A pairing in A2DPWB
+  // gave the device a new key, so Windows' old one fails (BTHUSB event 16)
+  // until the device is paired in Windows again.
+  const [windowsPaired] = createResource(
+    () => (props.adapter && props.mode === "restore" ? props.adapter.instance_id : null),
+    () => app.core.request("device.windows_paired").catch(() => [] as string[]),
+  );
+  const repair = () => {
+    const paired = new Set((windowsPaired() ?? []).map((a) => a.toUpperCase()));
+    return (app.core.state.snap?.devices ?? [])
+      .filter((d) => d.saved && !d.le_audio && paired.has(d.address.toUpperCase()))
+      .map((d) => d.name || d.address);
+  };
   const go = async () => {
     const a = props.adapter;
     if (!a) return;
@@ -769,6 +782,9 @@ export function WinusbDialog(props: { adapter: AdapterInfo | null; mode: "assign
         <span class="muted"> · {props.adapter?.device_name}</span>
       </p>
       <p>{props.mode === "assign" ? t("ui.adapter.assign_explain") : t("ui.adapter.restore_explain")}</p>
+      <Show when={props.mode === "restore" && repair().length > 0}>
+        <Banner kind="warn">{t("ui.adapter.restore_repair", repair().join(", "))}</Banner>
+      </Show>
       <p class="muted">{t("ui.adapter.uac_note")}</p>
     </Dialog>
   );
