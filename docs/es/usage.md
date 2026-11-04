@@ -64,6 +64,7 @@ Los auriculares y altavoces a los que A2DPWB puede transmitir, cada uno con sus 
 ### Diagnóstico
 
 - **Calidad del enlace** durante la transmisión: tasa de bits real, paquetes, paquetes descartados antes del envío, audio descartado en la captura, cola de envío, tiempo de radio usado, señal (RSSI) y los canales AFH (consulte [Calidad del enlace y AFH](#link-quality))
+- **Radio**: los 79 canales Bluetooth de la banda de 2,4 GHz, cuáles usa el enlace y cuáles evita el adaptador, con los canales Wi-Fi debajo, y algunos consejos. En modo desarrollador, **Escanear** añade las redes Wi-Fi de 2,4 GHz cercanas (ver [La pestaña Radio](#radio-tab))
 - **Detalles del códec** durante la transmisión: la carga útil multimedia, los encabezados, la trama del códec y las tramas por paquete, y lo que anuncia el endpoint del dispositivo junto a lo que se usa: en SBC el bitpool, las frecuencias de muestreo, los modos de canal, los bloques, las subbandas y la asignación de bits; en AAC los tipos de objeto, las frecuencias de muestreo, los canales, la tasa de bits máxima y VBR; en los demás códecs las frecuencias de muestreo, las profundidades de bits y la tasa de bits máxima
 - **Flujo de conexión**: las once etapas del último intento de conexión (inicio, adaptador Bluetooth, conexión ACL / AVDTP, detección de capacidades, selección de códec, captura de audio, configuración de la transmisión, codificador, inicio de la transmisión, envío de audio, mantenimiento de la conexión con desconexiones / reconexiones) como OK, Advertencia o Error, con el tiempo que tardó cada una. **Copiar flujo** lo copia
 - **Registro**: en directo, filtrado por nivel (todos, info y superiores, advertencias y errores, solo errores), por texto y por el intento de conexión actual (**Solo el intento actual**). **Copiar registro visible** copia lo que se muestra. **Abrir la carpeta de registros** abre la carpeta de los archivos de registro; a diferencia de **Copiar diagnóstico**, esos archivos no están enmascarados (incluyen direcciones Bluetooth y su nombre de usuario de Windows)
@@ -480,6 +481,12 @@ Bluetooth evita por sí mismo los canales ocupados (AFH), pero solo se entera de
 Automático deja al AFH propio del controlador las redes que el PC solo oye: evitar el canal ocupado de un vecino resta 22 MHz al salto de frecuencia y puede empeorar el enlace en lugar de mejorarlo. Para evitar un canal así de todos modos, introdúzcalo en Manual.
 
 Siempre quedan en uso al menos 20 canales Bluetooth. Configúrelo en la pantalla **Adaptador**, con `"afh"` en `settings.json` (carpeta de configuración) o con `--afh` en modo CLI. La línea de radio muestra qué canales Wi-Fi se evitan. Que sirva o no depende del entorno: mídalo con la prueba con receptor par.
+
+### La pestaña Radio {#radio-tab}
+
+**Diagnóstico > Radio** dibuja el mapa de canales que el adaptador informa para el enlace (Read AFH Channel Map), así se ve dónde hay interferencias incluso en un PC sin Wi-Fi. Los canales en rojo son los que el AFH del propio adaptador dejó fuera; cuando la mayor parte de un canal Wi-Fi está en rojo, la pestaña lo nombra. Los canales que A2DPWB pidió evitar (Automático o Manual, arriba) llevan un contorno.
+
+En modo desarrollador, **Escanear** pide a Windows un escaneo Wi-Fi nuevo y dibuja cada red de 2,4 GHz sobre la banda, más alta cuanto más fuerte. En Windows 11 24H2 y posteriores la lista cuenta como datos de ubicación: Windows puede pedir acceso a la ubicación y, sin **Permitir que las aplicaciones de escritorio accedan a la ubicación**, no da la lista. El escaneo no cambia AFH: Automático sigue evitando solo el canal del propio PC (ver arriba por qué).
 
 ## Prueba con receptor par (tools/linux_sink) {#receiver}
 

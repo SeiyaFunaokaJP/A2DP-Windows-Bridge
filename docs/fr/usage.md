@@ -64,6 +64,7 @@ Les casques et enceintes vers lesquels A2DPWB peut diffuser, chacun avec ses pro
 ### Diagnostic
 
 - **Qualité de liaison** pendant la diffusion : débit réel, paquets, paquets abandonnés avant envoi, audio perdu à la capture, file d'envoi, temps radio utilisé, signal (RSSI) et canaux AFH (voir [Qualité de liaison et AFH](#link-quality))
+- **Radio** : les 79 canaux Bluetooth de la bande 2,4 GHz, ceux que la liaison utilise et ceux que l'adaptateur évite, avec les canaux Wi-Fi en dessous, et quelques conseils. En mode développeur, **Analyser** ajoute les réseaux Wi-Fi 2,4 GHz alentour (voir [L'onglet Radio](#radio-tab))
 - **Détails du codec** pendant la diffusion : la charge utile média, les en-têtes, la trame du codec et le nombre de trames par paquet, et ce qu'annonce le point de terminaison de l'appareil à côté de ce qui est utilisé : pour SBC le bitpool, les fréquences d'échantillonnage, les modes de canal, les blocs, les sous-bandes et l'allocation des bits ; pour AAC les types d'objet, les fréquences d'échantillonnage, les canaux, le débit maximal et le VBR ; pour les autres codecs les fréquences d'échantillonnage, les profondeurs de bits et le débit maximal
 - **Déroulement de la connexion** : les onze étapes de la dernière tentative de connexion (démarrage, adaptateur Bluetooth, connexion ACL / AVDTP, découverte des capacités, sélection du codec, capture audio, configuration du flux, encodeur, démarrage du flux, envoi audio, maintien de la connexion avec déconnexions / reconnexions), chacune marquée OK, Avertissement ou Échec, avec le temps qu'elle a pris. **Copier le déroulement** le copie
 - **Journal** : en direct, filtré par niveau (tous les niveaux, info et plus, avertissements et erreurs, erreurs uniquement), par texte et sur la tentative de connexion en cours (**Tentative actuelle uniquement**). **Copier le journal affiché** copie ce qui est affiché. **Ouvrir le dossier des journaux** ouvre le dossier des fichiers journaux ; contrairement à **Copier le diagnostic**, ces fichiers ne sont pas masqués (ils contiennent les adresses Bluetooth et votre nom d'utilisateur Windows)
@@ -480,6 +481,12 @@ Le Bluetooth évite de lui-même les canaux encombrés (AFH), mais il ne découv
 Auto laisse à l'AFH du contrôleur les réseaux que le PC ne fait que capter : éviter le canal encombré d'un voisin retire 22 MHz aux sauts de fréquence et peut dégrader la liaison au lieu de l'améliorer. Pour éviter malgré tout un tel canal, saisissez-le en Manuel.
 
 Au moins 20 canaux Bluetooth restent toujours utilisés. Réglez-le sur l'écran **Adaptateur**, avec `"afh"` dans `settings.json` (dossier de configuration), ou avec `--afh` en mode CLI. La ligne radio indique quels canaux Wi-Fi sont évités. L'utilité dépend de l'environnement : mesurez avec le test avec récepteur pair.
+
+### L'onglet Radio {#radio-tab}
+
+**Diagnostic > Radio** dessine la carte des canaux que l'adaptateur indique pour la liaison (Read AFH Channel Map) : on voit où sont les interférences, même sur un PC sans Wi-Fi. Les canaux en rouge sont ceux que l'AFH de l'adaptateur a écartés ; quand la plus grande partie d'un canal Wi-Fi est rouge, l'onglet le nomme. Les canaux qu'A2DPWB a demandé d'éviter (Auto ou Manuel ci-dessus) sont encadrés.
+
+En mode développeur, **Analyser** demande à Windows une nouvelle analyse Wi-Fi et dessine chaque réseau 2,4 GHz au-dessus de la bande, d'autant plus haut qu'il est fort. Depuis Windows 11 24H2, la liste compte comme donnée de localisation : Windows peut demander l'accès à la position et, sans **Autoriser les applications de bureau à accéder à votre position**, ne donne pas de liste. L'analyse ne change pas l'AFH : Auto n'évite toujours que le canal du PC lui-même (voir plus haut pourquoi).
 
 ## Test avec récepteur pair (tools/linux_sink) {#receiver}
 

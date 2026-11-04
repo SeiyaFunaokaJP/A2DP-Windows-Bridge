@@ -23,7 +23,7 @@ use ipc::{
     AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, DevLog, DevOverrides, Device,
     DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, LoaderStatus, Method, MixerApp,
     Msg, OtherRadio, ProbeResult, Profile, ReceiverConnection, ReceiverState, ScriptCheck, ScriptResult, Settings,
-    SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus, UpdateState,
+    SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus, UpdateState, WifiAccessPoint,
 };
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -2570,6 +2570,29 @@ impl CoreState {
                 let mask = params.and_then(|p| p.mask).unwrap_or(true);
                 // Lists the USB adapters: off the runtime
                 blocking(Box::new(move |me| Ok(json(&DiagInfo { text: crate::diag_text(me, mask) })))).await
+            }
+            Method::DiagWifiScan => {
+                // Waits for the scan: off the runtime
+                blocking(Box::new(|_| {
+                    use win_sys::wlan::{ScanError, scan_24ghz};
+                    match scan_24ghz(std::time::Duration::from_secs(4)) {
+                        Ok(aps) => {
+                            let list: Vec<WifiAccessPoint> = aps
+                                .into_iter()
+                                .map(|a| WifiAccessPoint { ssid: a.ssid, channel: a.channel, rssi: a.rssi })
+                                .collect();
+                            Ok(json(&list))
+                        }
+                        Err(ScanError::NoWifi) => Err(err("wifi.none", "error.wifi_none")),
+                        Err(ScanError::LocationDenied) => Err(err("wifi.location", "error.wifi_location")),
+                        Err(ScanError::RadioOff) => Err(err("wifi.off", "error.wifi_off")),
+                        Err(ScanError::Failed(code)) => {
+                            tracing::warn!("Wi-Fi scan failed (0x{code:08X})");
+                            Err(err("wifi.failed", "error.wifi_failed"))
+                        }
+                    }
+                }))
+                .await
             }
             Method::DiagFlow => Ok(json(&crate::flow_view(self))),
             Method::DiagRecentLogs { level } => {

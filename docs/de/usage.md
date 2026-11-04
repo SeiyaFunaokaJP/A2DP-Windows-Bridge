@@ -64,6 +64,7 @@ Die Kopfhörer und Lautsprecher, an die A2DPWB streamen kann, jeweils mit eigene
 ### Diagnose
 
 - **Verbindungsqualität** während des Streamings: tatsächliche Bitrate, Pakete, vor dem Senden verworfene Pakete, bei der Aufnahme verworfenes Audio, Sendewarteschlange, genutzte Funkzeit, Signal (RSSI) und die AFH-Kanäle (siehe [Verbindungsqualität und AFH](#link-quality))
+- **Funk**: die 79 Bluetooth-Kanäle im 2,4-GHz-Band, welche die Verbindung nutzt und welche der Adapter meidet, mit den WLAN-Kanälen darunter, dazu ein paar Tipps. Im Entwicklermodus zeigt **Suchen** auch die 2,4-GHz-WLANs in der Nähe (siehe [Der Funk-Tab](#radio-tab))
 - **Codec-Details** während des Streamings: die Medien-Nutzlast, Header, Codec-Frame und Frames pro Paket, und was der Endpunkt des Geräts aufführt, neben dem, was verwendet wird: bei SBC Bitpool, Abtastraten, Kanalmodi, Blöcke, Subbänder und Bitzuteilung; bei AAC Objekttypen, Abtastraten, Kanäle, Spitzenbitrate und VBR; bei den übrigen Codecs Abtastraten, Bittiefen und Spitzenbitrate
 - **Verbindungsablauf**: die elf Phasen des letzten Verbindungsversuchs (Start, Bluetooth-Adapter, ACL- / AVDTP-Verbindung, Fähigkeitenabfrage, Codec-Auswahl, Audioaufnahme, Stream-Konfiguration, Encoder, Stream-Start, Audio senden, Verbindungserhalt mit Trennungen / erneuten Verbindungen) als OK, Warnung oder Fehler, mit ihrer Dauer. **Ablauf kopieren** kopiert ihn
 - **Protokoll**: live, gefiltert nach Stufe (alle, Info und höher, Warnungen und Fehler, nur Fehler), nach Text und auf den aktuellen Verbindungsversuch (**Nur aktueller Versuch**). **Angezeigtes Protokoll kopieren** kopiert das Angezeigte. **Protokollordner öffnen** öffnet den Ordner der Protokolldateien; anders als bei **Diagnose kopieren** sind diese Dateien nicht maskiert (sie enthalten Bluetooth-Adressen und Ihren Windows-Benutzernamen)
@@ -480,6 +481,12 @@ Bluetooth meidet belegte Kanäle von selbst (AFH), erfährt von Wi-Fi aber nur �
 Automatisch überlässt Netze, die der PC nur empfängt, dem eigenen AFH des Controllers: Den belegten Kanal eines Nachbarn zu meiden, nimmt dem Frequenzsprungverfahren 22 MHz weg und kann die Verbindung verschlechtern statt verbessern. Um einen solchen Kanal trotzdem zu meiden, geben Sie ihn unter Manuell ein.
 
 Mindestens 20 Bluetooth-Kanäle bleiben immer in Gebrauch. Einstellen lässt sich dies auf der Seite **Adapter**, mit `"afh"` in `settings.json` (Konfigurationsordner) oder mit `--afh` im CLI-Modus. Die Funkzeile zeigt, welche Wi-Fi-Kanäle gemieden werden. Ob es hilft, hängt von der Umgebung ab: Messen Sie es mit dem Peer-Empfängertest.
+
+### Der Funk-Tab {#radio-tab}
+
+**Diagnose > Funk** zeichnet die Kanalkarte, die der Adapter für die Verbindung meldet (Read AFH Channel Map). So sieht man auch auf einem PC ohne WLAN, wo Störungen liegen. Rote Kanäle hat das AFH des Adapters selbst ausgelassen; ist der Großteil eines WLAN-Kanals rot, nennt der Tab diesen Kanal. Kanäle, die A2DPWB den Adapter meiden lässt (Automatisch oder Manuell oben), sind umrandet.
+
+Im Entwicklermodus fordert **Suchen** eine neue WLAN-Suche von Windows an und zeichnet jedes 2,4-GHz-Netz über das Band, je lauter, desto höher. Ab Windows 11 24H2 gilt die Liste als Standortdaten: Windows fragt eventuell nach Standortzugriff und liefert ohne **Desktop-Apps Zugriff auf Ihren Standort gewähren** keine Liste. Die Suche ändert AFH nicht: Automatisch meidet weiterhin nur den Kanal des PCs selbst (Gründe siehe oben).
 
 ## Peer-Empfängertest (tools/linux_sink) {#receiver}
 

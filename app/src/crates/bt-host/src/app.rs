@@ -2106,6 +2106,7 @@ impl HostApp {
             self.stats.with_radio(|r| {
                 r.rssi = None;
                 r.afh_in_use = None;
+                r.afh_map = None;
             });
             return;
         };
@@ -2135,20 +2136,27 @@ impl HostApp {
             }
             HCI_OPCODE_READ_AFH_CHANNEL_MAP if rp.len() >= 14 => {
                 // status, handle, mode, map[10]
-                let in_use = if rp[0] != ERROR_CODE_SUCCESS {
+                let map = if rp[0] != ERROR_CODE_SUCCESS {
                     None
                 } else if rp[3] == 1 {
-                    Some(rp[4..14].iter().map(|b| b.count_ones()).sum::<u32>().min(79))
+                    let mut m = [0u8; 10];
+                    m.copy_from_slice(&rp[4..14]);
+                    m[9] &= 0x7F; // bit 79 is reserved
+                    Some(m)
                 } else {
-                    Some(79)
+                    Some(crate::afh::Classification::all_usable().map)
                 };
+                let in_use = map.as_ref().map(|m| crate::afh::count(m) as u32);
                 tracing::debug!(
                     "radio: AFH mode {}, {in_use:?} channels in use, map {:02X?} (status 0x{:02X})",
                     rp[3],
                     &rp[4..14],
                     rp[0]
                 );
-                self.stats.with_radio(|r| r.afh_in_use = in_use);
+                self.stats.with_radio(|r| {
+                    r.afh_in_use = in_use;
+                    r.afh_map = map;
+                });
             }
             _ => {}
         }

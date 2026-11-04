@@ -145,4 +145,28 @@ describe("Diagnostics", () => {
     fireEvent.click(screen.getByRole("switch", { name: "Current attempt only" }));
     await waitFor(() => expect(view.container.querySelector(".log-line")).toHaveTextContent("stream: device"));
   });
+
+  it("draws the channels the link uses, and scans Wi-Fi in developer mode", async () => {
+    const { core, view } = start();
+    await screen.findByRole("heading", { level: 1, name: "Diagnostics" });
+    await waitFor(() => expect(core.state.snap).not.toBeNull());
+    fireEvent.click(screen.getByRole("tab", { name: "Radio" }));
+    // Tips always; no scan outside developer mode
+    expect(await screen.findByRole("heading", { name: "Tips" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Scan" })).toBeNull();
+
+    await core.request("stream.start", { profile: core.state.snap!.profiles[0].name });
+    // The mock leaves out channels 22-48, around Wi-Fi channel 6
+    await waitFor(() => expect(view.container.querySelector(".radio-map")).toHaveTextContent("52 of 79 in use"));
+    expect(view.container.querySelectorAll("rect.band-off")).toHaveLength(27);
+    expect(view.container.querySelector(".radio-map")).toHaveTextContent("around Wi-Fi channel 6");
+
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    fireEvent.click(await screen.findByRole("button", { name: "Scan" }));
+    await waitFor(() => expect(view.container.querySelectorAll("path.band-ap")).toHaveLength(3));
+    const rows = view.container.querySelectorAll(".radio-panel tbody tr");
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent(/home-2g\s*6\s*-48 dBm/);
+    expect(rows[2]).toHaveTextContent("(hidden)");
+  });
 });
