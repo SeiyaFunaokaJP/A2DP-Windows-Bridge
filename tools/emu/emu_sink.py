@@ -128,6 +128,8 @@ class EmuController(Controller):
         hci.HCI_READ_FAILED_CONTACT_COUNTER_COMMAND,
     }
     REMOTE_VERSION = (12, 0x0094, 0x2209)  # Bluetooth 5.3, Airoha
+    # Leave Read Remote Version without any answer, as Bumble itself does
+    silent_remote_version = False
 
     def _complete(self, command, data):
         self.send_hci_packet(hci.HCI_Command_Complete_Event(
@@ -146,6 +148,8 @@ class EmuController(Controller):
         self._complete(command, bytes([hci.HCI_ErrorCode.UNKNOWN_HCI_COMMAND_ERROR]))
 
     def on_hci_read_remote_version_information_command(self, command):
+        if self.silent_remote_version:
+            return None
         handle = command.connection_handle
         if self.find_classic_connection_by_handle(handle) is None:
             self._send_hci_command_status(hci.HCI_ErrorCode.UNKNOWN_CONNECTION_IDENTIFIER_ERROR, command.op_code)
@@ -546,6 +550,7 @@ async def main(args):
         public_address=A2DPWB_ADDRESS,
     )
     a2dpwb_controller.disconnect_delay = args.disconnect_delay
+    a2dpwb_controller.silent_remote_version = args.silent_remote_version
     if args.dual_mode:
         a2dpwb_controller.lmp_features = DUAL_MODE_FEATURES
     sink_controller = EmuController('SINK', link=link, public_address=SINK_ADDRESS)
@@ -695,6 +700,8 @@ if __name__ == '__main__':
                         help='with --opens-a2dp, also configure and open the last stream')
     parser.add_argument('--disconnect-delay', type=float, default=0, metavar='S',
                         help="seconds until an HCI Disconnect from A2DPWB takes effect")
+    parser.add_argument('--silent-remote-version', action='store_true',
+                        help='never answer Read Remote Version Information (no Command Status either)')
     parser.add_argument('--name', default='A2DPWB Test Sink',
                         help='the Bluetooth name, as an inquiry or a name request gets it')
     parser.add_argument('--no-eir-name', action='store_true',

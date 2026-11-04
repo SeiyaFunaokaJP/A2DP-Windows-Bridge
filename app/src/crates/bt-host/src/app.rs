@@ -23,7 +23,7 @@ use crate::events::{addr_at, addr_str, event_type, hci_error_string, le16, le24,
 use crate::intel;
 use crate::le::core::LeCore;
 use crate::le::iso_send::TIMER_ISO;
-use crate::link_details::LinkTracker;
+use crate::link_details::{self, LinkTracker};
 use crate::link_keys::FileLinkKeyStore;
 use crate::media::{MediaPacket, RTP_HEADER_SIZE};
 use crate::probe::ProbeReport;
@@ -41,6 +41,8 @@ pub(crate) const TIMER_PLAYBACK: u32 = 2;
 const TIMER_RTK_VERIFY: u32 = 5;
 /// The chip loader's answer timeout (crate::bringup)
 const TIMER_LOADER: u32 = 7;
+/// One of our link detail commands still unanswered (link_details.rs)
+const TIMER_LINK_COMMAND: u32 = 8;
 const RTK_VERIFY_RETRY_MS: u32 = 100;
 const RTK_VERIFY_TRIES: u8 = 20;
 /// Each L2CAP packet starts with a 4-byte header
@@ -1038,6 +1040,7 @@ impl HostApp {
                     stack.timer_stop(TIMER_AFH);
                     stack.timer_stop(TIMER_PLAYBACK);
                     stack.timer_stop(TIMER_RTK_VERIFY);
+                    stack.timer_stop(TIMER_LINK_COMMAND);
                     self.stats.with_radio(|r| *r = Default::default());
                     self.link.reset();
                     self.media_acl = None;
@@ -1060,7 +1063,7 @@ impl HostApp {
                         self.shared.update(|s| s.inquiry_done = true);
                     }
                 }
-                self.link.send_next(stack);
+                self.send_link_reads(stack);
             }
             HCI_EVENT_COMMAND_COMPLETE => {
                 let opcode = le16(p, 3).unwrap_or(0);
@@ -1092,7 +1095,7 @@ impl HostApp {
                     });
                 }
                 self.on_radio_command_complete(opcode, p);
-                self.link.send_next(stack);
+                self.send_link_reads(stack);
             }
             HCI_EVENT_USER_CONFIRMATION_REQUEST => {
                 // Just Works
@@ -1568,7 +1571,7 @@ impl HostApp {
                     });
                     self.link.a2dp_opened(stack, handle & 0x0FFF);
                     self.publish_link();
-                    self.link.send_next(stack);
+                    self.send_link_reads(stack);
                 }
             }
             Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CAPABILITY) => {
@@ -2102,6 +2105,28 @@ impl HostApp {
     // AFH classification and radio readings
     // ======================================================================
 
+    /// The next link detail reading, with a deadline for its answer
+    fn send_link_reads(&mut self, stack: &Stack) {
+        if self.link.send_next(stack) {
+            stack.timer_start(TIMER_LINK_COMMAND, link_details::COMMAND_TIMEOUT.as_millis() as u32);
+        }
+    }
+
+    /// A link detail command went unanswered. BTstack's slot stays taken
+    /// until a Command Complete / Status comes, which would stop every later
+    /// command (RSSI, AFH, the liveness probe, connects). Releasing it with a
+    /// Command Status of our own is the safest way on: BTstack keeps nothing
+    /// else for these commands, and a late answer only sets the slot free
+    /// again. Not sending them at all would lose the remote chip for every
+    /// controller that answers; a stall check would take the whole stack down
+    /// for one diagnostics reading.
+    fn link_command_timeout(&mut self, stack: &Stack) {
+        let Some(opcode) = self.link.overdue(Instant::now()) else { return };
+        // Still held, and only by ours: no answer of any kind came since
+        if stack.hci_state() == HciState::Working && !stack.can_send_command_now() {
+            stack.release_command_slot(opcode, ERROR_CODE_UNKNOWN_HCI_COMMAND);
+        }
+    }
     fn afh_tick(&mut self, stack: &Stack) {
         if !self.shared.lock().hci_ready {
             return;
@@ -2294,6 +2319,7 @@ impl App for HostApp {
                 stack.timer_start(TIMER_PLAYBACK, PLAYBACK_TICK_MS);
             }
             TIMER_RTK_VERIFY => self.verify_realtek_download(stack),
+            TIMER_LINK_COMMAND => self.link_command_timeout(stack),
             TIMER_LOADER => {
                 if let Some(loader) = self.loader.as_mut() {
                     let actions = loader.on_timeout();

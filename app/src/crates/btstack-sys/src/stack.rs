@@ -501,6 +501,17 @@ impl Stack {
         status
     }
 
+    /// Frees BTstack's command slot held by `opcode`, a command the
+    /// controller never answered: BTstack gets a Command Status with
+    /// `status` as if from the controller. Only for commands BTstack does not
+    /// wait on itself, and only while it cannot send another command.
+    pub fn release_command_slot(&self, opcode: u16, status: u8) {
+        tracing::debug!(target: "btstack", "command slot of 0x{opcode:04X} released (status 0x{status:02X})");
+        // SAFETY: on the BTstack thread, after hci_init; the shim builds the
+        // event in its own buffer.
+        unsafe { ffi::a2dpwb_hci_command_status_inject(opcode, status) }
+    }
+
     /// ACL packets of the link handed to the controller and not yet reported
     /// sent by Number Of Completed Packets (None: no such link)
     pub fn acl_packets_in_controller(&self, con_handle: u16) -> Option<u32> {

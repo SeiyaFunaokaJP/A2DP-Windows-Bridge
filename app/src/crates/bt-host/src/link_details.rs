@@ -4,12 +4,19 @@
 //!
 //! Commands go out one at a time when the controller takes one, never more
 //! than one of each per radio reading. One the controller does not list in
-//! its supported commands is never sent (a command left unanswered would
-//! hold BTstack's command slot for good); one it refuses as unknown is not
+//! its supported commands is never sent; one it refuses as unknown is not
 //! sent again until HCI starts over.
+//!
+//! A command left without any answer would hold BTstack's command slot for
+//! good (BTstack has no command timeout once HCI is up): RSSI, AFH and every
+//! later command would stop. A controller can list a command and still never
+//! answer it (Bumble with Read Remote Version). After [`COMMAND_TIMEOUT`]
+//! with no Command Complete / Status of any kind, [`LinkTracker::overdue`]
+//! counts the command as unsupported for this HCI session and the app frees
+//! the slot (see `HostApp::link_command_timeout`).
 
 use std::collections::{HashMap, VecDeque};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use btstack_sys::Stack;
 use btstack_sys::consts::*;
@@ -21,6 +28,12 @@ use crate::stats::{LinkDetails, LinkMode, LinkStats, RemoteFeatures, RemoteVersi
 /// controller does not have it
 const ERROR_CODE_UNKNOWN_HCI_COMMAND: u8 = 0x01;
 const ERROR_CODE_UNSUPPORTED_FEATURE_OR_PARAMETER_VALUE: u8 = 0x11;
+
+/// How long one of our commands may go without a Command Complete / Status.
+/// Controllers answer these within milliseconds (Read Remote Version with
+/// its Command Status, the event comes later); well below the 2 s of the
+/// liveness probe that waits behind it.
+pub(crate) const COMMAND_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// A reading of a link
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,8 +86,11 @@ struct Acl {
 pub(crate) struct LinkTracker {
     links: HashMap<u16, Acl>,
     reads: VecDeque<(LinkRead, u16)>,
-    /// Opcodes the controller refused as unknown in this HCI session
+    /// Opcodes the controller refused as unknown (or never answered) in this
+    /// HCI session
     refused: Vec<u16>,
+    /// Our command sent last and when, until any Command Complete / Status
+    in_flight: Option<(u16, Instant)>,
     /// The controller's supported commands (Read Local Supported Commands
     /// during HCI init); None: not read, everything is tried
     supported: Option<[u8; 64]>,
@@ -188,23 +204,46 @@ impl LinkTracker {
     }
 
     /// Sends the next reading if the controller takes a command now (after
-    /// each Command Complete / Status, and after queueing)
-    pub fn send_next(&mut self, stack: &Stack) {
+    /// each Command Complete / Status, and after queueing); true when one
+    /// went out (its answer is due within [`COMMAND_TIMEOUT`])
+    pub fn send_next(&mut self, stack: &Stack) -> bool {
         while let Some(&(read, handle)) = self.reads.front() {
             if !self.links.contains_key(&handle) {
                 self.reads.pop_front();
                 continue;
             }
             if !stack.can_send_command_now() {
-                return;
+                return false;
             }
             self.reads.pop_front();
             let status = read.send(stack, handle);
             if status == ERROR_CODE_SUCCESS {
-                return;
+                self.in_flight = Some((read.opcode(), Instant::now()));
+                return true;
             }
             tracing::debug!("link details: {read:?} not sent (0x{status:02X})");
         }
+        false
+    }
+
+    /// Our command still without any answer at `now`, [`COMMAND_TIMEOUT`]
+    /// after it went out: counted as unsupported for this HCI session (not
+    /// sent again until HCI starts over), its opcode returned once
+    pub fn overdue(&mut self, now: Instant) -> Option<u16> {
+        let (opcode, at) = self.in_flight?;
+        if now.saturating_duration_since(at) < COMMAND_TIMEOUT {
+            return None;
+        }
+        self.in_flight = None;
+        tracing::warn!(
+            "link details: no answer to command 0x{opcode:04X} in {} ms, not sent again",
+            COMMAND_TIMEOUT.as_millis()
+        );
+        if !self.refused.contains(&opcode) {
+            self.refused.push(opcode);
+        }
+        self.reads.retain(|&(r, _)| r.opcode() != opcode);
+        Some(opcode)
     }
 
     /// A command the controller did not take: unknown ones are not sent
@@ -227,6 +266,11 @@ impl LinkTracker {
 
     /// An HCI event; true when a link's details changed
     pub fn on_hci(&mut self, ev: u8, p: &[u8], streaming: bool) -> bool {
+        // Any answer gives BTstack its slot back: one command is out at a
+        // time, so it was ours or ours was answered before
+        if matches!(ev, HCI_EVENT_COMMAND_COMPLETE | HCI_EVENT_COMMAND_STATUS) {
+            self.in_flight = None;
+        }
         match ev {
             HCI_EVENT_COMMAND_COMPLETE => {
                 let (Some(opcode), Some(status)) = (le16(p, 3), u8_at(p, 5)) else { return false };
@@ -488,6 +532,30 @@ mod tests {
             t.queue(r, 0x0B);
         }
         assert_eq!(t.reads, [(LinkRead::LinkQuality, 0x0B), (LinkRead::RemoteVersion, 0x0B)]);
+    }
+
+    #[test]
+    fn an_unanswered_command_counts_as_unsupported() {
+        let mut t = tracker_with(0x0B, [1; 6]);
+        let sent = Instant::now();
+        t.in_flight = Some((HCI_OPCODE_READ_REMOTE_VERSION_INFORMATION, sent));
+        t.reads.push_back((LinkRead::LinkQuality, 0x0B));
+        assert_eq!(t.overdue(sent + COMMAND_TIMEOUT / 2), None);
+        assert_eq!(t.overdue(sent + COMMAND_TIMEOUT), Some(HCI_OPCODE_READ_REMOTE_VERSION_INFORMATION));
+        // Once only, the other readings stay queued, never asked again
+        assert_eq!(t.overdue(sent + COMMAND_TIMEOUT * 2), None);
+        assert_eq!(t.reads, [(LinkRead::LinkQuality, 0x0B)]);
+        t.queue(LinkRead::RemoteVersion, 0x0B);
+        assert_eq!(t.reads.len(), 1);
+        // Answered in time: nothing overdue
+        t.in_flight = Some((HCI_OPCODE_READ_LINK_QUALITY, sent));
+        let lq = command_complete(HCI_OPCODE_READ_LINK_QUALITY, &[0, 0x0B, 0, 200]);
+        t.on_hci(HCI_EVENT_COMMAND_COMPLETE, &lq, true);
+        assert_eq!(t.overdue(sent + COMMAND_TIMEOUT * 2), None);
+        // A new HCI session tries it again
+        t.reset();
+        t.queue(LinkRead::RemoteVersion, 0x0B);
+        assert_eq!(t.reads, [(LinkRead::RemoteVersion, 0x0B)]);
     }
 
     #[test]

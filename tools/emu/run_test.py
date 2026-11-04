@@ -798,6 +798,16 @@ LINK_CASES = {
         ('a2dpwb.log', r'does not support command 0x1401', True),
         ('a2dpwb.log', r'Bluetooth stack stalled', False),
     ]),
+    # A controller that never answers Read Remote Version: the command
+    # counts as unsupported after its timeout and the readings behind it
+    # (supervision timeout, then RSSI and link quality) go on
+    'details-unanswered': (['--silent-remote-version'], ['--duration', '12'], [
+        ('a2dpwb.log', r'no answer to command 0x041D in \d+ ms', True),
+        ('a2dpwb.log', r'no answer to command 0x041D.*supervision timeout Some\(32000\) slots', True),
+        ('a2dpwb.log', r'no answer to command 0x041D.*radio: link quality 230', True),
+        ('a2dpwb.log', r'remote controller of ', False),
+        ('a2dpwb.log', r'Bluetooth stack stalled', False),
+    ]),
     # A setting changed just after the link came up: the next connection
     # starts while that link goes down
     'restart-on-link': (['--disconnect-delay', '0.5'], ['--duration', '3', '--restart-on-link'], [

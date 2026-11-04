@@ -194,6 +194,17 @@ void a2dpwb_transport_packet_sent(void) {
     if (transport_packet_handler) transport_packet_handler(HCI_EVENT_PACKET, sent, sizeof(sent));
 }
 
+/* A command the controller never answered: a Command Status of our own, as if
+ * from the controller, gives hci.c its command slot back. hci.c keeps no
+ * other state for a command once sent (handle_command_status_event only sets
+ * num_cmd_packets for opcodes it does not track), so this is safe for
+ * commands it does not wait on itself; the caller passes only its own link
+ * reads. Its own buffer: the transport's may be in use further up. */
+void a2dpwb_hci_command_status_inject(uint16_t opcode, uint8_t status) {
+    uint8_t event[6] = {HCI_EVENT_COMMAND_STATUS, 4, status, 1, (uint8_t)(opcode & 0xff), (uint8_t)(opcode >> 8)};
+    if (transport_packet_handler) transport_packet_handler(HCI_EVENT_PACKET, event, sizeof(event));
+}
+
 void a2dpwb_hci_init(int async) {
     transport_packet_handler = NULL;
     hci_init(a2dpwb_transport_instance(async), NULL);
