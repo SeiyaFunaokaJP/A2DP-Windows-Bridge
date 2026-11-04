@@ -646,6 +646,8 @@ export class MockCore implements Transport {
   private received = { id: 0, packets: 0, bytes: 0, lost: 0, underruns: 0, underrun_ms: 0 };
   /** The LE Audio stream's ISO counters (since it was set up) */
   private iso = { sets: 0, silence: 0, underruns: 0, prefill: 3 };
+  /** Failed contacts of the A2DP link since the stream started */
+  private failedContacts = 0;
   private trayHintShown = false;
   private navigate: (route: string) => void = () => {};
   private updatePhase: UpdatePhase = { state: "idle" };
@@ -1292,6 +1294,7 @@ export class MockCore implements Transport {
       this.streamStart = { ...this.totals };
       this.streamStarts += 1;
       this.iso = { sets: 0, silence: 3, underruns: 0, prefill: 3 };
+      this.failedContacts = 0;
       if (t.address === RECEIVER.bt_address) {
         this.received = { id: this.received.id + 1, packets: 0, bytes: 0, lost: 0, underruns: 0, underrun_ms: 0 };
       }
@@ -1639,6 +1642,11 @@ export class MockCore implements Transport {
     const bps = (kbps * 1000) / 8;
     const avg = pps > 0 ? bps / pps : null;
     const slots = avg === null ? 0 : avg + 4 <= 83 ? 2 : avg + 4 <= 552 ? 4 : Math.ceil((avg + 4) / 1021) * 6;
+    // The controller holds a few ACL packets (one per media packet up to its 1021-byte buffer)
+    const backlog = streaming ? Math.max(1, Math.round(3 + 2 * Math.sin(t / 1.7) + Math.random() * 2)) : null;
+    const aclPerSecond = pps * Math.max(1, Math.ceil(((avg ?? 0) + 4) / 1021));
+    const rises = streaming && Math.random() < 0.02 ? 1 : 0;
+    this.failedContacts += rises;
     const sample: LinkSample = {
       time_ms: this.now(),
       rssi: streaming ? Math.round(-4 + 5 * Math.sin(t / 3) + Math.random() * 2) : null,
@@ -1652,12 +1660,50 @@ export class MockCore implements Transport {
       capture_dropped: 0,
       airtime: streaming ? pps * slots * 625e-6 : 0,
       avg_packet_bytes: avg,
-      acl_packet: avg === null ? null : { name: avg + 4 <= 83 ? "3-DH1" : avg + 4 <= 552 ? "3-DH3" : "3-DH5", slots },
+      acl_packet:
+        avg === null
+          ? null
+          : { name: avg + 4 <= 83 ? "3-DH1" : avg + 4 <= 552 ? "3-DH3" : "3-DH5", slots, from_features: true },
       bandwidth_share: streaming ? (pps * ((avg ?? 0) + 4) * 8) / 1000 / 2178.13 : null,
       queue_capacity: 64,
       queue_ms: streaming ? Math.max(0, Math.round(10 + 10 * Math.sin(t))) : 0,
       source_rate: streaming ? (this.snap.stream.info?.source_sample_rate ?? 0) : 0,
       counters: { total: { ...this.totals }, stream_start: { ...this.streamStart }, stream_starts: this.streamStarts },
+      controller_backlog: backlog,
+      controller_backlog_ms: backlog !== null && aclPerSecond > 0 ? (backlog * 1000) / aclPerSecond : null,
+      remote_chip: streaming
+        ? {
+            company_id: 0x0094,
+            company: "Airoha",
+            version: "5.3",
+            lmp_version: 12,
+            lmp_subversion: 0x2209,
+            features: {
+              edr_2m: true,
+              edr_3m: true,
+              three_slot: true,
+              five_slot: true,
+              edr_three_slot: true,
+              edr_five_slot: true,
+              largest_packet: "3-DH5",
+            },
+          }
+        : null,
+      link_details: streaming
+        ? {
+            role: "central",
+            role_changes: 0,
+            mode: "active",
+            sniff_interval_ms: null,
+            sniff_entries: 0,
+            encryption_key_size: 16,
+            supervision_timeout_ms: 20000,
+            failed_contacts: rises,
+            failed_contacts_stream: this.failedContacts,
+            failed_contacts_per_second: rises / 5,
+            link_quality: Math.round(250 + Math.random() * 5),
+          }
+        : null,
     };
     this.onMessage({ type: "event", rev: this.rev, event: { kind: "link", value: sample } });
   }

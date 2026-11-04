@@ -978,13 +978,15 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub avg_packet_bytes: Option<f64>,
-    /// The ACL packet type that size takes on an EDR 3 Mbps link; None
-    /// while nothing is sent
+    /// The ACL packet type that size takes: on the fastest packet types the
+    /// remote device's features allow, on an EDR 3 Mbps link while they are
+    /// not known (AclPacket.from_features); None while nothing is sent
     #[ts(optional = nullable)]
     #[serde(default)]
     pub acl_packet: Option<AclPacket>,
-    /// Share of the EDR 3 Mbps link's usable rate (2178 kbps: 1021 bytes
-    /// every 6 slots) the stream takes, L2CAP headers included
+    /// Share of the link's usable rate the stream takes, L2CAP headers
+    /// included: the largest packet the remote device allows and its reply
+    /// slot (EDR 3 Mbps: 2178 kbps, 1021 bytes every 6 slots)
     #[ts(optional = nullable)]
     #[serde(default)]
     pub bandwidth_share: Option<f64>,
@@ -1013,6 +1015,126 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub iso: Option<IsoCounters>,
+    /// The most ACL packets of the A2DP link the controller held over the
+    /// last interval: handed to it and not yet sent. Audio waits there
+    /// after the send queue (queue_ms). For everyone. None while not
+    /// streaming A2DP.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub controller_backlog: Option<u32>,
+    /// controller_backlog in ms of audio, at the interval's ACL packet rate;
+    /// None while nothing is sent
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub controller_backlog_ms: Option<f64>,
+    /// The connected device's Bluetooth chip. For everyone. None without
+    /// an A2DP link or before its controller answered.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub remote_chip: Option<Box<RemoteChip>>,
+    /// The A2DP link's state and readings: developer mode only. None
+    /// without an A2DP link.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub link_details: Option<Box<LinkDetails>>,
+}
+
+/// The connected device's Bluetooth chip, as its controller reports it
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct RemoteChip {
+    /// Bluetooth SIG company identifier of the chip's maker
+    #[ts(optional = nullable)]
+    pub company_id: Option<u16>,
+    /// Its name ("Airoha"), or the ID in hex ("0x1234") when not listed
+    #[ts(optional = nullable)]
+    pub company: Option<String>,
+    /// Bluetooth core version of the chip ("5.3"); None for an LMP version
+    /// the table does not know
+    #[ts(optional = nullable)]
+    pub version: Option<String>,
+    #[ts(optional = nullable)]
+    pub lmp_version: Option<u8>,
+    /// The maker's firmware / chip revision number
+    #[ts(optional = nullable)]
+    pub lmp_subversion: Option<u16>,
+    /// What the chip supports; None before its features were read
+    #[ts(optional = nullable)]
+    pub features: Option<RemoteChipFeatures>,
+}
+
+/// Packet types the remote chip supports
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct RemoteChipFeatures {
+    /// EDR 2 Mbps / 3 Mbps
+    pub edr_2m: bool,
+    pub edr_3m: bool,
+    /// Basic rate 3- / 5-slot packets
+    pub three_slot: bool,
+    pub five_slot: bool,
+    /// EDR 3- / 5-slot packets
+    pub edr_three_slot: bool,
+    pub edr_five_slot: bool,
+    /// The largest packet type these allow ("3-DH5", "2-DH5", "DH3")
+    pub largest_packet: String,
+}
+
+/// Link role of this adapter
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkRole {
+    Central,
+    Peripheral,
+}
+
+/// Power mode of the link
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkMode {
+    Active,
+    Hold,
+    Sniff,
+    Park,
+}
+
+/// The A2DP link's state and readings (developer mode). None: not known,
+/// or the controller does not support reading it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+
+pub struct LinkDetails {
+    #[ts(optional = nullable)]
+    pub role: Option<LinkRole>,
+    /// Role changes since the stream started
+    pub role_changes: u32,
+    #[ts(optional = nullable)]
+    pub mode: Option<LinkMode>,
+    /// While in sniff mode
+    #[ts(optional = nullable)]
+    pub sniff_interval_ms: Option<f64>,
+    /// Times the link went into sniff mode since the stream started
+    pub sniff_entries: u32,
+    /// Encryption key size in bytes (16 is the most)
+    #[ts(optional = nullable)]
+    pub encryption_key_size: Option<u8>,
+    /// How long without a packet from the device before the link counts
+    /// as lost
+    #[ts(optional = nullable)]
+    pub supervision_timeout_ms: Option<f64>,
+    /// The controller's failed contact counter as last read: packets in a
+    /// row it gave up on, back to 0 when one gets through
+    #[ts(optional = nullable)]
+    pub failed_contacts: Option<u16>,
+    /// Rises of that counter since the stream started (None while it is not
+    /// read)
+    #[ts(optional = nullable, type = "number | null")]
+    pub failed_contacts_stream: Option<u64>,
+    /// Rises a second between its last two readings
+    #[ts(optional = nullable)]
+    pub failed_contacts_per_second: Option<f64>,
+    /// Link quality, 0..255: chip specific, higher is better
+    #[ts(optional = nullable)]
+    pub link_quality: Option<u8>,
 }
 
 /// An LE Audio stream's send counters (since the stream was set up; a
@@ -1043,11 +1165,16 @@ pub struct IsoCounters {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 
 pub struct AclPacket {
-    /// "3-DH1", "3-DH3", "3-DH5"
+    /// "3-DH1", "3-DH3", "3-DH5" ("2-DH5", "DH5" on a device without EDR
+    /// 3 Mbps)
     pub name: String,
     /// Slots per media packet with the reply slot (several 3-DH5 packets
     /// for one larger than 1021 bytes)
     pub slots: u32,
+    /// From the remote device's features; false: EDR 3 Mbps assumed
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub from_features: Option<bool>,
 }
 
 /// Media counters of the core (cumulative, never reset)
