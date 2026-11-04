@@ -1056,18 +1056,37 @@ fn peer_params(remote: &RemoteCaps, kind: CodecKind, channels: u32, req: &Stream
         remote.aac_max_bitrate(),
         remote.lhdcv5_bitrate_limits()
     );
-    // Developer mode: no maximum (P7[5:4] 0) for the encoder; the
-    // SET_CONFIGURATION still echoes the sink's (issue #237)
+    // Developer mode: the encoder goes by the quality, not the sink's
+    // maximum (LHDC V5's P7[5:4], AAC's bit rate, Opus 05's, the SBC
+    // bitpool); the SET_CONFIGURATION still echoes the sink's (issue #237)
+    let ignore_max = codec::dev::overrides().ignore_sink_max;
     let mut lhdcv5_bitrate_limits = remote.lhdcv5_bitrate_limits();
-    if kind == CodecKind::LhdcV5 && codec::dev::overrides().lhdcv5_ignore_sink_max && lhdcv5_bitrate_limits & 0x30 != 0
-    {
-        tracing::warn!("LHDC V5: ignoring the sink's maximum bit rate (developer mode)");
+    let mut sbc_max_bitpool = remote.sbc_max_bitpool();
+    let mut aac_max_bitrate = if kind == CodecKind::Aac { remote.aac_max_bitrate() } else { 0 };
+    let mut opus_max_bitrate = opus_max_bitrate;
+    if ignore_max {
+        let listed = match kind {
+            CodecKind::LhdcV5 => lhdcv5_bitrate_limits & 0x30 != 0,
+            CodecKind::Sbc | CodecKind::SbcXq => sbc_max_bitpool >= 2,
+            CodecKind::Aac => aac_max_bitrate != 0,
+            CodecKind::Opus05 => opus_max_bitrate != 0,
+            _ => false,
+        };
+        if listed {
+            tracing::warn!("{}: ignoring the sink's maximum bit rate (developer mode)", kind.name());
+        }
         lhdcv5_bitrate_limits &= !0x30;
+        // Above every codec cap; the sink's minimum still applies
+        if sbc_max_bitpool >= 2 {
+            sbc_max_bitpool = u8::MAX;
+        }
+        aac_max_bitrate = 0;
+        opus_max_bitrate = 0;
     }
     PeerParams {
         lhdcv5_bitrate_limits,
         sbc_min_bitpool: remote.sbc_min_bitpool(),
-        sbc_max_bitpool: remote.sbc_max_bitpool(),
+        sbc_max_bitpool,
         sbc_bitpool: match kind {
             CodecKind::Sbc => req.sbc_bitpool,
             CodecKind::SbcXq => req.sbcxq_bitpool,
@@ -1077,7 +1096,7 @@ fn peer_params(remote: &RemoteCaps, kind: CodecKind, channels: u32, req: &Stream
         opus_frame_ms,
         opus_channels,
         opus_max_bitrate,
-        aac_max_bitrate: if kind == CodecKind::Aac { remote.aac_max_bitrate() } else { 0 },
+        aac_max_bitrate,
         aptxad_r2: kind == CodecKind::AptxAdaptive && remote.aptxad_r2(),
     }
 }

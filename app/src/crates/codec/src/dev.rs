@@ -35,9 +35,11 @@ pub struct DevOverrides {
     /// format (Windows' default format of the device) instead of 48 kHz,
     /// as far as the codec and the device take it (issue #86)
     pub match_source: bool,
-    /// LHDC V5 runs up to the quality's bit rate whatever maximum the
-    /// sink lists (issue #237)
-    pub lhdcv5_ignore_sink_max: bool,
+    /// Every codec runs up to the quality's bit rate whatever maximum the
+    /// sink lists (LHDC V5, AAC, Opus 05, the SBC bitpool; issue #237).
+    /// Saved under its old name by 2.0.2-beta.17, when it was LHDC V5's
+    #[serde(alias = "lhdcv5_ignore_sink_max")]
+    pub ignore_sink_max: bool,
 }
 
 impl DevOverrides {
@@ -57,7 +59,7 @@ static CURRENT: RwLock<DevOverrides> = RwLock::new(DevOverrides {
     force_codec: false,
     auto_codec_settings: false,
     match_source: false,
-    lhdcv5_ignore_sink_max: false,
+    ignore_sink_max: false,
 });
 
 /// The overrides in force

@@ -13,6 +13,6 @@ auto_codec_settings: boolean,
  */
 match_source: boolean, 
 /**
- * LHDC V5 ignores the maximum bit rate the device lists
+ * Every codec ignores the maximum bit rate the device lists
  */
-lhdcv5_ignore_sink_max: boolean, };
+ignore_sink_max: boolean, };

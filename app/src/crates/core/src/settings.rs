@@ -502,6 +502,16 @@ mod tests {
     }
 
     #[test]
+    fn lhdcv5_ignore_sink_max_loads_for_every_codec() {
+        // 2.0.2-beta.17 saved it under LHDC V5's name
+        let s: Settings = serde_json::from_str(r#"{"dev_overrides":{"lhdcv5_ignore_sink_max":true}}"#).unwrap();
+        assert!(s.dev_overrides.ignore_sink_max);
+        let out = serde_json::to_value(&s).unwrap();
+        assert_eq!(out["dev_overrides"]["ignore_sink_max"], true);
+        assert!(out["dev_overrides"].get("lhdcv5_ignore_sink_max").is_none());
+    }
+
+    #[test]
     fn prereleases_by_default_in_a_prerelease_build() {
         assert!(is_prerelease("2.0.2-beta.5"));
         assert!(!is_prerelease("2.0.2"));

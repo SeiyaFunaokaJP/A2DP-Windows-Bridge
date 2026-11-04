@@ -309,7 +309,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
             force_codec: s.dev_overrides.force_codec,
             auto_codec_settings: s.dev_overrides.auto_codec_settings,
             match_source: s.dev_overrides.match_source,
-            lhdcv5_ignore_sink_max: s.dev_overrides.lhdcv5_ignore_sink_max,
+            ignore_sink_max: s.dev_overrides.ignore_sink_max,
         },
         dev_log: DevLog {
             keep_days: s.dev_log.keep_days,
@@ -371,7 +371,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
         force_codec: s.dev_overrides.force_codec,
         auto_codec_settings: s.dev_overrides.auto_codec_settings,
         match_source: s.dev_overrides.match_source,
-        lhdcv5_ignore_sink_max: s.dev_overrides.lhdcv5_ignore_sink_max,
+        ignore_sink_max: s.dev_overrides.ignore_sink_max,
     };
     c.dev_log = a2dpwb_core::settings::DevLog {
         keep_days: s.dev_log.keep_days,
