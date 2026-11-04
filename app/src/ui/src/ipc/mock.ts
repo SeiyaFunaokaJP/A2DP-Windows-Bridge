@@ -183,6 +183,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
       match_source: false,
       lhdcv5_ignore_sink_max: false,
     },
+    dev_vendors: {},
     dev_log: { keep_days: 7, day_cap_mb: 100, always_verbose: null, health_every_interval: false },
     bt_chip_pid: 0,
     bt_chip_fw_stem: "",
@@ -371,6 +372,10 @@ export function sampleSnapshot(scenario: MockScenario = "normal"): Snapshot {
             },
           ]
         : [],
+    vendors: [
+      { id: "huawei", name: "Huawei", options: [] },
+      { id: "oppo", name: "OPPO", options: ["every_connection"] },
+    ],
   };
 }
 

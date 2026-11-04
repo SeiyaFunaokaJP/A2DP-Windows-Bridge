@@ -1030,29 +1030,36 @@ fn rom_or(host: &BtHost, msg: Msg) -> Msg {
     Msg::new("firmware.rom_running")
 }
 
-/// Earbuds of a vendor's protocol, by the profile's name or else by the one
-/// they give now, asked once a connection into `given` (issue #237: an old
-/// profile without the name left Enco Free4 earbuds alone)
-fn vendor_named(
-    host: &BtHost,
-    req: &StreamRequest,
-    given: &mut Option<Option<String>>,
-    vendor: &str,
-    is: fn(&str) -> bool,
-) -> bool {
-    if is(&req.device_name) {
-        return true;
+/// Earbuds of a vendor's protocol: by the name they give now, asked once a
+/// connection into `given`, unless developer mode says always or never
+fn vendor_named(host: &BtHost, req: &StreamRequest, given: &mut Option<Option<String>>, id: &str) -> bool {
+    let Some(v) = vendor::vendor(id) else { return false };
+    match vendor::mode(id) {
+        vendor::Mode::Never => {
+            tracing::info!("{}: left alone (developer mode)", v.name);
+            return false;
+        }
+        vendor::Mode::Always => {
+            tracing::info!("{}: its protocol whatever the name (developer mode)", v.name);
+            return true;
+        }
+        vendor::Mode::Auto => {}
     }
-    let Some(name) = given.get_or_insert_with(|| host.remote_name(req.device)) else { return false };
-    let named = is(name);
-    if named {
-        tracing::info!(
-            "{vendor}: the earbuds call themselves {}, the profile {}",
-            crate::diag::quoted(name),
-            crate::diag::quoted(&req.device_name)
-        );
-    }
-    named
+    // The name the device gives: the saved one is the user's to change
+    // (issue #237: an old profile had none). That one only when it does
+    // not answer.
+    let name = match given.get_or_insert_with(|| host.remote_name(req.device)) {
+        Some(name) => name.as_str(),
+        None => {
+            tracing::info!(
+                "{}: no name from the device, the saved one {}",
+                v.name,
+                crate::diag::quoted(&req.device_name)
+            );
+            &req.device_name
+        }
+    };
+    (v.named)(name)
 }
 
 fn connect_error(f: Option<ConnectFailure>) -> Msg {
@@ -1319,7 +1326,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         && !remote.has(CodecKind::Ldac)
         && remote.audio_sinks_in_use == 0
         && !stopped()
-        && vendor_named(&host, &req, &mut given_name, "Huawei", vendor::huawei::is_huawei)
+        && vendor_named(&host, &req, &mut given_name, vendor::HUAWEI)
     {
         inner.notify(StreamState::Connecting, Msg::new("status.huawei_ldac"));
         if let Some(before) = vendor::huawei::ask_for_ldac(&host, req.device) {
@@ -1361,18 +1368,15 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     } else {
         None
     };
-    let oppo_candidate = remote.has(CodecKind::LhdcV5) && !inner.hi_res_asked(&addr) && !stopped();
+    let ask_again = vendor::option(vendor::OPPO, vendor::OPPO_EVERY_CONNECTION);
+    let oppo_candidate = remote.has(CodecKind::LhdcV5) && (ask_again || !inner.hi_res_asked(&addr)) && !stopped();
     if oppo_candidate
         && let Some(why) = oppo_blocked
-        && vendor::oppo::is_oppo(&req.device_name)
+        && vendor_named(&host, &req, &mut given_name, vendor::OPPO)
     {
-        // Their name only from the profile: no request to earbuds left alone
         tracing::info!("OPPO: Hi-Res not asked for: {why}");
     }
-    if oppo_candidate
-        && oppo_blocked.is_none()
-        && vendor_named(&host, &req, &mut given_name, "OPPO", vendor::oppo::is_oppo)
-    {
+    if oppo_candidate && oppo_blocked.is_none() && vendor_named(&host, &req, &mut given_name, vendor::OPPO) {
         inner.notify(StreamState::Connecting, Msg::new("status.oppo_hi_res"));
         // Whether they kept the link or not, a new connection follows
         if let Some((before, _)) = vendor::oppo::ask_for_hi_res(&host, req.device) {

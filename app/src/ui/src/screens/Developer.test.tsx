@@ -24,6 +24,29 @@ async function open() {
 }
 
 describe("developer screen", () => {
+  it("sets each vendor's protocol and options by vendor id (issue #237)", async () => {
+    const { core, calls } = await open();
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    fireEvent.click(await screen.findByRole("tab", { name: t("ui.dev.vendors") }));
+    // One section a vendor the core lists, OPPO with its own option
+    expect(await screen.findByRole("heading", { name: "Huawei" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "OPPO" })).toBeInTheDocument();
+    expect(screen.getAllByLabelText(t("ui.dev.vendor_mode"))).toHaveLength(2);
+    const sent = () =>
+      (calls.filter((c) => c.method === "settings.set").pop()!.params as { settings: { dev_vendors: unknown } }).settings
+        .dev_vendors;
+
+    fireEvent.change(screen.getAllByLabelText(t("ui.dev.vendor_mode"))[1], { target: { value: "always" } });
+    await screen.findByText(t("ui.dev.active"));
+    expect(sent()).toEqual({ oppo: { mode: "always", options: [] } });
+    fireEvent.click(screen.getByRole("switch", { name: t("ui.dev.vendor_option.oppo.every_connection") }));
+    await waitFor(() => expect(sent()).toEqual({ oppo: { mode: "always", options: ["every_connection"] } }));
+
+    fireEvent.click(screen.getByRole("button", { name: t("ui.dev.reset") }));
+    await screen.findByText(t("ui.dev.vendors_intro"));
+    expect(sent()).toEqual({});
+  });
+
   it("is hidden until developer mode is on", async () => {
     const { core } = await open();
     expect(screen.queryByRole("link", { name: "Developer" })).toBeNull();

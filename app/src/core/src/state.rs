@@ -12,6 +12,7 @@ use a2dpwb_core::paths;
 use a2dpwb_core::profiles::{self, Profile as CoreProfile};
 use a2dpwb_core::receiver::{self, ReceiverClient};
 use a2dpwb_core::settings::Settings as CoreSettings;
+use a2dpwb_core::vendor;
 use a2dpwb_core::{
     LeStreamDetails, ScannedDevice, Service, ServiceEvent, SourceRequest, StreamRequest,
     StreamState as CoreStreamState, VolumeSync, devices,
@@ -311,6 +312,18 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
             match_source: s.dev_overrides.match_source,
             lhdcv5_ignore_sink_max: s.dev_overrides.lhdcv5_ignore_sink_max,
         },
+        dev_vendors: s
+            .dev_vendors
+            .iter()
+            .map(|(id, o)| {
+                let mode = match o.mode {
+                    vendor::Mode::Auto => ipc::VendorMode::Auto,
+                    vendor::Mode::Always => ipc::VendorMode::Always,
+                    vendor::Mode::Never => ipc::VendorMode::Never,
+                };
+                (id.clone(), ipc::VendorOverride { mode, options: o.options.clone() })
+            })
+            .collect(),
         dev_log: DevLog {
             keep_days: s.dev_log.keep_days,
             day_cap_mb: s.dev_log.day_cap_mb,
@@ -373,6 +386,22 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
         match_source: s.dev_overrides.match_source,
         lhdcv5_ignore_sink_max: s.dev_overrides.lhdcv5_ignore_sink_max,
     };
+    // Known vendors and options only, defaults left out
+    c.dev_vendors = s
+        .dev_vendors
+        .iter()
+        .filter_map(|(id, o)| {
+            let v = vendor::vendor(id)?;
+            let mode = match o.mode {
+                ipc::VendorMode::Auto => vendor::Mode::Auto,
+                ipc::VendorMode::Always => vendor::Mode::Always,
+                ipc::VendorMode::Never => vendor::Mode::Never,
+            };
+            let options = o.options.iter().filter(|x| v.options.contains(&x.as_str())).cloned().collect();
+            let o = vendor::Override { mode, options };
+            (!o.is_default()).then(|| (id.clone(), o))
+        })
+        .collect();
     c.dev_log = a2dpwb_core::settings::DevLog {
         keep_days: s.dev_log.keep_days,
         day_cap_mb: s.dev_log.day_cap_mb,
@@ -1147,6 +1176,14 @@ impl CoreState {
             v1_running: false,
             verbose: crate::logging::verbose(),
             crashes: crate::crashes::unseen(&dir, &settings),
+            vendors: a2dpwb_core::vendor::VENDORS
+                .iter()
+                .map(|v| ipc::VendorInfo {
+                    id: v.id.into(),
+                    name: v.name.into(),
+                    options: v.options.iter().map(|o| o.to_string()).collect(),
+                })
+                .collect(),
         };
         let (events, _) = broadcast::channel(256);
         let state = Arc::new(CoreState {

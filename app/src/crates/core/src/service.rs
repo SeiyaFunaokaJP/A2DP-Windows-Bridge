@@ -845,6 +845,7 @@ pub struct Service {
 /// developer mode is on
 fn apply_dev_overrides(settings: &Settings) {
     codec::dev::set_overrides(if settings.debug_mode { settings.dev_overrides } else { Default::default() });
+    crate::vendor::set_overrides(if settings.debug_mode { settings.dev_vendors.clone() } else { Default::default() });
     crate::health::set_every_interval(settings.log().health_every_interval);
 }
 
