@@ -759,6 +759,7 @@
   "error.driver_failed": "Die Änderung des Treibers ist fehlgeschlagen. Details im Protokoll.",
   "error.driver_assign_failed": "Windows hat die Zuweisung von WinUSB an diesen Adapter abgelehnt. Installieren Sie WinUSB stattdessen mit Zadig (siehe „Stattdessen Zadig verwenden“ in der Einrichtungsanleitung); Details im Protokoll.",
   "error.driver_restore_unverified": "Der Treiber wurde geändert, aber der Adapter ist nicht zu seinem vorherigen Treiber zurückgekehrt. Wurde er mit Zadig eingerichtet, das Treiberpaket von Zadig im Geräte-Manager entfernen.",
+  "error.driver_restore_other_radio": "Der Treiber ist wiederhergestellt, aber Windows nutzt nur einen Bluetooth-Adapter gleichzeitig, und %s ist in Gebrauch. Um diesen Adapter in Windows zu nutzen, den anderen im Geräte-Manager deaktivieren und diesen ab- und wieder anstecken.",
   "ui.v1_running.title": "Ein anderes A2DP Windows Bridge läuft",
   "ui.v1_running.text": "Zwei Instanzen können den Bluetooth-Adapter nicht gemeinsam nutzen. Die andere über ihr Symbol im Infobereich beenden.",
   "help.third_party": "Enthält außerdem libldac (Apache-2.0), libopenaptx (LGPL-2.1+, © 2017 Aurelien Jacobs, © 2018-2020 Pali Rohár), Fraunhofer FDK AAC, Bluedroid SBC (Apache-2.0), den LHDC V5-Encoder (Apache-2.0, abgeleitet von AOSP; FFT aus KISS FFT, BSD-3-Clause), libopus (BSD-3-Clause), liblc3 (Apache-2.0), Tauri, SolidJS und weitere Rust- und JavaScript-Bibliotheken. Die Lizenztexte befinden sich im Ordner \"licenses\" neben dem Programm.",

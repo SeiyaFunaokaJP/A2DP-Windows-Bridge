@@ -759,6 +759,7 @@
   "error.driver_failed": "Changing the driver failed. See the log for details.",
   "error.driver_assign_failed": "Windows refused to assign WinUSB to this adapter. Install it with Zadig instead (see \"Using Zadig instead\" in the setup guide); details are in the log.",
   "error.driver_restore_unverified": "The driver was changed, but the adapter did not return to its previous driver. If it was set up with Zadig, remove Zadig's driver package in Device Manager.",
+  "error.driver_restore_other_radio": "The driver is back, but Windows runs one Bluetooth adapter at a time and %s is in use. To use this adapter in Windows, disable that one in Device Manager, then unplug and replug this one.",
   "ui.v1_running.title": "Another A2DP Windows Bridge is running",
   "ui.v1_running.text": "Two copies cannot share the Bluetooth adapter. Exit the other one from its tray icon.",
   "help.third_party": "Also includes libldac (Apache-2.0), libopenaptx (LGPL-2.1+, © 2017 Aurelien Jacobs, © 2018-2020 Pali Rohár), Fraunhofer FDK AAC, Bluedroid SBC (Apache-2.0), the LHDC V5 encoder (Apache-2.0, derived from AOSP; FFT from KISS FFT, BSD-3-Clause), libopus (BSD-3-Clause), liblc3 (Apache-2.0), Tauri, SolidJS and other Rust and JavaScript libraries. License texts are in the \"licenses\" folder next to the program.",
