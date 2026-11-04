@@ -129,6 +129,7 @@ interface Results {
   "state.snapshot": Snapshot;
   "device.scan": Device[];
   "device.windows_paired": string[];
+  "device.windows_paired_through": string[];
   "device.pairing": DevicePairing;
   "device.services": ServiceList;
   "device.import_windows_pairings": WindowsImport;

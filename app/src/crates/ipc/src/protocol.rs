@@ -1243,6 +1243,12 @@ pub enum Method {
     /// since the core started (developer mode only)
     #[serde(rename = "device.services")]
     DeviceServices { address: String },
+    /// -> string[]: the addresses of the classic devices Windows' Bluetooth
+    /// paired through the adapter with the Bluetooth address `adapter`
+    /// (what device.import_windows_pairings can take over; no
+    /// administrator prompt, no running radio needed)
+    #[serde(rename = "device.windows_paired_through")]
+    DeviceWindowsPairedThrough { adapter: String },
     /// -> WindowsImport: takes over the link keys Windows' Bluetooth keeps
     /// for the adapter with the Bluetooth address `adapter`, so the devices
     /// it paired with that adapter connect without pairing again, and saves

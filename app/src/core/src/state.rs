@@ -2156,6 +2156,23 @@ impl CoreState {
                 Ok(Value::Null)
             }
             Method::DeviceWindowsPaired => blocking(Box::new(|_| Ok(json(&windows_paired())))).await,
+            Method::DeviceWindowsPairedThrough { adapter } => {
+                // The USB device of the adapter with that address
+                let (_, s) = self.snapshot();
+                let instance_id = s
+                    .adapter
+                    .adapters
+                    .iter()
+                    .find(|a| a.address.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(&adapter)))
+                    .map(|a| a.instance_id.clone());
+                let Some(instance_id) = instance_id else { return Ok(json(&Vec::<String>::new())) };
+                blocking(Box::new(move |_| {
+                    let list: Vec<String> =
+                        win_sys::bt_paired::paired_through(&instance_id).iter().map(bt_host::addr_str).collect();
+                    Ok(json(&list))
+                }))
+                .await
+            }
             Method::DevicePairing { address } => crate::pairing::pairing(self, &address),
             Method::DeviceServices { address } => {
                 blocking(Box::new(move |me| crate::pairing::services(me, &address))).await
