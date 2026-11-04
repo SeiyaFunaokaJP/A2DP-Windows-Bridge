@@ -700,6 +700,8 @@ export class MockCore implements Transport {
       case "device.scan":
         return this.scan(Number(p.seconds ?? 10));
       case "device.windows_paired":
+      // One radio here: the adapter's pairings are all of Windows'
+      case "device.windows_paired_through":
         return this.windowsPaired;
       case "device.pairing":
         return {
