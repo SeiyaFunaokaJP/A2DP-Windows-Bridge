@@ -138,6 +138,26 @@ pub fn describe(wifi_channels: &[u8]) -> String {
     wifi_channels.iter().map(u8::to_string).collect::<Vec<_>>().join(", ")
 }
 
+/// The channels a map leaves out, as ranges: "0-11, 40, 60-78"
+pub fn unused_ranges(map: &[u8; 10]) -> String {
+    let unused = |n: usize| map[n / 8] & (1 << (n % 8)) == 0;
+    let mut out = Vec::new();
+    let mut n = 0;
+    while n < CHANNELS {
+        if !unused(n) {
+            n += 1;
+            continue;
+        }
+        let start = n;
+        while n + 1 < CHANNELS && unused(n + 1) {
+            n += 1;
+        }
+        out.push(if start == n { start.to_string() } else { format!("{start}-{n}") });
+        n += 1;
+    }
+    out.join(", ")
+}
+
 /// Center frequency of a 2.4 GHz Wi-Fi channel
 pub fn wifi_center_mhz(channel: u8) -> i32 {
     if channel == 14 { 2484 } else { 2407 + 5 * i32::from(channel) }

@@ -119,6 +119,7 @@ fn link_sample(
         afh_in_use: radio.afh_in_use,
         afh_usable: radio.afh_usable,
         afh_avoided: radio.afh_avoided,
+        afh_map: radio.afh_map.map(|m| m.to_vec()),
         bytes_per_second: bps,
         packets_per_second: pps,
         queue_depth: if iso.is_some() { 0 } else { stats.queue_depth.load(Ordering::Relaxed) },

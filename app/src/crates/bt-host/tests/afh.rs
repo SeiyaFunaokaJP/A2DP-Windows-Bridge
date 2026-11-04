@@ -116,3 +116,16 @@ fn count_ignores_the_reserved_bit() {
     assert_eq!(wifi_center_mhz(13), 2472);
     assert_eq!(wifi_center_mhz(14), 2484);
 }
+
+#[test]
+fn unused_ranges_name_the_gaps() {
+    assert_eq!(unused_ranges(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F]), "");
+    // Wi-Fi channel 6 avoided: Bluetooth channels 24-46
+    assert_eq!(unused_ranges(&avoid_wifi(&[6]).map), "24-46");
+    // A single channel, and the last ones (the reserved bit 79 is no channel)
+    let mut map = [0xFF; 10];
+    map[0] &= !1;
+    map[9] = 0x3F;
+    assert_eq!(unused_ranges(&map), "0, 78");
+    assert_eq!(unused_ranges(&[0; 10]), "0-78");
+}

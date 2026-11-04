@@ -63,6 +63,7 @@ The headphones and speakers A2DPWB can stream to, each with its own settings: **
 ### Diagnostics
 
 - **Link Quality** while streaming: actual bitrate, packets, packets dropped before sending, audio dropped at capture, send queue, radio time used, signal (RSSI) and the AFH channels (see [Link Quality and AFH](#link-quality))
+- **Radio**: the 79 Bluetooth channels on the 2.4 GHz band, which ones the link uses and which the adapter skips, with the Wi-Fi channels underneath, and a few tips for a cleaner link. In developer mode, **Scan** adds the 2.4 GHz Wi-Fi networks around (see [The Radio tab](#radio-tab))
 - **Codec details** while streaming: the media payload, headers, codec frame and frames per packet, and what the device's endpoint lists beside what is in use: for SBC the bitpool, sample rates, channel modes, blocks, subbands and bit allocation; for AAC the object types, sample rates, channels, peak bit rate and VBR; for the other codecs the sample rates, bit depths and peak bit rate
 - **Connection Flow**: the eleven stages of the latest connection attempt (start, Bluetooth adapter, ACL / AVDTP connect, capability discovery, codec selection, audio capture, stream configuration, encoder, stream start, audio sending, connection upkeep with disconnects / reconnects) as OK, Warning or Failed, with the time it took. **Copy Flow** copies it
 - **Log**: live, filtered by level (all, info and above, warnings and errors, errors only), by text and to the current connection attempt (**Current attempt only**). **Copy Shown Log** copies what is shown. **Open log folder** opens the folder of the log files; unlike **Copy Diagnostics**, those files are not masked (they include Bluetooth addresses and your Windows user name)
@@ -479,6 +480,12 @@ Bluetooth avoids busy channels by itself (AFH), but it only learns about Wi-Fi f
 Auto leaves the networks the PC only hears to the controller's own AFH: avoiding a neighbour's busy channel takes 22 MHz from the hopping and can make the link worse, not better. To avoid such a channel anyway, enter it as Manual.
 
 At least 20 Bluetooth channels always stay in use. Set it on the **Adapter** screen, with `"afh"` in `settings.json` (config folder), or with `--afh` in CLI mode. The radio line shows which Wi-Fi channels are avoided. Whether it helps depends on the environment: measure with the peer receiver test.
+
+### The Radio tab {#radio-tab}
+
+**Diagnostics > Radio** draws the channel map the adapter reports for the link (Read AFH Channel Map), so you can see where it meets interference even on a PC without Wi-Fi. Red channels are the ones the adapter's own AFH left out; when most of one Wi-Fi channel's width is red, the tab names that channel. Channels A2DPWB asked the adapter to avoid (Auto or Manual above) have an outline.
+
+In developer mode, **Scan** asks Windows for a fresh Wi-Fi scan and draws each 2.4 GHz network over the band, higher the louder it is. On Windows 11 24H2 and later the list counts as location data: Windows may ask for location access, and with **Let desktop apps access your location** off it gives no list. The scan does not change AFH: Auto still avoids only the PC's own channel (see above why).
 
 ## Peer Receiver Test (tools/linux_sink) {#receiver}
 
