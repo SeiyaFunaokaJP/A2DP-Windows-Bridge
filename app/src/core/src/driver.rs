@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use ipc::{ErrorInfo, Msg};
 use serde_json::Value;
+use win_sys::bt_radios::WindowsRadio;
 use win_sys::elevation::{self, ElevationError};
 
 use crate::state::CoreState;
@@ -108,11 +109,74 @@ pub fn restore(state: &Arc<CoreState>, instance_id: &str) -> Result<Value, Error
     match code {
         0 => {
             let _ = std::fs::remove_file(&path);
+            if let Some(other) = other_radio_in_use(instance_id) {
+                return Err(ErrorInfo {
+                    code: "adapter.restore_other_radio".into(),
+                    message: Msg { key: "error.driver_restore_other_radio".into(), args: vec![other] },
+                });
+            }
             Ok(serde_json::to_value(state.snapshot().1.adapter.adapters).unwrap_or(Value::Null))
         }
         // Done, but not on the recorded driver (e.g. Zadig's WinUSB package
         // still in the driver store outranks Windows' Bluetooth driver)
         5 => Err(err("adapter.restore_unverified", "error.driver_restore_unverified")),
         _ => Err(err("adapter.driver_failed", "error.driver_failed")),
+    }
+}
+
+/// After a restore that left the adapter on its driver but not working:
+/// the name of another radio Windows' Bluetooth runs. Windows runs one
+/// radio at a time (BTHUSB event 6, the adapter fails with Code 31), so
+/// the restored one stays off until that one is disabled.
+fn other_radio_in_use(instance_id: &str) -> Option<String> {
+    let state = win_sys::driver::driver_state(instance_id).ok()?;
+    let name = blocking_radio(instance_id, state.problem_code, &win_sys::bt_radios::radios())?;
+    tracing::warn!(
+        "driver: {instance_id} is back on {} but has problem code {:?}; Windows runs {name:?}",
+        state.driver.service,
+        state.problem_code
+    );
+    Some(name)
+}
+
+/// The radio that keeps a failed adapter off: one not on that adapter
+fn blocking_radio(instance_id: &str, problem: Option<u32>, radios: &[WindowsRadio]) -> Option<String> {
+    problem?;
+    let other = radios.iter().find(|r| !r.on_device(instance_id))?;
+    Some(if other.name.is_empty() {
+        other.instance_ids.first().cloned().unwrap_or_default()
+    } else {
+        other.name.clone()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn radio(name: &str, ids: &[&str]) -> WindowsRadio {
+        WindowsRadio {
+            instance_ids: ids.iter().map(|s| s.to_string()).collect(),
+            name: name.into(),
+            address: None,
+            hci_version: None,
+            lmp_version: None,
+        }
+    }
+
+    const TPLINK: &str = r"USB\VID_2357&PID_0604\E848B8C82000";
+    const INTEL: &str = r"USB\VID_8087&PID_0033\5&3B72E4CF&0&14";
+
+    #[test]
+    fn another_radio_keeps_the_restored_adapter_off() {
+        let intel = [radio("Intel Wireless Bluetooth", &[INTEL, r"USB\ROOT_HUB30\4&1"])];
+        assert_eq!(blocking_radio(TPLINK, Some(31), &intel).as_deref(), Some("Intel Wireless Bluetooth"));
+        // Working after the restore: nothing to say
+        assert_eq!(blocking_radio(TPLINK, None, &intel), None);
+        // Failed, but Windows runs no other radio: not this cause
+        assert_eq!(blocking_radio(TPLINK, Some(31), &[radio("TP-Link", &[TPLINK])]), None);
+        assert_eq!(blocking_radio(TPLINK, Some(31), &[]), None);
+        // A radio without a name is named by its device
+        assert_eq!(blocking_radio(TPLINK, Some(31), &[radio("", &[INTEL])]).as_deref(), Some(INTEL));
     }
 }
