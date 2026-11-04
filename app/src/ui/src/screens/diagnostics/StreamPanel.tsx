@@ -1,8 +1,9 @@
 // Stream tab: what goes out and how long it waits. Bitrate, packets, the
 // send queue (depth and the oldest packet's wait), packets dropped before
 // the radio; the codec and its details, an LE Audio stream's ISO counters,
-// the losses. Latency figures from the device (a sink's reported delay)
-// belong here, as a chart and a row in the sending card.
+// the losses, and the backlog the Bluetooth adapter holds after the send
+// queue. Latency figures from the device (a sink's reported delay) belong
+// here, as a chart and a row in the sending card.
 
 import { createMemo, Show } from "solid-js";
 import { TimeChart } from "../../components/charts";
@@ -11,6 +12,7 @@ import { QUALITY_QUEUE_BACKLOG_MS } from "../../components/stream";
 import { t } from "../../i18n";
 import { bitrateNoteKey, codecLabelKey } from "../../lib/codecs";
 import { kbps } from "../../lib/format";
+import type { LinkSample } from "../../ipc/types";
 import { dropsPerSample } from "../../lib/linkstats";
 import { DASH, LinkCharts, LossCard, NotStreaming, Row, useLink } from "./shared";
 
@@ -43,6 +45,13 @@ export function StreamPanel() {
   const waitText = () => {
     const s = live();
     return s && s.queue_ms != null ? ms(s.queue_ms) : DASH;
+  };
+  /** The adapter's backlog: ms of audio, and the packets it held */
+  const backlogText = (s: LinkSample | null | undefined) => {
+    if (!s || s.controller_backlog == null) return DASH;
+    return s.controller_backlog_ms != null
+      ? t("ui.diag.backlog_value", ms(s.controller_backlog_ms), s.controller_backlog)
+      : t("ui.diag.backlog_packets", s.controller_backlog);
   };
   const packetsText = () => {
     const s = sending();
@@ -99,6 +108,14 @@ export function StreamPanel() {
           status={(v) => (v < QUALITY_QUEUE_BACKLOG_MS / 2 ? "good" : v < QUALITY_QUEUE_BACKLOG_MS ? "warn" : "bad")}
         />
         <TimeChart
+          title={t("ui.diag.backlog")}
+          times={times()}
+          series={[{ values: samples().map((s) => s.controller_backlog_ms ?? null) }]}
+          min={0}
+          format={ms}
+          formatValue={(_, i) => backlogText(samples()[i])}
+        />
+        <TimeChart
           title={t("quality.dropped")}
           times={times()}
           series={[{ values: drops() }]}
@@ -119,6 +136,7 @@ export function StreamPanel() {
             <Row label={t("quality.packets")} value={packetsText()} />
             <Row label={t("quality.queue")} class={queueClass()} value={queueText()} />
             <Row label={t("ui.diag.queue_wait")} class={queueClass()} value={waitText()} />
+            <Row label={t("ui.diag.backlog")} value={backlogText(live())} />
           </dl>
         </section>
 

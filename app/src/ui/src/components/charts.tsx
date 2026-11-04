@@ -4,7 +4,7 @@
 // (ChartGroup).
 
 import { createContext, createMemo, createSignal, For, Show, useContext, type JSX } from "solid-js";
-import { lastKnown, nearestIndex, scaleOf, timeRuns } from "../lib/series";
+import { lastKnownIndex, nearestIndex, scaleOf, timeRuns } from "../lib/series";
 
 function points(values: readonly (number | null)[], min: number, max: number, width: number, height: number): string[] {
   // One polyline per run of known values (gaps where the value is unknown)
@@ -113,8 +113,9 @@ export function TimeChart(props: {
   max?: number;
   /** The scale's labels */
   format: (v: number) => string;
-  /** The value in the header and legend, when it says more than the scale */
-  formatValue?: (v: number) => string;
+  /** The value in the header and legend, when it says more than the scale
+   *  (`i`: the sample shown, hovered or the latest known) */
+  formatValue?: (v: number, i: number) => string;
   /** The status colour of the first series' value */
   status?: (v: number) => "good" | "warn" | "bad";
   refs?: readonly ChartRef[];
@@ -149,19 +150,27 @@ export function TimeChart(props: {
     const h = hover();
     return h === null ? null : nearestIndex(props.times, h);
   });
-  const valueOf = (s: ChartSeries): number | null => {
-    const i = at();
-    if (i === null) return lastKnown(s.values);
+  /** The sample of a series shown: the hovered one, else its latest known */
+  const shown = (s: ChartSeries, hovered = true): number | null => {
+    const i = hovered ? at() : null;
+    if (i === null) return lastKnownIndex(s.values);
     const v = s.values[i];
-    return v !== null && v !== undefined && Number.isFinite(v) ? v : null;
+    return v !== null && v !== undefined && Number.isFinite(v) ? i : null;
   };
-  const text = (v: number | null) => (v === null ? "–" : (props.formatValue ?? props.format)(v));
-  const first = () => (props.series[0] ? valueOf(props.series[0]) : null);
+  const text = (s: ChartSeries | undefined, hovered = true) => {
+    const i = s ? shown(s, hovered) : null;
+    if (s === undefined || i === null) return "–";
+    const v = s.values[i]!;
+    return props.formatValue ? props.formatValue(v, i) : props.format(v);
+  };
+  const first = () => {
+    const s = props.series[0];
+    const i = s ? shown(s) : null;
+    return s && i !== null ? s.values[i] : null;
+  };
   const multi = () => props.series.length > 1;
   const label = () =>
-    multi()
-      ? props.series.map((s) => `${s.label}: ${text(lastKnown(s.values))}`).join(", ")
-      : text(props.series[0] ? lastKnown(props.series[0].values) : null);
+    multi() ? props.series.map((s) => `${s.label}: ${text(s, false)}`).join(", ") : text(props.series[0], false);
   /** The cursor's time before the latest sample */
   const ago = () => {
     const i = at();
@@ -187,7 +196,7 @@ export function TimeChart(props: {
           <Show when={ago()}>{(a) => <span class="chart-ago num">{a()}</span>}</Show>
           <Show when={!multi()}>
             <span class={`chart-value num ${first() !== null && props.status ? `st-${props.status(first()!)}` : ""}`}>
-              {text(first())}
+              {text(props.series[0])}
             </span>
           </Show>
         </span>
@@ -199,7 +208,7 @@ export function TimeChart(props: {
               <li class={`s${i()}`}>
                 <span class="chart-swatch" aria-hidden="true" />
                 <span>{s.label}</span>
-                <span class="chart-value num">{text(valueOf(s))}</span>
+                <span class="chart-value num">{text(s)}</span>
               </li>
             )}
           </For>

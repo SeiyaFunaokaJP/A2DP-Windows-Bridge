@@ -171,13 +171,14 @@ describe("Diagnostics", () => {
     await waitFor(() => expect(core.state.snap!.stream.state).toBe("streaming"));
     await waitFor(() => expect(core.link().length).toBeGreaterThan(8));
 
-    // Stream: bitrate, packets, queue depth and wait, drops
+    // Stream: bitrate, packets, queue depth and wait, the adapter's backlog, drops
     const charts = () => [...view.container.querySelectorAll<HTMLElement>(".chart")];
     await waitFor(() => expect(charts().map((c) => c.querySelector(".chart-title")!.textContent)).toEqual([
       "Actual bitrate",
       "Packets",
       "Send queue",
       "Send queue wait",
+      "Adapter backlog",
       "Packets dropped before sending",
     ]));
     await waitFor(() => expect(charts()[0].querySelector(".chart-value")).toHaveTextContent(/^\d+ kbps$/));
@@ -185,13 +186,16 @@ describe("Diagnostics", () => {
     // The encoder's bitrate as the target, the queue's limit
     expect(charts()[0].querySelector(".ref-target")).not.toBeNull();
     expect(charts()[3].querySelector(".ref-limit")).not.toBeNull();
+    // The backlog in ms, the packets beside it
+    expect(charts()[4].querySelector(".chart-value")).toHaveTextContent(/^\d+(\.\d)? ms \(\d+ packets\)$/);
+    expect(screen.getByText("Adapter backlog", { selector: "dt" }).closest(".lq-row")).toHaveTextContent(/ms \(\d+ packets\)/);
     expect(charts()[0].querySelector(".chart-axis")).toHaveTextContent("−60 s0 s");
 
     // Hovering one chart puts the cursor on every chart of the tab
     const plot = charts()[1].querySelector("svg")!;
     plot.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 100, right: 300, bottom: 100, x: 0, y: 0, toJSON: () => ({}) });
     fireEvent.pointerMove(plot, { clientX: 299, clientY: 50 });
-    await waitFor(() => expect(view.container.querySelectorAll(".chart .cursor").length).toBe(5));
+    await waitFor(() => expect(view.container.querySelectorAll(".chart .cursor").length).toBe(6));
     for (const c of charts()) expect(c.querySelector(".chart-ago")).toHaveTextContent(/^−?\d+\.\d s$/);
     fireEvent.pointerLeave(plot);
     await waitFor(() => expect(view.container.querySelectorAll(".chart .cursor").length).toBe(0));
@@ -216,8 +220,43 @@ describe("Diagnostics", () => {
       "Capture rate",
       "Audio dropped at capture",
     ]));
-    expect(charts()[1].querySelector(".chart-value")).toHaveTextContent(/^0 ms$/);
+    // Dropped as the PC fell behind, and lost in Windows' own gaps
+    expect(charts()[1].querySelector(".chart-legend")).toHaveTextContent(/PC busy\s*0 ms\s*Windows audio gaps\s*\d+ ms/);
+    expect(screen.getByText("Windows audio gaps", { selector: "dt" }).closest(".lq-row")).toHaveTextContent(/\d/);
     expect(screen.getByText("Output Source").closest(".lq-row")).toHaveTextContent("System Loopback");
     expect(view.container.querySelector(".lq-group .hint")).toHaveTextContent(/^Output source format: \d+ Hz/);
+  });
+
+  it("shows the device's chip to everyone and the link's details in developer mode only", async () => {
+    const { core, view } = start();
+    await waitFor(() => expect(core.state.snap).not.toBeNull());
+    await core.request("stream.start", { profile: core.state.snap!.profiles[0].name });
+    await waitFor(() => expect(core.link().at(-1)?.remote_chip).toBeTruthy());
+    fireEvent.click(screen.getByRole("tab", { name: "Radio" }));
+    const row = (label: string) => screen.queryByText(label, { selector: "dt" })?.closest(".lq-row") ?? null;
+    const titles = () => [...view.container.querySelectorAll(".chart-title")].map((c) => c.textContent);
+
+    const device = await screen.findByRole("heading", { name: "Device" });
+    expect(device.closest("section")).toHaveTextContent("Bluetooth chip maker");
+    await waitFor(() => expect(row("Bluetooth chip maker")).toHaveTextContent("Airoha"));
+    expect(row("Bluetooth version")).toHaveTextContent("5.3");
+    expect(row("Fastest packet type")).toHaveTextContent("3-DH5 (3 Mbps)");
+    for (const label of ["Role", "Link mode", "Encryption key size", "Supervision timeout", "Adapter's link quality", "Failed contacts"]) {
+      expect(row(label)).toBeNull();
+    }
+    expect(titles()).not.toContain("Adapter's link quality");
+
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    await waitFor(() => expect(row("Role")).toHaveTextContent("Central"));
+    expect(row("Link mode")).toHaveTextContent("Active");
+    expect(row("Encryption key size")).toHaveTextContent("16 bytes");
+    expect(row("Supervision timeout")).toHaveTextContent("20 s");
+    await waitFor(() => expect(row("Adapter's link quality")).toHaveTextContent(/^Adapter's link quality2\d\d \/ 255$/));
+    expect(row("Failed contacts")).toHaveTextContent(/^Failed contacts\d+/);
+    expect(titles()).toContain("Adapter's link quality");
+
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: false } });
+    await waitFor(() => expect(row("Role")).toBeNull());
+    expect(titles()).not.toContain("Adapter's link quality");
   });
 });

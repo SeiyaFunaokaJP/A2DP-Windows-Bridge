@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 import type { LinkSample, LinkTotals } from "../ipc/types";
-import { captureDropsPerSample, lastKnown, nearestIndex, niceCeil, ratePerSecond, scaleOf, timeRuns } from "./series";
+import { chipPacketText } from "../screens/diagnostics/RadioPanel";
+import { gapsText } from "../screens/diagnostics/CapturePanel";
+import {
+  captureDropsPerSample,
+  captureLostPerSample,
+  lastKnown,
+  lastKnownIndex,
+  nearestIndex,
+  niceCeil,
+  ratePerSecond,
+  scaleOf,
+  timeRuns,
+} from "./series";
 
 const totals = (over: Partial<LinkTotals> = {}): LinkTotals => ({
   packets: 0,
@@ -60,6 +72,8 @@ describe("chart series", () => {
     expect(nearestIndex([], 0)).toBeNull();
     expect(lastKnown([1, null, 3, null])).toBe(3);
     expect(lastKnown([null])).toBeNull();
+    expect(lastKnownIndex([1, null, 3, null])).toBe(2);
+    expect(lastKnownIndex([])).toBeNull();
   });
 
   it("turns counters into rates and capture drops into audio time", () => {
@@ -76,5 +90,30 @@ describe("chart series", () => {
     const noRate = s.map((x) => ({ ...x, source_rate: 0 }));
     expect(captureDropsPerSample(noRate, 96000)[2]).toBe(5);
     expect(captureDropsPerSample(noRate, 0)[2]).toBe(480);
+  });
+
+  it("puts Windows' capture gaps in audio time, unknown where a gap lost nothing measured", () => {
+    const s = [
+      sample(0, {}),
+      sample(250, {}, { capture_discontinuities: 1, capture_lost: 960 }),
+      sample(500, {}, { capture_discontinuities: 1, capture_lost: 960 }),
+      // Per-app capture: a gap without the frames it lost
+      sample(750, {}, { capture_discontinuities: 2, capture_lost: 960 }),
+    ];
+    expect(captureLostPerSample(s, 0)).toEqual([0, 20, 0, null]);
+    expect(captureLostPerSample(s.map((x) => ({ ...x, source_rate: 0 })), 0)[1]).toBeNull();
+    // The row: the count, with the audio lost when it is known
+    expect(gapsText(0, 0)).toBe("0");
+    expect(gapsText(3, 0)).toBe("3");
+    expect(gapsText(3, null)).toBe("3");
+    expect(gapsText(2, 40)).toBe("2 (40 ms lost)");
+  });
+
+  it("names the remote chip's fastest packet type with its rate", () => {
+    const features = { edr_2m: true, edr_3m: true, three_slot: true, five_slot: true, edr_three_slot: true, edr_five_slot: true };
+    expect(chipPacketText({ features: { ...features, largest_packet: "3-DH5" } })).toBe("3-DH5 (3 Mbps)");
+    expect(chipPacketText({ features: { ...features, edr_3m: false, largest_packet: "2-DH5" } })).toBe("2-DH5 (2 Mbps)");
+    expect(chipPacketText({ features: { ...features, edr_2m: false, edr_3m: false, largest_packet: "DH5" } })).toBe("DH5 (1 Mbps)");
+    expect(chipPacketText({ company: "Airoha" })).toBe("–");
   });
 });

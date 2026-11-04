@@ -90,6 +90,10 @@ export interface LossStats {
   captureMs: number | null;
   /** captureDropped / captureFrames, percent */
   capturePct: number;
+  /** Gaps Windows reported in the captured audio */
+  captureGaps: number;
+  /** The audio lost in them; null while the rate is unknown */
+  captureLostMs: number | null;
   /** Counted since the Reset button (else since the stream started) */
   sinceReset: boolean;
 }
@@ -114,6 +118,8 @@ export function lossStats(s: LinkSample, reset: LinkBaseline | null, rate?: numb
     captureDropped: d.capture_dropped,
     captureMs: r > 0 ? (d.capture_dropped * 1000) / r : d.capture_dropped === 0 ? 0 : null,
     capturePct: percent(d.capture_dropped, d.capture_frames),
+    captureGaps: d.capture_discontinuities,
+    captureLostMs: r > 0 ? (d.capture_lost * 1000) / r : d.capture_lost === 0 ? 0 : null,
     sinceReset,
   };
 }

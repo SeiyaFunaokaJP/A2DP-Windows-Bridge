@@ -76,13 +76,34 @@ export function nearestIndex(times: readonly number[], time: number): number | n
   return best >= 0 && dist <= GAP_MS ? best : null;
 }
 
-/** The last known value */
-export function lastKnown(values: readonly (number | null)[]): number | null {
+/** The index of the last known value */
+export function lastKnownIndex(values: readonly (number | null)[]): number | null {
   for (let i = values.length - 1; i >= 0; i--) {
     const v = values[i];
-    if (v !== null && Number.isFinite(v)) return v;
+    if (v !== null && v !== undefined && Number.isFinite(v)) return i;
   }
   return null;
+}
+
+/** The last known value */
+export function lastKnown(values: readonly (number | null)[]): number | null {
+  const i = lastKnownIndex(values);
+  return i === null ? null : values[i];
+}
+
+/** Captured audio Windows lost in its own gaps, per sample in ms: null
+ *  where a gap came without a known loss (per-app capture never measures
+ *  it) or the rate is unknown */
+export function captureLostPerSample(samples: readonly LinkSample[], fallbackRate: number): (number | null)[] {
+  return samples.map((x, i) => {
+    const p = samples[i - 1];
+    if (!p) return 0;
+    const lost = Math.max(0, (x.capture_lost ?? 0) - (p.capture_lost ?? 0));
+    const gaps = Math.max(0, (x.capture_discontinuities ?? 0) - (p.capture_discontinuities ?? 0));
+    const rate = x.source_rate || fallbackRate;
+    if (lost === 0) return gaps === 0 ? 0 : null;
+    return rate > 0 ? (lost * 1000) / rate : null;
+  });
 }
 
 /** A cumulative counter as a rate per second between samples (null for the
