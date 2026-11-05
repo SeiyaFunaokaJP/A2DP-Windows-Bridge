@@ -1023,6 +1023,11 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub iso: Option<IsoCounters>,
+    /// The channels the link hops over: 10 bytes, bit n = Bluetooth
+    /// channel n (2402 + n MHz). Null while there is no reading.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub afh_map: Option<Vec<u8>>,
 }
 
 /// An LE Audio stream's send counters (since the stream was set up; a
@@ -1362,6 +1367,11 @@ pub enum Method {
     /// masked unless `mask` is false. Without parameters as before.
     #[serde(rename = "diag.info")]
     DiagInfo(Option<DiagInfoParams>),
+    /// -> WifiAccessPoint[]: a fresh Wi-Fi scan, 2.4 GHz access points,
+    /// loudest first (a few seconds). Errors "wifi.none" (no Wi-Fi) and
+    /// "wifi.location" (Windows' location setting keeps the list), "wifi.off".
+    #[serde(rename = "diag.wifi_scan")]
+    DiagWifiScan,
     /// -> FlowView: the connection flow as the core followed it (every log
     /// line, also while no window was open)
     #[serde(rename = "diag.flow")]
@@ -1507,6 +1517,18 @@ pub struct SettingsApplied {
 
 pub struct DiagInfo {
     pub text: String,
+}
+
+/// A 2.4 GHz access point a Wi-Fi scan heard
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct WifiAccessPoint {
+    /// Empty for a hidden network
+    pub ssid: String,
+    /// Wi-Fi channel 1-14
+    pub channel: u8,
+    /// dBm
+    pub rssi: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, Default)]

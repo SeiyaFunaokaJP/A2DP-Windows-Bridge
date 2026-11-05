@@ -56,7 +56,8 @@ Usage: a2dpwb-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
   --sbc-mode <mode>     SBC channel mode: joint_stereo (default), stereo,
                         mono (dual channel: -c sbcxq)
   --sbc-bitpool <n>     SBC / SBC XQ bitpool (default: by quality)
-  --afh <policy>        auto, off or Wi-Fi channels to avoid such as 6,11
+  --afh <policy>        auto, off or Wi-Fi channels to avoid such as 6,11;
+                        blend-mild, blend-medium, blend-strong (experimental)
   --remote-sink <host[:port]|auto>
                         statistics of a measuring receiver (tools/linux_sink);
                         without -d, stream to that receiver

@@ -73,4 +73,9 @@ counters?: LinkCounters | null,
  * An LE Audio stream's isochronous channels (None for A2DP; the A2DP
  * fields above stay at 0 / None then)
  */
-iso?: IsoCounters | null, };
+iso?: IsoCounters | null, 
+/**
+ * The channels the link hops over: 10 bytes, bit n = Bluetooth
+ * channel n (2402 + n MHz). Null while there is no reading.
+ */
+afh_map?: Array<number> | null, };

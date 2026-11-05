@@ -187,6 +187,9 @@ pub struct LinkRadio {
     pub afh_avoided: String,
     /// Channels the link hops over (Read AFH Channel Map)
     pub afh_in_use: Option<u32>,
+    /// Which channels those are: bit n = channel n (all set while AFH is
+    /// off)
+    pub afh_map: Option<[u8; 10]>,
 }
 
 #[cfg(test)]

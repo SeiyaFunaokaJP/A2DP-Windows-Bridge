@@ -1,7 +1,7 @@
 // Diagnostics: live link graphs and v1's link quality figures (an LE
-// Audio stream's ISO counters), the eleven-step connection flow, the log
-// with level, text and attempt filters, HCI capture, "copy diagnostic
-// info", verbose logging, the diagnostic bundle (one .zip of logs,
+// Audio stream's ISO counters), the radio band (RadioPanel), the
+// eleven-step connection flow, the log with level, text and attempt
+// filters, HCI capture, "copy diagnostic info", verbose logging, the diagnostic bundle (one .zip of logs,
 // captures and crash reports for a report). The receiver test is on the
 // Developer screen.
 
@@ -11,6 +11,7 @@ import { Gauge, LineChart } from "../components/charts";
 import { CodecDetailsCard } from "../components/CodecDetails";
 import { Banner, Button, Check, Dialog, IconButton, Section, Select } from "../components/controls";
 import { Icon } from "../components/Icon";
+import { RadioPanel } from "./RadioPanel";
 import { bugReportFor, QUALITY_QUEUE_BACKLOG_MS } from "../components/stream";
 import type { IconName } from "../components/icons";
 import { t } from "../i18n";
@@ -40,7 +41,7 @@ import {
   type LevelFilter,
 } from "../lib/logview";
 
-type Tab = "link" | "flow" | "log";
+type Tab = "link" | "radio" | "flow" | "log";
 
 // ---- Window-wide view state (kept while the window lives, so it is still
 // there when the user comes back to the screen) ----------------------------
@@ -247,6 +248,7 @@ export function Diagnostics() {
 
   const tabs = (): { id: Tab; label: string; icon: IconName }[] => [
     { id: "link", label: t("quality.title"), icon: "pulse" },
+    { id: "radio", label: t("ui.radio.tab"), icon: "bluetooth" },
     { id: "flow", label: t("dbgc.section_flow"), icon: "checkmark_circle" },
     { id: "log", label: t("dbgc.section_log"), icon: "people_list" },
   ];
@@ -404,6 +406,9 @@ export function Diagnostics() {
       <div class="tab-panel" role="tabpanel" id={`panel-${tab()}`} aria-labelledby={`tab-${tab()}`}>
         <Show when={tab() === "link"}>
           <LinkPanel />
+        </Show>
+        <Show when={tab() === "radio"}>
+          <RadioPanel />
         </Show>
         <Show when={tab() === "flow"}>
           <FlowPanel onJump={jumpTo} />

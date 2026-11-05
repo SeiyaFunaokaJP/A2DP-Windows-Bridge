@@ -1539,7 +1539,12 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
             parts.push(format!("RSSI {rssi:+} dB vs. golden range"));
         }
         if let Some(n) = radio.afh_in_use {
-            parts.push(format!("AFH {n} channels in use"));
+            let unused = radio.afh_map.as_ref().map(bt_host::afh::unused_ranges).unwrap_or_default();
+            if unused.is_empty() {
+                parts.push(format!("AFH {n} channels in use"));
+            } else {
+                parts.push(format!("AFH {n} channels in use (not {unused})"));
+            }
         }
         if let Some(n) = radio.afh_usable {
             let avoiding = if radio.afh_avoided.is_empty() {

@@ -520,6 +520,10 @@ class StreamStats:
     # while the PC is silent), not a radio problem; the playout model
     # starts over when media comes back
     PAUSE_S = 3.0
+    # A gap between packets longer than this counts as a long gap: the
+    # measure of radio trouble used to compare AFH policies (2026-10-17:
+    # about 6 a minute without host classification, 30-95 with a bad one)
+    LONG_GAP_S = 0.040
 
     def __init__(self, stream_id, cfg, buffer_ms, wav_path):
         self.lock = threading.Lock()
@@ -536,6 +540,7 @@ class StreamStats:
         self.pauses = 0
         self.pause_s = 0.0
         self.max_gap_s = 0.0
+        self.long_gaps = 0
         self.jitter_s = 0.0
         self.starts = 0
         self.decoding = False
@@ -613,6 +618,8 @@ class StreamStats:
             else:
                 self.max_gap_s = max(self.max_gap_s, gap)
                 self.iv_max_gap_s = max(self.iv_max_gap_s, gap)
+                if gap > self.LONG_GAP_S:
+                    self.long_gaps += 1
         else:
             self.first_t = t
         self.last_t = t
@@ -903,6 +910,7 @@ class StreamStats:
                 'pause_ms': round(self.pause_s * 1000.0, 1),
                 'idle': idle,
                 'max_gap_ms': round(self.max_gap_s * 1000.0, 1),
+                'long_gaps': self.long_gaps,
                 'jitter_ms': round(self.jitter_s * 1000.0, 2),
                 'buffer_ms': None if buffer_ms is None else round(buffer_ms, 1),
                 'interval': {
@@ -1401,6 +1409,7 @@ class Sink:
         log(f'summary of stream {snap["id"]}: {snap["config"]}')
         log(f'  {snap["packets"]} packets, {snap["audio_ms"] / 1000:.1f} s of audio, '
             f'lost {snap["lost"]}, late {snap["late"]}, max gap {snap["max_gap_ms"]:.0f} ms, '
+            f'gaps over 40 ms {snap["long_gaps"]}, '
             f'dropouts {snap["underruns"]} ({snap["underrun_ms"]:.0f} ms), '
             f'skips {snap["overflows"]} ({snap["overflow_ms"]:.0f} ms), '
             f'pauses {snap["pauses"]} ({snap["pause_ms"] / 1000:.1f} s)')
@@ -1409,7 +1418,7 @@ class Sink:
 
     CSV_FIELDS = ['time', 'codec', 'kbps', 'packets', 'lost', 'late', 'ts_errors', 'frame_errors',
                   'decode_errors', 'jitter_ms', 'max_gap_ms', 'buffer_ms', 'underruns', 'underrun_ms',
-                  'overflows', 'overflow_ms', 'rssi']
+                  'overflows', 'overflow_ms', 'rssi', 'long_gaps']
 
     def open_csv(self, path):
         new = not os.path.exists(path) or os.path.getsize(path) == 0
@@ -1425,7 +1434,7 @@ class Sink:
                f'{iv["bytes"] * 8 / 1000.0:.1f}', iv['packets'], s['lost'], s['late'], s['ts_errors'],
                s['frame_errors'], s['decode_errors'], s['jitter_ms'], iv['max_gap_ms'],
                '' if s['buffer_ms'] is None else s['buffer_ms'], s['underruns'], s['underrun_ms'],
-               s['overflows'], s['overflow_ms'], '' if rssi is None else rssi]
+               s['overflows'], s['overflow_ms'], '' if rssi is None else rssi, s['long_gaps']]
         self.csv.write(','.join(str(v) for v in row) + '\n')
 
 

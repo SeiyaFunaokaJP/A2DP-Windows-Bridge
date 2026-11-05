@@ -154,6 +154,9 @@ pub(crate) struct HostApp {
     afh_sent_map: Option<[u8; 10]>,
     afh_policy_version_seen: Option<u32>,
     afh_ticks: u32,
+    /// The controller's recent AFH maps ("blend") and the link they are of
+    afh_history: crate::afh::ControllerHistory,
+    afh_history_handle: Option<u16>,
     /// The next radio reading is RSSI (else the AFH map). Its own toggle: a
     /// classification sent on a tick must not always skip the same reading
     read_rssi_next: bool,
@@ -239,6 +242,8 @@ impl HostApp {
             afh_sent_map: None,
             afh_policy_version_seen: None,
             afh_ticks: 0,
+            afh_history: Default::default(),
+            afh_history_handle: None,
             read_rssi_next: true,
         }
     }
@@ -1350,6 +1355,8 @@ impl HostApp {
         self.afh_ticks = 0;
         self.afh_policy_version_seen = None;
         self.afh_sent_map = None;
+        self.afh_history.clear();
+        self.afh_history_handle = None;
         stack.timer_start(TIMER_AFH, 200);
     }
 
@@ -2075,7 +2082,7 @@ impl HostApp {
         // 1. The classification, when it changes (one command per tick)
         if classify {
             let policy = self.controls.afh_policy();
-            let c: Option<AfhClassification> = self.afh.as_mut().and_then(|a| a.classify(&policy));
+            let c: Option<AfhClassification> = self.afh.as_mut().and_then(|a| a.classify(&policy, &self.afh_history));
             self.stats.with_radio(|r| {
                 r.afh_usable = c.as_ref().map(|c| c.usable);
                 r.afh_avoided = c.as_ref().map(|c| c.avoided.clone()).unwrap_or_default();
@@ -2106,6 +2113,7 @@ impl HostApp {
                     }
                 );
                 self.afh_sent_map = c.map(|c| c.map);
+                self.afh_history.host_changed();
                 self.afh_policy_version_seen = Some(version);
                 return;
             }
@@ -2120,6 +2128,7 @@ impl HostApp {
             self.stats.with_radio(|r| {
                 r.rssi = None;
                 r.afh_in_use = None;
+                r.afh_map = None;
             });
             return;
         };
@@ -2149,20 +2158,37 @@ impl HostApp {
             }
             HCI_OPCODE_READ_AFH_CHANNEL_MAP if rp.len() >= 14 => {
                 // status, handle, mode, map[10]
-                let in_use = if rp[0] != ERROR_CODE_SUCCESS {
+                let map = if rp[0] != ERROR_CODE_SUCCESS {
                     None
                 } else if rp[3] == 1 {
-                    Some(rp[4..14].iter().map(|b| b.count_ones()).sum::<u32>().min(79))
+                    let mut m = [0u8; 10];
+                    m.copy_from_slice(&rp[4..14]);
+                    m[9] &= 0x7F; // bit 79 is reserved
+                    Some(m)
                 } else {
-                    Some(79)
+                    Some(crate::afh::Classification::all_usable().map)
                 };
+                let in_use = map.as_ref().map(|m| crate::afh::count(m) as u32);
+                // "blend" learns from the maps of the current link; AFH off
+                // (mode 0) says nothing about the channels
+                let handle = u16::from_le_bytes([rp[1], rp[2]]) & 0x0FFF;
+                if self.afh_history_handle != Some(handle) {
+                    self.afh_history.clear();
+                    self.afh_history_handle = Some(handle);
+                }
+                if let (Some(m), 1) = (&map, rp[3]) {
+                    self.afh_history.record(m, self.afh_sent_map.as_ref());
+                }
                 tracing::debug!(
                     "radio: AFH mode {}, {in_use:?} channels in use, map {:02X?} (status 0x{:02X})",
                     rp[3],
                     &rp[4..14],
                     rp[0]
                 );
-                self.stats.with_radio(|r| r.afh_in_use = in_use);
+                self.stats.with_radio(|r| {
+                    r.afh_in_use = in_use;
+                    r.afh_map = map;
+                });
             }
             _ => {}
         }
