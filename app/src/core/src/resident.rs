@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use a2dpwb_core::{Service, ServiceOptions};
 use bt_host::HciCapture;
-use ipc::{AclPacket, Event, IsoCounters, LinkCounters, LinkSample, LinkTotals};
+use ipc::{AclPacket, EncodeLoad, Event, IsoCounters, LinkCounters, LinkSample, LinkTotals};
 
 use crate::state::{link_details, remote_chip};
 use tao::event::{Event as TaoEvent, StartCause};
@@ -99,6 +99,21 @@ struct SampleCounters {
     totals: LinkTotals,
     /// LinkStats::acl_packets_sent
     acl_packets: u64,
+    encode: bt_host::EncodeTotals,
+}
+
+/// The encoder's time between two samples; None when nothing was encoded
+fn encode_load(prev: &bt_host::EncodeTotals, now: &bt_host::EncodeTotals, peak_ns: u64) -> Option<Box<EncodeLoad>> {
+    let calls = now.calls.saturating_sub(prev.calls);
+    let busy = now.busy_ns.saturating_sub(prev.busy_ns) as f64;
+    let audio = now.audio_ns.saturating_sub(prev.audio_ns);
+    (calls > 0 && audio > 0).then(|| {
+        Box::new(EncodeLoad {
+            load: busy / audio as f64,
+            avg_us: busy / calls as f64 / 1000.0,
+            max_us: peak_ns as f64 / 1000.0,
+        })
+    })
 }
 
 impl SampleCounters {
@@ -107,6 +122,7 @@ impl SampleCounters {
             at,
             totals: crate::state::link_totals(stats).0,
             acl_packets: stats.acl_packets_sent.load(Ordering::Relaxed),
+            encode: stats.encode.totals(),
         }
     }
 }
@@ -123,6 +139,9 @@ fn link_sample(
 ) -> (LinkSample, SampleCounters) {
     let (total, start, starts) = crate::state::link_totals(stats);
     let acl_packets = stats.acl_packets_sent.load(Ordering::Relaxed);
+    let encode_totals = stats.encode.totals();
+    let encode_peak = stats.encode.peak_ns.take();
+    let encode = last.and_then(|prev| encode_load(&prev.encode, &encode_totals, encode_peak));
     let (bps, pps, acl_ps) = match last {
         Some(prev) => {
             let dt = now.duration_since(prev.at).as_secs_f64().max(0.001);
@@ -163,6 +182,7 @@ fn link_sample(
         bandwidth_share: air.map(|a| a.bandwidth_share),
         queue_capacity: iso.is_none().then_some(bt_host::stats::MEDIA_QUEUE_PACKETS as u32),
         queue_ms: iso.is_none().then(|| stats.queue_wait_ms.load(Ordering::Relaxed)),
+        encode,
         sink_delay_ms: if iso.is_some() { None } else { stats.sink_delay().map(|d| d.as_secs_f64() * 1000.0) },
         source_rate: Some(source_rate),
         counters: Some(LinkCounters { total, stream_start: start, stream_starts: starts }),
@@ -174,7 +194,7 @@ fn link_sample(
         capture_discontinuities: Some(since.capture_discontinuities),
         capture_lost: Some(since.capture_lost),
     };
-    (sample, SampleCounters { at: now, totals: total, acl_packets })
+    (sample, SampleCounters { at: now, totals: total, acl_packets, encode: encode_totals })
 }
 
 /// Link samples while a UI subscribes; every second the stream's rates (the
@@ -513,6 +533,7 @@ mod tests {
         assert_eq!((first.controller_backlog, first.controller_backlog_ms), (Some(0), None));
         assert!(first.remote_chip.is_none() && first.link_details.is_none());
         assert_eq!(first.sink_delay_ms, None);
+        assert_eq!(first.encode, None);
         // One second later: 120 packets of 1005 bytes, 2 dropped, after a
         // stream that started at 10 packets; the device reported its delay
         stats.set_sink_delay(Some(1875));
@@ -530,6 +551,8 @@ mod tests {
         stats.start_capture_lost.store(480, r);
         stats.capture_discontinuities.store(5, r);
         stats.capture_lost_frames.store(480 + 960, r);
+        // 375 SBC frames (1 s at 48 kHz) took 15 ms, the longest 120 us
+        stats.encode.add(375, 15_000_000, 1_000_000_000, 120_000);
         let (s, _) = link_sample(1000, &stats, Some(total), t0 + Duration::from_secs(1), 48000, None);
         assert!((s.packets_per_second - 120.0).abs() < 1e-6);
         assert_eq!(s.acl_packet, Some(AclPacket { name: "3-DH5".into(), slots: 6, from_features: Some(false) }));
@@ -542,6 +565,7 @@ mod tests {
         assert_eq!((c.total.packets, c.stream_start.packets, c.stream_starts), (120, 10, 1));
         assert_eq!(s.source_rate, Some(48000));
         assert_eq!(s.sink_delay_ms, Some(187.5));
+        assert_eq!(s.encode.as_deref(), Some(&EncodeLoad { load: 0.015, avg_us: 40.0, max_us: 120.0 }));
         assert!(s.iso.is_none());
         assert_eq!((s.capture_discontinuities, s.capture_lost), (Some(3), Some(960)));
         assert_eq!((c.total.capture_discontinuities, c.total.capture_lost), (5, 1440));

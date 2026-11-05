@@ -78,6 +78,55 @@ pub struct LinkStats {
     /// The A2DP link: the remote device's chip, role and mode, readings
     /// polled with RSSI (BTstack thread)
     pub link: Mutex<LinkDetails>,
+    /// How long the encoder takes (encode thread, A2DP or LE Audio)
+    pub encode: EncodeTiming,
+}
+
+/// The encoder's own time: what one encoder call takes against the audio
+/// it encodes. Cumulative; the link sampler takes differences.
+#[derive(Debug, Default)]
+pub struct EncodeTiming {
+    /// Time spent in encoder calls (ns)
+    pub busy_ns: AtomicU64,
+    /// Audio those calls encoded (ns of playback)
+    pub audio_ns: AtomicU64,
+    /// Encoder calls (codec frames, or LE Audio SDU sets)
+    pub calls: AtomicU64,
+    /// The longest call since the link sampler last took it (ns)
+    pub peak_ns: MaxGauge,
+}
+
+/// Totals of [`EncodeTiming`] at one moment
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EncodeTotals {
+    pub busy_ns: u64,
+    pub audio_ns: u64,
+    pub calls: u64,
+}
+
+impl EncodeTiming {
+    /// Adds what the encode thread measured since it last reported:
+    /// `calls` encoder calls that took `busy_ns` for `audio_ns` of audio,
+    /// the longest `peak_ns`
+    pub fn add(&self, calls: u64, busy_ns: u64, audio_ns: u64, peak_ns: u64) {
+        if calls == 0 {
+            return;
+        }
+        self.busy_ns.fetch_add(busy_ns, Ordering::Relaxed);
+        self.audio_ns.fetch_add(audio_ns, Ordering::Relaxed);
+        self.peak_ns.record(peak_ns);
+        // Last: a reader that sees the calls sees their time
+        self.calls.fetch_add(calls, Ordering::Release);
+    }
+
+    pub fn totals(&self) -> EncodeTotals {
+        let calls = self.calls.load(Ordering::Acquire);
+        EncodeTotals {
+            busy_ns: self.busy_ns.load(Ordering::Relaxed),
+            audio_ns: self.audio_ns.load(Ordering::Relaxed),
+            calls,
+        }
+    }
 }
 
 /// What an ABR encoder runs at now: published by the encode thread, put
@@ -378,5 +427,17 @@ mod tests {
         // A new stream starts its peak from what the controller holds now
         s.mark_stream_start();
         assert_eq!(s.controller_backlog_stream_max.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn encode_timing_adds_up_and_takes_the_peak() {
+        let t = EncodeTiming::default();
+        t.add(0, 999, 999, 999);
+        assert_eq!(t.totals(), EncodeTotals::default());
+        t.add(10, 50_000, 2_900_000, 9_000);
+        t.add(5, 20_000, 1_450_000, 7_000);
+        assert_eq!(t.totals(), EncodeTotals { busy_ns: 70_000, audio_ns: 4_350_000, calls: 15 });
+        assert_eq!(t.peak_ns.take(), 9_000);
+        assert_eq!(t.peak_ns.take(), 0);
     }
 }

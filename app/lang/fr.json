@@ -576,6 +576,8 @@
   "ui.diag.backlog": "Attente dans l'adaptateur",
   "ui.diag.backlog_value": "%s (%u paquets)",
   "ui.diag.backlog_packets": "%u paquets",
+  "ui.diag.encode_load": "Charge de l'encodeur",
+  "ui.diag.encode_load_value": "%s (par trame : moy. %s, max. %s)",
   "ui.diag.chip_maker": "Fabricant de la puce Bluetooth",
   "ui.diag.chip_version": "Version Bluetooth",
   "ui.diag.chip_packet": "Type de paquet le plus rapide",

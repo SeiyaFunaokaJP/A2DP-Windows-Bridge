@@ -576,6 +576,8 @@
   "ui.diag.backlog": "介面卡內積壓",
   "ui.diag.backlog_value": "%s（%u 個封包）",
   "ui.diag.backlog_packets": "%u 個封包",
+  "ui.diag.encode_load": "編碼器負載",
+  "ui.diag.encode_load_value": "%s（每幀：平均 %s，最大 %s）",
   "ui.diag.chip_maker": "藍牙晶片製造商",
   "ui.diag.chip_version": "藍牙版本",
   "ui.diag.chip_packet": "最快的封包類型",

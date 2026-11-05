@@ -53,7 +53,8 @@ pub use rfcomm::{
 pub use sdp_services::{SdpRecord, ServicesError};
 use shared::{Shared, Wait};
 pub use stats::{
-    LinkDetails, LinkMode, LinkRadio, LinkStats, LiveCodec, MaxGauge, RemoteFeatures, RemoteVersion, StreamTiming,
+    EncodeTiming, EncodeTotals, LinkDetails, LinkMode, LinkRadio, LinkStats, LiveCodec, MaxGauge, RemoteFeatures,
+    RemoteVersion, StreamTiming,
 };
 
 const INIT_TIMEOUT: Duration = Duration::from_secs(30);

@@ -576,6 +576,8 @@
   "ui.diag.backlog": "Acumulado en el adaptador",
   "ui.diag.backlog_value": "%s (%u paquetes)",
   "ui.diag.backlog_packets": "%u paquetes",
+  "ui.diag.encode_load": "Carga del codificador",
+  "ui.diag.encode_load_value": "%s (por trama: media %s, máx. %s)",
   "ui.diag.chip_maker": "Fabricante del chip Bluetooth",
   "ui.diag.chip_version": "Versión de Bluetooth",
   "ui.diag.chip_packet": "Tipo de paquete más rápido",

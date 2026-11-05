@@ -576,6 +576,8 @@
   "ui.diag.backlog": "Rückstau im Adapter",
   "ui.diag.backlog_value": "%s (%u Pakete)",
   "ui.diag.backlog_packets": "%u Pakete",
+  "ui.diag.encode_load": "Encoder-Last",
+  "ui.diag.encode_load_value": "%s (pro Frame: Ø %s, max. %s)",
   "ui.diag.chip_maker": "Hersteller des Bluetooth-Chips",
   "ui.diag.chip_version": "Bluetooth-Version",
   "ui.diag.chip_packet": "Schnellster Pakettyp",
