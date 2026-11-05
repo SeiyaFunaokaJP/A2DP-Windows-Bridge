@@ -535,7 +535,12 @@ const FIRMWARE_SECTION = "adapter-firmware";
 function AfhSection() {
   const app = useApp();
   const afh = () => app.core.state.snap!.settings.afh;
-  const mode = () => (afh() === "auto" || afh() === "off" ? afh() : "manual");
+  const developer = () => app.core.state.snap!.settings.developer_mode;
+  // "blend-mild" / "-medium" / "-strong": experimental, developer mode
+  // only; without it the stack runs Auto, and so it shows
+  const strictness = () => (afh().startsWith("blend-") ? afh().slice("blend-".length) : null);
+  const mode = () =>
+    afh() === "auto" || afh() === "off" ? afh() : strictness() ? (developer() ? "blend" : "auto") : "manual";
   const [channels, setChannels] = createSignal(mode() === "manual" ? afh() : "");
   const [manual, setManual] = createSignal(mode() === "manual");
   const bad = () => manual() && channels().trim() !== "" && parseAfhChannels(channels()) === null;
@@ -552,7 +557,7 @@ function AfhSection() {
   };
   // One box for the channels (issue #86): Auto shows what it chose, Off
   // nothing, both read only; Manual takes the user's
-  const shown = () => (manual() ? channels() : mode() === "auto" ? avoided() : "");
+  const shown = () => (manual() ? channels() : mode() === "auto" || mode() === "blend" ? avoided() : "");
   return (
     <Section
       id={AFH_SECTION}
@@ -566,13 +571,26 @@ function AfhSection() {
               { value: "auto", label: t("receiver.afh_auto") },
               { value: "off", label: t("receiver.afh_off") },
               { value: "manual", label: t("receiver.afh_manual") },
+              ...(developer() ? [{ value: "blend", label: t("receiver.afh_blend") }] : []),
             ]}
             onChange={(v) => {
               setManual(v === "manual");
               if (v === "manual") saveChannels();
-              else void saveSettings(app, { afh: v });
+              else void saveSettings(app, { afh: v === "blend" ? "blend-medium" : v });
             }}
           />
+          <Show when={!manual() && mode() === "blend"}>
+            <Segmented
+              label={t("receiver.afh_strictness")}
+              value={strictness() ?? "medium"}
+              options={[
+                { value: "mild", label: t("receiver.afh_mild") },
+                { value: "medium", label: t("receiver.afh_medium") },
+                { value: "strong", label: t("receiver.afh_strong") },
+              ]}
+              onChange={(v) => void saveSettings(app, { afh: `blend-${v}` })}
+            />
+          </Show>
           <input
             class="input mono afh-channels"
             placeholder={manual() ? "6,11" : ""}

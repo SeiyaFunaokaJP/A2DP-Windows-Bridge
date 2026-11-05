@@ -5,6 +5,8 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use bt_host::afh;
 use bt_host::chips::{self, ChipVendor};
@@ -95,7 +97,7 @@ pub fn usb_known_ids(vendor_class: &[(u16, u16)]) -> Vec<(u16, u16)> {
 /// Fills the chipset part of `config` from the settings and the present
 /// adapters
 pub fn configure(config: &mut HostConfig, settings: &Settings, _config_dir: &Path) {
-    config.afh = Some(Box::new(WifiAfh));
+    config.afh = Some(Box::new(WifiAfh::default()));
     if matches!(config.transport, TransportConfig::Tcp(_)) {
         return; // a virtual controller: no chipset, no firmware
     }
@@ -212,18 +214,121 @@ pub fn configure(config: &mut HostConfig, settings: &Settings, _config_dir: &Pat
 }
 
 /// AFH host channel classification from the 2.4 GHz channel this PC's Wi-Fi
-/// is connected on ("auto")
-struct WifiAfh;
+/// is connected on ("auto"), and for "blend-*" (developer mode) also from
+/// Wi-Fi scans and the controller's map
+#[derive(Default)]
+struct WifiAfh {
+    scans: Arc<Mutex<BlendScans>>,
+    /// What blend passed last time (its hysteresis)
+    blend_previous: Option<[u8; 10]>,
+}
+
+fn connected_24ghz() -> Vec<u8> {
+    match win_sys::wlan::survey() {
+        Ok(s) => s.connected_channels_24ghz(),
+        Err(e) => {
+            tracing::debug!("Wi-Fi survey failed: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// A fresh Wi-Fi scan this often while "blend" runs. A scan takes the
+/// PC's Wi-Fi off its channel for a moment, so not more often.
+const BLEND_SCAN_EVERY: Duration = Duration::from_secs(120);
+/// How long a scan waits for the access points to answer
+const BLEND_SCAN_WAIT: Duration = Duration::from_secs(4);
+/// A scan older than this no longer counts
+const BLEND_SCAN_MAX_AGE: Duration = Duration::from_secs(600);
+/// The scanning thread stops when "blend" has not asked for this long
+const BLEND_SCAN_IDLE: Duration = Duration::from_secs(180);
+
+/// The latest scans for "blend", filled by a thread of their own: a scan
+/// waits seconds, and the BTstack thread that classifies must not
+#[derive(Default)]
+struct BlendScans {
+    latest: Option<(Instant, Vec<afh::ApReading>)>,
+    asked: Option<Instant>,
+    running: bool,
+    /// The last scan failure logged (logged once per kind)
+    failed: Option<win_sys::wlan::ScanError>,
+}
+
+/// The latest scan for "blend"; starts the scanning thread when it is not
+/// running. Only "blend" (developer mode, chosen by the user) gets here:
+/// a scan may meet Windows' location setting.
+fn blend_scan(scans: &Arc<Mutex<BlendScans>>) -> Option<Vec<afh::ApReading>> {
+    let mut s = scans.lock().unwrap_or_else(|e| e.into_inner());
+    s.asked = Some(Instant::now());
+    if !s.running {
+        s.running = true;
+        let scans = Arc::clone(scans);
+        let spawned = std::thread::Builder::new().name("afh-scan".into()).spawn(move || blend_scan_loop(&scans));
+        if let Err(e) = spawned {
+            tracing::warn!("AFH blend: no scanning thread ({e})");
+            s.running = false;
+        }
+    }
+    s.latest.as_ref().filter(|(at, _)| at.elapsed() < BLEND_SCAN_MAX_AGE).map(|(_, aps)| aps.clone())
+}
+
+fn blend_scan_loop(scans: &Mutex<BlendScans>) {
+    tracing::debug!("AFH blend: Wi-Fi scans every {} s", BLEND_SCAN_EVERY.as_secs());
+    loop {
+        let result = win_sys::wlan::scan_24ghz(BLEND_SCAN_WAIT);
+        {
+            let mut s = scans.lock().unwrap_or_else(|e| e.into_inner());
+            match result {
+                Ok(aps) => {
+                    tracing::debug!(
+                        "AFH blend: scan heard {}",
+                        aps.iter().map(|a| format!("ch {} {} dBm", a.channel, a.rssi)).collect::<Vec<_>>().join(", ")
+                    );
+                    let aps = aps.iter().map(|a| afh::ApReading { channel: a.channel, rssi: a.rssi }).collect();
+                    s.latest = Some((Instant::now(), aps));
+                    s.failed = None;
+                }
+                Err(e) => {
+                    if s.failed != Some(e) {
+                        tracing::info!("AFH blend: no Wi-Fi scan ({e:?}), the controller's map alone decides");
+                    }
+                    s.failed = Some(e);
+                    s.latest = None;
+                }
+            }
+        }
+        std::thread::sleep(BLEND_SCAN_EVERY);
+        let mut s = scans.lock().unwrap_or_else(|e| e.into_inner());
+        if s.asked.is_none_or(|t| t.elapsed() > BLEND_SCAN_IDLE) {
+            tracing::debug!("AFH blend: Wi-Fi scans stopped");
+            s.running = false;
+            s.latest = None;
+            return;
+        }
+    }
+}
 
 impl AfhSource for WifiAfh {
-    fn classify(&mut self, policy: &str) -> Option<AfhClassification> {
-        let c = afh::classify(policy, || match win_sys::wlan::survey() {
-            Ok(s) => s.connected_channels_24ghz(),
-            Err(e) => {
-                tracing::debug!("Wi-Fi survey failed: {e}");
-                Vec::new()
+    fn classify(&mut self, policy: &str, controller: &afh::ControllerHistory) -> Option<AfhClassification> {
+        let c = match afh::Policy::parse(policy) {
+            afh::Policy::Blend(strictness) => {
+                let connected = connected_24ghz();
+                let aps = blend_scan(&self.scans);
+                let c = afh::blend(&afh::BlendInput {
+                    strictness,
+                    connected: &connected,
+                    aps: aps.as_deref(),
+                    controller,
+                    previous: self.blend_previous.as_ref(),
+                });
+                self.blend_previous = c.passed.then_some(c.map);
+                c
             }
-        });
+            _ => {
+                self.blend_previous = None;
+                afh::classify(policy, connected_24ghz)
+            }
+        };
         tracing::debug!(
             "afh: policy {policy:?}: passed {}, usable {}, avoided Wi-Fi {:?}",
             c.passed,

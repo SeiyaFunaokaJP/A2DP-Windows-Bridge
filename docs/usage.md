@@ -487,6 +487,12 @@ At least 20 Bluetooth channels always stay in use. Set it on the **Adapter** scr
 
 In developer mode, **Scan** asks Windows for a fresh Wi-Fi scan and draws each 2.4 GHz network over the band, higher the louder it is. On Windows 11 24H2 and later the list counts as location data: Windows may ask for location access, and with **Let desktop apps access your location** off it gives no list. The scan does not change AFH: Auto still avoids only the PC's own channel (see above why).
 
+### Blend (experimental) {#afh-blend}
+
+In developer mode, **Avoid Wi-Fi channels** also offers **Blend**, with **Mild**, **Medium** or **Strong**. It avoids what Auto avoids, plus the Bluetooth channels where two signals point at interference: the Wi-Fi networks heard within 11 MHz (counting from -90 dBm, in full at -50 dBm) and how often the adapter itself left the channel out of its recent channel maps. A loud network the adapter keeps using without trouble is not enough on its own at Mild or Medium. The stricter the setting, the more readily a channel is avoided and the fewer always stay in use: 56 (Mild), 48 (Medium) or 40 (Strong) of 79.
+
+While Blend runs, A2DPWB scans for Wi-Fi every 2 minutes, which needs location access as **Scan** does; without it, the adapter's map alone decides. Blend has not been measured on real adapters yet and may make the link worse than Auto: compare it with the [peer receiver test](#receiver) before keeping it. Without developer mode it runs as Auto. In `settings.json` and with `--afh` it is `blend-mild`, `blend-medium` or `blend-strong`.
+
 ## Peer Receiver Test (tools/linux_sink) {#receiver}
 
 The link quality view shows what A2DPWB sends. To see what actually arrives, run `tools/linux_sink/a2dpwb_sink.py` on a second PC with Linux. It drives that PC's ordinary Bluetooth adapter - the built-in one is fine - directly (Bumble over the HCI user channel) as an A2DP sink for every codec including LDAC, measures every media packet that arrives and serves the statistics over the network:

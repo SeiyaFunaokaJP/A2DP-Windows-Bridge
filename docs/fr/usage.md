@@ -488,6 +488,12 @@ Au moins 20 canaux Bluetooth restent toujours utilisés. Réglez-le sur l'écran
 
 En mode développeur, **Analyser** demande à Windows une nouvelle analyse Wi-Fi et dessine chaque réseau 2,4 GHz au-dessus de la bande, d'autant plus haut qu'il est fort. Depuis Windows 11 24H2, la liste compte comme donnée de localisation : Windows peut demander l'accès à la position et, sans **Autoriser les applications de bureau à accéder à votre position**, ne donne pas de liste. L'analyse ne change pas l'AFH : Auto n'évite toujours que le canal du PC lui-même (voir plus haut pourquoi).
 
+### Combiné (expérimental) {#afh-blend}
+
+En mode développeur, **Éviter les canaux Wi-Fi** propose aussi **Combiné**, avec **Légère**, **Moyenne** ou **Forte**. Il évite ce qu'Auto évite, plus les canaux Bluetooth où deux signaux indiquent des interférences : les réseaux Wi-Fi entendus à moins de 11 MHz (comptés à partir de -90 dBm, pleinement à -50 dBm) et la fréquence à laquelle l'adaptateur lui-même a laissé le canal de côté dans ses cartes de canaux récentes. Un réseau fort que l'adaptateur continue d'utiliser sans problème ne suffit pas seul avec Légère ou Moyenne. Plus le réglage est fort, plus un canal est vite évité et moins il en reste toujours en service : 56 (Légère), 48 (Moyenne) ou 40 (Forte) sur 79.
+
+Tant que Combiné fonctionne, A2DPWB cherche les réseaux Wi-Fi toutes les 2 minutes, ce qui demande l'accès à la position comme **Analyser** ; sans lui, la carte de l'adaptateur décide seule. Combiné n'a pas encore été mesuré avec de vrais adaptateurs et peut rendre la liaison moins bonne qu'Auto : comparez-le avec le [test avec récepteur pair](#receiver) avant de le garder. Sans le mode développeur, il fonctionne comme Auto. Dans `settings.json` et avec `--afh`, c'est `blend-mild`, `blend-medium` ou `blend-strong`.
+
 ## Test avec récepteur pair (tools/linux_sink) {#receiver}
 
 La vue de qualité de liaison montre ce qu'A2DPWB envoie. Pour voir ce qui arrive réellement, lancez `tools/linux_sink/a2dpwb_sink.py` sur un second PC sous Linux. Il pilote directement l'adaptateur Bluetooth ordinaire de ce PC - l'adaptateur intégré convient - (Bumble via le canal utilisateur HCI) comme récepteur A2DP pour tous les codecs, LDAC compris, mesure chaque paquet média qui arrive et fournit les statistiques sur le réseau :
