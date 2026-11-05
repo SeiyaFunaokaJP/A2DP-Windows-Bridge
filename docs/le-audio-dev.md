@@ -2,6 +2,7 @@
 title: LE Audio (developer note)
 layout: default
 nav_exclude: true
+english_only: true
 ---
 
 # LE Audio (experimental) - developer note

@@ -2,7 +2,7 @@
 title: 加入晶片支援
 layout: default
 parent: 首頁
-nav_order: 3
+nav_order: 3.5
 ---
 
 # 加入晶片支援
@@ -26,7 +26,7 @@ A2DP Windows Bridge 會自行驅動藍牙介面卡（WinUSB），因此介面卡
 
 - 該介面卡，插在 Windows 10 / 11 電腦上
 - A2DP Windows Bridge 2.0.2 或更新版本（以下步驟只需要應用程式）
-- 若要撰寫載入程式：依 [建置](../building) 準備的建置環境，以及 [USBPcap](https://desowin.org/usbpcap/) 與 [Wireshark](https://www.wireshark.org/)，用來記錄 Windows 本身的驅動程式做了什麼
+- 若要撰寫載入程式：依 [建置](building) 準備的建置環境，以及 [USBPcap](https://desowin.org/usbpcap/) 與 [Wireshark](https://www.wireshark.org/)，用來記錄 Windows 本身的驅動程式做了什麼
 
 ## 步驟 1：將介面卡交給 A2DP Windows Bridge
 
@@ -235,7 +235,7 @@ cargo test -p bt-host
 **文件**：
 
 13. `docs/setup.md` 與 `docs/*/setup.md`（所有語言）中的晶片表格：比照 Intel 新增一列，寫出涵蓋的晶片、韌體檔案及其存放位置（韌體資料夾：`%APPDATA%\A2DPWB\firmware`，或其中的 `<vendor>` 子資料夾；較舊的列仍寫著「config folder」）以及 *Experimental.*。視窗的按鈕名稱請依各語言的 `app/lang/*.json`（**介面卡** 畫面為 `ui.nav.adapter`，開啟該資料夾的按鈕為 `firmware.open_folder`）。整個廠商：從「Not supported」那一列中移除。部分晶片：保留該廠商，並寫出仍不支援的晶片。將該廠商加入 Firmware 一節開頭的句子（"Intel and Broadcom adapters (experimental) may need firmware files of their own"）
-14. 有人實際使用過後，更新 [已驗證的硬體](../hardware)（`docs/hardware.md`），以及本頁的開頭（`docs/chip-support.md`，所有語言），其中列出尚無載入程式的廠商（部分晶片時寫成「the other <vendor> chips」）
+14. 有人實際使用過後，更新 [已驗證的硬體](hardware)（`docs/hardware.md`），以及本頁的開頭（`docs/chip-support.md`，所有語言），其中列出尚無載入程式的廠商（部分晶片時寫成「the other <vendor> chips」）
 
 ## 步驟 7：在介面卡上實測
 
@@ -254,7 +254,7 @@ target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.
 
 ## 步驟 8：開啟 pull request
 
-開啟之前，請依序執行以下命令（環境準備請參閱 [建置](../building)）。首先是 UI，在 `app\src\ui` 中執行：它會檢查步驟 6 的修改（第 12 項），而且 Rust workspace 包含視窗的 crate，需要先建置 UI：
+開啟之前，請依序執行以下命令（環境準備請參閱 [建置](building)）。首先是 UI，在 `app\src\ui` 中執行：它會檢查步驟 6 的修改（第 12 項），而且 Rust workspace 包含視窗的 crate，需要先建置 UI：
 
 ```bat
 pnpm install

@@ -2,7 +2,7 @@
 title: 칩 지원 추가
 layout: default
 parent: 홈
-nav_order: 3
+nav_order: 3.5
 ---
 
 # 칩 지원 추가
@@ -26,7 +26,7 @@ A2DP Windows Bridge는 Bluetooth 어댑터를 직접(WinUSB로) 다루므로, �
 
 - Windows 10 / 11 PC에 연결한 해당 어댑터
 - A2DP Windows Bridge 2.0.2 이상(아래 1, 2단계는 앱만 있으면 됩니다)
-- 로더를 작성하려면: [빌드](../building)와 같은 빌드 환경, 그리고 Windows 자체 드라이버의 동작을 기록할 [USBPcap](https://desowin.org/usbpcap/)과 [Wireshark](https://www.wireshark.org/)
+- 로더를 작성하려면: [빌드](building)와 같은 빌드 환경, 그리고 Windows 자체 드라이버의 동작을 기록할 [USBPcap](https://desowin.org/usbpcap/)과 [Wireshark](https://www.wireshark.org/)
 
 ## 1단계: 어댑터를 A2DP Windows Bridge에 맡기기
 
@@ -235,7 +235,7 @@ cargo test -p bt-host
 **문서**:
 
 13. `docs/setup.md`와 `docs/*/setup.md`(모든 언어)의 칩 표: Intel과 같은 행으로, 다루는 칩, 펌웨어 파일과 그 위치(펌웨어 폴더 `%APPDATA%\A2DPWB\firmware` 또는 그 `<vendor>` 하위 폴더. 예전 행에는 아직 "config folder"라고 되어 있음), 그리고 *Experimental.*을 적습니다. 창의 버튼은 각 언어의 `app/lang/*.json`에 있는 대로 씁니다(어댑터 화면은 `ui.nav.adapter`, 그 폴더를 여는 버튼은 `firmware.open_folder`). 벤더 전체: "Not supported" 행에서 뺍니다. 일부 칩: 벤더를 그대로 두고 아직 지원되지 않는 칩의 이름을 적습니다. Firmware 섹션 맨 위의 문장("Intel and Broadcom adapters (experimental) may need firmware files of their own")에 벤더를 추가합니다
-14. 누군가 실제로 사용해 본 뒤에는 [Verified Hardware](../hardware)(`docs/hardware.md`)를, 그리고 로더가 없는 벤더를 적어 둔 이 페이지의 첫머리(`docs/chip-support.md`, 모든 언어)를 고칩니다(일부 칩: "the other <vendor> chips")
+14. 누군가 실제로 사용해 본 뒤에는 [Verified Hardware](hardware)(`docs/hardware.md`)를, 그리고 로더가 없는 벤더를 적어 둔 이 페이지의 첫머리(`docs/chip-support.md`, 모든 언어)를 고칩니다(일부 칩: "the other <vendor> chips")
 
 ## 7단계: 어댑터에서 시험
 
@@ -254,7 +254,7 @@ WinUSB가 할당된 어댑터가 여러 개이면 `-u`를 지정해도 Realtek �
 
 ## 8단계: 풀 리퀘스트 열기
 
-열기 전에 다음을 순서대로 실행하십시오(환경 준비는 [빌드](../building) 참조). 먼저 `app\src\ui`에서 UI를 확인합니다. 6단계(12번 항목)의 변경을 검사하며, Rust 워크스페이스에는 UI 빌드가 필요한 창의 크레이트가 포함되어 있습니다.
+열기 전에 다음을 순서대로 실행하십시오(환경 준비는 [빌드](building) 참조). 먼저 `app\src\ui`에서 UI를 확인합니다. 6단계(12번 항목)의 변경을 검사하며, Rust 워크스페이스에는 UI 빌드가 필요한 창의 크레이트가 포함되어 있습니다.
 
 ```bat
 pnpm install

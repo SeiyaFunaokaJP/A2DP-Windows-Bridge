@@ -2,7 +2,7 @@
 title: 添加芯片支持
 layout: default
 parent: 首页
-nav_order: 3
+nav_order: 3.5
 ---
 
 # 添加芯片支持
@@ -26,7 +26,7 @@ A2DP Windows Bridge 自己驱动 Bluetooth 适配器（WinUSB），因此在适�
 
 - 适配器，插在 Windows 10 / 11 PC 上
 - A2DP Windows Bridge 2.0.2 或更高版本（下面的步骤只需要应用本身）
-- 编写加载程序时：按[构建](../building)准备好构建环境，并安装 [USBPcap](https://desowin.org/usbpcap/) 和 [Wireshark](https://www.wireshark.org/)，用来记录 Windows 自带驱动程序的操作
+- 编写加载程序时：按[构建](building)准备好构建环境，并安装 [USBPcap](https://desowin.org/usbpcap/) 和 [Wireshark](https://www.wireshark.org/)，用来记录 Windows 自带驱动程序的操作
 
 ## 第 1 步：把适配器交给 A2DP Windows Bridge
 
@@ -235,7 +235,7 @@ cargo test -p bt-host
 **文档**：
 
 13. `docs/setup.md` 和 `docs/*/setup.md`（所有语言）中的芯片表：参照 Intel 的那一行添加一行，写明覆盖的芯片、固件文件及其存放位置（固件文件夹：`%APPDATA%\A2DPWB\firmware`，或其中的 `<vendor>` 子文件夹；较旧的行仍写着“config folder”），以及 *Experimental.*。窗口中的按钮名称按各语言的 `app/lang/*.json` 书写（适配器页面为 `ui.nav.adapter`，打开该文件夹的按钮为 `firmware.open_folder`）。整个厂商：把它从“Not supported”一行中去掉。部分芯片：保留该厂商，并写明仍不支持的芯片。在“固件”一节开头的句子中加上该厂商（"Intel and Broadcom adapters (experimental) may need firmware files of their own"）
-14. 有人实际用过之后更新[已验证硬件](../hardware)（`docs/hardware.md`），以及本页开头（`docs/chip-support.md`，所有语言）中列出尚无加载程序的厂商的那句话（部分芯片时写成“the other <vendor> chips”）
+14. 有人实际用过之后更新[已验证硬件](hardware)（`docs/hardware.md`），以及本页开头（`docs/chip-support.md`，所有语言）中列出尚无加载程序的厂商的那句话（部分芯片时写成“the other <vendor> chips”）
 
 ## 第 7 步：在适配器上试用
 
@@ -254,7 +254,7 @@ target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.
 
 ## 第 8 步：创建 pull request
 
-创建之前，按顺序运行以下命令（环境准备请参阅[构建](../building)）。首先是 UI，在 `app\src\ui` 中运行：它会检查第 6 步（第 12 项）的修改，而且 Rust 工作区包含窗口的 crate，需要先构建好 UI：
+创建之前，按顺序运行以下命令（环境准备请参阅[构建](building)）。首先是 UI，在 `app\src\ui` 中运行：它会检查第 6 步（第 12 项）的修改，而且 Rust 工作区包含窗口的 crate，需要先构建好 UI：
 
 ```bat
 pnpm install

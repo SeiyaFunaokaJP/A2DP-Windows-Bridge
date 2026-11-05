@@ -152,7 +152,7 @@ Diese Firmwaredateien sind proprietäre Realtek-Binärdateien, die über das Pro
 
 ## Empfohlene Adapter {#adapters}
 
-Welche Adapter und Kopfhörer tatsächlich mit A2DPWB verwendet wurden, mit den Codecs und den Berichten: [Geprüfte Hardware](../hardware) (Englisch).
+Welche Adapter und Kopfhörer tatsächlich mit A2DPWB verwendet wurden, mit den Codecs und den Berichten: [Geprüfte Hardware](hardware).
 
 | Chipsatz | Beispielprodukte | Hinweise |
 |:---------|:-----------------|:---------|
