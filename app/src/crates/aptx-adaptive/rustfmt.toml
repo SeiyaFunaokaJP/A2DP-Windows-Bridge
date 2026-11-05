@@ -1,0 +1,2 @@
+# Upstream's (default) rustfmt style for the vendored code, not the
+# workspace's rustfmt.toml

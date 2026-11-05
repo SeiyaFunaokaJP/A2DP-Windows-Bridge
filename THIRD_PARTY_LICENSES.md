@@ -31,6 +31,9 @@ repository. The Rust crates are pinned in `Cargo.lock`, the JavaScript packages 
 | micro-ecc (bundled in BTstack) | as in BTstack `5bc5cbdbe` (`3rd-party/micro-ecc/`) | BSD-2-Clause | Kenneth MacKay | P-256 for LE Secure Connections (experimental LE Audio), §18 | `a2dpwb-core.exe` |
 | LHDC-V5-Encoder (C port of the AOSP LHDC V5 encoder) | commit `3f9d198` | Apache-2.0; `src/lhdcv5_fft.c` BSD-3-Clause | The Android Open Source Project; Mark Borgerding (KISS FFT) | LHDC V5 audio encoding, §8 | `a2dpwb-core.exe` |
 | libopus | 1.5.2 (tag `v1.5.2`, commit `ddbe483`) | BSD-3-Clause | Xiph.Org, Skype Limited, Octasic, Jean-Marc Valin, Timothy B. Terriberry, CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Mozilla, Amazon | Opus audio encoding (decoding in `a2dpwb_decode`, §14), §16 | `a2dpwb-core.exe` |
+| aptx-adaptive (AKS-Logic/aptx-adaptive-linux, vendored) | upstream commit `25099004b2d3` (2026-10-22), crate 0.1.0 | MIT | Prateek Mittal (AKS-Logic) | aptX Adaptive encoding (experimental), §19 | `a2dpwb-core.exe` |
+| HFreebuds (protocol description, packet cutting and test vectors) | commit `dab1f7e` | MIT | N2K02 | Huawei earbuds' sound quality mode (`app/src/crates/core/src/vendor/huawei.rs`), §20 | `a2dpwb-core.exe` |
+| LHDC-Switch (protocol use, packet cutting and test vector) | commit `b33a758` | MIT | LHDC Switch contributors | OPPO earbuds' Hi-Res mode (`app/src/crates/core/src/vendor/oppo.rs`), §21 | `a2dpwb-core.exe` |
 | Rust crates (Tauri 2.12, tokio, serde, windows, nusb, wasapi, tray-icon, ...) | `Cargo.lock` | Apache-2.0, MIT and other permissive licenses; MPL-2.0 for a few (§9) | their authors | Everything written in Rust that is not A2DPWB's own | all three programs |
 | SolidJS (`solid-js`) | 1.9.17 | MIT | Ryan Carniato | UI library of the window | `a2dpwb.exe` |
 | `@tauri-apps/api` | 2.12.4 | Apache-2.0 OR MIT | Tauri Apps Contributors | JavaScript side of Tauri | `a2dpwb.exe` |
@@ -68,6 +71,7 @@ The installer (`A2DPWB-<version>-win64-setup.exe`) installs, and the portable zi
 | `licenses/libopenaptx-LGPL-2.1.txt` | GNU LGPL 2.1 text for libopenaptx (`extern/libopenaptx/COPYING`) |
 | `licenses/lhdcv5-enc-LICENSE.txt` | LHDC V5 encoder license (Apache-2.0 text, `extern/lhdcv5-enc/LICENSE`); its KISS FFT notice is in §8 of this document |
 | `licenses/opus-COPYING.txt` | libopus license (BSD-3-Clause, `extern/opus/COPYING`) |
+| `licenses/aptx-adaptive-LICENSE.txt` | aptX Adaptive encoder MIT license (`app/src/crates/aptx-adaptive/LICENSE`) |
 | `licenses/fluentui-system-icons.txt` | Fluent UI System Icons MIT license (`app/src/ui/LICENSES/fluentui-system-icons.txt`) |
 | `licenses/solid-js-LICENSE.txt` | SolidJS MIT license (from the `solid-js` package) |
 | `licenses/tauri-apps-api-LICENSE-MIT.txt` | `@tauri-apps/api` MIT license (from the package; it is also available under Apache-2.0, `licenses/Apache-2.0.txt`) |
@@ -83,8 +87,12 @@ WebView2 Runtime is missing (§11). Its uninstaller removes the files above.
 Not distributed:
 
 - **Realtek Bluetooth firmware** — proprietary Realtek binaries from the
-  linux-firmware project. A2DPWB only links to the download page; the user
-  downloads the files. See
+  linux-firmware project ("Redistributable", LICENCE.rtlwifi_firmware.txt).
+  Neither the programs, the installer nor this repository contain them. The
+  user downloads the files: through the download page A2DPWB links to, or
+  with **Download Firmware**, where the user's PC fetches them from
+  kernel.org at a pinned linux-firmware commit after the user confirms
+  (`app/src/crates/core/src/firmware.rs`). See
   [linux-firmware WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE).
 - **Zadig** — not bundled; the documentation only links to <https://zadig.akeo.ie/>.
   A2DPWB assigns WinUSB with Windows' own SetupAPI and inbox `winusb.inf`, not
@@ -174,8 +182,8 @@ gone through Sony's LDAC certification.
 ### Patent Notice
 
 aptX, aptX HD, aptX Low Latency and aptX Adaptive are trademarks of Qualcomm
-Technologies International, Ltd. A2DPWB does not include an aptX Adaptive
-encoder.
+Technologies International, Ltd. (aptX Adaptive is encoded by a separate
+encoder, §19.)
 According to its README, libopenaptx is an "Open Source implementation of Audio
 Processing Technology codec (aptX) derived from ffmpeg 4.0 project". It is not
 Qualcomm code. However, aptX encoding/decoding may be covered by patents in
@@ -234,8 +242,8 @@ the NOTICE, or from the patent owners) is the user's responsibility.
   SLIP and UART transport files), the classic profiles A2DP / AVDTP / AVRCP / SDP
   from `src/classic/`, the LE part `src/ble/` (SM, ATT / GATT client and server,
   LE device database; for the experimental LE Audio support), the Windows run
-  loop and TLV store (`platform/windows/btstack_tlv_windows.c`), the Realtek,
-  Broadcom and Intel chipset drivers, and `3rd-party/rijndael` (§6),
+  loop and TLV store (`platform/windows/btstack_tlv_windows.c`), the Realtek
+  and Broadcom chipset drivers, and `3rd-party/rijndael` (§6),
   `3rd-party/tinydir` (§7) and `3rd-party/micro-ecc` (§18).
   `btstack_config.h` and the C glue `csrc/shim.c` in that crate are A2DPWB's own.
   BTstack's HCI transport is A2DPWB's own Rust crate `hci-transport` (USB through
@@ -834,6 +842,128 @@ Bluetooth product is covered by Bluetooth qualification (§12).
 
 ---
 
+## 19. aptx-adaptive (aptX Adaptive encoder from AKS-Logic/aptx-adaptive-linux)
+
+- **Source**: <https://github.com/AKS-Logic/aptx-adaptive-linux>
+- **Version**: upstream commit `25099004b2d3` (2026-10-22); crate version 0.1.0
+- **Path in project**: `app/src/crates/aptx-adaptive/` (vendored copy of the
+  upstream Rust encoder, with upstream's `LICENSE` and `LEGAL.md`)
+- **License**: MIT (`LICENSE`, shipped as `licenses/aptx-adaptive-LICENSE.txt`)
+- **Copyright**: Copyright (c) 2026 Prateek Mittal (AKS-Logic)
+- **SPDX**: `MIT`
+- **Usage**: aptX Adaptive encoding (experimental; R1 and R2 sinks, 48 kHz
+  stereo), compiled as a Rust crate into `a2dpwb-core.exe`
+
+### License Text
+
+```
+MIT License
+
+Copyright (c) 2026 Prateek Mittal (AKS-Logic)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Obligations
+
+- Include the copyright notice and the permission notice with binary
+  distributions (shipped as `licenses/aptx-adaptive-LICENSE.txt`, and above)
+
+### Origin, Trademarks and Patents
+
+Upstream describes the encoder as a clean-room reimplementation: its numeric
+tables were reconstructed from lawfully obtained shipped Qualcomm binaries and
+on-air captures (`LEGAL.md`, copied next to the crate). It contains no Qualcomm
+code, SDK or binary. aptX and aptX Adaptive are trademarks of Qualcomm. The
+codec may be covered by patents in some jurisdictions; as upstream's notice
+says, users are responsible for whether its use is lawful where they are.
+
+---
+
+## 20. HFreebuds (Huawei earbuds protocol)
+
+- **Source**: <https://github.com/N2K02/HFreebuds>
+- **Version**: commit `dab1f7e`
+- **Path in project**: `app/src/crates/core/src/vendor/huawei.rs`: `Packets` is HFreebuds'
+  `FrameReader` ported to Rust, the rest is written in Rust from its description of the
+  protocol; the test vectors are those of its `ProtocolTest`. `QUALITY_READ_CAPTURED` is
+  the request the earbuds' official app sends, as HuaweiPods recorded it: a fixed message
+  of the earbuds' protocol, no code of that project
+- **License**: MIT
+- **Copyright**: Copyright (c) 2026 N2K02
+
+```text
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
+## 21. LHDC-Switch (OPPO earbuds protocol)
+
+- **Source**: <https://github.com/lldvm/LHDC-Switch>
+- **Version**: commit `b33a758`, `src/EarbudControl.cpp`
+- **Path in project**: `app/src/crates/core/src/vendor/oppo.rs`: `Packets` follows its
+  `Framer`, the rest is written in Rust from how it uses the protocol (services, commands,
+  feature and capability numbers, product IDs); `AA0700000001010000` is its self test's
+  packet. Only that MIT-licensed file was used, none of the GPL projects it names as
+  references, and nothing of its engine or its other components
+- **License**: MIT
+- **Copyright**: Copyright (c) 2026 LHDC Switch contributors
+
+```text
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
 ## License Compatibility Matrix
 
 | Component | License | Compatible with Apache-2.0 / MIT? | Notes |
@@ -842,6 +972,7 @@ Bluetooth product is covered by Bluetooth qualification (§12).
 | libldac | Apache-2.0 | Yes | Permissive; NOTICE must accompany binaries |
 | LHDC-V5-Encoder | Apache-2.0 AND BSD-3-Clause | Yes | Permissive; KISS FFT notice reproduced in §8 |
 | libopus | BSD-3-Clause | Yes | Permissive; notice shipped as `licenses/opus-COPYING.txt` (§16) |
+| aptx-adaptive | MIT | Yes | Permissive; notice shipped as `licenses/aptx-adaptive-LICENSE.txt` (§19) |
 | Bluedroid SBC encoder (Rust port) | Apache-2.0 | Yes | Permissive |
 | libopenaptx | LGPL-2.1+ | Yes (with care) | Must allow library replacement / relinking. Apache-2.0 is compatible with (L)GPL v3, which "or later" permits |
 | fdk-aac | FDK AAC License | Yes | Source of fdk-aac must be offered free of charge; no patent license |

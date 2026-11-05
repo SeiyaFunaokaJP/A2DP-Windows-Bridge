@@ -25,13 +25,60 @@ fn chip_table_lookups() {
 
 #[test]
 fn realtek_pid_resolution() {
-    let btstack = [(0x0BDA, 0x8771), (0x0BDA, 0xB82C)];
+    let btstack = [
+        (0x0BDA, 0x8771, "rtl8761bu_fw"),
+        (0x0BDA, 0xB82C, "rtl8822bu_fw"),
+        (0x0BDA, 0xB85B, "rtl8852bu_fw"),
+        (0x0BDA, 0x4853, "rtl8852bu_fw"),
+        (0x0BDA, 0xB733, "rtl8723fu_fw"),
+        (0x0BDA, 0x1234, "rtl8851bu_fw"),
+    ];
     assert_eq!(resolve_realtek_pid(0x0BDA, 0x8771, &btstack), Some(0x8771));
+    // Another PID of a family in the chip table: the family's PID (issue #81)
+    assert_eq!(resolve_realtek_pid(0x0BDA, 0x4853, &btstack), Some(0xB85B));
+    // A family not in the chip table keeps its own PID, and so does one
+    // whose chip table PID is not in BTstack's table (here 0xB851)
+    assert_eq!(resolve_realtek_pid(0x0BDA, 0xB733, &btstack), Some(0xB733));
+    assert_eq!(resolve_realtek_pid(0x0BDA, 0x1234, &btstack), Some(0x1234));
     // Realtek's VID but not in BTstack's table: a card reader, Wi-Fi
     assert_eq!(resolve_realtek_pid(0x0BDA, 0x0129, &btstack), None);
     // TP-Link UB500
     assert_eq!(resolve_realtek_pid(0x2357, 0x0604, &btstack), Some(0x8771));
+    // A Realtek PID BTstack lacks, from the OEM table (issue #86)
+    assert_eq!(resolve_realtek_pid(0x0BDA, 0xA729, &btstack), Some(0x8771));
     assert_eq!(resolve_realtek_pid(0x8087, 0x0033, &btstack), None);
+}
+
+/// Against BTstack's own table: every PID of a family in the chip table gets
+/// the family's name and firmware files
+#[test]
+fn realtek_pid_resolution_btstack_table() {
+    let table = bt_host::realtek_usb_firmware();
+    assert!(table.iter().any(|&(v, p, fw)| (v, p, fw) == (0x0BDA, 0x4853, "rtl8852bu_fw")), "{table:?}");
+    // Every chip table PID is one BTstack loads the same firmware for
+    for c in REALTEK_CHIPS.iter().filter(|c| c.pid != CUSTOM_CHIP_PID) {
+        assert!(table.iter().any(|&(_, p, fw)| p == c.pid && fw == c.fw_name), "{} 0x{:04X}", c.chip_name, c.pid);
+    }
+    // A family PID BTstack knows, with the same firmware: what it is given
+    let in_btstack = |c: &RealtekChip| table.iter().any(|&(_, p, fw)| p == c.pid && fw == c.fw_name);
+    for &(vid, pid, fw) in table {
+        // A PID listed twice (0xC125): BTstack takes the first entry
+        if table.iter().find(|&&(_, p, _)| p == pid).is_some_and(|&(_, _, f)| f != fw) {
+            continue;
+        }
+        let resolved = resolve_realtek_pid(vid, pid, table).unwrap();
+        match REALTEK_CHIPS.iter().find(|c| c.fw_name == fw).filter(|c| in_btstack(c)) {
+            Some(c) => assert_eq!(resolved, c.pid, "0x{pid:04X} ({fw})"),
+            None => assert_eq!(resolved, pid, "0x{pid:04X} ({fw})"),
+        }
+        assert!(table.iter().any(|&(_, p, f)| p == resolved && f == fw), "0x{pid:04X} -> 0x{resolved:04X}");
+    }
+    let rtl8852be = resolve_realtek_pid(0x0BDA, 0x4853, table).unwrap();
+    assert_eq!(realtek_chip_name(rtl8852be), Some("RTL8852BU"));
+    assert_eq!(
+        firmware_files(rtl8852be, ""),
+        Some(("rtl8852bu_fw.bin".to_string(), "rtl8852bu_config.bin".to_string()))
+    );
 }
 
 #[test]
@@ -52,6 +99,10 @@ fn vendors_and_names() {
     assert_eq!(company_name(0x005D), Some("Realtek"));
     assert_eq!(company_name(0x000A), Some("Qualcomm (CSR)"));
     assert_eq!(company_name(0x0009), Some("Infineon"));
+    // Chip makers found in headphones (Read Remote Version)
+    assert_eq!(company_name(0x0094), Some("Airoha"));
+    assert_eq!(company_name(0x02B0), Some("Bestechnic (BES)"));
+    assert_eq!(company_name(0x0642), Some("Bluetrum"));
     assert_eq!(company_name(0x1234), None);
 }
 

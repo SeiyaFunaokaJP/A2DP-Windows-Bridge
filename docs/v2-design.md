@@ -8,8 +8,7 @@ nav_exclude: true
 
 Oct 17, 2026 · @seiya ／ 改訂: 未決事項の決定を反映（同日）
 
-> この文書は v2（`main` / `develop-v2.x` ブランチ）の正本の設計書です。コードは `app/src/` 以下にあります（[Rustクレート構成](#rustクレート構成)）。
-> 元の設計書からの変更点は「[改訂履歴](#改訂履歴)」にまとめています。
+> **この文書は更新を終えた設計の記録です**（2.0.2-beta.12 時点、2026-10-30）。v2 を作ったときの判断とその理由を残すために置いています。いまの構成と動作は [Architecture](architecture)、外部ツール向けの IPC は [Integration (IPC)](integration)、使い方は [Usage](usage) を見てください。ここに書かれた計画やメソッドの一覧は、実装と違っていることがあります。以降の変更はプルリクエストとリリースノートに残します。
 
 ## 概要
 
@@ -25,7 +24,7 @@ Oct 17, 2026 · @seiya ／ 改訂: 未決事項の決定を反映（同日）
 
 - 対応OSは Windows 10 (22H2) / 11 です。**x64 と ARM64 の両方を v2.0 で出します**（[ARM64](#arm64) を参照）。
 - 使い方は今と同じです。WinUSBを割り当てたUSBドングルを btstack で直接制御して、WASAPIで取り込んだシステム音声をA2DPで送ります。
-- コーデックは今と同じものを用意します（SBC / AAC / aptX / aptX HD / aptX LL / LDAC / LHDC V5）。v2 では SBC XQ、FastStream と Android の A2DP Opus（試験的）を加えます（[v2 で加えたコーデック](#v2-で加えたコーデック)、[Opus](#opus)）。
+- コーデックは今と同じものを用意します（SBC / AAC / aptX / aptX HD / aptX LL / LDAC / LHDC V5）。v2 では SBC XQ、FastStream と Android の A2DP Opus（試験的）を加えます（[v2 で加えたコーデック](#v2-で加えたコーデック)、[Opus](#opus)）。aptX Adaptive も試験的に加えました（[aptX Adaptive](#aptx-adaptive)）。
 - アプリ名（A2DP Windows Bridge / A2DPWB）とアイコンは v1 のまま変えません。
 
 **今回やらないこと**
@@ -96,7 +95,7 @@ v1.1.0の機能は、開発者向けのものも含めてすべて次期版に�
 | 1. FFI | `ldac-sys` / `openaptx-sys` / `fdkaac-sys` / `lhdcv5-sys` / `opus-sys` | 残すCコーデックをビルドしてFFIを提供。ライセンスの異なるライブラリをクレート単位で分けて管理する | 可 |
 | 1. FFI | `win-sys` | `windows` クレートで、Rustのライブラリが無いWin32 APIを包む。MMCSS、IPolicyConfig（既定デバイスの切り替え）、WLAN API（AFH用）、電源通知、レジストリのRunキー、メディアキー送出、**WinUSBドライバの割り当てと解除（SetupAPI / DiInstallDevice）** | 可 |
 | 2. 部品 | `hci-transport` | HCI H2（`nusb` でWinUSBを直接制御）とH4 over TCP（エミュレータ用）。現行の改造版 `hci_transport_h2_winusb.c` の復旧処理（パイプリセット、読み取り失敗からの復帰、コマンドタイムアウト、終了時のHCI Reset）を移植し、btstackには `btstack-sys` のコールバック表で接続する | 禁止 |
-| 2. 部品 | `codec` | `trait Encoder`、Rustで書き直したSBCエンコーダ、その他コーデックの安全なラッパー。Codec Informationの生成・解析と能力の交渉（Autoの優先順位 LDAC > aptX HD > aptX LL > aptX > LHDC V5 > Opus > AAC > SBC XQ > SBC。FastStream は明示的に選んだときだけ）も担当 | 禁止 |
+| 2. 部品 | `codec` | `trait Encoder`、Rustで書き直したSBCエンコーダ、その他コーデックの安全なラッパー。Codec Informationの生成・解析と能力の交渉（Autoの優先順位 LDAC > aptX HD > aptX LL > aptX > LHDC V5 > Opus > AAC > SBC XQ > SBC。FastStream、Opus 05、aptX Adaptive は明示的に選んだときだけ）も担当 | 禁止 |
 | 2. 部品 | `audio-capture` | `wasapi` クレートで取り込む。システムループバック、仮想デバイス、アプリ単位のループバック（build 19041以降）。デバイス一覧、エンドポイント音量、テストトーン | 禁止 |
 | 3. エンジン | `bt-host` | btstackのランループを専用スレッドに閉じ込め、外からはコマンドチャネルと型付きイベントだけで操作する。GAP / A2DP Source / AVRCP（絶対音量、ボタン操作）/ SDP / リンクキー / AFH / ファームウェア読み込み / pklgキャプチャ | 禁止 |
 | 3. エンジン | `pipeline` | リングバッファ、形式変換、リサンプル、ダウンミックス、エンコード、メディアペイロードの組み立て、送信ペースの制御、ABR | 禁止 |
@@ -135,7 +134,7 @@ v1.1.0の機能は、開発者向けのものも含めてすべて次期版に�
 | 更新はリリースページを開くだけ | `tauri-plugin-updater` | 署名付きの更新をアプリ内でダウンロードして入れられる（機能追加） |
 | stderrを `debug.log` に向けてUIがファイルを読む | `tracing` + `tracing-appender` | 構造化ログを別スレッドで書き出す。ローテーション付きで、UIにはIPCで直接届く |
 | wxのトレイと二重起動防止のmutex | `tray-icon` + `tauri-plugin-single-instance` | トレイは常駐するコア側に置き、UIの二重起動は既存のウィンドウを前に出す |
-| Inno Setup 6 | TauriのNSISバンドラ | 更新機能と同じ仕組みで配布できる。ユーザー単位のインストール、8言語のセットアップ画面、アンインストール時のRunキー削除はフックで引き継ぐ |
+| Inno Setup 6 | Inno Setup 6（2.0.2-beta.5 までは TauriのNSISバンドラ） | 台本が人に読みやすく、開発が活発で、小さいうちに移しておけば後が楽（改訂履歴 2026-10-22）。ユーザー単位のインストール、8言語のセットアップ画面、アンインストール時のRunキー削除は `installer/A2DPWB.iss` の [Code] で行う |
 | Zadig（外部ツール、手作業） | `win-sys::driver`（SetupAPI） | アプリの中で割り当てと解除ができる。コピーレフトのライブラリを使わない（[ドライバ](#ドライバwinusb)） |
 
 **Cのまま残すライブラリ**
@@ -154,7 +153,7 @@ v1.1.0の機能は、開発者向けのものも含めてすべて次期版に�
 
 - SBC を dual channel、16ブロック、8サブバンド、loudness で、チャネルごとに高い bitpool を使って送ります。メディアペイロードヘッダ（フレーム数1バイト）とRTPヘッダはSBCと同じです。ローカルのSEPはSBCのもの（全チャネルモード、bitpool 2〜53）を共用し、SET_CONFIGURATION で dual channel を選びます。
 - bitpool（`codec::sbc::xq_bitpool`）: High は 44.1 kHz で 47（200バイトのフレーム、約551 kbps。Androidのカスタムロムや pulseaudio-modules-bt の "SBC XQ" と同じ）、48 kHz で 43（約552 kbps、同じビットレート）。Standard は PipeWire の SBC-XQ の既定値（`a2dp-codec-sbc.c` の `default_bitpool`）の 43 / 39（約505 kbps、A2DP 1.2 のシンクが必ず受けられる 512 kbps 以内）、Mobile は PipeWire の XQ でない dual channel の既定値 32 / 29（約385 kbps）。High のフレームは、ヘッダ込みで 2-DH5 に3つ、3-DH5 に5つ入ります（1023バイトのパケット上限で1001 / 921バイト）。dual channel の bitpool の上限はチャネルごとに 16 × サブバンド数 = 128 なので、どれも制限の内側です。
-- 交渉: シンクのSBCの能力（BTstack の SBC capability イベントのビットマップと bitpool の範囲）に dual channel、16ブロック、8サブバンド、loudness、44.1 / 48 kHz があり、最大 bitpool が 43 以上のときだけ SBC XQ を提供していると見なします。設定する bitpool の範囲は max(2, シンクの最小) 〜 min(そのレートの High の bitpool, シンクの最大)、エンコーダの bitpool は品質の値をシンクの範囲に収めたものです。通常の SBC も同じようにシンクの範囲を使います（範囲は max(2, シンクの最小) 〜 min(53, シンクの最大)。能力が分からないときは 2 〜 53）。条件を満たさないシンクでは SBC XQ は出ず、Auto は SBC を選び、明示的に選んだ場合は代替コーデックの設定に従って SBC に切り替わるか、エラーになります。
+- 交渉: シンクのSBCの能力（BTstack の SBC capability イベントのビットマップと bitpool の範囲）に dual channel、16ブロック、8サブバンド、loudness、44.1 / 48 kHz があり、最大 bitpool が 29 以上のときだけ SBC XQ を提供していると見なします（2026-10 まで 43。PipeWire は下限なしで min(43 / 39, シンクの最大) に抑えるだけで、最大 39 の Moto buds+ でも XQ になる。issue #86）。設定する bitpool の範囲は max(2, シンクの最小) 〜 min(そのレートの High の bitpool, シンクの最大)、エンコーダの bitpool は品質の値をシンクの範囲に収めたものです。通常の SBC も同じようにシンクの範囲を使います（範囲は max(2, シンクの最小) 〜 min(53, シンクの最大)。能力が分からないときは 2 〜 53）。条件を満たさないシンクでは SBC XQ は出ず、Auto は SBC を選び、明示的に選んだ場合は代替コーデックの設定に従って SBC に切り替わるか、エラーになります。
 - 能力では dual channel を出しているのに、SET_CONFIGURATION で dual channel を拒否するシンクがあります。SBC XQ の設定が拒否された（または応答がなかった）ときは、Auto か代替コーデックがオンなら一度だけ通常の SBC でやり直します。BTstack はこの接続の A2DP の設定手順を拒否で終えてしまう（2回目の SET_CONFIGURATION を受け付けない）ので、いったん切断して接続し直し、能力を読み直してから SBC を設定します。レート、チャネル数、ビット数は SBC XQ と同じなので、取り込みはそのままです。明示的に SBC XQ を選び代替コーデックがオフなら、これまでどおりエラーです。拒否された SET_CONFIGURATION と START は、BTstack の `A2DP_SUBEVENT_COMMAND_REJECTED` を見て待ちをすぐ終えます（以前は10秒のタイムアウトまで待っていました）。
 - Auto の優先順位は AAC の下、SBC の上です。ビット数は AAC 256 kbps より多いものの、AAC を出すシンクは AAC 向けに調整されていることが多く、ビットあたりの音質も AAC のほうが上だからです。
 - 検証: 単体テスト（フレーム長とビットレート、パケットへの収まり、交渉とフォールバック）と `tools/emu`（`sbcxq` と、SBCだけのシンクでの Auto の2ケース `auto-sbcxq` / `auto-sbc-no-xq`、dual channel を拒否するシンクで SBC に戻る `auto-sbcxq-refused`、最大 bitpool の低いシンクの `auto-sbc-bp35` / `sbcxq-bp45`）。実機では未確認です。
@@ -326,13 +325,13 @@ v1から上書きインストールするだけで、プロファイル、ペア
 
 **配布物**
 
-- `A2DPWB-<版>-win64-setup.exe` / `A2DPWB-<版>-arm64-setup.exe`: TauriのNSISバンドラで作ります（`installer/build-release.ps1`）。中身は `a2dpwb-core.exe`、`a2dpwb.exe`、`a2dpwb-driver.exe`（コアと昇格ヘルパーはTauriのsidecarとして同梱）、ライセンス文書（Rustのクレートは `cargo-about` で `licenses/rust-crates.txt` にまとめる）、`SOURCE.txt` です。インストールはユーザー単位だけにします（管理者権限なし、8言語のセットアップ画面）。全ユーザー向けは外しました。NSISのMultiUserで両方を選べるようにすると、管理者のアカウントでは起動時と更新のたびにUACの確認が出るためです。
+- `A2DPWB-<版>-win64-setup.exe` / `A2DPWB-<版>-arm64-setup.exe`: Inno Setup で作ります（`installer/A2DPWB.iss`、`installer/build-release.ps1`）。中身はポータブル版と同じで、`a2dpwb-core.exe`、`a2dpwb.exe`、`a2dpwb-driver.exe`、ライセンス文書（Rustのクレートは `cargo-about` で `licenses/rust-crates.txt` にまとめる）、`SOURCE.txt` です。インストールはユーザー単位だけにします（管理者権限なし、8言語のセットアップ画面）。全ユーザー向けは外しました。両方を選べるようにすると、管理者のアカウントでは起動時と更新のたびにUACの確認が出るためです。
 - `A2DPWB-<版>-win64-portable.zip` / `A2DPWB-<版>-arm64-portable.zip`: 今と同じく用意します。ポータブル版では、更新機能は通知だけにします。
 - WebView2ランタイムは、無ければインストーラが入れます（ブートストラッパーを同梱。Windows 11には標準で入っています）。
 
 **v1からの乗り換え**
 
-1. v2のインストーラは、Inno Setupで入ったv1をレジストリから見つけて、設定フォルダを残したままアンインストールします。v1が動いていれば、同じmutex（`A2DPWB_SingleInstance`）を見て終了を促します。動いているv2のコアは `a2dpwb-core.exe --quit` で終了させ（配信を止めてアダプタを放す）、インストール後に起動し直します（`installer/hooks.nsh`）。
+1. v2のインストーラは、Inno Setupで入ったv1をレジストリから見つけて、設定フォルダを残したままアンインストールします。v1が動いていれば、同じmutex（`A2DPWB_SingleInstance`）を見て終了を促します。動いているv2のコアは `a2dpwb-core.exe --quit` で終了させ（配信を止めてアダプタを放す）、インストール後に起動し直します（`installer/A2DPWB.iss`）。2.0.0〜2.0.2-beta.5 の NSIS でのインストールは、ファイルを入れる前に NSIS の更新モード（`uninstall.exe /S /UPDATE`）でアンインストールし、残ったレジストリキーを消します。更新モードなので、アダプタの WinUSB、設定、ショートカット、Runキーは残ります。その後でインストールが失敗・中止されると何も入っていない状態になりますが、セットアップをもう一度実行すれば入ります。
 2. 自動起動のRunキー（値の名前は v1 と同じ `A2DPWB`）が有効だったときは、`a2dpwb-core.exe --background` に書き換えます。アンインストールでは、そのインストール先を指しているときだけ消します。
    - アンインストールでは、A2DPWB が WinUSB を割り当てたアダプターを Windows に戻すかを尋ねます（[ドライバ](#ドライバwinusb)の「アンインストール時の復元」）。v1 は Zadig に任せていたのでこの心配がありませんでしたが、v2 はアプリの中で割り当てるため、何もしないとアプリを消した後もドングルが Windows の Bluetooth から消えたままになり、デバイスマネージャーでしか戻せません。
 3. 初回起動時、コアは設定フォルダを `backup-v1\` に丸ごと（v2の `logs\` を除いて）コピーしてから読みます。コピーは一度だけで、`settings.json` に `schema_version` が付いた後はしません（`app/src/crates/core/src/migrate.rs`）。
@@ -384,8 +383,8 @@ Windows 8 以降は WinUSB ドライバ（`winusb.inf`）が OS に標準で入�
 
 - 管理者権限が要るので、常駐のコアは昇格させず、`a2dpwb-driver.exe` を UAC 昇格（`ShellExecuteEx` の `runas`）で一時起動します。ヘルパーは引数で受け取った1台だけを処理し（アンインストール時の `restore --records` を除く）、結果を終了コードとJSONで返します。
 - 割り当て中は Windows の Bluetooth からそのドングルが消えることを、実行前の確認画面で説明します。
-- **アンインストール時の復元**: コアは割り当てのたびに `assign` の結果（割り当て前のドライバを含む）を設定フォルダの `driver\<インスタンスIDの英数字以外を _ にした名前>.json` に残し、「元のドライバに戻す」が成功すると消します。アンインストーラ（`installer/hooks.nsh` の `NSIS_HOOK_PREUNINSTALL`、更新のときは除く）は、コアを終了させた後にこの記録があれば戻すかを尋ね、「はい」なら `a2dpwb-driver.exe restore --records <フォルダ>` を UAC 昇格で1回だけ起動します。ヘルパーは記録ごとに `restore --previous @<記録>` と同じ処理をし、戻せたアダプタの記録を消します。終了コードは全体で一番重いもの（未昇格 3 > 失敗 1 > 未確認 5 > 抜かれている 4 > 成功 0）で、0 以外ならアンインストーラがデバイスマネージャーでの手順を案内します。決めたこと:
-  - NSIS で JSON を読まずに済むよう、記録の解釈と複数台の処理はヘルパーに置く。UAC の確認は台数によらず1回。
+- **アンインストール時の復元**: コアは割り当てのたびに `assign` の結果（割り当て前のドライバを含む）を設定フォルダの `driver\<インスタンスIDの英数字以外を _ にした名前>.json` に残し、「元のドライバに戻す」が成功すると消します。アンインストーラ（`installer/A2DPWB.iss` の `RestoreDrivers`。更新はアンインストーラを通らない）は、コアを終了させた後にこの記録があれば戻すかを尋ね、「はい」なら `a2dpwb-driver.exe restore --records <フォルダ>` を UAC 昇格で1回だけ起動します。ヘルパーは記録ごとに `restore --previous @<記録>` と同じ処理をし、戻せたアダプタの記録を消します。終了コードは全体で一番重いもの（未昇格 3 > 失敗 1 > 未確認 5 > 抜かれている 4 > 成功 0）で、0 以外ならアンインストーラがデバイスマネージャーでの手順を案内します。決めたこと:
+  - インストーラで JSON を読まずに済むよう、記録の解釈と複数台の処理はヘルパーに置く。UAC の確認は台数によらず1回。
   - 割り当てを頼まれた時点ですでに WinUSB だったアダプタ（`already_winusb`。Zadig など）は A2DPWB が変えたものではないので戻さず、記録だけ消す。読めない記録は消さずに残す。
   - サイレント（`/S`）では尋ねる相手がおらず、UAC の確認を出すべきでもないので WinUSB のまま残す（既定の答えは「いいえ」）。v1 が動いているかインストールされているときは、v1 も WinUSB を使うので既定のボタンを「いいえ」にして一言添える。
   - 抜かれているアダプタは戻せないので記録を残す（次にアプリを入れ直したときの「元のドライバに戻す」でも使える）。
@@ -427,6 +426,26 @@ Auto は Opus 05 を選びません（FastStream と同じく、明示的に選�
 ストリームエンドポイントが 1 つ増えるので、BTstack の `MAX_NR_AVDTP_STREAM_ENDPOINTS` を 10 にしました。24 バイトの能力と設定は、シムのバッファ（32 バイト）に収まります。
 
 検証: 単体テスト（能力の解析、設定、双方向の SEP の扱い、ローカルの SEP、エンコードと libopus での復号、ビットレートの上限）と `tools/emu`（PipeWire の `opus_05` と同じ能力を出すシンクでの `opus05`、44.1 kHz を指定しても 48 kHz で送る `opus05-from-44k`、SBC・AAC・Opus 05 のシンクで Auto が AAC を選ぶ `auto-not-opus05`）。`tools/a2dp_decode` は Opus 05 の設定を解析して、Opus と同じように復号します。実機の PipeWire では未確認です。
+
+## aptX Adaptive
+
+aptX Adaptive（ベンダー ID 0x000000D7 Qualcomm、コーデック ID 0x00AD）を `aptxad`（表示名 "aptX Adaptive"）として加えます。エンコーダは [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) の Rust だけで書かれたエンコーダ（MIT、Copyright (c) 2026 Prateek Mittal (AKS-Logic)）で、上流のコミット 25099004b2d3（2026-10-22）を `app/src/crates/aptx-adaptive` に取り込みました。上流はこれをクリーンルームでの再実装とし、数値テーブルは合法に入手した Qualcomm の出荷済みバイナリと無線のキャプチャから再構成したと説明しています（クレートの横に写した上流の `LEGAL.md`）。Qualcomm のコード、SDK、バイナリは含みません。aptX / aptX Adaptive は Qualcomm の商標で、国や地域によっては特許の対象になりえます。使ってよいかどうかは利用者の責任です（上流の注意書き）。
+
+| 項目 | 値 |
+| --- | --- |
+| 形式 | 48 kHz ステレオ、24 ビット。プロファイルで 96 kHz を選び、シンクが R2 で 96 kHz を出しているときは、高音質 / 標準 / モバイルを 96 kHz で送る（上流のプラグインと同じく、構成 3 と 96 kHz の表の行。低遅延には 96 kHz がないので 48 kHz）。Auto（0）は Windows の再生デバイスのレートによらず 48 kHz。44.1 kHz を指定しても 48 kHz で取り込む |
+| シンク | R1（能力の拡張がない。例: B&W Px7 S2e）と R2（R2 のビットストリーム） |
+| 品質（R1） | 高音質 `hq` 427 kbps（12 ms、656 バイト）、標準 `sq` 364 kbps（14 ms。参照実装の既定値）、モバイル `mq` 318 kbps（16 ms）、低遅延 `ll` 265 kbps（10 ms、348 バイト）。R2 のシンクでは 427 / 270 / 204 / 270 kbps、96 kHz では 646（8 ms）/ 340（15 ms）/ 255（20 ms）kbps（656 バイト）。`ll` は aptX Adaptive だけが使う新しい品質キーで、ほかのコーデックは高音質として扱う |
+| ABR | 高音質のとき、送信キューに 3 パケット以上ある間は 1 段下げ（モバイルより下げない。最短でも約 0.5 秒おき）、約 3 秒間キューが 1 パケット以下なら 1 段上げる（選んだ品質まで）。低遅延は ABR なし |
+| パケット | メディアパケット 1 つにコーデックのパケット 1 つ。A2DPWB 自身の 12 バイトの RTP ヘッダー（BTstack は付けない）: ペイロードタイプ 96、シーケンス番号はパケットごとに +1、タイムスタンプはパケットのチャネルあたりのサンプル数（時刻ではない）、SSRC はシンクの遅延モード（HQ 0x000000A3、LL 0x000000A1）。ペイロードは 16 ビット単位でバイトを入れ替える |
+| 設定 | SET_CONFIGURATION は 48 kHz（レートのビット 0x10。または 96 kHz: Android と同じ 0xA0 = 0x80 | 0x20 を送り、シンクがどちらかのビットを出していれば 96 kHz 可とみなす。issue #86）、ソースタイプ 2（ホストのエンコーダ: 再生のタイミングはシンクが決める）、ステレオ。R1 のシンクにはシンク自身の目標遅延のバイトを返し、LL0 は 80 ms 以上に上げ、HQ の遅延が 0 なら 200 ms にする。R2 のシンクにはソース側の R2 ブロックを送る |
+| 能力 | Codec Information は 40 バイト。BTstack の能力のイベントでは 30 バイトに切られるが、使う値はすべてその中にある |
+
+Auto は LHDC V5、LDAC の次に aptX Adaptive を選びます（issue #86 の順位。加えた当初は FastStream、Opus 05 と同じく、明示的に選んだときだけでした）。aptX / aptX HD / aptX LL を選んだのにシンクが aptX Adaptive しか出していないときのエラーは、aptX Adaptive、Auto、AAC、SBC を選ぶように案内します。
+
+ストリームエンドポイントが 1 つ増えるので、BTstack の `MAX_NR_AVDTP_STREAM_ENDPOINTS` を 11 にしました。シムのバッファは 40 バイトにしました。
+
+検証: 単体テスト、上流のビット単位で一致するテスト（Windows でも通る）、`tools/emu` の仮想シンクとの end-to-end テスト（RTP ヘッダー、パケットの大きさ、フレームの種類を確かめる。公開されたデコーダがないので音は復号しない）。実機では、EarFun Air Pro 4+ で 48 kHz が途切れずに動くと報告がありました（2.0.2-beta.6、issue #86）。96 kHz はエミュレーターだけで確認しています。上流は Linux / PipeWire で Bose QuietComfort Ultra（第1世代）と B&W Px7 S2e での 48 kHz の HQ と LL の動作を報告しています。
 
 ## ARM64
 
@@ -502,6 +521,15 @@ v1 の `feat/le-audio`（b819893）にあった実験的な LE Audio を、動�
 
 ## 改訂履歴
 
+- 2026-10-27（サンプルレートの既定は 48 kHz、aptX Adaptive の 96 kHz のスイッチを廃止）: サンプルレートが自動（プロファイルの 0。自動選択も）のときは、デバイスが通知する最も高いレートや Windows のミックスのレートではなく 48 kHz を求め、各コーデックがデバイスの通知するレートから選ぶ（48 kHz がなければ 44.1 kHz など）。96 kHz は遅延と相性の問題が増えるわりに聞き分けられる差がなく、Windows のミキサーも通常 48 kHz のため（issue #86 第9回）。96 kHz はコーデックの設定で選んだときだけ。aptX Adaptive の 96 kHz が実機で確認できたので、開発者の「aptX Adaptive を 96 kHz で」（`dev_overrides.aptxad_96k`、CLI `--aptxad-96k`）をやめ、96 kHz はデバイスが通知していれば選べる。コーデックの設定は aptX Adaptive の 96 kHz を、デバイスの通知が分からないときも含め、通知したデバイスにだけ出す（Bose QC Ultra の 0x51 には出さない）。「コーデック」画面のスイッチは「対応しているコーデックのみ表示」（既定でオン）。カードのドラッグでは、持ち上げたカードがポインターについて動き、ほかのカードは新しい位置へ滑って移り（FLIP）、離したカードは自分の位置へ収まる（prefers-reduced-motion では動かさない）。
+- 2026-10-26（デバイスごとのコーデックの順番）: 開発者モードの「自動選択の順番…」と settings.json の `auto_order` をやめ、「コーデック」画面で自動選択がオフのとき、デバイスごとにコーデックのカードをドラッグ（またはカード上で Alt＋矢印キー）で並べ替えられるようにした（issue #86 第8回）。順番はプロファイルの `codec_order`（コーデックのキー、空なら音質順）に保存する。自動選択がオンのときは既定の順番で読み取り専用にし、カードや「…」をクリックすると自動選択をオフにするか尋ねる。あわせて、選んだコーデックにデバイスが対応していないときのフォールバックを、その下の次のコーデックではなく、デバイスの順番で最初に対応するコーデック（既定なら最も音質の高いもの）にした（Opus を選んだ EarFun では aptX ではなく aptX Adaptive）。Auto とフォールバックは FastStream と Opus 05 を選ばない。順番だけを変えた保存では、コーデックが変わらない限り使用中のストリームを接続し直さない。古い `auto_order` は読み込んでも使わない（ファイルにはそのまま残る）。各デバイスの名前の横に、接続中は緑の点を出す。
+- 2026-10-26（自動選択の順番）: 「コーデック」画面に「自動選択の順番…」を加えた（issue #86）。ポップアップでコーデックをドラッグ（または矢印ボタン）で並べ替え、「音質順に戻す」で既定に戻せる。settings.json の `auto_order`（コーデックのキー、空なら音質順）に保存し、コアは `codec::AutoOrder` で Auto の選択と、選んだコーデックのフォールバックの両方にこの順番を使う。カードもこの順番で並べる。使用中のプロファイルが Auto かフォールバック中なら接続し直す。
+- 2026-10-26（自動選択をデバイス共通に）: 「コーデック」画面の「対応するコーデックのうち最も音質の高いものを自動で選ぶ」を、デバイスごとのスイッチ（プロファイルの codec "auto"）から、画面上部のすべてのデバイス共通の設定（settings.json の `auto_codec`、既定はオン）にした（issue #86）。オンのときは各プロファイルを Auto（Auto の既定の設定）で配信し、デバイスごとに選んだコーデックはプロファイルに残す。オフのときは選んだコーデックを使い、まだ選んでいないデバイスは Auto のまま。schema 5 への移行では、いずれかのプロファイルがコーデックを選んでいればオフで始める（v1 のフォルダも同じ）。使用中のストリームのコーデックが変わるときは接続し直す。
+- 2026-10-25（実験的コーデックの設定）: 「コーデック」画面に「実験的コーデックを有効にする」（settings.json の `experimental_codecs`、既定はオン。CLI では `--no-experimental` でオフ）を加えた（issue #86）。実験的コーデックは aptX HD、aptX LL、Opus、Opus 05、FastStream で、カードに「実験的」のタグを付ける。オフのときはそのカードを隠し、Auto もフォールバックもそれらを選ばず、それらを選んでいたデバイスは Auto の順位で次に低い、デバイスが出しているコーデックを使う（画面にその旨を出す）。使用中のストリームのコーデックが変わるときは接続し直す。あわせて、EarFun Air Pro 4+ での 48 kHz の動作報告を受けて aptX Adaptive を試験的な扱いから外した（96 kHz はエミュレーターでだけ確認）。
+- 2026-10-23（NSIS 版は先にアンインストール）: 2.0.2-beta.5 までの NSIS でのインストールを引き継ぐのをやめ、ファイルを入れる前に NSIS のアンインストーラを更新モード（`/S /UPDATE`）で実行するようにした（issue #86）。古いインストーラの登録やファイルに手を入れないほうが、後で困らない。失敗・中止すると何も残らないが、まだ利用者が少なく、セットアップをもう一度実行すれば済むので受け入れる（リリースノートに書く）。
+- 2026-10-22（インストーラを Inno Setup に）: Tauri の NSIS バンドラから Inno Setup 6（`installer/A2DPWB.iss`）に移した（issue #86）。NSIS で困っていたことはないが、(1) 台本が人に読みやすい（NSIS のフックは Tauri の生成する `installer.nsi` の流れと `$0`〜`$9` のレジスタを追わないと読めず、`System::Call` で構造体を組んでいた）、(2) 開発が活発で将来性がある、(3) 利用者とインストール済みの環境が少ない今のうちに移すほうが楽、の3点で決めた。`tauri build --no-bundle` で `a2dpwb.exe` だけを作り、ポータブル版のフォルダをそのまま Inno Setup に渡す。更新は引き続き `tauri-plugin-updater`（署名は `tauri signer sign --app-version`）で、プラグインが付ける `/UPDATE` に `/SILENT /NORESTART` を足す（`installMode: basicUi`）。beta.5 以前の更新機能が付ける NSIS の `/P` では、ページをすべて飛ばして進行状況だけを出す（セットアップの .exe はローダーが開いたままなので、`/SILENT` で起動し直すことはできなかった）。NSIS でのインストールは、ファイルを入れ終えてからフォルダを引き継ぐ（先にアンインストールすると、失敗や中止で何も残らないため）。インストール済みの判定は `uninstall.exe` から `unins000.exe` に。v1 とは別の AppId。中国語（簡体・繁体）の翻訳は Inno Setup 6 に同梱されないので `installer/languages/` に置く。
+- 2026-10-24（aptX Adaptive の 96 kHz）: プロファイルで 96 kHz を選び、シンクが R2 で 96 kHz を出しているとき、高音質 / 標準 / モバイルを 96 kHz で送るようにした（issue #86）。R1 のシンクと低遅延は 48 kHz のまま。エンコーダの呼び出しは 2 ms（96 kHz では 192 フレーム）。Codecs の設定でサンプリングレートに 96 kHz を加え、ビット深度は aptX Adaptive と aptX HD で 24 ビットと表示する（常に 24 ビットで送っているのに 16 ビットと出ていた）。上流（f8a0908、2026-10-23）を見直したが、エンコーダのクレートは変わっていない。上流のプラグインでの変更のうち、ソースタイプ 0（シンクのリンクの時計に合わせたタイムスタンプ。ヘッドホンによってはこちらでないと切れる）はリンクの時計の値が要るので移していない。仮想シンクでのみ確認、実機では未確認。
+- 2026-10-22（aptX Adaptive）: AKS-Logic/aptx-adaptive-linux の Rust のエンコーダ（MIT、上流のコミット 25099004b2d3）を `app/src/crates/aptx-adaptive` に取り込み、aptX Adaptive を試験的に `aptxad` として追加した。R1 と R2 のシンク、48 kHz ステレオ、品質は高音質 / 標準 / モバイル / 低遅延（新しいキー `ll`）、高音質では ABR。Auto は選ばない。ストリームエンドポイントは 11 個になった。実機のヘッドホンでは未確認。[aptX Adaptive](#aptx-adaptive)を参照。
 - 2026-10-18（ブランチ名）: `develop-2.0` を `develop-v2.x`、v1 の `develop` を `develop-v1.x` に改名した。CI のプッシュ時のテストは `develop-v2.x` と `main` で動く。
 - 2026-10-18（未決事項の解消、ARM64）: `DiInstallDevice` が使えない環境では Zadig の案内に戻すと決めた（割り当ての失敗に専用の文言 `error.driver_assign_failed`、8言語）。実機（UB500）で割り当て → 解除 → 割り当ての往復を確認した。x64 の PC での ARM64 のビルドには、rustls の `ring` のために Visual Studio の clang が要る（`installer/build-release.ps1` が探して PATH に足す）。手元で ARM64 の3つの exe が組めることを確かめた（ARM64 の実機では未確認）。
 - 2026-10-18（Opus 05）: PipeWire 独自の A2DP Opus（ベンダー 0x000005F1 / 0x1005、`opus_05`）のステレオの音楽の方向を、試験的に `opus05` として追加した。Auto は選ばない。エンコーダは Opus のものを共用し、設定したビットレートで頭打ちにする。ストリームエンドポイントは 10 個になった。サラウンド、双方向、Pro Audio は未実装。[Opus 05](#opus-05)を参照。

@@ -6,6 +6,8 @@
 //! - LDAC, aptX family, AAC, LHDC V5, Opus (Android's and PipeWire's Opus
 //!   05): safe wrappers of the C encoders
 //!   (crates `*-sys`), behind cargo features.
+//! - [`aptx_adaptive`]: aptX Adaptive, a pure-Rust encoder (crate
+//!   `aptx-adaptive`), behind a cargo feature too.
 //! - [`caps`]: codec information of the local stream endpoints, parsing of
 //!   the remote's capabilities, the configuration sent with
 //!   SET_CONFIGURATION, and the codec choice (Auto).
@@ -13,12 +15,15 @@
 #![forbid(unsafe_code)]
 
 pub mod caps;
+pub mod dev;
 pub mod sbc;
 
 #[cfg(feature = "aac")]
 pub mod aac;
 #[cfg(feature = "aptx")]
 pub mod aptx;
+#[cfg(feature = "aptx-adaptive")]
+pub mod aptx_adaptive;
 #[cfg(feature = "lc3")]
 pub mod lc3;
 #[cfg(feature = "ldac")]
@@ -48,13 +53,71 @@ pub enum CodecKind {
     FastStream,
     Opus,
     /// PipeWire's own A2DP Opus ("Opus 05", vendor 0x000005F1 / codec
-    /// 0x1005), stereo music direction only; experimental, never Auto's
-    /// choice
+    /// 0x1005), stereo music direction only; never Auto's choice
     Opus05,
+    /// aptX Adaptive (vendor 0x000000D7 / codec 0x00AD), 48 / 96 kHz
+    /// stereo, HQ or low latency ([`Quality::LowLatency`]); Auto's choice
+    /// after LHDC V5 and LDAC (issue #86, confirmed on an EarFun Air Pro 4+)
+    AptxAdaptive,
+}
+
+/// A device's codec order (its profile's `codec_order`, issue #86 round 8):
+/// the codecs of [`CodecKind::AUTO_PRIORITY`] in the order the user dragged
+/// the device's cards into on the Codecs screen (with Auto-select off); the
+/// default is that list, highest sound quality first. Auto takes the first
+/// one the device offers, and so does a chosen codec the device does not
+/// offer (the fallback).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AutoOrder([CodecKind; 10]);
+
+impl Default for AutoOrder {
+    fn default() -> Self {
+        AutoOrder(CodecKind::AUTO_PRIORITY)
+    }
+}
+
+impl AutoOrder {
+    /// From codec keys: those of AUTO_PRIORITY in the order given (others
+    /// and repeats left out), then any missing in their default order. An
+    /// empty list is the default order.
+    pub fn from_keys<S: AsRef<str>>(keys: &[S]) -> AutoOrder {
+        let mut order = Vec::with_capacity(CodecKind::AUTO_PRIORITY.len());
+        let given = keys.iter().filter_map(|k| CodecKind::from_key(k.as_ref()));
+        for k in given.chain(CodecKind::AUTO_PRIORITY) {
+            if CodecKind::AUTO_PRIORITY.contains(&k) && !order.contains(&k) {
+                order.push(k);
+            }
+        }
+        AutoOrder(order.try_into().unwrap_or(CodecKind::AUTO_PRIORITY))
+    }
+
+    pub fn codecs(&self) -> [CodecKind; 10] {
+        self.0
+    }
+
+    pub fn is_default(&self) -> bool {
+        self.0 == CodecKind::AUTO_PRIORITY
+    }
+
+    /// Where the codec stands (0 = first). Opus 05 stands with Opus and
+    /// FastStream after the last.
+    pub fn rank(&self, kind: CodecKind) -> usize {
+        let at = |k: CodecKind| self.0.iter().position(|&c| c == k).unwrap_or(0);
+        match kind {
+            CodecKind::Opus05 => at(CodecKind::Opus),
+            CodecKind::FastStream => self.0.len(),
+            k => at(k),
+        }
+    }
+
+    /// The codec names in order, for the log
+    pub fn names(&self) -> String {
+        self.0.iter().map(|k| k.name()).collect::<Vec<_>>().join(" > ")
+    }
 }
 
 impl CodecKind {
-    pub const ALL: [CodecKind; 11] = [
+    pub const ALL: [CodecKind; 12] = [
         CodecKind::Ldac,
         CodecKind::AptxHd,
         CodecKind::AptxLl,
@@ -66,31 +129,39 @@ impl CodecKind {
         CodecKind::Opus,
         CodecKind::Opus05,
         CodecKind::FastStream,
+        CodecKind::AptxAdaptive,
     ];
 
-    /// The choice of "Auto", best first. LHDC V5 stays below the aptX family
-    /// and above AAC / SBC, as in v1. Opus (Android's A2DP Opus, 256 kbps
-    /// stereo) comes next: above AAC, which it matches or beats at the same
-    /// bit rate with less codec delay (26.5 ms: a 20 ms frame and 6.5 ms
-    /// look-ahead, against AAC-LC's ~43 ms), but below the codecs sinks have
-    /// shipped for years (sink-side Opus implementations are new and few).
-    /// SBC XQ goes just above SBC: it carries more bits than AAC at 256 kbps,
-    /// but AAC sounds better per bit and sinks that offer AAC are tuned for
-    /// it. FastStream is not here: it sounds worse than SBC, so it is used
-    /// only when chosen. Neither is Opus 05: only PipeWire implements it
-    /// (as a sink too), it is not verified with one, and a PipeWire sink
-    /// offers Android's Opus as well from PipeWire 1.2 on.
-    pub const AUTO_PRIORITY: [CodecKind; 9] = [
-        CodecKind::Ldac,
-        CodecKind::AptxHd,
-        CodecKind::AptxLl,
-        CodecKind::Aptx,
+    /// The choice of "Auto", highest sound quality first (issue #86): LHDC
+    /// V5, LDAC, aptX Adaptive, Opus (Android's A2DP Opus, 256 kbps stereo),
+    /// aptX HD, aptX, then aptX Low Latency (aptX's bit rate, for latency),
+    /// AAC, SBC XQ and SBC. SBC XQ stays below AAC: it carries more bits,
+    /// but AAC sounds better per bit and SBC XQ has trouble with some
+    /// frequencies. A chosen codec the device does not offer falls back
+    /// to the first one here the device offers ([`caps::choose`]). FastStream is not here: it sounds
+    /// worse than SBC, so it is used only when chosen. Neither is Opus 05:
+    /// only PipeWire implements it (as a sink too), it is not verified with
+    /// one, and a PipeWire sink offers Android's Opus as well from PipeWire
+    /// 1.2 on.
+    pub const AUTO_PRIORITY: [CodecKind; 10] = [
         CodecKind::LhdcV5,
+        CodecKind::Ldac,
+        CodecKind::AptxAdaptive,
         CodecKind::Opus,
+        CodecKind::AptxHd,
+        CodecKind::Aptx,
+        CodecKind::AptxLl,
         CodecKind::Aac,
         CodecKind::SbcXq,
         CodecKind::Sbc,
     ];
+
+    /// Where the codec stands in [`CodecKind::AUTO_PRIORITY`] (0 = best).
+    /// Opus 05 stands with Opus and FastStream below SBC, so a fallback from
+    /// them still goes down the list.
+    pub fn quality_rank(self) -> usize {
+        AutoOrder::default().rank(self)
+    }
 
     /// Display name (as v1 shows it)
     pub fn name(self) -> &'static str {
@@ -106,6 +177,7 @@ impl CodecKind {
             CodecKind::Opus => "Opus",
             CodecKind::Opus05 => "Opus 05",
             CodecKind::FastStream => "FastStream",
+            CodecKind::AptxAdaptive => "aptX Adaptive",
         }
     }
 
@@ -123,6 +195,7 @@ impl CodecKind {
             CodecKind::Opus => "opus",
             CodecKind::Opus05 => "opus05",
             CodecKind::FastStream => "faststream",
+            CodecKind::AptxAdaptive => "aptxad",
         }
     }
 
@@ -148,18 +221,32 @@ impl CodecKind {
     }
 
     /// Classic aptX, aptX LL and FastStream go out without an RTP header
-    /// (Android A2DP_APTX_OFFSET, PipeWire); all others with one
+    /// (Android A2DP_APTX_OFFSET, PipeWire); all others with BTstack's.
+    /// aptX Adaptive has an RTP header of its own, which its encoder writes
+    /// (the timestamp and SSRC carry codec information), so BTstack adds
+    /// none either.
     pub fn uses_rtp(self) -> bool {
-        !matches!(self, CodecKind::Aptx | CodecKind::AptxLl | CodecKind::FastStream)
+        !matches!(self, CodecKind::Aptx | CodecKind::AptxLl | CodecKind::FastStream | CodecKind::AptxAdaptive)
     }
 
     /// Highest capture sample rate the codec takes
     pub fn max_sample_rate(self) -> u32 {
         match self {
-            CodecKind::Ldac => 96000,
+            CodecKind::Ldac | CodecKind::AptxAdaptive => 96000,
             CodecKind::LhdcV5 => 192000,
             _ => 48000,
         }
+    }
+
+    /// Experimental: passes the encoder and emulator tests but is not yet
+    /// confirmed with real headphones (the README's 🧪). The app uses them
+    /// as any other codec (issue #86); the CLI's --no-experimental leaves
+    /// them out, by Auto and as a fallback.
+    pub fn experimental(self) -> bool {
+        matches!(
+            self,
+            CodecKind::AptxHd | CodecKind::AptxLl | CodecKind::FastStream | CodecKind::Opus | CodecKind::Opus05
+        )
     }
 
     /// Whether the encoder for this codec is built in
@@ -171,6 +258,7 @@ impl CodecKind {
             CodecKind::Ldac => cfg!(feature = "ldac"),
             CodecKind::LhdcV5 => cfg!(feature = "lhdcv5"),
             CodecKind::Opus | CodecKind::Opus05 => cfg!(feature = "opus"),
+            CodecKind::AptxAdaptive => cfg!(feature = "aptx-adaptive"),
         }
     }
 }
@@ -181,7 +269,9 @@ impl fmt::Display for CodecKind {
     }
 }
 
-/// Quality mode (codec-specific meaning, as in v1)
+/// Quality mode (codec-specific meaning, as in v1). Since issue #86 each
+/// codec offers only some ([`Quality::for_codec`]); the encoders still map
+/// every one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Quality {
     /// LDAC 990 kbps, SBC bitpool 53, SBC XQ ~552 kbps, AAC 256 kbps,
@@ -196,15 +286,34 @@ pub enum Quality {
     Mobile,
     /// LHDC V5 only (900 kbps); other codecs treat it as High
     MediumHigh,
+    /// aptX Adaptive only: its low latency mode (~265 kbps); other codecs
+    /// treat it as High
+    LowLatency,
 }
 
 impl Quality {
-    /// "hq" / "sq" / "mq" / "mhq" (profiles.json)
+    /// "hq" / "sq" / "mq" / "mhq" / "ll" (profiles.json)
     pub fn from_key(key: &str) -> Quality {
         match key {
             "sq" => Quality::Standard,
             "mq" => Quality::Mobile,
             "mhq" => Quality::MediumHigh,
+            "ll" => Quality::LowLatency,
+            _ => Quality::High,
+        }
+    }
+
+    /// The quality a `kind` stream runs with (issue #86): LDAC and LHDC V5
+    /// offer High, Medium (Standard) and Low (Mobile), LHDC V5 also
+    /// Medium-High (900 kbps, as Android; issue #203), aptX Adaptive High
+    /// and Low Latency, every other codec High only (its highest bit rate
+    /// the device takes; ABR / VBR does the rest). A quality the codec no
+    /// longer offers (a profile saved before, the CLI's -q) is High.
+    pub fn for_codec(self, kind: CodecKind) -> Quality {
+        match (kind, self) {
+            (CodecKind::Ldac | CodecKind::LhdcV5, Quality::Standard | Quality::Mobile) => self,
+            (CodecKind::LhdcV5, Quality::MediumHigh) => self,
+            (CodecKind::AptxAdaptive, Quality::LowLatency) => self,
             _ => Quality::High,
         }
     }
@@ -215,6 +324,7 @@ impl Quality {
             Quality::Standard => "sq",
             Quality::Mobile => "mq",
             Quality::MediumHigh => "mhq",
+            Quality::LowLatency => "ll",
         }
     }
 }
@@ -262,6 +372,12 @@ pub struct PeerParams {
     /// encoder keeps its bitpool within it
     pub sbc_min_bitpool: u8,
     pub sbc_max_bitpool: u8,
+    /// SBC / SBC XQ: the bitpool the profile asks for (0 = by quality),
+    /// still within the sink's range
+    pub sbc_bitpool: u8,
+    /// SBC / SBC XQ: blocks, subbands, allocation and channel mode, those
+    /// of the SET_CONFIGURATION (`caps::RemoteCaps::sbc_params`)
+    pub sbc: sbc::SbcParams,
     /// Opus / Opus 05: the frame duration configured, 10 or 20 ms (0 = 20)
     pub opus_frame_ms: u8,
     /// Opus / Opus 05: the channels configured on the wire, 1 or 2 (0 = as
@@ -269,6 +385,11 @@ pub struct PeerParams {
     pub opus_channels: u8,
     /// Opus 05: the largest bit rate configured, in bps (0 = no limit)
     pub opus_max_bitrate: u32,
+    /// AAC: the largest bit rate configured, in bps (0 = no limit)
+    pub aac_max_bitrate: u32,
+    /// aptX Adaptive: the sink is R2 (its codec information has the
+    /// capability extension), which changes the bitstream and the tables
+    pub aptxad_r2: bool,
 }
 
 /// Encoder setup, fixed for a stream
@@ -283,9 +404,23 @@ pub struct EncoderConfig {
     pub mtu: u16,
     /// 16 or 24: LDAC, aptX HD and LHDC V5 take 24-bit PCM (as I32)
     pub bits_per_sample: u8,
-    /// Adaptive bit rate (LDAC, LHDC V5)
+    /// Adaptive bit rate (LDAC, LHDC V5, SBC and SBC XQ: the bitpool)
     pub abr: bool,
     pub peer: PeerParams,
+}
+
+/// What an encoder runs with besides its bit rate (Diagnostics)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EncoderDetails {
+    /// Bytes of every codec frame, when they all have the same length
+    /// (SBC under ABR: of the frames encoded now)
+    pub frame_bytes: Option<u32>,
+    /// SBC, SBC XQ and FastStream: the frame setup, with the bitpool the
+    /// encoder uses
+    pub sbc: Option<sbc::SbcConfig>,
+    /// SBC, SBC XQ under ABR: the range the bitpool moves in (floor,
+    /// ceiling)
+    pub sbc_abr: Option<(u8, u8)>,
 }
 
 /// One [`Encoder::encode`] call's output
@@ -360,6 +495,11 @@ pub trait Encoder: Send {
     /// Puts ABR back to where a stream starts (after a reconnect: what the
     /// old link's queue made it do says nothing about the new one)
     fn abr_reset(&mut self) {}
+
+    /// The setup for Diagnostics; nothing beyond the bit rate by default
+    fn details(&self) -> EncoderDetails {
+        EncoderDetails::default()
+    }
 }
 
 /// Creates the encoder for `kind`
@@ -367,6 +507,27 @@ pub fn create(kind: CodecKind, config: &EncoderConfig) -> Result<Box<dyn Encoder
     if !kind.available() {
         return Err(EncoderError::NotAvailable(kind));
     }
+    tracing::debug!("codec: creating {kind} encoder: {config:?}");
+    let encoder = create_inner(kind, config);
+    match &encoder {
+        Ok(e) => tracing::debug!(
+            "codec: {kind} encoder ready: {:?} input, {} frames per encode, {} per codec frame, up to {} bytes per \
+             encode, {} kbps, abr {}, bit rate capped {}, {:?}",
+            e.pcm_format(),
+            e.pcm_frames_per_encode(),
+            e.pcm_frames_per_codec_frame(),
+            e.max_output_bytes(),
+            e.bitrate_kbps(),
+            e.abr_active(),
+            e.bitrate_capped(),
+            e.details()
+        ),
+        Err(e) => tracing::debug!("codec: creating the {kind} encoder failed: {e}"),
+    }
+    encoder
+}
+
+fn create_inner(kind: CodecKind, config: &EncoderConfig) -> Result<Box<dyn Encoder>, EncoderError> {
     match kind {
         CodecKind::Sbc => Ok(Box::new(sbc::SbcEncoder::new(config)?)),
         CodecKind::SbcXq => Ok(Box::new(sbc::SbcEncoder::new_xq(config)?)),
@@ -381,7 +542,35 @@ pub fn create(kind: CodecKind, config: &EncoderConfig) -> Result<Box<dyn Encoder
         CodecKind::LhdcV5 => Ok(Box::new(lhdcv5::LhdcV5Encoder::new(config)?)),
         #[cfg(feature = "opus")]
         CodecKind::Opus | CodecKind::Opus05 => Ok(Box::new(opus::OpusEncoder::new(kind, config)?)),
+        #[cfg(feature = "aptx-adaptive")]
+        CodecKind::AptxAdaptive => Ok(Box::new(aptx_adaptive::AptxAdaptiveEncoder::new(config)?)),
         #[allow(unreachable_patterns)]
         _ => Err(EncoderError::NotAvailable(kind)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn qualities_each_codec_offers() {
+        use Quality::*;
+        for q in [Standard, Mobile] {
+            assert_eq!(q.for_codec(CodecKind::Ldac), q);
+            assert_eq!(q.for_codec(CodecKind::LhdcV5), q);
+        }
+        // LHDC V5's Medium-High is back (issue #203); LDAC has none
+        assert_eq!(MediumHigh.for_codec(CodecKind::LhdcV5), MediumHigh);
+        assert_eq!(MediumHigh.for_codec(CodecKind::Ldac), High);
+        assert_eq!(LowLatency.for_codec(CodecKind::AptxAdaptive), LowLatency);
+        for q in [Standard, Mobile, MediumHigh] {
+            assert_eq!(q.for_codec(CodecKind::AptxAdaptive), High, "{q:?}");
+        }
+        for kind in [CodecKind::Aac, CodecKind::Sbc, CodecKind::SbcXq, CodecKind::Opus, CodecKind::Opus05] {
+            for q in [Standard, Mobile, MediumHigh, LowLatency] {
+                assert_eq!(q.for_codec(kind), High, "{kind:?} {q:?}");
+            }
+        }
     }
 }

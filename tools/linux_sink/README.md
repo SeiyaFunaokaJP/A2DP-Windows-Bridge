@@ -28,7 +28,7 @@ BlueZ takes the adapter back.
 | Packets, bytes, bitrate | per second and in total |
 | Lost / late packets | gaps and steps back in the RTP sequence numbers (not for classic aptX, aptX LL and FastStream, which carry no RTP header) |
 | Jitter | RFC 3550 interarrival jitter against the audio carried |
-| Gaps | longest time between two packets |
+| Gaps | longest time between two packets, and how many gaps were longer than 40 ms (`long_gaps`: the count to compare AFH settings by) |
 | Playout buffer model | a sink playing with `--buffer` ms (default 200) of audio: **dropouts** = the buffer would have run dry (audible interruption), **skips** = a burst after a stall would have overfilled it to more than twice its size (audio thrown away). The playout clock follows the sender within +-500 ppm, so clock drift is not counted; lost packets are not concealed and shorten the audio |
 | Pauses | the source sent nothing for more than 3 s (A2DPWB capturing a silent PC): counted separately, not as dropouts; the playout model starts over when media comes back |
 | Stream errors | RTP timestamp steps, SBC / FastStream / LDAC frame headers, Opus packet headers, aptX sync, decode errors |
@@ -76,9 +76,11 @@ On the A2DPWB PC (same network segment - the discovery is a broadcast):
   rate and bit depth given by `-c`, `-q`, `--rate` and `--bits` and a steady
   test tone (without `--test-tone`: the system audio), and prints its
   statistics every 5 seconds and at the end.
-- **Window**: with **Settings > Developer mode**, **Diagnostics** has a
-  **Peer Receiver Test** tab. In this version it is a preview that saves the
-  receiver address but does not stream yet; use the CLI.
+- **Window**: with **Settings > Developer mode**, open **Developer > Peer
+  Receiver Test** (A2DPWB keeps running). It finds the receiver (or takes
+  its address), streams to it with the codec, quality and source chosen
+  there (test tone or system audio), checks each step and shows what was
+  sent beside what the receiver counted.
 
 Open UDP and TCP port 51201 on the Linux PC if it has a firewall
 (`sudo ufw allow 51201`). A2DPWB can also be given the address directly

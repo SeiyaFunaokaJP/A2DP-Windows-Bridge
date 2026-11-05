@@ -319,6 +319,7 @@ impl CcpModule {
     /// A Call Control Point write from `con`: Err with an ATT error (wrong
     /// length: nothing is notified), else what to send
     fn control_point(&mut self, con: u16, value: &[u8]) -> Result<CpReply, u8> {
+        tracing::debug!("LE Audio: CCP: control point value {value:02X?} from 0x{con:04X}");
         let out = self.model.control_point(self.backend.as_mut(), value)?;
         tracing::info!(
             "LE Audio: CCP: control point {} (0x{:02x}) call {} from 0x{con:04x} -> {}",
@@ -353,6 +354,12 @@ impl CcpModule {
     }
 
     fn send_all(&self, ctx: &mut LeCtx<'_>, notifications: Vec<(u16, Vec<u8>)>) {
+        if !notifications.is_empty() {
+            tracing::debug!(
+                "LE Audio: CCP: notifying {:04X?}",
+                notifications.iter().map(|(h, _)| *h).collect::<Vec<_>>()
+            );
+        }
         for (handle, value) in notifications {
             self.notify_all(ctx, handle, &value);
         }
@@ -361,6 +368,7 @@ impl CcpModule {
     /// One simulation command (v1 ccp::simulate), then what it changed is
     /// sent; Err: why it cannot be done
     fn simulate(&mut self, ctx: &mut LeCtx<'_>, command: &str) -> Result<(), String> {
+        tracing::debug!("LE Audio: CCP: simulating \"{command}\"");
         let r = self.model.simulate(command);
         let n = self.take_notifications();
         self.send_all(ctx, n);
@@ -536,7 +544,15 @@ impl LeModule for CcpModule {
     }
 
     fn on_att_read(&mut self, _ctx: &mut LeCtx<'_>, read: &AttRead) -> Result<Vec<u8>, u8> {
-        self.read(read.con, read.handle, read.offset)
+        let r = self.read(read.con, read.handle, read.offset);
+        tracing::debug!(
+            "LE Audio: CCP: read 0x{:04X} offset {} by 0x{:04X}: {:02X?}",
+            read.handle,
+            read.offset,
+            read.con,
+            r.as_deref()
+        );
+        r
     }
 
     fn on_att_write(&mut self, ctx: &mut LeCtx<'_>, write: &AttWrite<'_>) -> Result<(), u8> {
@@ -546,6 +562,7 @@ impl LeModule for CcpModule {
         if write.handle == self.h.interval {
             let &[v] = write.value else { return Err(ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LENGTH) };
             // The strength never changes: nothing to report
+            tracing::debug!("LE Audio: CCP: signal strength reporting interval {v} s from 0x{:04X}", write.con);
             self.signal_interval = v;
             return Ok(());
         }
@@ -579,7 +596,7 @@ mod tests {
     /// A module with GTBS built after GAP / GATT (as in a session)
     fn built() -> CcpModule {
         let mut s = GattServer::new();
-        s.build_base();
+        s.build_base("A2DPWB");
         let mut m = CcpModule::default();
         m.add_gatt_services(&mut s.builder(3));
         m

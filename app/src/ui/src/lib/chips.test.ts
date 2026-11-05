@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  chipTargetIndex,
   type AdapterFirmware,
   adapterFirmwareTag,
   buildChipOptions,
@@ -107,6 +108,12 @@ describe("firmware state", () => {
     expect(chipStatus(setting(0x8771, "rtl8761bu"), [other("Intel", "firmware.vendor_intel"), rtl(false)], []).kind).toBe(
       "missing",
     );
+    // The core can fetch the files: the Download button
+    expect(chipStatus(setting(CHIP_AUTO), [{ ...rtl(false), firmware_download: true }], [])).toEqual({
+      kind: "missing",
+      files: ["rtl8761bu_fw.bin", "rtl8761bu_config.bin"],
+      download: true,
+    });
   });
 
   it("tells about another vendor where v1 did, instead of 'no files needed'", () => {
@@ -147,7 +154,7 @@ describe("firmware state", () => {
     expect(adapterFirmwareTag(other("Intel", "firmware.vendor_intel"), s).key).toBe("ui.adapter.firmware_not_realtek");
     expect(adapterFirmwareTag(other("Qualcomm", "firmware.vendor_unsupported"), s)).toEqual({
       key: "ui.adapter.firmware_unsupported",
-      status: "warn",
+      status: "bad",
     });
     expect(adapterFirmwareTag(rtl(null), setting(CHIP_NOT_REALTEK)).key).toBe("ui.adapter.firmware_not_realtek");
     expect(adapterFirmwareTag(other("Unknown", null), s)).toEqual({ key: "ui.adapter.firmware_choose_chip", status: "warn" });
@@ -160,6 +167,7 @@ describe("firmware state", () => {
       kind: "invalid",
       files: ["rtl8761bu_fw.bin", "rtl8761bu_config.bin"],
       file: "rtl8761bu_fw.bin",
+      download: false,
     });
     expect(adapterFirmwareTag(page, setting(CHIP_AUTO))).toEqual({ key: "firmware.invalid_short", status: "bad" });
     expect(chipStatus(setting(CHIP_AUTO), [{ ...rtl(false), firmware_invalid: null }], []).kind).toBe("missing");
@@ -190,5 +198,17 @@ describe("mock core firmware state", () => {
     expect(adapterWithFirmware(rtl, setting(CHIP_CUSTOM, "custom"), folder)).toMatchObject({ firmware_present: false, firmware_files: pair("custom") });
     // Auto without a detected Realtek chip: nothing to load
     expect(adapterWithFirmware({ ...rtl, realtek_chip: null }, setting(CHIP_AUTO), folder)).toMatchObject({ firmware_present: null });
+  });
+});
+
+describe("chipTargetIndex", () => {
+  const base = { vendor: "x", realtek_chip: null, firmware_present: null, firmware_files: [], vendor_note: null };
+  it("picks the Realtek adapter, then a checked one, then a vendor note, then the first", () => {
+    expect(chipTargetIndex([])).toBe(-1);
+    expect(chipTargetIndex([base, base])).toBe(0);
+    const note = { ...base, vendor_note: { key: "firmware.vendor_intel", args: [] } };
+    expect(chipTargetIndex([base, note])).toBe(1);
+    expect(chipTargetIndex([note, { ...base, firmware_present: false }])).toBe(1);
+    expect(chipTargetIndex([note, base, { ...base, realtek_chip: "RTL8761BU" }])).toBe(2);
   });
 });

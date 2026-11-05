@@ -10,7 +10,7 @@ export function NoticeLine() {
       <Show when={notice()}>
         {(n) => (
           <div class={`notice notice-${n().kind}`} role={n().kind === "error" ? "alert" : undefined}>
-            <Icon name={n().kind === "error" ? "error_circle" : "checkmark_circle"} />
+            <Icon name={n().kind === "error" ? "error_circle" : n().kind === "hint" ? "info" : "checkmark_circle"} />
             <span>{n().text}</span>
           </div>
         )}

@@ -14,6 +14,9 @@
  *   Opus 05           libopus (PipeWire's A2DP Opus, vendor 0x000005F1 / 0x1005;
  *                     one stream: a plain Opus packet)
  *   LDAC, LHDC V5     no open-source decoder: frame headers are validated only
+ *   aptX Adaptive     no decoder here either: its own RTP header (sample
+ *                     count timestamp, latency mode SSRC) and the codec
+ *                     packet header are validated only
  *
  * Decoded audio is written to WAV files next to the dump. The report on
  * stdout lists each configuration, packet/frame counts and every
@@ -65,7 +68,7 @@ static uint32_t be32(const uint8_t *p) {
 /* Codec configuration (AVDTP Media Codec capability)                       */
 /* ------------------------------------------------------------------------ */
 
-enum class Codec { Unknown, SBC, AAC, Aptx, AptxHD, AptxLL, LDAC, LHDCV5, FastStream, Opus, Opus05 };
+enum class Codec { Unknown, SBC, AAC, Aptx, AptxHD, AptxLL, LDAC, LHDCV5, FastStream, Opus, Opus05, AptxAdaptive };
 
 static const char *codec_name(Codec c) {
     switch (c) {
@@ -79,6 +82,7 @@ static const char *codec_name(Codec c) {
     case Codec::FastStream: return "FastStream";
     case Codec::Opus:   return "Opus";
     case Codec::Opus05: return "Opus 05";
+    case Codec::AptxAdaptive: return "aptX Adaptive";
     default:            return "unknown";
     }
 }
@@ -95,12 +99,13 @@ static const char *codec_file_tag(Codec c) {
     case Codec::FastStream: return "faststream";
     case Codec::Opus:   return "opus";
     case Codec::Opus05: return "opus05";
+    case Codec::AptxAdaptive: return "aptxad";
     default:            return "unknown";
     }
 }
 
-/* LDAC and LHDC V5 have no open-source decoder: frame headers are validated only */
-static bool headers_only(Codec c) { return c == Codec::LDAC || c == Codec::LHDCV5; }
+/* LDAC, LHDC V5 and aptX Adaptive have no decoder here: frame headers are validated only */
+static bool headers_only(Codec c) { return c == Codec::LDAC || c == Codec::LHDCV5 || c == Codec::AptxAdaptive; }
 
 struct CodecConfig {
     Codec codec = Codec::Unknown;
@@ -118,6 +123,9 @@ struct CodecConfig {
     int lhdc_bits = 0;
     /* Opus: samples per frame at 48 kHz (480 / 960) */
     uint32_t opus_frame_samples = 0;
+    /* aptX Adaptive: an R2 sink (capability extension), so frame type 3
+     * (HQ) or 4 (LL) instead of R1's 1 */
+    bool aptxad_r2 = false;
 
     /* A2DPWB sends classic aptX, aptX LL and FastStream without an RTP header */
     bool has_rtp() const { return codec != Codec::Aptx && codec != Codec::AptxLL && codec != Codec::FastStream; }
@@ -298,6 +306,31 @@ static CodecConfig parse_media_codec(const uint8_t *p, size_t n) {
                 c.desc += " (INVALID: not mono / stereo in one stream at front left + right, or not one frame duration)";
             return c;
         }
+        if (vendor == 0xD7 && vcodec == 0x00AD && vlen >= 11) {
+            /* aptX Adaptive (AKS-Logic/aptx-adaptive-linux spec
+             * a2dp-integration.md sections 1, 7H; the rates as Qualcomm's
+             * Android a2dp_vendor_aptx_adaptive_constants.h defines them,
+             * issue #86): byte 6 rate bits 7..3 (0x40 44.1k, or 0x08 in older
+             * headers; 0x10 48k; 0xA0 96k, which Android configures with both
+             * bits) | source type bits 2..0 (0x02 a host
+             * encoder; 0x01 is sink-only), byte 7 channel mode, bytes 8..11
+             * target latencies (LL0, LL1 in ms; HQ, TWS in 2 ms units), byte
+             * 15 the capability extension version (1 = R2; R1 has its end
+             * marker 00 AA at 15..16). Sent as stereo. */
+            c.codec = Codec::AptxAdaptive;
+            uint8_t rate = v[0] & 0xF8, source = v[0] & 0x07, mode = v[1];
+            c.sample_rate = (rate == 0x08 || rate == 0x40) ? 44100 : rate == 0x10 ? 48000 : rate == 0xA0 ? 96000 : 0;
+            c.channels = (mode == 0x02 || mode == 0x08) ? 2 : 0;
+            c.aptxad_r2 = v[9] == 1;
+            c.desc = strf("aptX Adaptive %u Hz, %s, %s, source type %u, target latency LL0 %u ms, LL1 %u ms, "
+                          "HQ %u ms, TWS %u ms",
+                c.sample_rate, mode == 0x02 ? "stereo" : mode == 0x08 ? "joint stereo" : "?",
+                c.aptxad_r2 ? "R2" : "R1", source, v[2], v[3], v[4] * 2u, v[5] * 2u);
+            if (c.sample_rate == 0 || c.channels == 0 || (source & 0x01) ||
+                (!c.aptxad_r2 && !(v[9] == 0x00 && v[10] == 0xAA)))
+                c.desc += " (INVALID: not one rate / stereo, a sink-only source type bit, or no R1 end marker)";
+            return c;
+        }
         if (vendor == 0x0A && vcodec == 0x0001 && vlen >= 2) {
             /* FastStream (PipeWire a2dp_faststream_t): direction 0x01 sink
              * (music) | 0x02 source (voice); byte 7 low nibble sink rate
@@ -437,6 +470,11 @@ public:
 
         const uint8_t *pl = p;
         size_t pn = n;
+        if (cfg_.codec == Codec::AptxAdaptive) {
+            /* Its RTP header carries codec information: checked there */
+            check_aptx_adaptive(p, n);
+            return;
+        }
         if (cfg_.has_rtp()) {
             if (!strip_rtp(p, n, &pl, &pn)) return;
         }
@@ -482,7 +520,15 @@ public:
             printf("  No media packets were sent with this configuration.\n");
         } else {
             printf("  RTP header    : %s\n", cfg_.has_rtp() ? "expected, present" : "not used (as in Android / PipeWire)");
-            if (cfg_.has_rtp() && have_seq_) {
+            if (cfg_.codec == Codec::AptxAdaptive && have_seq_) {
+                printf("  RTP           : payload type %u, SSRC 0x%08X (%s), %llu sequence gaps, "
+                       "%llu-%llu samples per packet\n",
+                       rtp_pt_, aptxad_ssrc_, aptxad_ssrc_ == 0xA3 ? "HQ" : aptxad_ssrc_ == 0xA1 ? "LL" : "?",
+                       (unsigned long long)seq_gaps_, (unsigned long long)ldac_min_fpp_,
+                       (unsigned long long)ldac_max_fpp_);
+                printf("  aptX Adaptive : %llu-%llu-byte packets, frame type %u\n",
+                       (unsigned long long)ldac_min_frame_, (unsigned long long)ldac_max_frame_, aptxad_type_);
+            } else if (cfg_.has_rtp() && have_seq_) {
                 double ts_rate = wall > 0 ? (double)(uint32_t)(last_ts_ - first_ts_) / wall : 0.0;
                 printf("  RTP           : payload type %u, %llu sequence gaps, timestamp advances ~%.0f /s\n",
                        rtp_pt_, (unsigned long long)seq_gaps_, ts_rate);
@@ -796,6 +842,53 @@ private:
             issue("LHDC V5: media payload header frame count differs from frames in packet");
     }
 
+    /* aptX Adaptive as A2DPWB (and a Snapdragon phone) sends it: one codec
+     * packet per media packet behind a 12-byte RTP header, payload type 96,
+     * the timestamp = samples per channel in the packet (high 16 bits, a
+     * latency adjustment, 0), the SSRC = the latency mode (0xA3 HQ, 0xA1 LL),
+     * constant; the codec packet 16-bit byte-swapped, a multiple of 4 bytes
+     * up to 1032, its header [0] [frame type | 0x80 padded] [bytes / 4 - 3] */
+    void check_aptx_adaptive(const uint8_t *p, size_t n) {
+        if (n < 12 + 12 || (p[0] >> 6) != 2) { issue("aptX Adaptive: missing RTP header or packet"); return; }
+        if (p[0] != 0x80) issue("aptX Adaptive: RTP padding, extension or CSRC set");
+        uint8_t pt = p[1] & 0x7F;
+        uint16_t seq = be16(p + 2);
+        uint32_t ts = be32(p + 4), ssrc = be32(p + 8);
+        if (!have_seq_) {
+            have_seq_ = true;
+            rtp_pt_ = pt;
+            aptxad_ssrc_ = ssrc;
+        } else {
+            if (seq != (uint16_t)(last_seq_ + 1)) { seq_gaps_++; issue("RTP: sequence number gap"); }
+            if (ssrc != aptxad_ssrc_) issue("aptX Adaptive: SSRC changed");
+        }
+        last_seq_ = seq;
+        if (pt != 96) issue("aptX Adaptive: RTP payload type is not 96");
+        if (ssrc != 0xA3 && ssrc != 0xA1) issue("aptX Adaptive: SSRC is not a latency mode (0xA3 HQ / 0xA1 LL)");
+        uint32_t per_ch = ts & 0xFFFF;
+        if (ts >> 16) issue("aptX Adaptive: RTP timestamp latency adjustment not 0");
+        if (per_ch == 0) { issue("aptX Adaptive: RTP timestamp sample count 0"); return; }
+        if (ldac_min_fpp_ == 0 || per_ch < ldac_min_fpp_) ldac_min_fpp_ = per_ch;
+        if (per_ch > ldac_max_fpp_) ldac_max_fpp_ = per_ch;
+
+        const uint8_t *c = p + 12;
+        size_t len = n - 12;
+        payload_bytes_ += len;
+        if (len % 4 || len < 12 || len > 1032) { issue("aptX Adaptive: codec packet not 12..1032 bytes in 4s"); return; }
+        if (ldac_min_frame_ == 0 || len < ldac_min_frame_) ldac_min_frame_ = len;
+        if (len > ldac_max_frame_) ldac_max_frame_ = len;
+        /* On air each 16-bit word is swapped: header bytes 0, 1, 2 are c[1], c[0], c[3] */
+        uint8_t type = c[0] & 0x7F;
+        unsigned want = !cfg_.aptxad_r2 ? 1u : ssrc == 0xA1 ? 4u : 3u;
+        if (c[1] != 0) issue("aptX Adaptive: codec packet header byte 0 not 0 (or not byte-swapped)");
+        if (type != want) issue(strf("aptX Adaptive: frame type %u, not %u for an %s sink", type, want,
+                                     cfg_.aptxad_r2 ? "R2" : "R1"));
+        aptxad_type_ = type;
+        if ((size_t)c[3] != len / 4 - 3) issue("aptX Adaptive: codec packet header size byte differs from its length");
+        frames_++;
+        samples_ += per_ch;
+    }
+
     int index_;
     uint16_t handle_;
     double start_;
@@ -815,6 +908,8 @@ private:
     uint64_t samples_at_last_ts_ = 0;
     uint8_t rtp_pt_ = 0;
     uint64_t seq_gaps_ = 0;
+    uint32_t aptxad_ssrc_ = 0;
+    unsigned aptxad_type_ = 0;
 
     OI_CODEC_SBC_DECODER_CONTEXT sbc_ = {};
     OI_UINT32 sbc_data_[CODEC_DATA_WORDS(SBC_MAX_CHANNELS, SBC_CODEC_FAST_FILTER_BUFFERS)] = {};

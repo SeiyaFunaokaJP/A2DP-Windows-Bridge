@@ -455,6 +455,7 @@ fn on_sirk(stack: &Stack, addr: &str, m: &mut Member, status: u8, v: &[u8]) {
         tracing::warn!("CSIP: {addr}: SIRK value of {} bytes", v.len());
         return;
     }
+    tracing::debug!("CSIP: {addr}: SIRK type 0x{:02X} read", v[0]);
     let value = key_from_air(&v[1..17]);
     match v[0] {
         SIRK_PLAINTEXT => m.sirk = value,
@@ -677,6 +678,7 @@ impl LeModule for CsipModule {
             let Some(set) = st.resolve_rsi(&rsi) else { return };
             (set, st.sets[set].size)
         };
+        tracing::debug!("CSIP: {} RSI {rsi:02X?} resolves to coordinated set {set}", result.addr);
         result.set_id = Some(set as u32);
         result.le_audio = true;
         result.note = if size > 0 {
@@ -710,6 +712,13 @@ impl LeModule for CsipModule {
                 .filter_map(|(uuid, f)| d.find_char(UUID_SERVICE_CSIS, uuid).map(|c| (c.value_handle, f)))
                 .collect();
         let lock = d.find_char(UUID_SERVICE_CSIS, UUID_CHAR_LOCK).cloned();
+        tracing::debug!(
+            "CSIP: {}: CSIS SIRK {:04X?}, reads {:?}, lock {:04X?}",
+            d.addr,
+            sirk,
+            reads.iter().map(|(h, f)| format!("{f:?}@0x{h:04X}")).collect::<Vec<_>>(),
+            lock.as_ref().map(|l| l.value_handle)
+        );
 
         let mut st = self.st.borrow_mut();
         // Workers waiting for an earlier link of this device wait for this one
@@ -740,6 +749,7 @@ impl LeModule for CsipModule {
                 lock.value_handle,
                 Box::new(move |ctx, v| {
                     let Some(&value) = v.first() else { return };
+                    tracing::debug!("CSIP: device {}: Set Member Lock notified {value}", dev.0);
                     let released = {
                         let mut st = rc.borrow_mut();
                         let Some(x) = st.member(dev, con) else { return };
@@ -777,6 +787,7 @@ impl LeModule for CsipModule {
                 Box::new(move |ctx, status, v| {
                     let mut st = rc.borrow_mut();
                     let Some(x) = st.member(dev, con) else { return };
+                    tracing::debug!("CSIP: device {}: {field:?} read (0x{status:02X}): {v:02X?}", dev.0);
                     if let (0, Some(&b)) = (status, v.first()) {
                         match field {
                             Field::Size => x.size = b,
@@ -1021,6 +1032,7 @@ fn known(host: &BtHost, have: &[Snap], r: &LeScanResult) -> bool {
 fn write_lock(host: &BtHost, id: LeDeviceId, value: u8) -> u8 {
     let status = Arc::new(AtomicU8::new(LOCK_TIMEOUT));
     let s = status.clone();
+    tracing::debug!("CSIP: device {}: writing Set Member Lock {value}", id.0);
     host.le_call(Duration::from_millis(LOCK_WRITE_TIMEOUT_MS), move |ctx, done| {
         let Some(rc) = state(ctx) else {
             s.store(ATT_DISCONNECTED, Ordering::Release);
@@ -1059,7 +1071,9 @@ fn write_lock(host: &BtHost, id: LeDeviceId, value: u8) -> u8 {
             })),
         );
     });
-    status.load(Ordering::Acquire)
+    let status = status.load(Ordering::Acquire);
+    tracing::debug!("CSIP: device {}: Set Member Lock {value} -> 0x{status:02X} ({})", id.0, lock_error(status));
+    status
 }
 
 /// Lock the members of a set (`have`: in rank order). Lock Denied: release,
@@ -1074,6 +1088,7 @@ fn lock_set(host: &BtHost, set: usize, have: &[Snap], cancelled: &dyn Fn() -> bo
             ids.iter().map(|id| st.members.get(id).map_or(0, |m| m.lock_handle)).collect::<Vec<u16>>()
         })
         .unwrap_or_default();
+    tracing::debug!("CSIP: coordinated set {set}: lock handles {handles:04X?}");
     if handles.len() != have.len() || handles.contains(&0) {
         tracing::info!(
             "CSIP: coordinated set {set}: not every member has a Set Member Lock: ordered access without locking"

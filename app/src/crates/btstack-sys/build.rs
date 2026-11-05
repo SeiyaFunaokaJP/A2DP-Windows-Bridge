@@ -45,7 +45,12 @@ const CLASSIC: &[&str] = &[
     "avrcp.c",
     "avrcp_controller.c",
     "avrcp_target.c",
+    "rfcomm.c",
+    "hfp.c",
+    "hfp_ag.c",
+    "hfp_gsm_model.c",
     "sdp_client.c",
+    "sdp_client_rfcomm.c",
     "sdp_server.c",
     "sdp_util.c",
     "btstack_link_key_db_memory.c",
@@ -88,7 +93,6 @@ fn main() {
         .include(btstack.join("platform/posix"))
         .include(btstack.join("chipset/realtek"))
         .include(btstack.join("chipset/bcm"))
-        .include(btstack.join("chipset/intel"))
         .include(btstack.join("3rd-party/tinydir"))
         .include(btstack.join("3rd-party/rijndael"))
         .include(btstack.join("3rd-party/micro-ecc"))
@@ -109,7 +113,8 @@ fn main() {
     // ENABLE_PRINTF_TO_LOG sends those lines to the HCI dump log instead
     // (HCI_DUMP_LOG_LEVEL_PRINT), for this file only
     let mut realtek = build.clone();
-    realtek.define("ENABLE_PRINTF_TO_LOG", None).file(btstack.join("chipset/realtek/btstack_chipset_realtek.c"));
+    // csrc/realtek.c includes btstack_chipset_realtek.c (reads its firmware table)
+    realtek.define("ENABLE_PRINTF_TO_LOG", None).file(csrc.join("realtek.c"));
     realtek.compile("btstack_realtek");
 
     let mut core: Vec<PathBuf> = std::fs::read_dir(btstack.join("src"))
@@ -128,7 +133,10 @@ fn main() {
         .collect();
     ble.sort();
     build.files(&ble);
-    build.files(CLASSIC.iter().map(|f| btstack.join("src/classic").join(f)));
+    build.files(CLASSIC.iter().map(|f| match *f {
+        "a2dp.c" => patched_a2dp(&btstack),
+        f => btstack.join("src/classic").join(f),
+    }));
     build.file(btstack.join("platform/windows/btstack_run_loop_windows.c"));
     // LE bonds (le_device_db_tlv) and the GATT server's client
     // configurations in a TLV file, readable by v1's le_audio_bonds.tlv
@@ -136,7 +144,6 @@ fn main() {
     // Software P-256 for LE Secure Connections (ENABLE_MICRO_ECC_P256)
     build.file(btstack.join("3rd-party/micro-ecc/uECC.c"));
     build.file(btstack.join("chipset/bcm/btstack_chipset_bcm.c"));
-    build.file(btstack.join("chipset/intel/btstack_chipset_intel_firmware.c"));
     build.file(btstack.join("3rd-party/rijndael/rijndael.c"));
     build.file(csrc.join("shim.c"));
 
@@ -159,6 +166,44 @@ fn main() {
     rerun_dir(&btstack.join("src/ble"));
     // For dependents (e.g. tests that need the include paths)
     println!("cargo:root={}", btstack.display());
+}
+
+/// src/classic/a2dp.c with its SEP discovery bounded, written to OUT_DIR.
+///
+/// BTstack 1.8.1 keeps the free sink SEPs a headset lists in a static array
+/// of AVDTP_MAX_SEP_NUM (10) without a bounds check: an 11th overwrites the
+/// statics after it (the HFP callbacks; A2DPWB then calls a NULL
+/// hfp_ag_callback). Upstream fixed it in fc208fcce0 ("a2dp: ignore
+/// additional stream endpoints", 2026-07-22, not in a release) by ignoring
+/// SEPs beyond the array; that check is added here, and the array holds 62
+/// SEPs, every SEID a remote can list (0x01 - 0x3E), so no codec of a
+/// headset with many endpoints is ignored.
+fn patched_a2dp(btstack: &Path) -> PathBuf {
+    fn replace_once(source: &mut String, from: &str, to: &str) {
+        assert_eq!(source.matches(from).count(), 1, "a2dp.c patch: `{from}` not found once (BTstack changed?)");
+        *source = source.replacen(from, to, 1);
+    }
+    let mut source = std::fs::read_to_string(btstack.join("src/classic/a2dp.c")).unwrap();
+    // Built from OUT_DIR: the header next to it by its path under src/
+    replace_once(&mut source, "#include \"a2dp.h\"", "#include \"classic/a2dp.h\"");
+    replace_once(&mut source, "#define AVDTP_MAX_SEP_NUM 10", "#define AVDTP_MAX_SEP_NUM 62");
+    if !source.contains("discovery limit reached") {
+        let store = "a2dp_config_process_sep_discovery_seps[a2dp_config_process_sep_discovery_count++] = sep;";
+        replace_once(
+            &mut source,
+            store,
+            &format!(
+                "if (a2dp_config_process_sep_discovery_count == AVDTP_MAX_SEP_NUM) {{\n\
+                 log_info(\"A2DP: ignoring SEP %u, discovery limit reached\", sep.seid);\n\
+                 break;\n\
+                 }}\n\
+                 {store}"
+            ),
+        );
+    }
+    let path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("a2dp.c");
+    std::fs::write(&path, source).unwrap();
+    path
 }
 
 fn rerun_dir(dir: &Path) {

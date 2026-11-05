@@ -37,14 +37,19 @@
 #include "classic/a2dp_source.h"
 #include "classic/avdtp.h"
 #include "classic/avdtp_sink.h"
+#include "classic/avdtp_source.h"
 #include "classic/avdtp_util.h"
 #include "classic/avrcp.h"
 #include "classic/avrcp_controller.h"
 #include "classic/avrcp_target.h"
 #include "classic/btstack_link_key_db.h"
+#include "classic/hfp_ag.h"
+#include "classic/rfcomm.h"
 #include "classic/btstack_link_key_db_memory.h"
+#include "classic/sdp_client.h"
+#include "classic/sdp_client_rfcomm.h"
 #include "classic/sdp_server.h"
-#include "btstack_chipset_intel_firmware.h"
+#include "classic/sdp_util.h"
 #include "btstack_tlv.h"
 #include "btstack_tlv_windows.h"
 #include "ble/att_db.h"
@@ -69,7 +74,6 @@ int a2dpwb_rs_lk_get(const uint8_t *addr, uint8_t *key, int *type);
 void a2dpwb_rs_lk_put(const uint8_t *addr, const uint8_t *key, int type);
 void a2dpwb_rs_lk_delete(const uint8_t *addr);
 int a2dpwb_rs_lk_at(int index, uint8_t *addr, uint8_t *key, int *type);
-void a2dpwb_rs_intel_done(int result);
 uint16_t a2dpwb_rs_att_read(uint16_t con, uint16_t handle, uint16_t offset, uint8_t *buffer, uint16_t buffer_size);
 int a2dpwb_rs_att_write(uint16_t con, uint16_t handle, uint16_t mode, uint16_t offset, const uint8_t *buffer,
                         uint16_t size);
@@ -191,17 +195,20 @@ void a2dpwb_transport_packet_sent(void) {
     if (transport_packet_handler) transport_packet_handler(HCI_EVENT_PACKET, sent, sizeof(sent));
 }
 
+/* A command the controller never answered: a Command Status of our own, as if
+ * from the controller, gives hci.c its command slot back. hci.c keeps no
+ * other state for a command once sent (handle_command_status_event only sets
+ * num_cmd_packets for opcodes it does not track), so this is safe for
+ * commands it does not wait on itself; the caller passes only its own link
+ * reads. Its own buffer: the transport's may be in use further up. */
+void a2dpwb_hci_command_status_inject(uint16_t opcode, uint8_t status) {
+    uint8_t event[6] = {HCI_EVENT_COMMAND_STATUS, 4, status, 1, (uint8_t)(opcode & 0xff), (uint8_t)(opcode >> 8)};
+    if (transport_packet_handler) transport_packet_handler(HCI_EVENT_PACKET, event, sizeof(event));
+}
+
 void a2dpwb_hci_init(int async) {
     transport_packet_handler = NULL;
     hci_init(a2dpwb_transport_instance(async), NULL);
-}
-
-/* Intel bootloader firmware download: runs on the transport before hci_init */
-static void intel_done(int result) { a2dpwb_rs_intel_done(result); }
-
-void a2dpwb_intel_download_firmware(int async, const char *firmware_path) {
-    btstack_chipset_intel_set_firmware_path(firmware_path);
-    btstack_chipset_intel_download_firmware(a2dpwb_transport_instance(async), &intel_done);
 }
 
 /* ======================================================================== */
@@ -289,6 +296,10 @@ enum {
     SOURCE_GATT_CLIENT = 7,
     SOURCE_ATT_SERVER = 8,
     SOURCE_ISO = 9,
+    SOURCE_HFP = 10,
+    SOURCE_RFCOMM = 11,
+    SOURCE_SDP_CLIENT = 12,
+    SOURCE_SDP_SERVICES = 13,
 };
 
 static void handler_hci(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_HCI, t, c, p, s); }
@@ -300,7 +311,11 @@ static void handler_avrcp_tg(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2
 static void handler_sm(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_SM, t, c, p, s); }
 static void handler_gatt_client(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_GATT_CLIENT, t, c, p, s); }
 static void handler_att_server(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_ATT_SERVER, t, c, p, s); }
+static void handler_hfp(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_HFP, t, c, p, s); }
 static void handler_iso(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_ISO, t, c, p, s); }
+static void handler_rfcomm(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_RFCOMM, t, c, p, s); }
+static void handler_sdp_client(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_SDP_CLIENT, t, c, p, s); }
+static void handler_sdp_services(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { a2dpwb_rs_on_packet(SOURCE_SDP_SERVICES, t, c, p, s); }
 
 static btstack_packet_callback_registration_t hci_event_registration;
 
@@ -328,18 +343,227 @@ void a2dpwb_avrcp_init(void) {
 }
 
 /* ======================================================================== */
+/* HFP audio gateway: service level connection only (headphone battery)     */
+/* ======================================================================== */
+
+#define A2DPWB_HFP_RFCOMM_CHANNEL 4
+
+static uint8_t sdp_hfp_ag_service[200];
+static uint8_t hfp_codecs[] = { HFP_CODEC_CVSD };
+static hfp_ag_indicator_t hfp_ag_indicators[] = {
+    /* index, name, min, max, status, mandatory, enabled, status changed */
+    {1, "service",   0, 1, 1, 0, 0, 0},
+    {2, "call",      0, 1, 0, 1, 1, 0},
+    {3, "callsetup", 0, 3, 0, 1, 1, 0},
+    {4, "battchg",   0, 5, 5, 0, 0, 0},
+    {5, "signal",    0, 5, 5, 0, 1, 0},
+    {6, "roam",      0, 1, 0, 0, 1, 0},
+    {7, "callheld",  0, 2, 0, 1, 1, 0}
+};
+/* HF indicators: enhanced safety, battery level (the headphones report it
+ * with AT+BIEV) */
+static hfp_generic_status_indicator_t hfp_hf_indicators[] = { {1, 1}, {2, 1} };
+static const char *hfp_call_hold_services[] = {"1", "2"};
+
+void a2dpwb_hfp_ag_init(void) {
+    uint16_t features = (1 << HFP_AGSF_HF_INDICATORS) | (1 << HFP_AGSF_EXTENDED_ERROR_RESULT_CODES);
+    hfp_ag_init(A2DPWB_HFP_RFCOMM_CHANNEL);
+    hfp_ag_init_supported_features(features);
+    hfp_ag_init_codecs(sizeof(hfp_codecs), hfp_codecs);
+    hfp_ag_init_ag_indicators(sizeof(hfp_ag_indicators) / sizeof(hfp_ag_indicators[0]), hfp_ag_indicators);
+    hfp_ag_init_hf_indicators(sizeof(hfp_hf_indicators) / sizeof(hfp_hf_indicators[0]), hfp_hf_indicators);
+    hfp_ag_init_call_hold_services(2, hfp_call_hold_services);
+    /* Apple accessories (Sony, Bose...) report their battery with
+     * AT+IPHONEACCEV once the AG answers AT+XAPL: as an iPhone does, with
+     * the battery (2) and docking (4) features. Sony's WH-1000XM4 sends
+     * nothing when the AG gives another name or no features. */
+    hfp_ag_init_apple_identification("iPhone", 0x06);
+    memset(sdp_hfp_ag_service, 0, sizeof(sdp_hfp_ag_service));
+    hfp_ag_create_sdp_record_with_codecs(sdp_hfp_ag_service, sdp_create_service_record_handle(),
+                                         A2DPWB_HFP_RFCOMM_CHANNEL, "A2DPWB", 0, features, sizeof(hfp_codecs),
+                                         hfp_codecs);
+    sdp_register_service(sdp_hfp_ag_service);
+    hfp_ag_register_packet_handler(&handler_hfp);
+}
+
+uint8_t a2dpwb_hfp_ag_connect(const uint8_t *addr) {
+    bd_addr_t a;
+    memcpy(a, addr, 6);
+    return hfp_ag_establish_service_level_connection(a);
+}
+
+uint8_t a2dpwb_hfp_ag_release(uint16_t acl_handle) {
+    return hfp_ag_release_service_level_connection(acl_handle);
+}
+
+void a2dpwb_hfp_ag_deinit(void) {
+    hfp_ag_deinit();
+}
+
+/* ======================================================================== */
+/* RFCOMM: the HFP audio gateway's, and client channels for IPC clients     */
+/* ======================================================================== */
+
+void a2dpwb_rfcomm_init(void) {
+    rfcomm_init();
+}
+
+static int sdp_rfcomm_wanted;
+
+/* RFCOMM keeps its services in a static list: cleared here, or the next run
+ * in this process finds the service freed by btstack_memory_deinit there */
+void a2dpwb_rfcomm_deinit(void) {
+    rfcomm_deinit();
+    sdp_rfcomm_wanted = 0;
+}
+
+/* Events of client channels (opened, closed, can send now) and their data
+ * (RFCOMM_DATA_PACKET, channel = RFCOMM cid): SOURCE_RFCOMM */
+uint8_t a2dpwb_rfcomm_create_channel(const uint8_t *addr, uint8_t server_channel, uint16_t *out_cid) {
+    bd_addr_t a;
+    memcpy(a, addr, 6);
+    return rfcomm_create_channel(&handler_rfcomm, a, server_channel, out_cid);
+}
+
+/* The RFCOMM server channel of a service: one query at a time (Rust queues
+ * the others). It waits in the SDP client's queue, which HFP shares, until
+ * the client is free; the results (SDP_EVENT_QUERY_RFCOMM_SERVICE, then
+ * SDP_EVENT_QUERY_COMPLETE) go to SOURCE_SDP_CLIENT. */
+static btstack_context_callback_registration_t sdp_rfcomm_request;
+/* In the SDP client's request list. sdp_client_deinit keeps that list, so
+ * this stays set across a restart of BTstack in this process until the
+ * callback comes. */
+static int sdp_rfcomm_listed;
+/* Registered only to make the SDP client run its request list (see
+ * a2dpwb_sdp_query_rfcomm); its own turn does nothing */
+static btstack_context_callback_registration_t sdp_rfcomm_kick;
+static void sdp_rfcomm_kicked(void *context) {
+    (void)context;
+}
+static bd_addr_t sdp_rfcomm_addr;
+static uint8_t sdp_rfcomm_uuid[16];
+
+static void sdp_rfcomm_start(void *context) {
+    (void)context;
+    sdp_rfcomm_listed = 0;
+    if (!sdp_rfcomm_wanted) return;
+    sdp_rfcomm_wanted = 0;
+    uint8_t status;
+    uint32_t short_uuid = big_endian_read_32(sdp_rfcomm_uuid, 0);
+    /* A UUID of the Bluetooth base (SPP 0x1101...) is searched for in its
+     * 16-bit form, which every SDP server matches */
+    if (uuid_has_bluetooth_prefix(sdp_rfcomm_uuid) && short_uuid <= 0xFFFF) {
+        status = sdp_client_query_rfcomm_channel_and_name_for_search_pattern(
+            &handler_sdp_client, sdp_rfcomm_addr, sdp_service_search_pattern_for_uuid16((uint16_t)short_uuid));
+    } else {
+        status = sdp_client_query_rfcomm_channel_and_name_for_uuid128(&handler_sdp_client, sdp_rfcomm_addr,
+                                                                      sdp_rfcomm_uuid);
+    }
+    if (status != ERROR_CODE_SUCCESS) {
+        uint8_t event[3] = {SDP_EVENT_QUERY_COMPLETE, 1, status};
+        handler_sdp_client(HCI_EVENT_PACKET, 0, event, sizeof(event));
+    }
+}
+
+uint8_t a2dpwb_sdp_query_rfcomm(const uint8_t *addr, const uint8_t *uuid128) {
+    if (sdp_rfcomm_wanted) return ERROR_CODE_COMMAND_DISALLOWED;
+    memcpy(sdp_rfcomm_addr, addr, 6);
+    memcpy(sdp_rfcomm_uuid, uuid128, 16);
+    sdp_rfcomm_wanted = 1;
+    if (!sdp_rfcomm_listed) {
+        /* Set first: the callback may come before this returns */
+        sdp_rfcomm_listed = 1;
+        sdp_rfcomm_request.callback = &sdp_rfcomm_start;
+        uint8_t status = sdp_client_register_query_callback(&sdp_rfcomm_request);
+        if (status != ERROR_CODE_SUCCESS) {
+            sdp_rfcomm_listed = 0;
+            sdp_rfcomm_wanted = 0;
+            return status;
+        }
+    } else if (sdp_client_ready()) {
+        /* Listed before a restart of BTstack, which left the client idle
+         * with the list kept: nothing pops it until a registration does */
+        sdp_rfcomm_kick.callback = &sdp_rfcomm_kicked;
+        (void)sdp_client_register_query_callback(&sdp_rfcomm_kick);
+    }
+    return ERROR_CODE_SUCCESS;
+}
+
+/* The services a device lists (developer mode): every record with L2CAP in
+ * its protocols, attributes ServiceClassIDList and ServiceName. Queued like
+ * the RFCOMM query above; the results (SDP_EVENT_QUERY_ATTRIBUTE_VALUE per
+ * byte, then SDP_EVENT_QUERY_COMPLETE) go to SOURCE_SDP_SERVICES. */
+static btstack_context_callback_registration_t sdp_services_request;
+static btstack_context_callback_registration_t sdp_services_kick;
+static int sdp_services_wanted;
+static int sdp_services_listed;
+static bd_addr_t sdp_services_addr;
+/* Own buffers: the SDP client reads them while the query runs */
+static const uint8_t sdp_services_pattern[] = {0x35, 0x03, 0x19, 0x01, 0x00};
+static const uint8_t sdp_services_attributes[] = {0x35, 0x06, 0x09, 0x00, 0x01, 0x09, 0x01, 0x00};
+
+static void sdp_services_start(void *context) {
+    (void)context;
+    sdp_services_listed = 0;
+    if (!sdp_services_wanted) return;
+    sdp_services_wanted = 0;
+    uint8_t status = sdp_client_query(&handler_sdp_services, sdp_services_addr, sdp_services_pattern,
+                                      sdp_services_attributes);
+    if (status != ERROR_CODE_SUCCESS) {
+        uint8_t event[3] = {SDP_EVENT_QUERY_COMPLETE, 1, status};
+        handler_sdp_services(HCI_EVENT_PACKET, 0, event, sizeof(event));
+    }
+}
+
+uint8_t a2dpwb_sdp_query_services(const uint8_t *addr) {
+    if (sdp_services_wanted) return ERROR_CODE_COMMAND_DISALLOWED;
+    memcpy(sdp_services_addr, addr, 6);
+    sdp_services_wanted = 1;
+    if (!sdp_services_listed) {
+        sdp_services_listed = 1;
+        sdp_services_request.callback = &sdp_services_start;
+        uint8_t status = sdp_client_register_query_callback(&sdp_services_request);
+        if (status != ERROR_CODE_SUCCESS) {
+            sdp_services_listed = 0;
+            sdp_services_wanted = 0;
+            return status;
+        }
+    } else if (sdp_client_ready()) {
+        sdp_services_kick.callback = &sdp_rfcomm_kicked;
+        (void)sdp_client_register_query_callback(&sdp_services_kick);
+    }
+    return ERROR_CODE_SUCCESS;
+}
+
+/* sdp_client_deinit, and a services query asked for in this run is
+ * forgotten (the next run may ask again) */
+void a2dpwb_sdp_client_deinit(void) {
+    sdp_client_deinit();
+    sdp_services_wanted = 0;
+}
+
+/* ======================================================================== */
 /* GAP, SDP records, stream endpoints                                       */
 /* ======================================================================== */
 
-void a2dpwb_gap_setup(uint32_t class_of_device, uint16_t page_timeout) {
+/* BTstack keeps the pointer: the name lives here (HCI's 248 bytes + NUL) */
+static char local_name[249];
+
+void a2dpwb_gap_setup(uint32_t class_of_device, uint16_t page_timeout, const char *name) {
     /* SSP: Just Works (no display, no keyboard), General Bonding without MITM */
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
     gap_ssp_set_authentication_requirement(SSP_IO_AUTHREQ_MITM_PROTECTION_NOT_REQUIRED_GENERAL_BONDING);
-    gap_set_local_name("A2DPWB");  /* BTstack keeps the pointer: a literal */
+    strncpy(local_name, (name && name[0]) ? name : "A2DPWB", sizeof(local_name) - 1);
+    local_name[sizeof(local_name) - 1] = 0;
+    gap_set_local_name(local_name);
     gap_set_class_of_device(class_of_device);
     gap_set_allow_role_switch(true);
     gap_set_default_link_policy_settings(0x0005);  /* role switch + sniff */
     gap_set_page_timeout(page_timeout);
+    /* BTstack's default is the standard inquiry (no RSSI, no extended
+     * inquiry response): every device then needed a name request after the
+     * inquiry. With EIR most answer with their name, as on other systems. */
+    hci_set_inquiry_mode(INQUIRY_MODE_RSSI_AND_EIR);
 }
 
 static uint8_t sdp_a2dp_source_service[150];
@@ -364,7 +588,8 @@ void a2dpwb_sdp_register_records(uint16_t controller_features, uint16_t target_f
 }
 
 #define A2DPWB_MAX_ENDPOINTS MAX_NR_AVDTP_STREAM_ENDPOINTS
-#define A2DPWB_CODEC_INFO_MAX 32
+/* aptX Adaptive's codec information is the longest: 40 bytes */
+#define A2DPWB_CODEC_INFO_MAX 40
 static uint8_t endpoint_caps[A2DPWB_MAX_ENDPOINTS][A2DPWB_CODEC_INFO_MAX];
 static uint8_t endpoint_config[A2DPWB_MAX_ENDPOINTS][A2DPWB_CODEC_INFO_MAX];
 
@@ -378,7 +603,11 @@ uint8_t a2dpwb_create_stream_endpoint(int slot, uint8_t media_codec_type, const 
     avdtp_stream_endpoint_t *ep = a2dp_source_create_stream_endpoint(
         AVDTP_AUDIO, (avdtp_media_codec_type_t)media_codec_type, endpoint_caps[slot], caps_len,
         endpoint_config[slot], config_len);
-    return ep ? avdtp_local_seid(ep) : 0;
+    if (!ep) return 0;
+    /* Delay Reporting: a sink that lists it sends its playout delay
+       (A2DP_SUBEVENT_SIGNALING_DELAY_REPORT) once the stream is configured */
+    avdtp_source_register_delay_reporting_category(avdtp_local_seid(ep));
+    return avdtp_local_seid(ep);
 }
 
 /* ======================================================================== */
@@ -428,7 +657,8 @@ uint8_t a2dpwb_set_config_other(uint16_t a2dp_cid, uint8_t local_seid, uint8_t r
 /* Connection state queries                                                 */
 /* ======================================================================== */
 
-/* ACL link to addr: -1 none, 0 still paging, 1 open (handle set), 2 other */
+/* ACL link to addr: -1 none, 0 still paging, 1 open (handle set), 2 other,
+ * 3 going down (our HCI Disconnect) */
 int a2dpwb_acl_state(const uint8_t *addr, uint16_t *con_handle) {
     hci_connection_t *c = hci_connection_for_bd_addr_and_type(addr, BD_ADDR_TYPE_ACL);
     if (c == NULL) return -1;
@@ -437,6 +667,7 @@ int a2dpwb_acl_state(const uint8_t *addr, uint16_t *con_handle) {
         if (con_handle) *con_handle = c->con_handle;
         return 1;
     }
+    if (c->state == SEND_DISCONNECT || c->state == SENT_DISCONNECT) return 3;
     return 2;
 }
 
@@ -481,12 +712,77 @@ uint8_t a2dpwb_cmd_read_rssi(uint16_t con_handle) {
     return hci_send_cmd(&hci_read_rssi, con_handle);
 }
 
+/* Link diagnostics: polled with RSSI (failed contacts, link quality) or read
+   once per connection (remote version, supervision timeout) */
+uint8_t a2dpwb_cmd_read_failed_contact_counter(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_failed_contact_counter, con_handle);
+}
+
+uint8_t a2dpwb_cmd_read_link_quality(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_link_quality, con_handle);
+}
+
+uint8_t a2dpwb_cmd_read_remote_version(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_remote_version_information, con_handle);
+}
+
+uint8_t a2dpwb_cmd_read_link_supervision_timeout(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_link_supervision_timeout, con_handle);
+}
+
+/* What BTstack holds of a link; -1 when it has no such connection */
+int a2dpwb_acl_packets_in_controller(uint16_t con_handle) {
+    hci_connection_t *c = hci_connection_for_handle(con_handle);
+    return c ? (int)c->num_packets_sent : -1;
+}
+
+int a2dpwb_acl_role(uint16_t con_handle) {
+    hci_role_t r = gap_get_role(con_handle);
+    return r == HCI_ROLE_INVALID ? -1 : (int)r;
+}
+
+int a2dpwb_acl_encryption_key_size(uint16_t con_handle) {
+    if (hci_connection_for_handle(con_handle) == NULL) return -1;
+    return gap_encryption_key_size(con_handle);
+}
+
+/* BTstack's own remote features query: once per link, nothing is sent when it
+   has them already; the answer comes as its HCI event */
+void a2dpwb_remote_features_query(uint16_t con_handle) {
+    hci_remote_features_query(con_handle);
+}
+
+uint16_t a2dpwb_max_acl_data_packet_length(void) {
+    return hci_max_acl_data_packet_length();
+}
+
 uint8_t a2dpwb_cmd_read_bd_addr(void) {
     return hci_send_cmd(&hci_read_bd_addr);
 }
 
 uint8_t a2dpwb_cmd_read_local_version(void) {
     return hci_send_cmd(&hci_read_local_version_information);
+}
+
+uint8_t a2dpwb_cmd_create_connection_cancel(const uint8_t *addr) {
+    bd_addr_t a;
+    memcpy(a, addr, 6);
+    return hci_send_cmd(&hci_create_connection_cancel, a);
+}
+
+/* A remote name request to a connected device: GAP's queue leaves it unsent
+   while the link is up (seen in the emulator), so it goes out directly. Page
+   settings do not matter over a link: R1, no clock offset */
+uint8_t a2dpwb_cmd_remote_name_request(const uint8_t *addr) {
+    bd_addr_t a;
+    memcpy(a, addr, 6);
+    return hci_send_cmd(&hci_remote_name_request, a, 1, 0, 0);
+}
+
+uint8_t a2dpwb_cmd_remote_name_request_cancel(const uint8_t *addr) {
+    bd_addr_t a;
+    memcpy(a, addr, 6);
+    return hci_send_cmd(&hci_remote_name_request_cancel, a);
 }
 
 int a2dpwb_hci_get_state(void) {
@@ -567,6 +863,26 @@ static void cig_slots_reset(void) {
     memset(cig_slots, 0, sizeof(cig_slots));
 }
 
+/* ---- Broadcast storage (Auracast source): one extended + periodic
+ * advertising set and one BIG. BTstack keeps pointers to the advertising
+ * data, the set and the BIG parameters until the set is removed / the BIG
+ * terminated. ---- */
+
+#define A2DPWB_ADV_DATA_MAX 251
+static le_advertising_set_t bc_adv_set;
+static uint8_t bc_adv_data[A2DPWB_ADV_DATA_MAX];
+static uint8_t bc_pa_data[A2DPWB_ADV_DATA_MAX];
+static int bc_adv_in_use;
+static uint8_t bc_adv_handle;
+static le_audio_big_t bc_big;
+static le_audio_big_params_t bc_big_params;
+static int bc_big_in_use;
+
+static void broadcast_reset(void) {
+    bc_adv_in_use = 0;
+    bc_big_in_use = 0;
+}
+
 /* ---- Housekeeping on HCI events (registered by a2dpwb_le_init) ---- */
 
 static btstack_packet_callback_registration_t le_hci_registration;
@@ -586,10 +902,18 @@ static void le_hci_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
         /* A CIG that could not be created is not kept by hci.c */
         if (size >= 5 && packet[2] == GAP_SUBEVENT_CIG_CREATED && packet[3] != ERROR_CODE_SUCCESS)
             cig_slot_release(packet[4]);
+        /* Nor a BIG that failed or ended */
+        if (size >= 5 && packet[2] == GAP_SUBEVENT_BIG_CREATED && packet[3] != ERROR_CODE_SUCCESS)
+            bc_big_in_use = 0;
+        if (size >= 4 && packet[2] == GAP_SUBEVENT_BIG_TERMINATED) bc_big_in_use = 0;
         break;
     case BTSTACK_EVENT_STATE:
-        /* HCI reset its state (power off): no CIG is kept */
-        if (size >= 3 && packet[2] == HCI_STATE_OFF) cig_slots_reset();
+        /* HCI reset its state (power off): no CIG, BIG or advertising set is
+         * kept */
+        if (size >= 3 && packet[2] == HCI_STATE_OFF) {
+            cig_slots_reset();
+            broadcast_reset();
+        }
         break;
     default:
         break;
@@ -637,6 +961,7 @@ static int utf8_to_ansi_path(const char *in, char *out, int out_size) {
 int a2dpwb_le_init(const char *tlv_path) {
     le_slots_reset();
     cig_slots_reset();
+    broadcast_reset();
     int path_ok = utf8_to_ansi_path(tlv_path, le_tlv_path, (int)sizeof(le_tlv_path));
     if (!path_ok) strcpy(le_tlv_path, "NUL");
     memset(&le_tlv_context, 0, sizeof(le_tlv_context));
@@ -670,9 +995,18 @@ void a2dpwb_le_deinit(int att_server_started) {
     btstack_tlv_set_instance(NULL, NULL);
     if (le_tlv_open) {
         btstack_tlv_windows_deinit(&le_tlv_context);
+        /* btstack_tlv_windows_deinit frees the entries but leaves the file
+         * open, without sharing: the next a2dpwb_le_init (BTstack restarted
+         * in this process) could then neither open nor re-create it, and the
+         * LE bonds would be neither loaded nor saved */
+        if (le_tlv_context.file != INVALID_HANDLE_VALUE) {
+            CloseHandle(le_tlv_context.file);
+            le_tlv_context.file = INVALID_HANDLE_VALUE;
+        }
         le_tlv_open = 0;
     }
     cig_slots_reset();
+    broadcast_reset();
 }
 
 /* ---- GAP ---- */
@@ -908,4 +1242,95 @@ uint8_t a2dpwb_iso_send(uint16_t cis_handle, uint16_t sequence_number, const uin
     little_endian_store_16(buffer, 6, len);
     if (len > 0) memcpy(buffer + 8, sdu, len);
     return hci_send_iso_packet_buffer((uint16_t)(8u + len));
+}
+
+/* ---- Broadcast (Auracast source) ---- */
+
+/* Extended advertising (non-connectable, non-scannable) with `adv` and
+ * periodic advertising with `pa` (the BASE), both started. Intervals in
+ * 0.625 ms (extended) and 1.25 ms (periodic) units. */
+uint8_t a2dpwb_broadcast_advertise(uint8_t sid, uint16_t adv_interval_min, uint16_t adv_interval_max,
+                                   uint16_t pa_interval_min, uint16_t pa_interval_max, const uint8_t *adv,
+                                   uint16_t adv_len, const uint8_t *pa, uint16_t pa_len, uint8_t *out_handle) {
+    if (bc_adv_in_use) return ERROR_CODE_COMMAND_DISALLOWED;
+    if (adv_len > A2DPWB_ADV_DATA_MAX || pa_len > A2DPWB_ADV_DATA_MAX)
+        return ERROR_CODE_INVALID_HCI_COMMAND_PARAMETERS;
+    memcpy(bc_adv_data, adv, adv_len);
+    memcpy(bc_pa_data, pa, pa_len);
+    le_extended_advertising_parameters_t params;
+    memset(&params, 0, sizeof(params));
+    params.advertising_event_properties = 0; /* non-connectable, non-scannable, undirected */
+    params.primary_advertising_interval_min = adv_interval_min;
+    params.primary_advertising_interval_max = adv_interval_max;
+    params.primary_advertising_channel_map = 7;
+    params.own_address_type = BD_ADDR_TYPE_LE_PUBLIC;
+    params.advertising_tx_power = 127;    /* no preference */
+    params.primary_advertising_phy = 1;   /* LE 1M */
+    params.secondary_advertising_phy = 2; /* LE 2M */
+    params.advertising_sid = sid;
+    bd_addr_t local;
+    gap_local_bd_addr(local);
+    int random = btstack_is_null_bd_addr(local);
+    if (random) params.own_address_type = BD_ADDR_TYPE_LE_RANDOM;
+    uint8_t status = gap_extended_advertising_setup(&bc_adv_set, &params, &bc_adv_handle);
+    if (status != ERROR_CODE_SUCCESS) return status;
+    bc_adv_in_use = 1;
+    if (random) {
+        /* A static random address (top bits 0b11) */
+        bd_addr_t addr = {0xC2, 0xA2, 0xD0, 0x00, 0x00, 0x01};
+        gap_extended_advertising_set_random_address(bc_adv_handle, addr);
+    }
+    gap_extended_advertising_set_adv_data(bc_adv_handle, adv_len, bc_adv_data);
+    le_periodic_advertising_parameters_t pa_params;
+    pa_params.periodic_advertising_interval_min = pa_interval_min;
+    pa_params.periodic_advertising_interval_max = pa_interval_max;
+    pa_params.periodic_advertising_properties = 0;
+    gap_periodic_advertising_set_params(bc_adv_handle, &pa_params);
+    gap_periodic_advertising_set_data(bc_adv_handle, pa_len, bc_pa_data);
+    gap_periodic_advertising_start(bc_adv_handle, 0);
+    status = gap_extended_advertising_start(bc_adv_handle, 0, 0);
+    *out_handle = bc_adv_handle;
+    return status;
+}
+
+/* Stops periodic and extended advertising and removes the set */
+uint8_t a2dpwb_broadcast_advertise_stop(void) {
+    if (!bc_adv_in_use) return ERROR_CODE_SUCCESS;
+    gap_periodic_advertising_stop(bc_adv_handle);
+    gap_extended_advertising_stop(bc_adv_handle);
+    uint8_t status = gap_extended_advertising_remove(bc_adv_handle);
+    bc_adv_in_use = 0;
+    return status;
+}
+
+/* LE Create BIG on the advertising set (GAP_SUBEVENT_BIG_CREATED follows,
+ * after BTstack set up the ISO data paths). `code`: 16 bytes, or NULL for
+ * an unencrypted BIG. */
+uint8_t a2dpwb_big_create(uint8_t big_handle, uint8_t num_bis, uint32_t sdu_interval_us, uint16_t max_sdu,
+                          uint16_t max_transport_latency_ms, uint8_t rtn, uint8_t phy, uint8_t framing,
+                          const uint8_t *code) {
+    if (!bc_adv_in_use || bc_big_in_use) return ERROR_CODE_COMMAND_DISALLOWED;
+    if (num_bis == 0 || num_bis > MAX_NR_BIS) return ERROR_CODE_INVALID_HCI_COMMAND_PARAMETERS;
+    memset(&bc_big_params, 0, sizeof(bc_big_params));
+    bc_big_params.big_handle = big_handle;
+    bc_big_params.advertising_handle = bc_adv_handle;
+    bc_big_params.num_bis = num_bis;
+    bc_big_params.sdu_interval_us = sdu_interval_us;
+    bc_big_params.max_sdu = max_sdu;
+    bc_big_params.max_transport_latency_ms = max_transport_latency_ms;
+    bc_big_params.rtn = rtn;
+    bc_big_params.phy = phy;
+    bc_big_params.packing = 0; /* sequential */
+    bc_big_params.framing = framing;
+    bc_big_params.encryption = code != NULL;
+    if (code != NULL) memcpy(bc_big_params.broadcast_code, code, 16);
+    uint8_t status = gap_big_create(&bc_big, &bc_big_params);
+    if (status == ERROR_CODE_SUCCESS) bc_big_in_use = 1;
+    return status;
+}
+
+/* LE Terminate BIG (GAP_SUBEVENT_BIG_TERMINATED follows) */
+uint8_t a2dpwb_big_terminate(uint8_t big_handle) {
+    if (!bc_big_in_use) return ERROR_CODE_COMMAND_DISALLOWED;
+    return gap_big_terminate(big_handle);
 }

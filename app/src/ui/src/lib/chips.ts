@@ -15,17 +15,14 @@ export interface Chip {
 
 export const REALTEK_CHIPS: Chip[] = [
   { pid: 0x8771, name: "RTL8761BU", stem: "rtl8761bu" },
-  { pid: 0x876c, name: "RTL8761CU", stem: "rtl8761cu" },
   { pid: 0xb82c, name: "RTL8822BU", stem: "rtl8822bu" },
   { pid: 0xc821, name: "RTL8821CU", stem: "rtl8821cu" },
   { pid: 0xc82c, name: "RTL8822CU", stem: "rtl8822cu" },
   { pid: 0xd723, name: "RTL8723DU", stem: "rtl8723du" },
   { pid: 0xc852, name: "RTL8852AU", stem: "rtl8852au" },
   { pid: 0xb85b, name: "RTL8852BU", stem: "rtl8852bu" },
-  { pid: 0xb85d, name: "RTL8852BTU", stem: "rtl8852btu" },
   { pid: 0xc85a, name: "RTL8852CU", stem: "rtl8852cu" },
-  { pid: 0xb083, name: "RTL8851BU", stem: "rtl8851bu" },
-  { pid: 0x922a, name: "RTL8922AU", stem: "rtl8922au" },
+  { pid: 0xb851, name: "RTL8851BU", stem: "rtl8851bu" },
 ];
 
 /** The settings.bt_chip_fw_stem that goes with a chip choice (as v1 stored it) */
@@ -117,6 +114,8 @@ export interface AdapterFirmware {
   firmware_files: string[];
   /** A file that is there but is no Realtek firmware (a saved web page) */
   firmware_invalid?: string | null;
+  /** The core can fetch the files from linux-firmware */
+  firmware_download?: boolean;
   vendor_note: { key: string; args: string[] } | null;
 }
 
@@ -127,6 +126,7 @@ export interface AdapterFirmware {
  *   detected) chip, as the core checked them for the adapters
  * - invalid: one of them is there but is no Realtek firmware, usually a web
  *   page saved instead of the file (v1 firmware.invalid)
+ * - missing and invalid say whether the core can download the files
  * - unchecked: no adapter to check them for; from the folder scan if it
  *   lists the file, unknown for Custom (the scan leaves it out)
  * - vendor: no Realtek chip, and an adapter of a vendor the core has a note
@@ -135,8 +135,8 @@ export interface AdapterFirmware {
  */
 export type ChipStatus =
   | { kind: "present"; files: string[] }
-  | { kind: "missing"; files: string[] }
-  | { kind: "invalid"; files: string[]; file: string }
+  | { kind: "missing"; files: string[]; download: boolean }
+  | { kind: "invalid"; files: string[]; file: string; download: boolean }
   | { kind: "unchecked"; files: string[]; present: boolean | null }
   | { kind: "vendor"; note: { key: string; args: string[] }; vendor: string }
   | { kind: "non_realtek" | "auto_no_adapter" | "auto_unrecognized" | "select_chip" };
@@ -159,10 +159,12 @@ export function chipStatus(
   // The core resolves the setting for each adapter; Auto by its own chip
   const checked = auto ? realtek : adapters.find((a) => a.firmware_present !== null);
   if (checked && checked.firmware_present !== null) {
-    if (!checked.firmware_present && checked.firmware_invalid) {
-      return { kind: "invalid", files: checked.firmware_files, file: checked.firmware_invalid };
+    const download = checked.firmware_download ?? false;
+    if (checked.firmware_present) return { kind: "present", files: checked.firmware_files };
+    if (checked.firmware_invalid) {
+      return { kind: "invalid", files: checked.firmware_files, file: checked.firmware_invalid, download };
     }
-    return { kind: checked.firmware_present ? "present" : "missing", files: checked.firmware_files };
+    return { kind: "missing", files: checked.firmware_files, download };
   }
   const stem = firmwareStem(setting.bt_chip_pid, setting.bt_chip_fw_stem);
   if (stem === null) return { kind: "select_chip" };
@@ -181,7 +183,26 @@ export function adapterFirmwareTag(
   if (a.firmware_present === false) {
     return { key: a.firmware_invalid ? "firmware.invalid_short" : "firmware.missing_short", status: "bad" };
   }
-  if (a.vendor_note?.key === "firmware.vendor_unsupported") return { key: "ui.adapter.firmware_unsupported", status: "warn" };
+  // A2DPWB cannot use it: red, as a missing file (issue #86)
+  if (a.vendor_note?.key === "firmware.vendor_unsupported") return { key: "ui.adapter.firmware_unsupported", status: "bad" };
   if (a.vendor_note || setting.bt_chip_pid === CHIP_NOT_REALTEK) return { key: "ui.adapter.firmware_not_realtek", status: "good" };
   return { key: "ui.adapter.firmware_choose_chip", status: "warn" };
+}
+
+/**
+ * The adapter the chip choice is shown with on the Adapter screen, -1 for
+ * none: the one chipStatus reports on (the Realtek adapter, else one the core
+ * checked files for, else one with a vendor note), else the first. The
+ * setting is one for all adapters; the other cards keep their short tag.
+ */
+export function chipTargetIndex(adapters: readonly AdapterFirmware[]): number {
+  for (const pick of [
+    (a: AdapterFirmware) => a.realtek_chip !== null,
+    (a: AdapterFirmware) => a.firmware_present !== null,
+    (a: AdapterFirmware) => a.vendor_note !== null,
+  ]) {
+    const i = adapters.findIndex(pick);
+    if (i >= 0) return i;
+  }
+  return adapters.length > 0 ? 0 : -1;
 }

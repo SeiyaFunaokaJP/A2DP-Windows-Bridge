@@ -38,7 +38,8 @@ pub fn is_elevated() -> bool {
     let mut token = HANDLE::default();
     // SAFETY: GetCurrentProcess returns a pseudo handle that needs no
     // closing; `token` is a valid out pointer.
-    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) }.is_err() {
+    if let Err(e) = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } {
+        tracing::debug!("elevation: OpenProcessToken failed: {e}");
         return false;
     }
     let mut elevation = TOKEN_ELEVATION::default();
@@ -57,6 +58,7 @@ pub fn is_elevated() -> bool {
     .is_ok();
     // SAFETY: `token` is a handle this function opened and owns.
     let _ = unsafe { CloseHandle(token) };
+    tracing::debug!("elevation: token read {ok}, elevated {}", elevation.TokenIsElevated != 0);
     ok && elevation.TokenIsElevated != 0
 }
 
@@ -70,7 +72,10 @@ pub fn is_elevated() -> bool {
 /// Waits without a time limit: the user may take a while on the prompt.
 pub fn run_elevated<S: AsRef<OsStr>>(exe: &Path, args: &[S]) -> Result<u32, ElevationError> {
     let file = wide(exe.as_os_str());
-    let params = wide(OsStr::new(&join_args(args)));
+    let line = join_args(args);
+    tracing::debug!("elevation: running {} {line} as administrator", exe.display());
+    let started = std::time::Instant::now();
+    let params = wide(OsStr::new(&line));
     let mut info = SHELLEXECUTEINFOW {
         cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
         // NOCLOSEPROCESS: hand back the process handle to wait on.
@@ -85,6 +90,7 @@ pub fn run_elevated<S: AsRef<OsStr>>(exe: &Path, args: &[S]) -> Result<u32, Elev
     // SAFETY: `info` is fully initialised with its size; the strings it
     // points to (`file`, `params`, the static verb) outlive the call.
     if let Err(e) = unsafe { ShellExecuteExW(&mut info) } {
+        tracing::debug!("elevation: ShellExecuteEx failed after {:?}: {e}", started.elapsed());
         if e.code() == ERROR_CANCELLED.to_hresult() {
             return Err(ElevationError::Cancelled);
         }
@@ -110,6 +116,10 @@ pub fn run_elevated<S: AsRef<OsStr>>(exe: &Path, args: &[S]) -> Result<u32, Elev
     };
     // SAFETY: the process handle is ours to close (SEE_MASK_NOCLOSEPROCESS).
     let _ = unsafe { CloseHandle(process) };
+    match &result {
+        Ok(code) => tracing::debug!("elevation: exited with code {code} (0x{code:08X}) after {:?}", started.elapsed()),
+        Err(e) => tracing::debug!("elevation: {e}"),
+    }
     result
 }
 

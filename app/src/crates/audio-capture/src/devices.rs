@@ -60,6 +60,18 @@ pub fn render_devices() -> Result<Vec<DeviceInfo>, CaptureError> {
             name,
         });
     }
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("audio devices: {} active render endpoints, default {default_id:?}", out.len());
+        for d in &out {
+            tracing::debug!(
+                "audio devices: \"{}\" id {}{}{}",
+                d.name,
+                d.id,
+                if d.is_default { " (default)" } else { "" },
+                if d.is_virtual { " (virtual)" } else { "" }
+            );
+        }
+    }
     Ok(out)
 }
 
@@ -77,7 +89,9 @@ pub fn set_default_render_device(id: &str) -> Result<(), CaptureError> {
         return Err(CaptureError::DeviceNotFound(String::new()));
     }
     let _com = com()?;
+    tracing::debug!("audio devices: setting default render endpoint to {id}");
     audio_policy::set_default_endpoint(id).map_err(|e| {
+        tracing::debug!("audio devices: SetDefaultEndpoint({id}) failed: HRESULT 0x{:08x}", e.code().0 as u32);
         if not_found(e.code().0) {
             CaptureError::DeviceNotFound(id.to_owned())
         } else {
@@ -98,6 +112,7 @@ pub fn mix_rate(device_id: Option<&str>) -> Option<u32> {
     };
     let client = device.get_iaudioclient().ok()?;
     let mix = client.get_mixformat().ok()?;
+    tracing::debug!("audio devices: mix rate of {device_id:?}: {} Hz", mix.get_samplespersec());
     Some(mix.get_samplespersec())
 }
 
@@ -128,11 +143,17 @@ pub fn mix_format(device_id: Option<&str>) -> Option<MixFormat> {
     let mix = client.get_mixformat().ok()?;
     let bits =
         device.get_device_format().ok().map_or(0, |f| valid_bits(f.get_validbitspersample(), f.get_bitspersample()));
-    Some(MixFormat {
+    let format = MixFormat {
         rate: mix.get_samplespersec(),
         channels: mix.get_nchannels(),
         bits: if bits > 0 { bits } else { valid_bits(mix.get_validbitspersample(), mix.get_bitspersample()) },
-    })
+    };
+    tracing::debug!(
+        "audio devices: format of {device_id:?}: {format:?} (device format {} bit, mix {} bit)",
+        bits,
+        mix.get_bitspersample()
+    );
+    Some(format)
 }
 
 /// wValidBitsPerSample, which a plain WAVEFORMATEX leaves at 0 (its

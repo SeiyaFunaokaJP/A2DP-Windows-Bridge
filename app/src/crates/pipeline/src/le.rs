@@ -255,6 +255,7 @@ struct FrameEncoder {
     pcm16: Vec<i16>,
     sets: u64,
     errors: u64,
+    clock: crate::EncodeClock,
 }
 
 impl FrameEncoder {
@@ -275,6 +276,7 @@ impl FrameEncoder {
             _ => self.layout.empty_set(),
         };
         let octets = usize::from(self.layout.params.octets);
+        let started = Instant::now();
         for (slot, enc) in self.layout.channels.iter().zip(&mut self.encoders) {
             for (s, (&l, &r)) in self.pcm16.iter_mut().zip(self.l.iter().zip(&self.r)) {
                 *s = to_i16(match slot.source {
@@ -289,7 +291,9 @@ impl FrameEncoder {
                 out.fill(0);
             }
         }
+        self.clock.add(started.elapsed(), u64::from(self.layout.params.frame_us) * 1000);
         self.sets += 1;
+        tracing::trace!("LE encode thread: SDU set {} ({} SDUs)", self.sets, set.len());
         sink.push(set);
     }
 }
@@ -339,6 +343,26 @@ impl LeEncoder {
         if input.sample_rate != rate {
             tracing::info!("LE Audio: capture at {} Hz, LC3 at {rate} Hz (resampling)", input.sample_rate);
         }
+        tracing::debug!(
+            "LE Audio: input {:?}, {}, SDU lengths {:?} (plan cis ids {:?})",
+            input,
+            match input.channels {
+                1 => "mono on both sides",
+                2 => "stereo",
+                _ => "downmixed to stereo (ITU-R BS.775)",
+            },
+            layout.sdu_lens,
+            plan.cis.iter().map(|c| c.cis_id).collect::<Vec<_>>()
+        );
+        for ch in &layout.channels {
+            tracing::debug!(
+                "LE Audio: channel {:?} -> CIS #{} offset {}, location 0x{:08x}",
+                ch.source,
+                ch.cis,
+                ch.offset,
+                ch.allocation
+            );
+        }
         Ok(LeEncoder {
             input,
             resampler: LinearResampler::new(input.sample_rate, rate),
@@ -351,6 +375,7 @@ impl LeEncoder {
                 pcm16: vec![0; ns],
                 sets: 0,
                 errors: 0,
+                clock: crate::EncodeClock::default(),
             },
         })
     }
@@ -415,13 +440,19 @@ impl LePipeline {
         let LePipelineConfig { plan, input, buffer } = config;
         let encoder = LeEncoder::new(&plan, input)?;
         let layout = encoder.layout().clone();
-        let (producer, consumer) = rtrb::RingBuffer::new(buffer.ring_bytes(&input));
+        let ring = buffer.ring_bytes(&input);
+        tracing::debug!(
+            "LE pipeline: start, buffer {buffer:?}: capture ring {ring} bytes ({} ms)",
+            (ring / input.frame_bytes().max(1)) as u64 * 1000 / u64::from(input.sample_rate.max(1))
+        );
+        let (producer, consumer) = rtrb::RingBuffer::new(ring);
         let control = Control::new();
         let thread = {
             let control = control.clone();
+            let stats = stats.clone();
             std::thread::Builder::new()
                 .name("le-encode".into())
-                .spawn(move || le_encode_thread(encoder, consumer, sink, &control))
+                .spawn(move || le_encode_thread(encoder, consumer, sink, &stats, &control))
                 .map_err(|e| format!("spawning the LE encode thread: {e}"))?
         };
         let capture = CaptureInput {
@@ -441,6 +472,7 @@ impl LePipeline {
     /// Drops audio buffered for the old stream (after the stream was set up
     /// again)
     pub fn reset(&self) {
+        tracing::debug!("LE pipeline: reset requested");
         self.control.reset.store(true, Ordering::Release);
         if let Some(t) = &self.thread {
             t.thread().unpark();
@@ -467,15 +499,29 @@ impl Drop for LePipeline {
     }
 }
 
-fn le_encode_thread(mut encoder: LeEncoder, mut ring: rtrb::Consumer<u8>, sink: impl SduSink, control: &Control) {
+fn le_encode_thread(
+    mut encoder: LeEncoder,
+    mut ring: rtrb::Consumer<u8>,
+    sink: impl SduSink,
+    stats: &LinkStats,
+    control: &Control,
+) {
     let _priority = crate::thread_priority();
     let frame_bytes = encoder.input.frame_bytes();
     // ~10 ms rounds, at least 128 frames (as the A2DP encode thread)
     let round_frames = (encoder.input.sample_rate as usize / 100).max(128);
     let mut read_buf = vec![0u8; round_frames * frame_bytes];
     let mut overflow_report = Instant::now();
+    tracing::debug!(
+        "LE encode thread: running, rounds of {round_frames} frames, priority hook {}",
+        _priority.is_some()
+    );
+    // Debug summary window: start, rounds, frames, rounds behind, sets
+    // encoded and errors at its start
+    let mut window = (Instant::now(), 0u64, 0u64, 0u64, encoder.frame.sets, encoder.frame.errors);
     while !control.stop.load(Ordering::Acquire) {
         if control.reset.swap(false, Ordering::AcqRel) {
+            tracing::debug!("LE encode thread: reset, dropping {} buffered bytes", ring.slots());
             let n = ring.slots();
             if let Ok(chunk) = ring.read_chunk(n) {
                 chunk.commit_all();
@@ -483,11 +529,28 @@ fn le_encode_thread(mut encoder: LeEncoder, mut ring: rtrb::Consumer<u8>, sink: 
             encoder.reset();
         }
         control.report_overflows("LE encode thread", &mut overflow_report);
+        if window.0.elapsed() >= crate::SUMMARY_INTERVAL {
+            tracing::debug!(
+                "LE encode thread: last {:.1} s: {} rounds, {} frames, {} behind rounds, {} SDU sets, {} encode \
+                 errors; {} sets in total",
+                window.0.elapsed().as_secs_f64(),
+                window.1,
+                window.2,
+                window.3,
+                encoder.frame.sets - window.4,
+                encoder.frame.errors - window.5,
+                encoder.frame.sets
+            );
+            window = (Instant::now(), 0, 0, 0, encoder.frame.sets, encoder.frame.errors);
+        }
         let available = ring.slots() / frame_bytes;
         if available == 0 {
             std::thread::park_timeout(Duration::from_millis(10));
             continue;
         }
+        window.1 += 1;
+        window.2 += available.min(round_frames) as u64;
+        window.3 += u64::from(available > round_frames);
         let bytes = available.min(round_frames) * frame_bytes;
         if let Ok(chunk) = ring.read_chunk(bytes) {
             let (a, b) = chunk.as_slices();
@@ -496,7 +559,13 @@ fn le_encode_thread(mut encoder: LeEncoder, mut ring: rtrb::Consumer<u8>, sink: 
             chunk.commit_all();
         }
         encoder.push(&read_buf[..bytes], &sink);
+        encoder.frame.clock.flush(stats);
     }
+    tracing::debug!(
+        "LE encode thread: stopped after {} SDU sets, {} encode errors",
+        encoder.frame.sets,
+        encoder.frame.errors
+    );
 }
 
 #[cfg(test)]
@@ -763,6 +832,10 @@ mod tests {
         pipeline.stop();
         assert_eq!(queue.lock().unwrap().len(), 4);
         assert_eq!(stats.capture_frames.load(Ordering::Relaxed), 4 * 360);
+        // Each set timed against its 7.5 ms of audio
+        let enc = stats.encode.totals();
+        assert_eq!((enc.calls, enc.audio_ns), (4, 4 * 7_500_000));
+        assert!(enc.busy_ns > 0);
         let p = plan(preset(44100, 7500, 75), vec![cis(1, &[L])]);
         let config = LePipelineConfig { plan: p, input, buffer: BufferPreset::Standard };
         assert!(LePipeline::start(config, queue, stats).is_err());

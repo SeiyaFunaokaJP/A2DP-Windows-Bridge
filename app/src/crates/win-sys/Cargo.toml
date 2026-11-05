@@ -10,11 +10,16 @@ publish.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 tokio = { version = "1", features = ["net"] }
+# webview.rs: WebView2's ProcessFailed (the version tauri's wry uses)
+webview2-com = "0.39"
 
 [dependencies.windows]
 version = "0.62"
 features = [
+    "Devices_Radios",
+    "Foundation_Collections",
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Globalization",
     "Win32_Security",
     "Win32_Security_Authorization",
@@ -27,6 +32,10 @@ features = [
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Kernel",
+    "Win32_System_Memory",
+    "Win32_System_IO",
     "Win32_System_LibraryLoader",
     "Win32_System_ProcessStatus",
     "Win32_Media_Audio",
@@ -37,11 +46,14 @@ features = [
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Devices_Usb",
     "Win32_NetworkManagement_WiFi",
+    "Win32_UI_Accessibility",
     "Win32_UI_Shell",
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Storage_FileSystem",
+    "UI",
+    "UI_ViewManagement",
 ]
 
 [lints]

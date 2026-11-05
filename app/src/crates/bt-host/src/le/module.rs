@@ -153,6 +153,10 @@ pub struct LeModuleSetup {
     /// Runs closures on the BTstack thread from any thread (v1
     /// Core::post), e.g. for request_volume or a backend thread
     pub poster: LePoster,
+    /// The host's events (BAS reports the battery level)
+    pub events: std::sync::mpsc::Sender<crate::HostEvent>,
+    /// The battery level setting (HostConfig::battery)
+    pub battery: bool,
 }
 
 /// One registered module

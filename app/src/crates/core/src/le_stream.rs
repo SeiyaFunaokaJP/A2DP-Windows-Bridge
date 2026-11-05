@@ -26,12 +26,14 @@ use std::time::{Duration, Instant};
 
 use audio_capture::{Capture, CaptureOptions, Format, Running, Sink, Source};
 use bt_host::{BtHost, LeAddr, LeDeviceId, LeRequest, LeStreamRequest, LeStreamStarted, LinkStats};
+use le_audio::broadcast::{self, BroadcastConfig};
 use le_audio::plan::StreamPlan;
 use le_audio::sdu_queue::SduSet;
 use pipeline::le::{LePipeline, LePipelineConfig};
 use pipeline::{BufferPreset, CaptureInput};
 
 use crate::messages::Msg;
+use crate::mute_output::OutputMute;
 use crate::service::Inner;
 use crate::stream::{
     DefaultDeviceGuard, DiscontinuityLog, SourceRequest, StreamInfo, StreamRequest, StreamState, VolumeSync,
@@ -42,9 +44,15 @@ const READY_WAIT: Duration = Duration::from_secs(5);
 /// `le_find` before connecting, for the address type and name (v1 GUI)
 const FIND_TIMEOUT: Duration = Duration::from_secs(8);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-/// Set-ups after a lost stream (v1 GUI; the command line tries 3 times)
-const RECONNECT_ATTEMPTS: u32 = 10;
+/// Set-ups after a lost stream (v1's command line; its GUI tried 10 times,
+/// up to 40 s each)
+const RECONNECT_ATTEMPTS: u32 = 3;
 const RECONNECT_WAIT: Duration = Duration::from_secs(3);
+/// One scan for headphones that were turned off; short to see a stop
+const OFF_FIND: Duration = Duration::from_secs(2);
+/// Broadcast presets of stream.start_broadcast's qualities: high (48 kHz)
+/// and standard (24 kHz)
+pub use le_audio::broadcast::{DEFAULT_PRESET as BROADCAST_PRESET_HQ, STANDARD_PRESET as BROADCAST_PRESET_SQ};
 /// The codec name the UI shows (v1)
 pub const CODEC_NAME: &str = "LC3 (LE Audio)";
 
@@ -113,6 +121,10 @@ impl Sink for InputSink {
 
     fn silence(&mut self, frames: usize, _format: Format) {
         self.0.push_silence(frames);
+    }
+
+    fn discontinuity(&mut self, lost_frames: Option<u64>) {
+        self.0.discontinuity(lost_frames);
     }
 }
 
@@ -239,13 +251,19 @@ pub(crate) fn refusal(le_enabled: bool, source: &SourceRequest) -> Option<&'stat
 /// The session thread for `req` (`req.le` is Some). Returns when stopped or
 /// on an error (state reported), as `stream::run` does.
 pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
+    if req.le.as_ref().is_some_and(|l| l.broadcast.is_some()) {
+        return run_broadcast(inner, req);
+    }
     let le = req.le.clone().unwrap_or_default();
     let addr = bt_host::addr_str(&req.device);
-    tracing::info!("LE Audio (experimental) stream to {addr} ({})", req.device_name);
+    tracing::info!("LE Audio (experimental) stream to {addr} ({})", crate::diag::quoted(&req.device_name));
+    tracing::debug!("le stream: request {req:?}");
     let stopped = || inner.stop_requested();
     let ready = || inner.notify(StreamState::Idle, Msg::new("status.ready"));
+    let session_start = Instant::now();
 
     if let Some(key) = refusal(inner.le_wanted(), &req.source) {
+        tracing::debug!("le stream: refused ({key}), LE wanted {}, source {}", inner.le_wanted(), req.source);
         return inner.notify(StreamState::Error, Msg::new(key));
     }
 
@@ -254,10 +272,17 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         Ok(h) => h,
         Err(m) => return inner.notify(StreamState::Error, m),
     };
-    let until = Instant::now() + READY_WAIT;
+    let wait = Instant::now();
+    let until = wait + READY_WAIT;
     while !host.le_ready() && Instant::now() < until && !stopped() {
         inner.wait_tick(Duration::from_millis(100));
     }
+    tracing::debug!(
+        "le stream: LE core ready {} after {} ms (stack up {} ms after the request)",
+        host.le_ready(),
+        wait.elapsed().as_millis(),
+        wait.duration_since(session_start).as_millis()
+    );
     if stopped() {
         return ready();
     }
@@ -266,18 +291,34 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     }
 
     let (request, low_latency) = stream_request(&le);
+    tracing::debug!("le stream: stream request {request:?}, low latency {low_latency}");
     host.le_set_low_latency(low_latency);
     let mut devices = vec![req.device];
     devices.extend(le.extra_devices.iter().copied());
+    tracing::debug!("le stream: devices {:?}", devices.iter().map(bt_host::addr_str).collect::<Vec<_>>());
 
     // Connect (the address type comes from the advertisement) and stream
     let connect_and_stream = || -> Result<LeStreamStarted, Msg> {
         inner.notify(StreamState::Connecting, Msg::new("status.connecting_device"));
+        let t = Instant::now();
         let ids = connect_devices(&host, &devices, &req.device_name, &stopped)?;
-        host.le_start_stream(ids, request.clone(), &le_silence_set).map_err(|e| {
+        tracing::debug!("le stream: connected {ids:?} in {} ms, starting the stream", t.elapsed().as_millis());
+        let t = Instant::now();
+        let r = host.le_start_stream(ids, request.clone(), &le_silence_set).map_err(|e| {
+            tracing::debug!("le stream: start failed after {} ms: {e}", t.elapsed().as_millis());
             host.le_stop_stream();
             Msg::with("error.le_audio_stream", &[&e])
-        })
+        });
+        if let Ok(s) = &r {
+            tracing::debug!(
+                "le stream: started in {} ms: preset {}, {} CIS, {} device(s)",
+                t.elapsed().as_millis(),
+                s.status.plan.preset.name,
+                s.status.plan.cis.len(),
+                s.status.devices.len()
+            );
+        }
+        r
     };
     let mut started = match connect_and_stream() {
         Ok(s) => s,
@@ -288,12 +329,15 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     };
 
     // Audio at the LC3 rate
-    let mut default_guard = DefaultDeviceGuard(None);
-    if let SourceRequest::VirtualDevice { id, name, auto_switch: true } = &req.source
-        && !id.is_empty()
-    {
-        default_guard = DefaultDeviceGuard::switch_to(id, name);
-    }
+    let switch_default = || match &req.source {
+        SourceRequest::VirtualDevice { id, name, auto_switch: true } if !id.is_empty() => {
+            DefaultDeviceGuard::switch_to(id, name)
+        }
+        _ => DefaultDeviceGuard(None),
+    };
+    let mut default_guard = switch_default();
+    // Restored while the headphones are off: switched again when they are back
+    let mut switch_default_again = false;
     let mut audio = match LeAudioPath::start(&req.source, &started, host.stats().clone()) {
         Ok(a) => Some(a),
         Err(e) => {
@@ -318,6 +362,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             bitrate_kbps: plan.preset.kbps_per_channel() * channels,
             sample_rate: rate,
             channels,
+            bits: 0,
             source_sample_rate: format.map_or(rate, |f| f.sample_rate),
             source_channels: format.map_or(2, |f| f.channels as u32),
             source_bits: format.map_or(16, |f| (f.sample_format.bytes_per_sample() * 8) as u32),
@@ -325,7 +370,9 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             requested_in_use: false,
             abr: false,
             bitrate_capped: false,
+            hi_res_set: false,
             source: req.source.info(),
+            details: None,
         });
         tracing::info!("LE Audio streaming: {}", started.status.summary);
     };
@@ -336,6 +383,9 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let sync_volume = req.source != SourceRequest::TestTone && req.volume_sync != VolumeSync::Off;
     let mut volume = crate::volume_sync::EndpointChoice::for_stream(&req.volume_sync, &req.source)
         .map(crate::volume_sync::VolumeSyncer::new);
+    let mutes_output = req.mutes_output(&req.source);
+    let mut output_mute = OutputMute::new();
+    output_mute.tick(mutes_output);
 
     let mut lost_for_good = false;
     let mut discontinuities = DiscontinuityLog::default();
@@ -347,26 +397,60 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         if let Some(v) = volume.as_mut() {
             v.tick(sync_volume, &crate::volume_sync::LeHeadphones(&host));
         }
+        output_mute.tick(mutes_output);
         discontinuities.tick(audio.as_ref().map_or(0, LeAudioPath::discontinuities));
         if !host.le_stream_lost() {
             continue;
         }
 
         // A device or CIS went away: tear down and set it up again
-        tracing::warn!("LE Audio stream lost, reconnecting");
-        inner.notify(StreamState::Reconnecting, Msg::new("status.connection_lost"));
+        tracing::debug!("le stream: lost after {} s of the session", session_start.elapsed().as_secs());
+        if !inner.auto_reconnect() {
+            tracing::info!("LE Audio stream lost: reconnecting is off, the session ends");
+            // Not connected again by a Bluetooth restart either
+            inner.waiting_for_device();
+            inner.done_waiting_for_device(false);
+            inner.notify(StreamState::Idle, Msg::new("status.device_off"));
+            lost_for_good = true;
+            break;
+        }
+        let off = device_turned_off(inner, &host, &devices);
+        if !off {
+            tracing::warn!("LE Audio stream lost, reconnecting");
+            inner.notify(StreamState::Reconnecting, Msg::new("status.connection_lost"));
+        }
         if let Some(a) = audio.take() {
             a.stop();
         }
         host.le_stop_stream();
+        let mut lost_state = StreamState::Reconnecting;
+        if off {
+            // As the A2DP stream: nothing to retry until they advertise again
+            tracing::info!("the headphones were turned off or disconnected themselves");
+            inner.notify(StreamState::Idle, Msg::new("status.device_off"));
+            // Windows plays through the device before meanwhile (#132)
+            if default_guard.0.is_some() {
+                default_guard = DefaultDeviceGuard(None);
+                switch_default_again = true;
+            }
+            output_mute.tick(false);
+            if !wait_for_device(inner, &host, req.device) {
+                lost_for_good = true;
+                break;
+            }
+            tracing::info!("the headphones are back, resuming");
+            lost_state = StreamState::Connecting;
+            inner.notify(lost_state, Msg::new("status.device_back"));
+        }
         let mut restored = None;
         for attempt in 1..=RECONNECT_ATTEMPTS {
             if stopped() {
                 break;
             }
-            inner.notify(
-                StreamState::Reconnecting,
-                Msg::with("status.reconnect_attempt", &[&attempt, &RECONNECT_ATTEMPTS]),
+            inner.notify(lost_state, Msg::with("status.reconnect_attempt", &[&attempt, &RECONNECT_ATTEMPTS]));
+            tracing::debug!(
+                "le stream: reconnect attempt {attempt}/{RECONNECT_ATTEMPTS} in {} ms",
+                RECONNECT_WAIT.as_millis()
             );
             let until = Instant::now() + RECONNECT_WAIT;
             while Instant::now() < until && !stopped() {
@@ -384,6 +468,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             }
         }
         let Some(s) = restored else {
+            tracing::debug!("le stream: not restored (stop requested {})", stopped());
             if !stopped() {
                 inner.notify(StreamState::Error, Msg::new("error.reconnect_failed"));
                 lost_for_good = true;
@@ -401,10 +486,20 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                 break;
             }
         };
+        if switch_default_again {
+            default_guard = switch_default();
+            switch_default_again = false;
+        }
         report(&started, audio.as_ref());
     }
 
     tracing::info!("LE Audio streaming stopped, cleaning up");
+    tracing::debug!(
+        "le stream: ended after {} s (stop requested {}, lost for good {lost_for_good}), {}",
+        session_start.elapsed().as_secs(),
+        stopped(),
+        le_stats_line(&host.le_stream_stats())
+    );
     if let Some(a) = audio.take() {
         a.stop();
     }
@@ -413,11 +508,191 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     if let Some(mut v) = volume.take() {
         v.stop();
     }
+    drop(output_mute);
     drop(default_guard);
     inner.set_le_stream(None);
     if !lost_for_good {
         ready();
+    } else if !inner.auto_reconnect() {
+        // As the A2DP stream: free for the phone the headphones may go to
+        inner.shutdown_host();
     }
+}
+
+/// The broadcast configuration of a request: name and code checked, the
+/// preset (`--le-preset`, else [`le_audio::broadcast::DEFAULT_PRESET`]), a
+/// fresh random Broadcast_ID. Err: why, for the user.
+pub fn broadcast_config(le: &LeRequest) -> Result<BroadcastConfig, String> {
+    let b = le.broadcast.clone().unwrap_or_default();
+    let name = broadcast::check_name(&b.name)?;
+    let code = match b.code.as_deref().filter(|c| !c.is_empty()) {
+        Some(c) => Some(broadcast::broadcast_code(c)?),
+        None => None,
+    };
+    let preset_name = le.preset.as_deref().unwrap_or(broadcast::DEFAULT_PRESET);
+    let preset = broadcast::find_preset(preset_name).ok_or_else(|| {
+        let names: Vec<String> = broadcast::presets().into_iter().map(|p| p.name).collect();
+        format!("no broadcast configuration \"{preset_name}\" (one of {})", names.join(", "))
+    })?;
+    let random = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64)
+        ^ u64::from(std::process::id()).rotate_left(32);
+    Ok(BroadcastConfig { name, code, preset, stereo: !b.mono, broadcast_id: broadcast::broadcast_id(random) })
+}
+
+/// The session of a broadcast (Auracast source, developer mode): no device
+/// to connect; BTstack up with LE, `le_start_broadcast`, capture into the
+/// LE encode thread as for a unicast stream, until stopped. A broadcast the
+/// controller ends is an error (error.auracast).
+fn run_broadcast(inner: &Arc<Inner>, req: StreamRequest) {
+    let le = req.le.clone().unwrap_or_default();
+    let stopped = || inner.stop_requested();
+    let ready = || inner.notify(StreamState::Idle, Msg::new("status.ready"));
+    tracing::info!("Auracast (developer mode): broadcast {}", crate::diag::quoted(&req.device_name));
+    tracing::debug!("broadcast: request {req:?}");
+
+    if let Some(key) = refusal(inner.le_wanted(), &req.source) {
+        tracing::debug!("broadcast: refused ({key})");
+        return inner.notify(StreamState::Error, Msg::new(key));
+    }
+    let config = match broadcast_config(&le) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("Auracast: {e}");
+            return inner.notify(StreamState::Error, Msg::with("error.auracast", &[&e]));
+        }
+    };
+
+    inner.notify(StreamState::Connecting, Msg::new("status.initializing_btstack"));
+    let host = match inner.ensure_host() {
+        Ok(h) => h,
+        Err(m) => return inner.notify(StreamState::Error, m),
+    };
+    let until = Instant::now() + READY_WAIT;
+    while !host.le_ready() && Instant::now() < until && !stopped() {
+        inner.wait_tick(Duration::from_millis(100));
+    }
+    if stopped() {
+        return ready();
+    }
+    if !host.le_ready() {
+        return inner.notify(StreamState::Error, Msg::new("error.le_audio_unavailable"));
+    }
+
+    let started = match host.le_start_broadcast(config.clone(), &le_silence_set) {
+        Ok(s) => s,
+        Err(e) => {
+            return if stopped() {
+                ready()
+            } else {
+                inner.notify(StreamState::Error, Msg::with("error.auracast", &[&e]))
+            };
+        }
+    };
+    let audio = match LeAudioPath::start(&req.source, &started, host.stats().clone()) {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::error!("Auracast: audio capture: {e}");
+            host.le_stop_broadcast();
+            return inner.notify(StreamState::Error, Msg::new("error.wasapi_init"));
+        }
+    };
+
+    inner.notify(StreamState::Streaming, Msg::new("status.broadcasting"));
+    let plan = &started.status.plan;
+    let channels = plan.channel_count() as u32;
+    let rate = plan.preset.sampling_hz;
+    let format = audio.format();
+    inner.set_le_stream(Some(LeStreamDetails::of(&started)));
+    inner.stream_info(StreamInfo {
+        codec: CODEC_NAME.into(),
+        bitrate_kbps: plan.preset.kbps_per_channel() * channels,
+        sample_rate: rate,
+        channels,
+        bits: 0,
+        source_sample_rate: format.sample_rate,
+        source_channels: format.channels as u32,
+        source_bits: (format.sample_format.bytes_per_sample() * 8) as u32,
+        requested_codec: None,
+        requested_in_use: false,
+        abr: false,
+        bitrate_capped: false,
+        hi_res_set: false,
+        source: req.source.info(),
+        details: None,
+    });
+
+    let mutes_output = req.mutes_output(&req.source);
+    let mut output_mute = OutputMute::new();
+    output_mute.tick(mutes_output);
+    let mut discontinuities = DiscontinuityLog::default();
+    let mut lost = false;
+    while !stopped() {
+        inner.wait_tick(Duration::from_millis(200));
+        output_mute.tick(mutes_output);
+        discontinuities.tick(audio.discontinuities());
+        if host.le_stream_lost() {
+            lost = true;
+            break;
+        }
+    }
+    tracing::debug!(
+        "broadcast: ended (stop requested {}, lost {lost}), {}",
+        stopped(),
+        le_stats_line(&host.le_stream_stats())
+    );
+    audio.stop();
+    host.le_stop_broadcast();
+    drop(output_mute);
+    inner.set_le_stream(None);
+    if lost && !stopped() {
+        inner.notify(StreamState::Error, Msg::with("error.auracast", &[&"the adapter ended the broadcast"]));
+    } else {
+        ready();
+    }
+}
+
+/// A device of the stream ended the link itself (turned off, or its user
+/// switched it away), as `stream::device_turned_off`; the disconnection may
+/// come a moment after the stream broke
+fn device_turned_off(inner: &Inner, host: &BtHost, devices: &[[u8; 6]]) -> bool {
+    let until = Instant::now() + Duration::from_millis(1500);
+    loop {
+        let off = host
+            .le_devices()
+            .iter()
+            .any(|d| devices.contains(&d.addr.addr) && !d.connected && matches!(d.last_error, 0x13 | 0x15));
+        if off {
+            return true;
+        }
+        if Instant::now() >= until || inner.stop_requested() {
+            return false;
+        }
+        inner.wait_tick(Duration::from_millis(100));
+    }
+}
+
+/// The headphones were turned off: waits until they advertise again (true).
+/// False when the session ends instead (stopped, sleep, a stopped adapter).
+fn wait_for_device(inner: &Inner, host: &BtHost, device: [u8; 6]) -> bool {
+    inner.waiting_for_device();
+    let t = Instant::now();
+    let back = loop {
+        if inner.stop_requested()
+            || inner.power.suspending()
+            || inner.power.stale()
+            || host.stalled()
+            || !inner.auto_reconnect()
+        {
+            break false;
+        }
+        if host.le_find(device, OFF_FIND).is_some() {
+            break true;
+        }
+        inner.wait_tick(Duration::from_millis(200));
+    };
+    tracing::debug!("le device off: waited {} s, back {back}", t.elapsed().as_secs());
+    inner.done_waiting_for_device(back);
+    back
 }
 
 /// Finds (address type, name, current RPA) and connects each device in
@@ -432,19 +707,41 @@ fn connect_devices(
     for (i, &addr) in devices.iter().enumerate() {
         let mut target = LeAddr { addr, addr_type: LeAddr::PUBLIC };
         let mut name = if i == 0 { first_name.to_string() } else { String::new() };
+        let t = Instant::now();
         if let Some(found) = host.le_find(addr, FIND_TIMEOUT) {
+            tracing::debug!(
+                "le connect: {} found in {} ms as {} \"{}\" rssi {}",
+                bt_host::addr_str(&addr),
+                t.elapsed().as_millis(),
+                found.addr,
+                found.name,
+                found.rssi
+            );
             // The address it advertises now (an RPA of a bonded device)
             target = found.addr;
             if name.is_empty() {
                 name = found.name;
             }
+        } else {
+            tracing::debug!(
+                "le connect: {} not found in {} ms, trying its public address",
+                bt_host::addr_str(&addr),
+                t.elapsed().as_millis()
+            );
         }
         if stopped() {
             return Err(Msg::new("status.ready"));
         }
+        let t = Instant::now();
         match host.le_connect(target, &name, CONNECT_TIMEOUT) {
-            Ok(id) => ids.push(id),
-            Err(e) => return Err(Msg::with("error.le_audio_connect", &[&e])),
+            Ok(id) => {
+                tracing::debug!("le connect: {target} connected as {id:?} in {} ms", t.elapsed().as_millis());
+                ids.push(id);
+            }
+            Err(e) => {
+                tracing::debug!("le connect: {target} failed after {} ms: {e}", t.elapsed().as_millis());
+                return Err(Msg::with("error.le_audio_connect", &[&e]));
+            }
         }
     }
     Ok(ids)

@@ -70,8 +70,8 @@ describe("log filters", () => {
     expect(logKey(line(7, 1))).toBe("#7");
     const old = line(null, null, "x");
     expect(logKey(old)).toBe(logKey({ ...old }));
-    expect(formatLogLine(line(1, 1, "to AC:80:0A:12:34:56"), "12:00:00.000", true)).toBe(
-      "12:00:00.000 INFO  a2dpwb_core::stream: to AC:80:0A:xx:xx:xx",
+    expect(formatLogLine(line(1, 1, "to AC:80:0A:12:34:56"), "12:00:00.000", true)).toMatch(
+      /^12:00:00\.000 INFO  a2dpwb_core::stream: to <addr-\d+>$/,
     );
     expect(formatLogLine(line(1, 1, "to AC:80:0A:12:34:56", "error"), "t", false)).toBe(
       "t ERROR a2dpwb_core::stream: to AC:80:0A:12:34:56",

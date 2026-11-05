@@ -44,7 +44,10 @@ pub fn send(key: MediaKey) -> windows::core::Result<()> {
     // passed is that of one INPUT, as SendInput requires.
     let sent = unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
     if sent as usize != inputs.len() {
-        return Err(windows::core::Error::from_thread());
+        let e = windows::core::Error::from_thread();
+        tracing::debug!("media_keys: {key:?}: SendInput sent {sent} of {} ({e})", inputs.len());
+        return Err(e);
     }
+    tracing::debug!("media_keys: {key:?} sent");
     Ok(())
 }

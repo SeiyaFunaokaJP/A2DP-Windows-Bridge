@@ -137,6 +137,7 @@ impl Completion {
         match self {
             Completion::Value { done, status, value, handle } => {
                 tracing::trace!("LE Audio: GATT read of 0x{handle:04x} done (0x{status:02x})");
+                tracing::trace!("LE Audio: GATT value 0x{handle:04X}: {value:02X?}");
                 if let Some(f) = done {
                     f(ctx, status, &value)
                 }
@@ -148,11 +149,13 @@ impl Completion {
                 }
             }
             Completion::Discovered { done, status, services } => {
+                tracing::debug!("LE Audio: GATT discovery done (0x{status:02X}), {} service(s)", services.len());
                 if let Some(f) = done {
                     f(ctx, status, services)
                 }
             }
             Completion::Notify { con, handle, value } => {
+                tracing::trace!("LE Audio: GATT notification 0x{handle:04X} on 0x{con:04X}: {value:02X?}");
                 let Some(mut listeners) = ctx.core.gatt.take_listeners(con, handle) else { return };
                 for cb in listeners.iter_mut() {
                     cb(ctx, &value);
@@ -318,6 +321,7 @@ impl Op {
                 tracing::warn!("LE Audio: GATT discovery step failed to start (0x{status:02x})");
                 return true;
             }
+            tracing::trace!("LE Audio: GATT discovery {step:?} of service {index} on 0x{con:04X}");
             return false;
         }
     }
@@ -419,6 +423,7 @@ impl GattClient {
     /// are dropped
     pub(crate) fn detach(&mut self, con: u16) {
         let Some(c) = self.conns.remove(&con) else { return };
+        tracing::debug!("LE Audio: GATT client detached from 0x{con:04X}, {} operation(s) cut short", c.queue.len());
         for op in c.queue {
             self.ready.extend(op.finish(ATT_ERROR_HCI_DISCONNECT_RECEIVED));
         }
@@ -456,13 +461,29 @@ impl GattClient {
             if c.running {
                 return;
             }
+            let queued = c.queue.len();
             let Some(op) = c.queue.front_mut() else { return };
             let status = op.start(b, con);
+            tracing::trace!(
+                "LE Audio: GATT {} on 0x{con:04X} started (0x{status:02X}), {} queued",
+                match op {
+                    Op::Read { handle, .. } => format!("read 0x{handle:04X}"),
+                    Op::Write { handle, value, .. } => format!("write 0x{handle:04X} {value:02X?}"),
+                    Op::Subscribe { chr, config, .. } => format!("CCC 0x{config:04X} of 0x{:04X}", chr.value_handle),
+                    Op::Discover { .. } => "discovery".to_string(),
+                    Op::Barrier { .. } => "barrier".to_string(),
+                },
+                queued
+            );
             if status == GATT_CLIENT_BUSY || status == GATT_CLIENT_IN_WRONG_STATE {
                 // Another gatt_client user (or a query BTstack runs itself,
                 // e.g. the MTU exchange) is active: try again shortly
+                tracing::debug!("LE Audio: gatt_client busy on 0x{con:04X} (0x{status:02X}), retrying");
                 c.retry = true;
                 return;
+            }
+            if status != ERROR_CODE_SUCCESS {
+                tracing::debug!("LE Audio: GATT operation on 0x{con:04X} could not start (0x{status:02X})");
             }
             c.retry = false;
             if status != ERROR_CODE_SUCCESS || op.immediate() {
@@ -498,6 +519,9 @@ impl GattClient {
         }
         if packet.first() == Some(&GATT_EVENT_QUERY_COMPLETE) {
             let status = events::gatt_query_complete(packet).map_or(0xFF, |(_, s)| s);
+            if status != ERROR_CODE_SUCCESS {
+                tracing::debug!("LE Audio: GATT query on 0x{con:04X} completed with ATT 0x{status:02X}");
+            }
             self.complete_front(b, con, status);
             return;
         }

@@ -168,10 +168,12 @@ extern "C" fn a2dpwb_rs_att_read(con: u16, handle: u16, offset: u16, buffer: *mu
             }
         }
         let Ok(result) = with_free_app(|app, s| app.on_att_read(s, con, handle, offset)) else {
+            tracing::debug!(target: "le", "ATT: read of 0x{handle:04X} on 0x{con:04X} answered pending (app busy)");
             queue_retry(con);
             return ATT_READ_RESPONSE_PENDING;
         };
         let n = encode_read(&result, offset, buffer, buffer_size);
+        tracing::trace!(target: "le", "ATT: read 0x{handle:04X} offset {offset} on 0x{con:04X}: {:?}", result.as_ref().map(|v| v.len()));
         if buffer.is_null() {
             READ_CACHE.with(|c| *c.borrow_mut() = Some(ReadCache { con, handle, offset, result }));
         }
@@ -200,6 +202,7 @@ extern "C" fn a2dpwb_rs_att_write(
         READ_CACHE.with(|c| c.borrow_mut().take());
         let request = AttWriteRequest { con, handle, mode, offset, value };
         if let Ok(code) = with_free_app(|app, s| app.on_att_write(s, &request)) {
+            tracing::trace!(target: "le", "ATT: write 0x{handle:04X} mode {mode} offset {offset} on 0x{con:04X}, {size} bytes: 0x{code:02X}");
             return code as c_int;
         }
         // The app is busy
@@ -219,6 +222,7 @@ extern "C" fn a2dpwb_rs_att_write(
                 answered_pending,
             })
         });
+        tracing::debug!(target: "le", "ATT: write to 0x{handle:04X} on 0x{con:04X} kept (app busy, mode {mode})");
         queue_retry(con);
         if answered_pending { ATT_ERROR_WRITE_RESPONSE_PENDING } else { 0 }
     })
@@ -232,6 +236,7 @@ pub(crate) fn retry(con: u16) {
     // call the read / write callbacks from here).
     let status = unsafe { ffi::att_server_response_ready(con) };
     let mut kept = KEPT_WRITES.with(|w| w.borrow_mut().remove(&con)).unwrap_or_default();
+    tracing::debug!(target: "le", "ATT: retry on 0x{con:04X} (response ready 0x{status:02X}, {} kept write(s))", kept.len());
     if status == ERROR_CODE_SUCCESS {
         // The request answered "pending" comes again by itself
         if let Some(i) = kept.iter().rposition(|w| w.answered_pending) {
@@ -251,6 +256,7 @@ pub(crate) fn retry(con: u16) {
 
 /// The connection is gone (HCI Disconnection Complete)
 pub(crate) fn disconnected(con: u16) {
+    tracing::debug!(target: "le", "ATT: 0x{con:04X} disconnected, dropping its cached read, kept writes and queued sends");
     READ_CACHE.with(|c| {
         let mut c = c.borrow_mut();
         if c.as_ref().is_some_and(|e| e.con == con) {
@@ -310,6 +316,9 @@ extern "C" fn a2dpwb_rs_att_can_send(con: u16) {
         // SAFETY: on the BTstack thread.
         let mtu = unsafe { ffi::att_server_get_mtu(con) } as usize;
         let len = if mtu > 3 { value.len().min(mtu - 3) } else { value.len() };
+        if len < value.len() {
+            tracing::debug!(target: "le", "ATT: value of 0x{handle:04X} cut from {} to {len} bytes (mtu {mtu})", value.len());
+        }
         // SAFETY: on the BTstack thread in its can-send-now callback; value
         // is valid for len bytes during the call (BTstack copies it).
         let status = unsafe {

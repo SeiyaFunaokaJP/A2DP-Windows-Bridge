@@ -11,7 +11,7 @@ has_toc: false
 适用于 Windows 的 Bluetooth A2DP 音频串流工具，支持全部主流编解码器。
 {: .fs-6 .fw-300 }
 
-使用处于 WinUSB 模式的 USB Bluetooth 适配器，以 **LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC、LHDC V5** 以及（实验性的）**Opus** 和 PipeWire 的 **Opus 05** 串流系统音频——无需内核驱动，也无需测试签名。
+使用处于 WinUSB 模式的 USB Bluetooth 适配器，以 **LHDC V5、LDAC、aptX Adaptive、aptX HD、aptX、aptX Low Latency、AAC、SBC** 以及（实验性的）**Opus** 和 PipeWire 的 **Opus 05** 串流系统音频——无需内核驱动，也无需测试签名。
 
 ![A2DPWB streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](../images/app_sample.png)
 
@@ -24,34 +24,38 @@ has_toc: false
 
 | 编解码器 | 比特率 | 采样率 | 位深度 | 延迟 |
 |:------|:--------|:------------|:----------|:--------|
+| LHDC V5 | 400/500/900/1000 kbps，ABR 160--400 kbps | 44.1/48/96/192 kHz | 16/24 bit | -- |
 | LDAC | 330/660/990 kbps | 44.1--96 kHz | 16/24/32 bit | 约 200 ms |
+| aptX Adaptive | 265/427 kbps（96 kHz：646） | 48/96 kHz | 24 bit | -- |
+| Opus 🧪 | 256 kbps | 48 kHz | 16 bit | -- |
 | aptX HD 🧪 | 576 kbps | 44.1/48 kHz | 24 bit | 约 150 ms |
-| aptX Low Latency 🧪 | 352 kbps | 44.1/48 kHz | 16 bit | 约 32 ms |
 | aptX | 352/384 kbps | 44.1/48 kHz | 16 bit | -- |
-| AAC | 128/192/256 kbps | 44.1/48 kHz | 16 bit | 约 150 ms |
+| aptX Low Latency 🧪 | 352 kbps | 44.1/48 kHz | 16 bit | 约 32 ms |
+| AAC | 最高 256 kbps | 44.1/48 kHz | 16 bit | 约 150 ms |
 | SBC XQ | 约 385/505/552 kbps | 44.1/48 kHz | 16 bit | 约 150 ms |
 | SBC | 最高约 345 kbps | 44.1/48 kHz | 16 bit | 约 150 ms |
 | FastStream 🧪 | 198/216 kbps | 44.1/48 kHz | 16 bit | -- |
-| LHDC V5 | 400/500/900/1000 kbps，ABR 160--400 kbps | 44.1/48/96/192 kHz | 16/24 bit | -- |
-| Opus 🧪 | 128/192/256 kbps | 48 kHz | 16 bit | -- |
-| Opus 05 🧪 | 128/192/256 kbps | 48 kHz | 16 bit | -- |
+| Opus 05 🧪 | 256 kbps | 48 kHz | 16 bit | -- |
+| LC3（LE Audio） 🧪 | 每声道 32--124 kbps | 16/24/32/48 kHz | 16 bit | 约 140 ms |
+| LC3 低延迟（LE Audio GMAP） 🧪 | 每声道 64--96 kbps | 32/48 kHz | 16 bit | 约 30 ms |
 
 ### 各平台的编解码器支持情况（向耳机发送）
 
 | 编解码器 | Windows 10 内置 | Windows 11 内置 | Ubuntu 内置（PipeWire） | **A2DPWB**（Windows 10 / 11） |
 |:------|:-------------------:|:-------------------:|:--------------------------:|:----------------------------:|
+| LHDC V5 | ❌ | ❌ | ❌ | ✅ |
 | LDAC | ❌ | ❌ | ✅ | ✅ |
+| aptX Adaptive | ❌ | ❌ | ❌ | ✅ |
+| Opus（Android 的 A2DP Opus） | ❌ | ❌ | ✅ PipeWire 1.2+（`opus_g`）；Ubuntu 24.04（PipeWire 1.0.5）中没有 | 🧪 实验性 |
 | aptX HD | ❌ | ❌ | ✅ | 🧪 实验性 |
-| aptX Low Latency | ❌ | ❌ | ✅ | 🧪 实验性 |
 | aptX | ✅ | ✅ | ✅ | ✅ |
+| aptX Low Latency | ❌ | ❌ | ✅ | 🧪 实验性 |
 | AAC | ❌ | ✅ | ❌ Ubuntu 软件包中未包含 | ✅ |
-| SBC XQ | ❌ | ❌ | ✅ | ✅（SBC 允许双声道且 bitpool ≥ 43 的接收端） |
+| SBC XQ | ❌ | ❌ | ✅ | ✅（SBC 允许双声道且 bitpool ≥ 29 的接收端） |
 | SBC | ✅ | ✅ | ✅ | ✅ |
 | FastStream | ❌ | ❌ | ✅ | 🧪 实验性（仅音乐，需明确选择） |
-| LHDC V5 | ❌ | ❌ | ❌ | ✅ |
-| Opus（Android 的 A2DP Opus） | ❌ | ❌ | ✅ PipeWire 1.2+（`opus_g`）；Ubuntu 24.04（PipeWire 1.0.5）中没有 | 🧪 实验性 |
 | Opus 05（PipeWire 自有的 Opus） | ❌ | ❌ | ✅ PipeWire 0.3.57+（`opus_05`，仅限 PipeWire 设备） | 🧪 实验性（需明确选择） |
-| aptX Adaptive | ❌ | ❌ | ❌ | ❌ |
+| LC3（LE Audio，BAP 单播） | ❌ | ✅ 仅限 Bluetooth 硬件和驱动支持 LE Audio 的 PC | ✅ PipeWire BAP `lc3`（BlueZ LE Audio） | 🧪 实验性（设备的 LE Audio 条目；游戏耳机使用 GMAP 低延迟；需要支持 ISO 的 Bluetooth 5.2 适配器，[使用方法](usage#le-audio)） |
 
 ✅ 支持 · 🧪 实验性 · ❌ 不支持。所有列均指发送端（PC → 耳机）。“内置”指不使用 A2DPWB 时操作系统自带的 Bluetooth 音频；Ubuntu 一列为 Ubuntu 26.04 的 PipeWire 编解码器集（`libspa-0.2-bluetooth`）。
 
@@ -59,29 +63,29 @@ has_toc: false
 **aptX HD 和 aptX Low Latency 为实验性功能。** 它们参照 Android / PipeWire 的实现，并通过了编码/解码往返测试，但尚未在真实耳机上验证。表中的延迟为典型值，并非使用 A2DPWB 实测。
 
 {: .warning }
-**关于 LHDC V5。** 它使用 Google 在 Android 17 中加入的 LHDC V5 编码器（AOSP，Apache-2.0）的 C 语言移植版；该移植版已与 AOSP 的 Rust 编码器做过逐位一致性验证，A2DP 信令则参照 Android 的 `a2dp_vendor_lhdcv5`。已有用户在 v1.1.1-beta.1 上用真实的 LHDC V5 耳机验证了 1000 kbps / 192 kHz（[#50](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/50)）；v2 使用相同的编码器。仅支持有损的 LHDC V5：LHDC V2/V3（较旧的耳机）和无损的“LHDC-RAW”模式没有开源编码器。在“自动”模式下，LHDC V5 的优先级低于 LDAC 和 aptX 系列，高于 AAC / SBC。
+**关于 LHDC V5。** 它使用 Google 在 Android 17 中加入的 LHDC V5 编码器（AOSP，Apache-2.0）的 C 语言移植版；该移植版已与 AOSP 的 Rust 编码器做过逐位一致性验证，A2DP 信令则参照 Android 的 `a2dp_vendor_lhdcv5`。已有用户在 v1.1.1-beta.1 上用真实的 LHDC V5 耳机验证了 1000 kbps / 192 kHz（[#50](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/50)）；v2 使用相同的编码器。仅支持有损的 LHDC V5：LHDC V2/V3（较旧的耳机）和无损的“LHDC-RAW”模式没有开源编码器。在“自动”模式下，LHDC V5 的优先级最高，高于 LDAC。
 
 {: .warning }
-**Opus 为实验性功能。** 它是 Android 的 A2DP Opus 厂商编解码器（Android 13+，Vendor ID 0x000000E0 Google）：48 kHz、20 ms 帧，按 Android 的请求以 256 kbps 立体声编码（标准 192 kbps，移动 128 kbps），编码器为 libopus 1.5.2。它已通过针对虚拟接收端的端到端测试，但尚未在真实的 Opus 耳机上验证。在“自动”模式下，它的优先级低于 LHDC V5，高于 AAC / SBC。
+**Opus 为实验性功能。** 它是 Android 的 A2DP Opus 厂商编解码器（Android 13+，Vendor ID 0x000000E0 Google）：48 kHz、20 ms 帧，按 Android 的请求以 256 kbps 立体声编码（标准 192 kbps，移动 128 kbps），编码器为 libopus 1.5.2。它已通过针对虚拟接收端的端到端测试，但尚未在真实的 Opus 耳机上验证。在“自动”模式下，它的优先级低于 aptX Adaptive，高于 aptX HD。
 
 {: .warning }
-**Opus 05 为实验性功能，尚未在真实设备上验证。** 它是 PipeWire 自有的 A2DP Opus 厂商编解码器（Vendor ID 0x000005F1，编解码器 0x1005；PipeWire 的 `opus_05`），只有 PipeWire 实现了它，因此接收端必须是以 PipeWire 作为 A2DP 接收端的 PC。A2DPWB 只发送立体声音乐方向（没有 5.1 / 7.1，也没有回传通道）：48 kHz、10 ms 帧（接收端只支持 20 ms 时用 20 ms），编码器和码率与 Opus 相同，并限制在接收端的上限以内。“自动”从不选择它；请在配置文件中或用 `-c opus05` 选择。它已通过针对提供 PipeWire 能力的虚拟接收端的端到端测试，但尚未在真实的 PipeWire 接收端上试过。作为 A2DP 接收端的 PipeWire 自 0.3.57 起可解码 Opus 05，自 1.2.0 起可解码 Android 的 Opus（`opus_g`）：Ubuntu 24.04 LTS 自带 PipeWire 1.0.5（仅 Opus 05），Ubuntu 25.10（1.4.7）和 26.04 LTS（1.6.2）两者都有；两者都尚未用 A2DPWB 验证。
+**Opus 05 为实验性功能，尚未在真实设备上验证。** 它是 PipeWire 自有的 A2DP Opus 厂商编解码器（Vendor ID 0x000005F1，编解码器 0x1005；PipeWire 的 `opus_05`），只有 PipeWire 实现了它，因此接收端必须是以 PipeWire 作为 A2DP 接收端的 PC。A2DPWB 只发送立体声音乐方向（没有 5.1 / 7.1，也没有回传通道）：48 kHz、10 ms 帧（接收端只支持 20 ms 时用 20 ms），编码器和码率与 Opus 相同，并限制在接收端的上限以内。“自动”从不选择它；请在**编解码器**页面或用 `-c opus05` 选择。它已通过针对提供 PipeWire 能力的虚拟接收端的端到端测试，但尚未在真实的 PipeWire 接收端上试过。作为 A2DP 接收端的 PipeWire 自 0.3.57 起可解码 Opus 05，自 1.2.0 起可解码 Android 的 Opus（`opus_g`）：Ubuntu 24.04 LTS 自带 PipeWire 1.0.5（仅 Opus 05），Ubuntu 25.10（1.4.7）和 26.04 LTS（1.6.2）两者都有；两者都尚未用 A2DPWB 验证。
 
 {: .warning }
 **SBC XQ** 已用 Sony WH-1000XM4 验证（双声道，48 kHz 下 bitpool 43，552 kbps）。拒绝该配置的接收端会改用普通 SBC 重新连接。**FastStream 为实验性功能：**它已通过针对虚拟接收端的端到端测试，但尚未用真实的 FastStream 耳机试过。仅支持音乐方向；“自动”从不选择它。
 
 {: .note }
-**只需要经典 aptX？** Windows 10 的内置 Bluetooth 堆栈已经支持经典 aptX（不含 aptX HD、aptX LL 和 aptX Adaptive），因此无需 A2DPWB。A2DPWB 主要用于 LDAC、aptX HD 和 aptX Low Latency。
+**只需要经典 aptX？** Windows 10 的内置 Bluetooth 堆栈已经支持经典 aptX（不含 aptX HD、aptX LL 和 aptX Adaptive），因此无需 A2DPWB。A2DPWB 主要用于 LHDC V5、LDAC、aptX Adaptive、aptX HD 和 aptX Low Latency。
 
 {: .note }
-**不支持 aptX Adaptive**（没有开源编码器）。如果耳机同时列出了经典 aptX，A2DPWB 会直接使用 aptX；否则“自动”会选择 AAC 或 SBC。请参阅 [aptX 系列与 aptX Adaptive 的兼容性](usage#aptx-compatibility)。
+**关于 aptX Adaptive。** 它使用 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 的纯 Rust 编码器（MIT 许可）编码，其中的表由该项目作者根据 Qualcomm 已出货的二进制文件和空中抓包重建。48 kHz 立体声（请求 44.1 kHz 时以 48 kHz 捕获），24-bit：高 427 kbps 或低延迟 265 kbps（R2 接收端：270），高音质下支持 ABR。在其设置中选择 96 kHz 且耳机是列出 96 kHz 的 R2 接收端时使用 96 kHz（高，646 kbps），低延迟下从不使用；“自动”以 48 kHz 串流。“自动”在 LHDC V5 和 LDAC 之后选择它；也可以在**编解码器**页面或用 `-c aptxad` 选择。有用户在 2.0.2-beta.6 上用 EarFun Air Pro 4+ 确认了 48 kHz 下的工作，与经典 aptX 一样稳定，此后 96 kHz 也已用真实耳机确认（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）；上游报告它在 Linux 上可用于 Bose QuietComfort Ultra（第 1 代）和 B&W Px7 S2e。请参阅 [aptX 系列与 aptX Adaptive](usage#aptx-compatibility)。
 
 ## 平台支持 {#platform-support}
 
 | 组件 | Windows 10 (x64 / ARM64) | Windows 11 (x64 / ARM64) | Linux (Ubuntu) |
 |:----------|:----------------:|:----------------:|:--------------:|
 | **A2DPWB**（窗口、托盘、CLI） | ✅（尚未在实机上试用） | ✅ | ❌ |
-| [从源代码构建](building)（Rust、Visual Studio 2022+、Node.js） | ✅ | ✅ | ❌ |
+| [从源代码构建](../building)（Rust、Visual Studio 2022+、Node.js） | ✅ | ✅ | ❌ |
 | `a2dpwb_decode`（流检查工具） | ✅ | ✅ | ❌ |
 | 端到端测试 `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
 | 虚拟适配器 `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
@@ -91,18 +95,15 @@ A2DPWB 本身仅在 Windows 上运行（Windows 10 22H2 或 Windows 11），提�
 
 ## 已验证的硬件 {#verified-hardware}
 
-| 对象 | 环境 | 编解码器 | 结果 |
-|:-----|:------|:-------|:-------|
-| Sony WH-1000XM4（耳机） | Windows 11 + TP-Link UB500 | LDAC、AAC、SBC、SBC XQ | ✅ 可播放（XM4 不支持 aptX） |
-| TP-Link UB500（Realtek RTL8761BU，适配器） | Windows 11、WinUSB、linux-firmware `rtl8761bu` | – | ✅ |
-| 测量用接收器 `tools/linux_sink` | Windows 11 + UB500 → Ubuntu 26.04，无线传输 | SBC、AAC、aptX、aptX HD、aptX LL、LDAC | ✅ 已接收并测量 |
-| 虚拟链路 `tools/emu`（Bumble） | Windows 11，无无线电 | SBC、SBC XQ、AAC、aptX、aptX HD、aptX LL、LDAC、LHDC V5、FastStream、Opus、Opus 05 | ✅ 端到端测试通过 |
-
-尚未在 Windows 10 实机上试用。其他适配器请参阅[推荐适配器](setup#adapters)。
+已在 TP-Link UB500、通用 RTL8761B、笔记本电脑内置的 RTL8852BE、ASUS BT400 和 CSR8510 适配器上，用 Sony WH-1000XM4 和 WH-1000XM6、EarFun Air Pro 4+、Grado GW100x 等确认。包含编解码器、版本及相关报告的完整列表：**[已验证的硬件](../hardware)**（英文）。
 
 ## 断音与连接问题
 
 断音和连接问题的报告最终查明的原因、报告之前应该做的检查，以及如何解读链路质量：**[断音与连接问题](wireless)**。
+
+## 配合使用的工具
+
+在 issue 中报告可与 A2DPWB 配合使用的第三方应用，例如耳机控制应用（并非 A2DPWB 制作或支持）：**[Works With](../works-with)**（英文）。
 
 ## 音频捕获模式
 
@@ -114,9 +115,9 @@ A2DPWB 通过 WASAPI 捕获音频，提供三种模式：
 | **虚拟设备** | 从用户选择的虚拟音频设备（如 VB-CABLE、VoiceMeeter）捕获 | 将特定应用的声音送到 Bluetooth，其他声音仍从扬声器播放 |
 | **应用程序** | 仅捕获某一个应用播放的声音，且是经过该应用自身处理之后的声音（Windows 11 / Windows 10 2004+） | 发送单个应用，或系统级音效应用（均衡器、音效增强）的输出 |
 
-在**虚拟设备**模式下，A2DPWB 可以将 Windows 默认播放设备切换为所选虚拟设备（**自动切换默认设备**），然后捕获其环回输出。输出到该虚拟设备的应用将通过 Bluetooth 串流。停止串流时，会恢复之前的默认设备。
+在**虚拟设备**模式下，A2DPWB 可以将 Windows 默认播放设备切换为所选虚拟设备（**连接期间设为 Windows 默认输出设备**），然后捕获其环回输出。输出到该虚拟设备的应用将通过 Bluetooth 串流。停止串流时，会恢复之前的默认设备。
 
-系统环回不会把声音从默认播放设备上“拿走”：声音会同时在该设备和 Bluetooth 上播放。请参阅[捕获模式](usage#capture-modes)。
+系统环回不会把声音从默认播放设备上“拿走”：声音会同时在该设备和 Bluetooth 上播放。如果无法打开所选的虚拟设备，连接会改为发送系统音频，并给出提示。请参阅[捕获模式](usage#capture-modes)。
 
 ## 工作原理
 
@@ -138,22 +139,22 @@ flowchart TD
     usb -.-> hp["耳机"]
 ```
 
-A2DPWB 完全绕过 Windows 的 Bluetooth 堆栈。它通过 WinUSB 直接与 USB Bluetooth 适配器通信，并使用 [BTstack](https://github.com/bluekitchen/btstack) 在用户模式下实现完整的 Bluetooth 协议栈。由一个小型常驻程序（`a2dpwb-core.exe`，带有托盘图标）负责串流音频；窗口只显示其状态，因此关闭窗口不会停止音频（请参阅[架构](architecture)）。
+A2DPWB 完全绕过 Windows 的 Bluetooth 堆栈。它通过 WinUSB 直接与 USB Bluetooth 适配器通信，并使用 [BTstack](https://github.com/bluekitchen/btstack) 在用户模式下实现完整的 Bluetooth 协议栈。由一个小型常驻程序（`a2dpwb-core.exe`，带有托盘图标）负责串流音频；窗口只显示其状态，因此关闭窗口不会停止音频（请参阅[架构](../architecture)）。
 
 ## 功能
 
-- **多编解码器**：LDAC、aptX HD、aptX Low Latency、aptX、AAC、SBC、LHDC V5 以及（实验性的）Opus / Opus 05，自动协商
+- **多编解码器**：LHDC V5、LDAC、aptX Adaptive、aptX HD、aptX、aptX Low Latency、AAC、SBC XQ、SBC 以及（实验性的）Opus / Opus 05 / FastStream，自动协商
 - **LE Audio（实验性）**：通过 LC3 向 LE Audio 耳机传输（BAP 单播、一对耳机的左右两只、耳机音量、媒体按键、GMAP 低延迟）。需要支持 Bluetooth 5.2 等时通道的适配器；只在 Bluetooth 模拟器上测试过，尚未在真实的 LE Audio 耳机上验证（请参阅[使用方法](usage#le-audio)）
 - **三种捕获模式**：系统环回、虚拟音频设备路由，或单个应用的输出
 - **窗口、托盘和 CLI**：用于设置和诊断的窗口、用于日常连接的托盘浮出窗口和菜单，以及命令行（请参阅[使用方法](usage)）
-- **在应用内分配 WinUSB**：为适配器分配 WinUSB 驱动程序，并可恢复原来的驱动程序，无需 Zadig（请参阅[安装与设置](setup#winusb)）
-- **首次运行设置**：适配器、驱动程序和固件、耳机、首次连接
-- **ABR**：针对不稳定连接的自适应比特率（LDAC 和 LHDC V5）
-- **自动重新连接**：断开后自动重新连接（最多 10 次），PC 从睡眠中恢复后也会重新连接
+- **在应用内分配 WinUSB**：为适配器分配 WinUSB 驱动程序，并可恢复原来的驱动程序，无需 Zadig（请参阅[安装与设置](setup#winusb)）；Windows 通过该适配器配对过的耳机无需重新配对即可连接
+- **首次运行设置**：适配器、驱动程序和固件、耳机、首次连接、常规设置
+- **ABR**：针对不稳定连接的自适应比特率（LDAC、LHDC V5 和 aptX Adaptive；SBC 和 SBC XQ 使用自适应 bitpool）
+- **自动重新连接**：连接丢失后自动重新连接（3 次；需要重新启动适配器时为 10 次），PC 从睡眠中恢复后也会重新连接；**音频设备**上的**自动重新连接**可将其关闭
 - **链路质量与 AFH**：显示发送内容、RSSI 和正在使用的信道；告知适配器应避开哪些 Wi-Fi 信道（请参阅[使用方法](usage#link-quality)）
 - **耳机控制（AVRCP）**：音量滑块与耳机及 Windows 音量同步；耳机的播放/暂停、下一曲和上一曲按键可控制 PC 上的播放（请参阅[使用方法](usage#headphone-buttons)）
-- **配置文件管理**：设备 + 编解码器 + 捕获的配置组合，可从托盘直接连接
-- **更新**：安装版会在串流停止后自动更新（请参阅[使用方法](usage#updates)）
+- **按设备设置**：每个音频设备各有编解码器（含其自身设置）和输出源，在主页并排显示，可从托盘直接连接
+- **更新**：安装版会在音频设备断开连接后自动更新（请参阅[使用方法](usage#updates)）
 - **本地化**：英语、日语、简体中文、繁体中文、韩语、德语、法语、西班牙语
 - **Realtek 固件**：为 Realtek 适配器提供固件下载引导
 - **诊断**：连接流程、日志、HCI 捕获、用于错误报告的诊断信息、与 Linux PC 进行的对端接收器测试（请参阅[使用方法](usage#receiver)）

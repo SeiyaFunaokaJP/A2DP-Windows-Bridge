@@ -365,9 +365,17 @@ pub fn control_point_check(info: &MediaInfo, value: &[u8]) -> Result<(u8, i32), 
     let Some(&op) = value.first() else { return Err(RESULT_COMMAND_CANNOT_BE_COMPLETED) };
     if info.opcodes_supported() & opcode_bit(op) == 0 {
         let inactive = op == OP_MOVE_RELATIVE && (!info.session || info.state == STATE_INACTIVE);
+        tracing::debug!(
+            "MCP: {} not supported now (opcodes 0x{:08X}, session {}, state {})",
+            opcode_name(op),
+            info.opcodes_supported(),
+            info.session,
+            state_name(info.state)
+        );
         return Err(if inactive { RESULT_MEDIA_PLAYER_INACTIVE } else { RESULT_OPCODE_NOT_SUPPORTED });
     }
     if value.len() != if op == OP_MOVE_RELATIVE { 5 } else { 1 } {
+        tracing::debug!("MCP: {} with a wrong length: {value:02X?}", opcode_name(op));
         return Err(RESULT_COMMAND_CANNOT_BE_COMPLETED);
     }
     let param = if op == OP_MOVE_RELATIVE { i32::from_le_bytes([value[1], value[2], value[3], value[4]]) } else { 0 };
@@ -379,6 +387,12 @@ pub fn control_point_check(info: &MediaInfo, value: &[u8]) -> Result<(u8, i32), 
 /// counted from the end; None (ignored) without an active seekable player
 pub fn seek_target(info: &MediaInfo, position: i32) -> Option<i32> {
     if !info.session || info.state == STATE_INACTIVE || !info.can_seek {
+        tracing::debug!(
+            "MCP: seek to {position} ignored (session {}, state {}, seekable {})",
+            info.session,
+            state_name(info.state),
+            info.can_seek
+        );
         return None;
     }
     Some(if position >= 0 {

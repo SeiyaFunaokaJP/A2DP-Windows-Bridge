@@ -9,11 +9,12 @@
 //!    agrees: an update never cuts the audio;
 //! 3. wait until the core has exited (stream stopped, adapter released),
 //!    without starting it again or ending this process on its Bye;
-//! 4. run the installer (passive mode, `/UPDATE`); this process exits. The
-//!    installer starts a2dpwb.exe again, which starts the core.
+//! 4. run the installer (Inno Setup, `/UPDATE /SILENT`: progress only, no
+//!    questions); this process exits. The installer starts a2dpwb.exe again,
+//!    which starts the core.
 //!
 //! Only an installed copy with an updater key updates itself. The portable
-//! copy (no uninstall.exe next to it) and builds without a key show the
+//! copy (no unins000.exe next to it) and builds without a key show the
 //! release page instead (Phase::Unavailable).
 
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -81,9 +82,10 @@ fn has_pubkey(app: &AppHandle) -> bool {
         .is_some_and(|k| !k.trim().is_empty())
 }
 
-/// Installed by the NSIS installer, which leaves its uninstaller here
+/// Installed by the Inno Setup installer (installer/A2DPWB.iss), which
+/// leaves its uninstaller here
 fn installed() -> bool {
-    std::env::current_exe().map(|e| e.with_file_name("uninstall.exe").is_file()).unwrap_or(false)
+    std::env::current_exe().map(|e| e.with_file_name("unins000.exe").is_file()).unwrap_or(false)
 }
 
 impl Updates {
@@ -159,8 +161,14 @@ pub fn start(app: &AppHandle, manifest_url: String) -> Result<(), String> {
 type Failure = (&'static str, String);
 
 async fn download(app: &AppHandle, updates: &Updates, url: tauri::Url) -> Result<(), Failure> {
+    // The plugin runs an .exe as an NSIS installer: `/UPDATE` and, with
+    // tauri.conf.json's installMode "basicUi", none of NSIS's own options.
+    // Inno Setup's /SILENT is NSIS's passive mode; A2DPWB.iss starts
+    // a2dpwb.exe again after an /UPDATE, so no /R /ARGS
     let updater = app
         .updater_builder()
+        .installer_args(["/SILENT", "/NORESTART"])
+        .restart_after_install(false)
         .endpoints(vec![url])
         .and_then(|b| b.build())
         .map_err(|e| ("update.config", e.to_string()))?;

@@ -81,6 +81,11 @@ impl AptxEncoder {
         if groups == 0 {
             return unsupported(format!("media MTU {} below one {group_bytes}-byte aptX frame", config.mtu));
         }
+        tracing::debug!(
+            "{kind}: {groups} groups of {group_bytes} bytes per call (at most {} by frames, {} by the mtu), {format:?} input",
+            FRAMES_PER_ENCODE / GROUP_FRAMES,
+            usize::from(config.mtu) / group_bytes
+        );
         let ctx = AptxContext::new(hd)
             .ok_or_else(|| EncoderError::Init { codec: kind, what: "aptx_init failed (out of memory)".into() })?;
         let encoder = AptxEncoder {

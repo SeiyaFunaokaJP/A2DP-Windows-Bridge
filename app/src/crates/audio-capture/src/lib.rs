@@ -14,7 +14,9 @@
 mod apps;
 mod devices;
 mod format;
+mod gaps;
 mod loopback;
+mod mixer;
 mod silence;
 mod tone;
 
@@ -30,6 +32,7 @@ pub use devices::{
     set_default_render_device,
 };
 pub use format::{DEFAULT_RATE, Format, SampleFormat};
+pub use mixer::{MixerApp, SYSTEM_SOUNDS, mixer_apps, set_mixer_app};
 pub use tone::RIGHT_HZ as TEST_TONE_RIGHT_HZ;
 pub use tone::{AMPLITUDE as TEST_TONE_AMPLITUDE, LEFT_HZ as TEST_TONE_LEFT_HZ};
 
@@ -73,6 +76,13 @@ pub trait Sink: Send + 'static {
     /// playing (only with fill_silence). Separate so the caller can tell real
     /// audio from fill (AVRCP playback status uses "audio arrives = playing").
     fn silence(&mut self, frames: usize, format: Format);
+    /// Windows reported a gap in the captured audio (a data discontinuity,
+    /// not the expected ones right after the start), before the packet that
+    /// follows it. `lost_frames`: how much audio the gap took, when the
+    /// device position tells (None: not known).
+    fn discontinuity(&mut self, lost_frames: Option<u64>) {
+        let _ = lost_frames;
+    }
 }
 
 /// Why a running capture ended on its own (see [`Running::ended`])
@@ -156,6 +166,14 @@ pub(crate) struct Shared {
     frames: AtomicU64,
     silence_frames: AtomicU64,
     discontinuities: AtomicU64,
+    /// Frames lost in those discontinuities, where the device position told
+    lost_frames: AtomicU64,
+    /// Of `silence_frames`: what the silence fill added because no packet
+    /// came (not the packets the engine flagged as silent)
+    filled_frames: AtomicU64,
+    /// Longest wait between two captured packets since the owner last
+    /// took it (µs)
+    packet_gap_us: AtomicU64,
 }
 
 impl Shared {
@@ -181,7 +199,10 @@ impl Drop for PanicGuard {
 /// thread keeps normal priority, as in v1
 pub(crate) fn register_mmcss() -> Option<win_sys::mmcss::MmcssGuard> {
     match win_sys::mmcss::MmcssGuard::register(win_sys::mmcss::MmcssTask::Audio) {
-        Ok(g) => Some(g),
+        Ok(g) => {
+            tracing::info!("audio capture: MMCSS Audio (task {})", g.task_index());
+            Some(g)
+        }
         Err(e) => {
             tracing::warn!("audio capture: MMCSS registration failed: {e}");
             None
@@ -221,6 +242,7 @@ impl Capture {
             }
             Source::TestTone => {
                 let rate = options.preferred_rate.filter(|&r| r >= 100).unwrap_or(DEFAULT_RATE);
+                tracing::debug!("audio source: test tone, requested {:?}, using {rate} Hz", options.preferred_rate);
                 (tone::format(rate), Backend::Tone)
             }
         };
@@ -314,14 +336,39 @@ impl Running {
     pub fn discontinuities(&self) -> u64 {
         self.shared.discontinuities.load(Ordering::Relaxed)
     }
+
+    /// Frames lost in [`Running::discontinuities`], from the device
+    /// position (only the ones where it is reliable)
+    pub fn lost_frames(&self) -> u64 {
+        self.shared.lost_frames.load(Ordering::Relaxed)
+    }
+
+    /// Of [`Running::silence_frames`]: the silence the fill added because
+    /// no packet came for two periods (a loopback capture whose device
+    /// plays nothing, or a capture thread held back)
+    pub fn filled_frames(&self) -> u64 {
+        self.shared.filled_frames.load(Ordering::Relaxed)
+    }
+
+    /// The longest wait between two captured packets since the last call
+    /// (zero for the test tone, which has no packets)
+    pub fn take_packet_gap(&self) -> std::time::Duration {
+        std::time::Duration::from_micros(self.shared.packet_gap_us.swap(0, Ordering::Relaxed))
+    }
 }
 
 impl Drop for Running {
     fn drop(&mut self) {
         self.shared.stop.store(true, Ordering::Release);
         if let Some(t) = self.thread.take() {
+            let started = std::time::Instant::now();
             // The thread notices within one period (≤ 100 ms)
             let _ = t.join();
+            tracing::debug!(
+                "audio capture: thread joined in {} ms, ended {:?}",
+                started.elapsed().as_millis(),
+                self.shared.end_reason.get()
+            );
         }
     }
 }

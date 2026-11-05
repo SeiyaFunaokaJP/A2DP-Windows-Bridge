@@ -11,8 +11,6 @@ use codec::{CodecKind, Encoder, EncoderConfig, EncoderError, Pcm, PcmFormat, Pee
 use std::f64::consts::PI;
 
 const SECONDS: usize = 3;
-/// fdk-aac's default StreamMuxConfig repetition for LATM (v1 keeps it)
-const SMC_PERIOD: usize = 10;
 
 fn config(sample_rate: u32, channels: u32, quality: Quality, mtu: u16) -> EncoderConfig {
     EncoderConfig { sample_rate, channels, quality, mtu, bits_per_sample: 16, abr: false, peer: PeerParams::default() }
@@ -48,20 +46,32 @@ struct Latm {
     payload_len: usize,
 }
 
+/// LatmGetValue(): bytesForValue, then that many bytes plus one
+fn latm_value(b: &mut Bits) -> u32 {
+    let bytes = b.read(2) + 1;
+    b.read(8 * bytes as usize)
+}
+
 /// Parses one AudioMuxElement(muxConfigPresent = 1) of ISO/IEC 14496-3
 /// 1.7.3 as fdk-aac writes it for AAC-LC, checking every StreamMuxConfig
-/// field, that the payload length covers the rest of the packet and that the
-/// padding is zero
-fn parse_latm(packet: &[u8], sample_rate: u32, channels: u32) -> Latm {
+/// field (AudioMuxVersion `version`), that the payload length covers the
+/// rest of the packet and that the padding is zero
+fn parse_latm(packet: &[u8], sample_rate: u32, channels: u32, version: u32) -> Latm {
     let mut b = Bits { data: packet, pos: 0 };
     let smc = b.read(1) == 0; // useSameStreamMux
     if smc {
-        assert_eq!(b.read(1), 0, "audioMuxVersion");
+        assert_eq!(b.read(1), version, "audioMuxVersion");
+        if version == 1 {
+            assert_eq!(b.read(1), 0, "audioMuxVersionA");
+            latm_value(&mut b); // taraBufferFullness
+        }
         assert_eq!(b.read(1), 1, "allStreamsSameTimeFraming");
         assert_eq!(b.read(6), 0, "numSubFrames");
         assert_eq!(b.read(4), 0, "numProgram");
         assert_eq!(b.read(3), 0, "numLayer");
-        // AudioSpecificConfig (inline with AudioMuxVersion 0)
+        // AudioSpecificConfig: inline with AudioMuxVersion 0, after its
+        // length in bits with 1 (which may hold more than the fields here)
+        let asc_end = if version == 1 { Some(latm_value(&mut b) as usize + b.pos) } else { None };
         assert_eq!(b.read(5), 2, "audioObjectType AAC-LC");
         let sf_index = if sample_rate == 48000 { 3 } else { 4 };
         assert_eq!(b.read(4), sf_index, "samplingFrequencyIndex");
@@ -69,6 +79,10 @@ fn parse_latm(packet: &[u8], sample_rate: u32, channels: u32) -> Latm {
         assert_eq!(b.read(1), 0, "frameLengthFlag (1024)");
         assert_eq!(b.read(1), 0, "dependsOnCoreCoder");
         assert_eq!(b.read(1), 0, "extensionFlag");
+        if let Some(end) = asc_end {
+            assert!(end >= b.pos, "ASC length");
+            b.pos = end;
+        }
         assert_eq!(b.read(3), 0, "frameLengthType");
         b.read(8); // latmBufferFullness
         assert_eq!(b.read(1), 0, "otherDataPresent");
@@ -115,8 +129,10 @@ fn encode_tone(cfg: &EncoderConfig) -> (AacEncoder, Vec<Vec<u8>>) {
         // One access unit per call: the input is exactly one frame
         assert_eq!(e.frames, 1, "call {call}");
         assert!(e.bytes > 0 && e.bytes <= usize::from(cfg.mtu), "call {call}: {} bytes, MTU {}", e.bytes, cfg.mtu);
-        let latm = parse_latm(&out[..e.bytes], cfg.sample_rate, cfg.channels);
-        assert_eq!(latm.smc, packets.len() % SMC_PERIOD == 0, "StreamMuxConfig in frame {}", packets.len());
+        // AudioMuxVersion 1, as Android and PipeWire (issue #87)
+        let latm = parse_latm(&out[..e.bytes], cfg.sample_rate, cfg.channels, 1);
+        // StreamMuxConfig in every frame (issue #87)
+        assert!(latm.smc, "no StreamMuxConfig in frame {}", packets.len());
         assert!(latm.payload_len > 0);
         timestamp += e.frames as usize * enc.pcm_frames_per_codec_frame();
         packets.push(out[..e.bytes].to_vec());
@@ -232,4 +248,45 @@ fn create_dispatches() {
     let enc = codec::create(CodecKind::Aac, &config(44100, 2, Quality::Standard, 1000)).unwrap();
     assert_eq!(enc.kind(), CodecKind::Aac);
     assert_eq!(enc.bitrate_kbps(), 192);
+}
+
+/// The sink's largest bit rate (the configuration's) caps every quality
+#[test]
+fn sink_bit_rate_limit() {
+    for (limit, quality, kbps) in
+        [(128_000, Quality::High, 128), (200_000, Quality::Standard, 192), (0, Quality::High, 256)]
+    {
+        let cfg = EncoderConfig {
+            peer: PeerParams { aac_max_bitrate: limit, ..PeerParams::default() },
+            ..config(44100, 2, quality, 1000)
+        };
+        let enc = AacEncoder::new(&cfg).unwrap();
+        assert_eq!(enc.bitrate_kbps(), kbps, "limit {limit}, {quality:?}");
+    }
+}
+
+/// Variable bit rate: every access unit still fits a 672-byte L2CAP MTU's
+/// media payload (660 bytes), also for noise
+#[test]
+fn vbr_frames_fit_the_media_payload() {
+    for quality in [Quality::High, Quality::Standard, Quality::Mobile] {
+        let cfg = EncoderConfig { abr: true, ..config(44100, 2, quality, 660) };
+        let mut e = AacEncoder::new(&cfg).unwrap();
+        let n = e.pcm_frames_per_encode() * 2;
+        let mut out = vec![0u8; e.max_output_bytes()];
+        let mut seed = 7u32;
+        let mut biggest = 0;
+        for _ in 0..200 {
+            let pcm: Vec<i16> = (0..n)
+                .map(|_| {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 17;
+                    seed ^= seed << 5;
+                    (seed >> 16) as i16
+                })
+                .collect();
+            biggest = biggest.max(e.encode(Pcm::I16(&pcm), &mut out).unwrap().bytes);
+        }
+        assert!(biggest <= 660, "{quality:?}: a frame of {biggest} bytes");
+    }
 }

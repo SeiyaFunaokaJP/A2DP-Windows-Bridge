@@ -384,6 +384,7 @@ impl CallModel {
     pub fn remote_alerting(&mut self, index: u8) -> bool {
         let Some(c) = self.find_mut(index) else { return false };
         if c.state != CallState::Dialing {
+            tracing::debug!("LE Audio: CCP: remote alerting for call {index} ignored (state {:?})", c.state);
             return false;
         }
         c.state = CallState::Alerting;
@@ -396,6 +397,7 @@ impl CallModel {
     pub fn remote_answered(&mut self, index: u8) -> bool {
         let Some(c) = self.find_mut(index) else { return false };
         if c.state != CallState::Dialing && c.state != CallState::Alerting {
+            tracing::debug!("LE Audio: CCP: remote answer for call {index} ignored (state {:?})", c.state);
             return false;
         }
         c.state = CallState::Active;
@@ -413,7 +415,10 @@ impl CallModel {
             (true, CallState::LocallyHeld) => CallState::LocallyAndRemotelyHeld,
             (false, CallState::RemotelyHeld) => CallState::Active,
             (false, CallState::LocallyAndRemotelyHeld) => CallState::LocallyHeld,
-            _ => return false,
+            (_, state) => {
+                tracing::debug!("LE Audio: CCP: remote hold {held} for call {index} ignored (state {state:?})");
+                return false;
+            }
         };
         c.state = next;
         if next == CallState::Active {
@@ -448,6 +453,7 @@ impl CallModel {
         }
         let r = backend.accept(c);
         if r != RESULT_SUCCESS {
+            tracing::debug!("LE Audio: CCP: backend refused to accept call {index} ({})", result_name(r));
             return r;
         }
         if let Some(c) = self.find_mut(index) {
@@ -530,6 +536,10 @@ impl CallModel {
         let scheme = uri[..colon].to_ascii_lowercase();
         let known = backend.uri_schemes().split(',').any(|s| s.trim().to_ascii_lowercase() == scheme);
         if !known || uri.bytes().any(|b| b < 0x20) {
+            tracing::debug!(
+                "LE Audio: CCP: originate refused: scheme {scheme:?} known {known} (backend schemes {:?})",
+                backend.uri_schemes()
+            );
             return (RESULT_INVALID_OUTGOING_URI, 0);
         }
         if self.calls.len() >= MAX_CALLS {
@@ -569,6 +579,7 @@ impl CallModel {
     /// opcode's name.
     pub fn control_point(&mut self, backend: &mut dyn Backend, value: &[u8]) -> Result<CpOutcome, u8> {
         let Some(&opcode) = value.first() else { return Err(ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LENGTH) };
+        tracing::debug!("LE Audio: CCP: control point write {value:02X?}");
         let (call_index, result) = match opcode {
             OP_ACCEPT | OP_TERMINATE | OP_LOCAL_HOLD | OP_LOCAL_RETRIEVE => {
                 if value.len() != 2 {

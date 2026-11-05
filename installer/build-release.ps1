@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
 Builds the release files of A2DPWB for one architecture: the installer
-(Tauri's NSIS bundler), the portable zip and the updater manifest.
+(Inno Setup, installer/A2DPWB.iss), the portable zip and the updater
+manifest.
 
 .DESCRIPTION
 Run on the release machine from any folder (PowerShell 7):
@@ -14,6 +15,7 @@ Writes to target/dist (or -OutDir):
     A2DPWB-<version>-win64-setup.exe        (arm64: -arm64-setup.exe)
     A2DPWB-<version>-win64-setup.exe.sig    updater signature
     A2DPWB-<version>-win64-portable.zip
+    A2DPWB-<version>-win64-symbols.zip      .pdb files, to read crash dumps
     latest.json                             updater manifest of this release
 
 Updater signing (see installer/README.md): TAURI_SIGNING_PRIVATE_KEY (the
@@ -25,8 +27,10 @@ key. Without them the build still works, but its in-app update stays off
 Neither key is part of the repository.
 
 Needs: Rust (with the target), pnpm, the UI's node_modules (pnpm install),
-the submodules under extern/, cargo-about (cargo install cargo-about).
-Tauri downloads NSIS itself on first use.
+the submodules under extern/, cargo-about (cargo install cargo-about), and
+Inno Setup 7.1.0 (winget install JRSoftware.InnoSetup.7 --version 7.1.0; ISCC.exe is found in
+its default folders, on PATH or in $env:ISCC). The WebView2
+bootstrapper is downloaded once into target/installer-cache.
 #>
 [CmdletBinding()]
 param(
@@ -96,19 +100,26 @@ if ($Arch -eq 'arm64' -and -not (Get-Command clang -ErrorAction SilentlyContinue
 # --- Folders ---
 $stage = Join-Path $OutDir "stage-$Arch"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
-$binDir = Join-Path $stage 'bin'
 $docDir = Join-Path $stage 'doc'
-New-Item -ItemType Directory -Force $binDir, (Join-Path $docDir 'licenses') | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $docDir 'licenses') | Out-Null
+
+# --- Inno Setup's compiler ---
+$iscc = @(
+    $env:ISCC
+    (Get-Command ISCC.exe -ErrorAction SilentlyContinue)?.Source
+    foreach ($base in $env:LOCALAPPDATA, ${env:ProgramFiles(x86)}, $env:ProgramFiles) {
+        if ($base) { Join-Path $base 'Programs/Inno Setup 7/ISCC.exe'; Join-Path $base 'Inno Setup 7/ISCC.exe' }
+    }
+) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+if (-not $iscc) {
+    throw 'Inno Setup''s ISCC.exe not found: winget install JRSoftware.InnoSetup.7 --version 7.1.0 (or set $env:ISCC)'
+}
 
 # --- The core and the driver helper (the UI is built by tauri build) ---
 Invoke-Checked 'cargo build' {
     cargo build --release --locked --manifest-path (Join-Path $repo 'Cargo.toml') --target $triple -p a2dpwb-core-exe -p a2dpwb-driver
 }
 $release = Join-Path $repo "target/$triple/release"
-# Sidecars: Tauri looks for <name>-<target triple>.exe and installs <name>.exe
-foreach ($name in 'a2dpwb-core', 'a2dpwb-driver') {
-    Copy-Item (Join-Path $release "$name.exe") (Join-Path $binDir "$name-$triple.exe")
-}
 
 # --- Licence documents (installed next to the programs, and in the zip) ---
 $ext = Join-Path $repo 'extern'
@@ -131,6 +142,7 @@ $docs = [ordered]@{
     'licenses/libopenaptx-LGPL-2.1.txt'    = Join-Path $ext 'libopenaptx/COPYING'
     'licenses/lhdcv5-enc-LICENSE.txt'      = Join-Path $ext 'lhdcv5-enc/LICENSE'
     'licenses/opus-COPYING.txt'            = Join-Path $ext 'opus/COPYING'
+    'licenses/aptx-adaptive-LICENSE.txt'   = Join-Path $repo 'app/src/crates/aptx-adaptive/LICENSE'
     # LE Audio (experimental): LC3 encoder and LE Secure Connections' P-256
     'licenses/liblc3-LICENSE.txt'          = Join-Path $ext 'btstack/3rd-party/lc3-google/LICENSE'
     'licenses/micro-ecc-LICENSE.txt'       = Join-Path $ext 'btstack/3rd-party/micro-ecc/LICENSE.txt'
@@ -184,58 +196,78 @@ See LICENSE, THIRD_PARTY_LICENSES.md and the licenses/ folder for the terms
 of each component; licenses/rust-crates.txt lists the Rust crates.
 "@ | Set-Content -Encoding utf8NoBOM (Join-Path $docDir 'SOURCE.txt')
 
-# --- The installer: Tauri's configuration plus this build's files ---
-# Paths relative to src-tauri: Tauri mangles absolute ones
-$tauriDir = Join-Path $ui 'src-tauri'
-if ([IO.Path]::GetPathRoot($stage) -ne [IO.Path]::GetPathRoot($tauriDir)) {
-    throw "-OutDir must be on the repository's drive ($([IO.Path]::GetPathRoot($tauriDir)))"
-}
-$rel = { param($base, $p) [IO.Path]::GetRelativePath($base, $p) -replace '\\', '/' }
-$resources = [ordered]@{}
-Get-ChildItem -Recurse -File $docDir | ForEach-Object {
-    $resources[(& $rel $tauriDir $_.FullName)] = (& $rel $docDir $_.FullName)
-}
-$overlay = [ordered]@{
-    bundle  = [ordered]@{
-        externalBin            = @((& $rel $tauriDir (Join-Path $binDir 'a2dpwb-core')), (& $rel $tauriDir (Join-Path $binDir 'a2dpwb-driver')))
-        resources              = $resources
-        createUpdaterArtifacts = $signing
-    }
-    plugins = @{ updater = @{ pubkey = $pubkey } }
-}
+# --- a2dpwb.exe: Tauri's configuration plus the updater key ---
 $overlayPath = Join-Path $stage 'tauri.release.conf.json'
-$overlay | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8NoBOM $overlayPath
-
+@{ plugins = @{ updater = @{ pubkey = $pubkey } } } | ConvertTo-Json -Depth 4 |
+    Set-Content -Encoding utf8NoBOM $overlayPath
 Push-Location $ui
 try {
-    Invoke-Checked 'tauri build' { pnpm tauri build --target $triple --bundles nsis --config $overlayPath }
+    Invoke-Checked 'tauri build' { pnpm tauri build --target $triple --no-bundle --config $overlayPath }
 } finally {
     Pop-Location
 }
 
-$nsisDir = Join-Path $release 'bundle/nsis'
-$built = Get-ChildItem (Join-Path $nsisDir "*_${version}_*-setup.exe") | Sort-Object LastWriteTime | Select-Object -Last 1
-if (-not $built) { throw "no installer in $nsisDir" }
-New-Item -ItemType Directory -Force $OutDir | Out-Null
-$setupName = "A2DPWB-$version-$archName-setup.exe"
-$setup = Join-Path $OutDir $setupName
-Copy-Item $built.FullName $setup -Force
-if ($signing) {
-    Copy-Item "$($built.FullName).sig" "$setup.sig" -Force
-}
-
-# --- Portable zip: the same files, no installer, notify-only updates ---
+# --- The package: the portable zip's folder, which the installer installs ---
 $pkgName = "A2DPWB-$version"
 $pkgDir = Join-Path $stage $pkgName
 New-Item -ItemType Directory -Force $pkgDir | Out-Null
-Copy-Item (Join-Path $release 'a2dpwb.exe') $pkgDir
-foreach ($name in 'a2dpwb-core', 'a2dpwb-driver') {
+foreach ($name in 'a2dpwb', 'a2dpwb-core', 'a2dpwb-driver') {
     Copy-Item (Join-Path $release "$name.exe") $pkgDir
 }
 Copy-Item -Recurse (Join-Path $docDir '*') $pkgDir
+New-Item -ItemType Directory -Force $OutDir | Out-Null
 $zip = Join-Path $OutDir "$pkgName-$archName-portable.zip"
 if (Test-Path $zip) { Remove-Item -Force $zip }
 Compress-Archive -Path $pkgDir -DestinationPath $zip
+
+# --- WebView2 bootstrapper (Evergreen), embedded for PCs without WebView2 ---
+$cache = Join-Path $repo 'target/installer-cache'
+$webView2Setup = Join-Path $cache 'MicrosoftEdgeWebview2Setup.exe'
+if (-not (Test-Path -LiteralPath $webView2Setup)) {
+    New-Item -ItemType Directory -Force $cache | Out-Null
+    Invoke-WebRequest 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile "$webView2Setup.part"
+    Move-Item -Force "$webView2Setup.part" $webView2Setup
+}
+$sig = Get-AuthenticodeSignature -LiteralPath $webView2Setup
+if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+    throw "$webView2Setup is not signed by Microsoft ($($sig.Status)): delete it and build again"
+}
+
+# --- The installer ---
+$setupName = "A2DPWB-$version-$archName-setup.exe"
+$setup = Join-Path $OutDir $setupName
+# VERSIONINFO takes numbers only: 2.0.2-beta.5 -> 2.0.2
+$versionNumeric = $version -replace '[-+].*$', ''
+Invoke-Checked 'ISCC' {
+    & $iscc /Q "/DAppVersion=$version" "/DAppVersionNumeric=$versionNumeric" "/DArch=$Arch" `
+        "/DPkgDir=$pkgDir" "/DWebView2Setup=$webView2Setup" "/DOutputDir=$OutDir" `
+        "/DOutputBaseFilename=$([IO.Path]::GetFileNameWithoutExtension($setupName))" `
+        (Join-Path $PSScriptRoot 'A2DPWB.iss')
+}
+
+# --- Updater signature of the installer; the version is part of what is
+# signed (plugins.updater.requireSignedVersion) ---
+if ($signing) {
+    $key = $env:TAURI_SIGNING_PRIVATE_KEY
+    if (Test-Path -LiteralPath $key -PathType Leaf) { $key = Get-Content -Raw -LiteralPath $key }
+    $savedKey = $env:TAURI_SIGNING_PRIVATE_KEY
+    $env:TAURI_SIGNING_PRIVATE_KEY = $key
+    Push-Location $ui
+    try {
+        Invoke-Checked 'tauri signer sign' { pnpm tauri signer sign --app-version $version $setup }
+    } finally {
+        Pop-Location
+        $env:TAURI_SIGNING_PRIVATE_KEY = $savedKey
+    }
+    if (-not (Test-Path -LiteralPath "$setup.sig")) { throw "no $setup.sig" }
+}
+
+# --- Symbols: the crash reports' minidumps (logs\crash) open with them ---
+$pdbs = 'a2dpwb', 'a2dpwb_core', 'a2dpwb_driver' | ForEach-Object { Join-Path $release "$_.pdb" } |
+    Where-Object { Test-Path $_ }
+$symbols = Join-Path $OutDir "$pkgName-$archName-symbols.zip"
+if (Test-Path $symbols) { Remove-Item -Force $symbols }
+if ($pdbs) { Compress-Archive -Path $pdbs -DestinationPath $symbols }
 
 # --- Updater manifest (one per release; arm64 is added to x64's) ---
 if ($signing) {

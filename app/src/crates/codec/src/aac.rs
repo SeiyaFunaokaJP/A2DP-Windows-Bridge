@@ -18,9 +18,18 @@ const CODEC: CodecKind = CodecKind::Aac;
 /// Target bit rate per quality, as v1 (MediumHigh is LHDC V5 only: High)
 fn quality_bitrate(quality: Quality) -> u32 {
     match quality {
-        Quality::High | Quality::MediumHigh => 256_000,
+        Quality::High | Quality::MediumHigh | Quality::LowLatency => 256_000,
         Quality::Standard => 192_000,
         Quality::Mobile => 128_000,
+    }
+}
+
+/// fdk-aac's variable bit rate mode (3 medium .. 5 very high) per quality
+fn vbr_mode(quality: Quality) -> u32 {
+    match quality {
+        Quality::High | Quality::MediumHigh | Quality::LowLatency => 5,
+        Quality::Standard => 4,
+        Quality::Mobile => 3,
     }
 }
 
@@ -58,11 +67,24 @@ impl AacEncoder {
         // 683 bytes: more than the 660 bytes a 672-byte L2CAP MTU leaves
         // (BlueZ sinks, some headphones), and every packet was dropped as
         // oversized.
-        let max_bitrate =
+        let mtu_bitrate =
             u32::try_from(u64::from(config.mtu) * 8 * u64::from(config.sample_rate) / 1024).unwrap_or(u32::MAX);
-        let mut bitrate = quality_bitrate(config.quality);
+        // The configuration's bit rate (the sink's largest) caps it too
+        let max_bitrate = match config.peer.aac_max_bitrate {
+            0 => mtu_bitrate,
+            b => b.min(mtu_bitrate),
+        };
+        let dev = crate::dev::overrides();
+        let mut bitrate = match dev.aac_bitrate_kbps {
+            0 => quality_bitrate(config.quality),
+            k => k * 1000,
+        };
         if bitrate > max_bitrate {
-            tracing::info!("AAC: bit rate limited to {max_bitrate} bps by the {}-byte media payload", config.mtu);
+            if max_bitrate == mtu_bitrate {
+                tracing::info!("AAC: bit rate limited to {max_bitrate} bps by the {}-byte media payload", config.mtu);
+            } else {
+                tracing::info!("AAC: bit rate limited to {max_bitrate} bps by the sink");
+            }
             bitrate = max_bitrate;
         }
 
@@ -70,19 +92,44 @@ impl AacEncoder {
             |what: &str, e: fdkaac_sys::EncError| EncoderError::Init { codec: CODEC, what: format!("{what}: {e}") };
         let mut enc = FdkEncoder::open(0, config.channels).map_err(|e| init_err("aacEncOpen", e))?;
         let channel_mode = if config.channels == 1 { ffi::MODE_1 } else { ffi::MODE_2 };
-        // As v1: AAC-LC (what A2DP requires), CBR (the default bit rate mode;
-        // the codec configuration says VBR off), LATM with in-band
-        // StreamMuxConfig and fdk-aac's defaults for it (AudioMuxVersion 0,
-        // StreamMuxConfig every 10th frame), afterburner for quality
-        let params: [(ffi::AACENC_PARAM, &str, u32); 7] = [
+        // AAC-LC (what A2DP requires), CBR (the default bit rate mode; the
+        // codec configuration says VBR off), LATM with in-band
+        // StreamMuxConfig in every frame (fdk-aac's default of every 10th
+        // frame leaves some sinks silent), afterburner for quality.
+        // AudioMuxVersion 1 (fdk-aac's 2: taraBufferFullness and the ASC
+        // length in the StreamMuxConfig) and explicit backward-compatible
+        // signaling, as Android (a2dp_aac_encoder.cc) and PipeWire
+        // (a2dp-codec-aac.c) send it; fdk-aac's default AudioMuxVersion 0
+        // left the JBL Tune 510BT silent (issue #87). The developer override
+        // aac_latm_v0 brings back the old StreamMuxConfig.
+        let vbr = config.abr;
+        let mut params = vec![
+            // 0 = constant bit rate; 3..5 variable (very high is the
+            // High quality's), the sink having listed VBR
+            (ffi::AACENC_BITRATEMODE, "AACENC_BITRATEMODE", if vbr { vbr_mode(config.quality) } else { 0 }),
             (ffi::AACENC_AOT, "AACENC_AOT", ffi::AOT_AAC_LC as u32),
             (ffi::AACENC_SAMPLERATE, "AACENC_SAMPLERATE", config.sample_rate),
             (ffi::AACENC_CHANNELMODE, "AACENC_CHANNELMODE", channel_mode as u32),
             (ffi::AACENC_BITRATE, "AACENC_BITRATE", bitrate),
-            (ffi::AACENC_PEAK_BITRATE, "AACENC_PEAK_BITRATE", max_bitrate),
             (ffi::AACENC_TRANSMUX, "AACENC_TRANSMUX", ffi::TT_MP4_LATM_MCP1 as u32),
-            (ffi::AACENC_AFTERBURNER, "AACENC_AFTERBURNER", 1),
+            (ffi::AACENC_HEADER_PERIOD, "AACENC_HEADER_PERIOD", 1),
+            (ffi::AACENC_AUDIOMUXVER, "AACENC_AUDIOMUXVER", if dev.aac_latm_v0 { 0 } else { 2 }),
+            (ffi::AACENC_SIGNALING_MODE, "AACENC_SIGNALING_MODE", if dev.aac_latm_v0 { 0 } else { 1 }),
         ];
+        if !dev.aac_no_peak {
+            params.push((ffi::AACENC_PEAK_BITRATE, "AACENC_PEAK_BITRATE", max_bitrate));
+        }
+        if !dev.aac_no_afterburner {
+            params.push((ffi::AACENC_AFTERBURNER, "AACENC_AFTERBURNER", 1));
+        }
+        tracing::debug!(
+            "AAC: bit rate {bitrate} bps (quality {:?}, dev override {} kbps), mtu cap {mtu_bitrate}, sink cap {}, \
+             parameters {:?}",
+            config.quality,
+            dev.aac_bitrate_kbps,
+            config.peer.aac_max_bitrate,
+            params.iter().map(|&(_, name, value)| (name, value)).collect::<Vec<_>>()
+        );
         for (param, name, value) in params {
             enc.set_param(param, value).map_err(|e| init_err(&format!("{name} = {value}"), e))?;
         }
@@ -92,9 +139,14 @@ impl AacEncoder {
         // fdk-aac raises a bit rate below what the configuration needs; then
         // the frames would no longer fit the media payload
         let effective = enc.param(ffi::AACENC_BITRATE);
-        if effective > max_bitrate {
+        tracing::debug!(
+            "AAC: fdk-aac effective bit rate {effective} bps, frame length {}, max output {} bytes",
+            info.frameLength,
+            info.maxOutBufBytes
+        );
+        if !vbr && effective > mtu_bitrate {
             return unsupported(format!(
-                "media MTU {} allows {max_bitrate} bps, below the {effective} bps AAC needs",
+                "media MTU {} allows {mtu_bitrate} bps, below the {effective} bps AAC needs",
                 config.mtu
             ));
         }

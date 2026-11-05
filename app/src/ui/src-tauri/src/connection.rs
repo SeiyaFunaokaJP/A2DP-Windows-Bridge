@@ -94,11 +94,16 @@ fn error(code: &str, key: &str, args: &[String]) -> ErrorInfo {
 /// for the user to answer the UAC prompt.
 fn timeout_for(method: &str, params: &Value) -> Duration {
     match method {
+        // The inquiries, the name requests after the last one (~7 s), the
+        // LE Audio scan (~6 s) and the stack's start
         "device.scan" => {
             let seconds = params.get("seconds").and_then(Value::as_u64).unwrap_or(10);
-            Duration::from_secs(30.max(seconds + 10))
+            Duration::from_secs(30.max(seconds + 25))
         }
         "adapter.assign_winusb" | "adapter.restore_driver" => Duration::from_secs(120),
+        // Up to two files, each fetched with a 30 s limit, then the
+        // adapters are listed again
+        "adapter.download_firmware" => Duration::from_secs(90),
         "stream.start"
         | "stream.start_custom"
         | "adapter.restart"
@@ -146,6 +151,11 @@ impl Ipc {
     fn set_status(&self, app: &AppHandle, status: Status) {
         let mut s = lock(&self.status);
         if *s != status {
+            match &status {
+                Status::Connected { server } => tracing::info!("core connected ({server})"),
+                Status::Connecting => tracing::info!("connecting to the core"),
+                other => tracing::warn!("core: {other:?}"),
+            }
             *s = status.clone();
             drop(s);
             let _ = app.emit(STATUS_EVENT, status);
@@ -424,9 +434,11 @@ mod tests {
     #[test]
     fn long_calls_get_long_timeouts() {
         assert_eq!(timeout_for("stream.stop", &Value::Null), Duration::from_secs(5));
-        assert_eq!(timeout_for("device.scan", &serde_json::json!({ "seconds": 10 })), Duration::from_secs(30));
-        assert_eq!(timeout_for("device.scan", &serde_json::json!({ "seconds": 40 })), Duration::from_secs(50));
+        assert_eq!(timeout_for("device.scan", &serde_json::json!({ "seconds": 3 })), Duration::from_secs(30));
+        assert_eq!(timeout_for("device.scan", &serde_json::json!({ "seconds": 30 })), Duration::from_secs(55));
         assert!(timeout_for("adapter.assign_winusb", &Value::Null) >= Duration::from_secs(60));
+        // Two 30 s fetches and the adapter list
+        assert!(timeout_for("adapter.download_firmware", &Value::Null) > Duration::from_secs(60));
         // Discovery waits 1.5 s; connecting ends an older connection first
         assert!(timeout_for("receiver.discover", &Value::Null) >= Duration::from_secs(10));
         assert!(timeout_for("receiver.connect", &Value::Null) >= Duration::from_secs(10));

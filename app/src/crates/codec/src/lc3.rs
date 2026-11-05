@@ -53,6 +53,13 @@ pub struct Lc3ChannelEncoder {
 impl Lc3ChannelEncoder {
     pub fn new(params: Lc3Params) -> Result<Lc3ChannelEncoder, Lc3Error> {
         params.frame_samples()?;
+        tracing::debug!(
+            "LC3: encoder {} Hz, {} us, {} octets ({} kbps)",
+            params.sample_rate,
+            params.frame_us,
+            params.octets,
+            params.kbps()
+        );
         let enc = Lc3Encoder::new(params.frame_us, params.sample_rate)?;
         Ok(Lc3ChannelEncoder { enc, octets: usize::from(params.octets) })
     }

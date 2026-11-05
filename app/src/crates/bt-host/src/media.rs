@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use btstack_sys::Remote;
 
@@ -33,11 +34,22 @@ pub struct MediaPacket {
     pub len: u16,
     pub timestamp: u32,
     pub rtp: bool,
+    /// RTP marker bit
+    pub marker: bool,
+    /// When the packet entered the send queue
+    pub queued_at: Option<Instant>,
 }
 
 impl Default for MediaPacket {
     fn default() -> Self {
-        MediaPacket { data: [0; MAX_MEDIA_PACKET_SIZE], len: 0, timestamp: 0, rtp: true }
+        MediaPacket {
+            data: [0; MAX_MEDIA_PACKET_SIZE],
+            len: 0,
+            timestamp: 0,
+            rtp: true,
+            marker: false,
+            queued_at: None,
+        }
     }
 }
 
@@ -58,6 +70,33 @@ pub(crate) fn queue(stats: Arc<LinkStats>, remote: Remote) -> (MediaSink, rtrb::
     (MediaSink { producer, remote, stats, streaming: streaming.clone() }, consumer, streaming)
 }
 
+/// The BTstack thread's side of the time limit: drops the packets that
+/// waited [`LinkStats::queue_max_wait`] ([`crate::stats::MEDIA_QUEUE_MAX_WAIT`] unless
+/// developer mode set another), and the oldest of a full queue so the
+/// newest audio finds room, and records how long the next packet has waited.
+/// Runs on every packet queued, so also while the radio stands still.
+/// Returns the packets dropped.
+pub(crate) fn drop_stale(media: &mut rtrb::Consumer<MediaPacket>, stats: &LinkStats, now: Instant) -> u32 {
+    let mut dropped = 0;
+    let mut waited = Duration::ZERO;
+    let max_wait = stats.queue_max_wait();
+    while let Ok(packet) = media.peek() {
+        waited = packet.queued_at.map_or(Duration::ZERO, |t| now.saturating_duration_since(t));
+        if waited < max_wait && media.slots() < MEDIA_QUEUE_PACKETS {
+            break;
+        }
+        let _ = media.pop();
+        dropped += 1;
+        waited = Duration::ZERO;
+    }
+    stats.queue_wait_ms.store(waited.as_millis() as u32, Ordering::Relaxed);
+    if dropped > 0 {
+        stats.queue_drops.fetch_add(dropped.into(), Ordering::Relaxed);
+        stats.queue_depth.store(media.slots() as u32, Ordering::Relaxed);
+    }
+    dropped
+}
+
 /// The encode thread's end of the queue
 pub struct MediaSink {
     producer: rtrb::Producer<MediaPacket>,
@@ -68,7 +107,8 @@ pub struct MediaSink {
 
 impl MediaSink {
     /// Queues a packet and wakes the BTstack thread. False (and counted as a
-    /// queue drop) when the queue is full: the radio is not keeping up.
+    /// queue drop) when the queue is full, which [`drop_stale`] prevents
+    /// unless the BTstack thread is held up too.
     /// While the stream is not started (suspended, reconnecting) the packet
     /// is dropped without counting: nothing would send it, and a queue
     /// filling up meanwhile would make ABR lower the quality and send stale
@@ -77,15 +117,19 @@ impl MediaSink {
         if !self.is_streaming() {
             return false;
         }
-        match self.producer.push(*packet) {
+        let mut queued = *packet;
+        queued.queued_at = Some(Instant::now());
+        match self.producer.push(queued) {
             Ok(()) => {
                 let depth = MEDIA_QUEUE_PACKETS - self.producer.slots();
                 self.stats.queue_depth.store(depth as u32, Ordering::Relaxed);
+                tracing::trace!("media queue: {} bytes, ts {}, depth {depth}", packet.len, packet.timestamp);
                 self.remote.wake();
                 true
             }
             Err(_) => {
-                self.stats.queue_drops.fetch_add(1, Ordering::Relaxed);
+                let drops = self.stats.queue_drops.fetch_add(1, Ordering::Relaxed) + 1;
+                tracing::trace!("media queue full: packet ts {} dropped ({drops} drops)", packet.timestamp);
                 false
             }
         }
@@ -136,5 +180,75 @@ mod tests {
         }
         assert!(!sink.send(&packet));
         assert_eq!(stats.queue_drops.load(Ordering::Relaxed), 1);
+    }
+
+    fn streaming_queue() -> (Arc<LinkStats>, MediaSink, rtrb::Consumer<MediaPacket>) {
+        let stats = Arc::new(LinkStats::default());
+        let (sink, consumer, streaming) = detached_queue(stats.clone());
+        streaming.store(true, Ordering::Release);
+        (stats, sink, consumer)
+    }
+
+    fn packet(timestamp: u32) -> MediaPacket {
+        MediaPacket { timestamp, ..Default::default() }
+    }
+
+    #[test]
+    fn packets_waiting_too_long_are_dropped_oldest_first() {
+        let (stats, mut sink, mut consumer) = streaming_queue();
+        assert!(sink.send(&packet(1)));
+        assert!(sink.send(&packet(2)));
+        let queued = consumer.peek().unwrap().queued_at.unwrap();
+
+        assert_eq!(drop_stale(&mut consumer, &stats, queued + Duration::from_millis(100)), 0);
+        assert_eq!(stats.queue_wait_ms.load(Ordering::Relaxed), 100);
+
+        assert!(sink.send(&packet(3)));
+        assert_eq!(drop_stale(&mut consumer, &stats, queued + Duration::from_secs(10)), 3);
+        assert!(consumer.is_empty());
+        assert_eq!(stats.queue_drops.load(Ordering::Relaxed), 3);
+        assert_eq!(stats.queue_depth.load(Ordering::Relaxed), 0);
+        assert_eq!(stats.queue_wait_ms.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn a_full_queue_gives_up_its_oldest_packet() {
+        let (stats, mut sink, mut consumer) = streaming_queue();
+        for ts in 0..MEDIA_QUEUE_PACKETS as u32 {
+            assert!(sink.send(&packet(ts)));
+        }
+        let queued = consumer.peek().unwrap().queued_at.unwrap();
+        assert_eq!(drop_stale(&mut consumer, &stats, queued), 1);
+        assert_eq!(consumer.peek().unwrap().timestamp, 1);
+        // The newest audio finds room
+        assert!(sink.send(&packet(64)));
+        assert_eq!(stats.queue_drops.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn developer_mode_sets_the_wait_limit() {
+        let (stats, mut sink, mut consumer) = streaming_queue();
+        assert_eq!(stats.queue_max_wait(), crate::stats::MEDIA_QUEUE_MAX_WAIT);
+        stats.queue_max_wait_ms.store(100, Ordering::Relaxed);
+        assert_eq!(stats.queue_max_wait(), Duration::from_millis(100));
+        assert!(sink.send(&packet(1)));
+        let queued = consumer.peek().unwrap().queued_at.unwrap();
+        // Within the limit set, past the limit set (and within the default)
+        assert_eq!(drop_stale(&mut consumer, &stats, queued + Duration::from_millis(99)), 0);
+        assert_eq!(drop_stale(&mut consumer, &stats, queued + Duration::from_millis(200)), 1);
+        assert!(consumer.is_empty());
+    }
+
+    #[test]
+    fn the_sink_delay_is_kept_in_100us_units() {
+        let stats = LinkStats::default();
+        assert_eq!(stats.sink_delay(), None);
+        stats.set_sink_delay(Some(1875));
+        assert_eq!(stats.sink_delay(), Some(Duration::from_micros(187_500)));
+        // A device may report 0, which is a report all the same
+        stats.set_sink_delay(Some(0));
+        assert_eq!(stats.sink_delay(), Some(Duration::ZERO));
+        stats.set_sink_delay(None);
+        assert_eq!(stats.sink_delay(), None);
     }
 }

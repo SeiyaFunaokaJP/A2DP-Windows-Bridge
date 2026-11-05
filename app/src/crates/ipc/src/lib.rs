@@ -114,7 +114,9 @@ mod tests {
         LinkSample::export_all(&cfg).unwrap();
         AudioDevice::export_all(&cfg).unwrap();
         AudioApp::export_all(&cfg).unwrap();
+        MixerApp::export_all(&cfg).unwrap();
         DiagInfo::export_all(&cfg).unwrap();
+        WifiAccessPoint::export_all(&cfg).unwrap();
         FlowView::export_all(&cfg).unwrap();
         AdapterInfo::export_all(&cfg).unwrap();
         Method::export_all(&cfg).unwrap();
@@ -122,5 +124,15 @@ mod tests {
         ReceiverState::export_all(&cfg).unwrap();
         DiagInfoParams::export_all(&cfg).unwrap();
         SettingsApplied::export_all(&cfg).unwrap();
+        DiagBundle::export_all(&cfg).unwrap();
+        DiagBundleParams::export_all(&cfg).unwrap();
+        ProbeResult::export_all(&cfg).unwrap();
+        ScriptCheck::export_all(&cfg).unwrap();
+        ScriptResult::export_all(&cfg).unwrap();
+        RfcommOpened::export_all(&cfg).unwrap();
+        DevicePairing::export_all(&cfg).unwrap();
+        DeviceService::export_all(&cfg).unwrap();
+        ServiceList::export_all(&cfg).unwrap();
+        WindowsImport::export_all(&cfg).unwrap();
     }
 }

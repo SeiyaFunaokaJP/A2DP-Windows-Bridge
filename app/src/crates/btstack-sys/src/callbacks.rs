@@ -14,7 +14,8 @@ use crate::{
 pub(crate) enum Pending {
     Packet(Source, u8, u16, Vec<u8>),
     Timer(u32),
-    Intel(i32),
+    /// A controller packet for a firmware loader (transport in raw mode)
+    Raw(u8, Vec<u8>),
     /// An ATT request of this connection was answered "pending" while the
     /// app was busy (crate::att)
     AttRetry(u16),
@@ -57,6 +58,7 @@ fn dispatch(stack: &Stack, event: Pending) -> bool {
         None => true,
         Some(event) => {
             PENDING.with(|p| p.borrow_mut().push_back(event));
+            tracing::trace!(target: "btstack", "event queued (app busy), {} pending", PENDING.with(|p| p.borrow().len()));
             false
         }
     }
@@ -68,7 +70,7 @@ fn deliver(app: &mut dyn App, stack: &Stack, event: Pending) {
             app.on_packet(stack, source, packet_type, channel, &data)
         }
         Pending::Timer(id) => app.on_timer(stack, id),
-        Pending::Intel(result) => app.on_intel_firmware(stack, result),
+        Pending::Raw(packet_type, data) => app.on_raw_packet(stack, packet_type, &data),
         // Not for the app (drain_pending handles it without a borrow)
         Pending::AttRetry(_) => {}
     }
@@ -126,7 +128,13 @@ pub(crate) fn with_app<R>(stack: &Stack, f: impl FnOnce(&mut dyn App, &Stack) ->
 extern "C" fn a2dpwb_rs_on_wake() {
     guard((), || {
         let stack = Stack::new();
-        transport::pump();
+        transport::pump(|packet_type, packet| {
+            // Raw mode: a firmware loader in the app, not BTstack, reads it
+            log_packet(packet_type, true, packet);
+            if dispatch(&stack, Pending::Raw(packet_type, packet.to_vec())) {
+                drain_pending(&stack);
+            }
+        });
         let flags = WAKE_FLAGS.swap(0, Ordering::AcqRel);
         if flags & WAKE_APP != 0 {
             with_app(&stack, |app, s| app.on_wake(s));
@@ -142,6 +150,7 @@ extern "C" fn a2dpwb_rs_on_wake() {
 extern "C" fn a2dpwb_rs_on_timer(id: u32) {
     guard((), || {
         let stack = Stack::new();
+        tracing::trace!(target: "btstack", "timer {id} fired");
         if dispatch(&stack, Pending::Timer(id)) {
             drain_pending(&stack);
         }
@@ -175,16 +184,7 @@ extern "C" fn a2dpwb_rs_on_packet(source: u8, packet_type: u8, channel: u16, pac
             drain_pending(&stack);
         } else {
             PENDING.with(|p| p.borrow_mut().push_back(Pending::Packet(source, packet_type, channel, data.to_vec())));
-        }
-    })
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_intel_done(result: c_int) {
-    guard((), || {
-        let stack = Stack::new();
-        if dispatch(&stack, Pending::Intel(result)) {
-            drain_pending(&stack);
+            tracing::trace!(target: "btstack", "{source:?} packet of {} bytes queued (app busy)", data.len());
         }
     })
 }
@@ -232,14 +232,20 @@ extern "C" fn a2dpwb_rs_log_packet(packet_type: u8, incoming: u8, packet: *const
         }
         // SAFETY: HCI dump passes a buffer of `len` bytes valid during the call.
         let data = unsafe { std::slice::from_raw_parts(packet, len as usize) };
-        LOGGER.with(|l| {
-            if let Ok(mut l) = l.try_borrow_mut()
-                && let Some(logger) = l.as_mut()
-            {
-                logger(packet_type, incoming != 0, data);
-            }
-        });
+        log_packet(packet_type, incoming != 0, data);
     })
+}
+
+/// To the packet logger (HCI capture), as HCI dump does for BTstack's
+/// packets; also for those of a firmware loader in raw mode
+pub(crate) fn log_packet(packet_type: u8, incoming: bool, data: &[u8]) {
+    LOGGER.with(|l| {
+        if let Ok(mut l) = l.try_borrow_mut()
+            && let Some(logger) = l.as_mut()
+        {
+            logger(packet_type, incoming, data);
+        }
+    });
 }
 
 #[unsafe(no_mangle)]
@@ -250,6 +256,7 @@ extern "C" fn a2dpwb_rs_log_message(level: c_int, message: *const c_char) {
         }
         // SAFETY: vsnprintf in shim.c produced a NUL-terminated string.
         let text = unsafe { CStr::from_ptr(message) }.to_string_lossy();
+        let text = without_key_material(&text);
         // HCI_DUMP_LOG_LEVEL_DEBUG 0, _INFO 1, _ERROR 2, _PRINT 3 (the
         // Realtek driver's printf, see build.rs)
         match level {
@@ -260,6 +267,50 @@ extern "C" fn a2dpwb_rs_log_message(level: c_int, message: *const c_char) {
             _ => tracing::trace!(target: "btstack", "{text}"),
         }
     })
+}
+
+/// BTstack's info log prints key material (ENABLE_LOG_INFO; sm.c,
+/// btstack_crypto.c): `log_info_key` writes "ltk    <32 hex digits>" for
+/// the LTK, IRK, CSRK, the local IR / ER / DHK roots and the derived link
+/// key, `log_info_hexdump` the DH key and the CMAC inputs as lines of 16
+/// "AB " pairs. With verbose logging on, those lines reach the log file and
+/// the diagnostics, so the digits become 'x' here, before the line is a
+/// tracing event: a word of exactly 32 hex digits, and a line that is
+/// nothing but 16 hex bytes (ATT values of that size go with it).
+pub(crate) fn without_key_material(text: &str) -> std::borrow::Cow<'_, str> {
+    let b = text.as_bytes();
+    let trimmed = text.trim_end();
+    let mut pairs = trimmed.split(' ');
+    let hexdump = pairs.by_ref().take(16).filter(|p| p.len() == 2 && p.bytes().all(|c| c.is_ascii_hexdigit())).count()
+        == 16
+        && pairs.next().is_none();
+    let mut out: Option<Vec<u8>> = None;
+    if hexdump {
+        let v = out.get_or_insert_with(|| b.to_vec());
+        for c in &mut v[..trimmed.len()] {
+            if c.is_ascii_hexdigit() {
+                *c = b'x';
+            }
+        }
+    }
+    let mut i = 0;
+    while i < b.len() {
+        if !b[i].is_ascii_alphanumeric() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < b.len() && b[i].is_ascii_alphanumeric() {
+            i += 1;
+        }
+        if i - start == 32 && b[start..i].iter().all(u8::is_ascii_hexdigit) {
+            out.get_or_insert_with(|| b.to_vec())[start..i].fill(b'x');
+        }
+    }
+    match out {
+        Some(v) => std::borrow::Cow::Owned(String::from_utf8(v).expect("only ASCII bytes were replaced")),
+        None => std::borrow::Cow::Borrowed(text),
+    }
 }
 
 /// A log line of BTstack's firmware loaders ("btstack_chipset_realtek.c.972:
@@ -360,7 +411,38 @@ extern "C" fn a2dpwb_rs_lk_at(index: c_int, addr: *mut u8, key: *mut u8, key_typ
 
 #[cfg(test)]
 mod tests {
-    use super::from_chipset_driver;
+    use super::{from_chipset_driver, without_key_material};
+
+    #[test]
+    fn key_material_is_masked() {
+        let m = without_key_material;
+        // log_info_key: "%-6s %s"
+        assert_eq!(m("ltk    0123456789ABCDEF0123456789ABCDEF"), "ltk    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+        assert_eq!(m("IRK    0123456789abcdef0123456789abcdef"), "IRK    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+        assert_eq!(m("Link Key 0123456789ABCDEF0123456789ABCDEF"), "Link Key xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+        // log_info_hexdump: 16 bytes per line, a space after each
+        assert_eq!(
+            m("01 23 45 67 89 AB CD EF 01 23 45 67 89 AB CD EF "),
+            "xx xx xx xx xx xx xx xx xx xx xx xx xx xx xx xx "
+        );
+        assert_eq!(
+            m("01 23 45 67 89 AB CD EF 01 23 45 67 89 AB CD EF"),
+            "xx xx xx xx xx xx xx xx xx xx xx xx xx xx xx xx"
+        );
+        // Shorter dumps (ATT values, L2CAP options) and other hex stay
+        assert_eq!(m("01 23 45 67 89 AB CD EF "), "01 23 45 67 89 AB CD EF ");
+        assert_eq!(
+            m("01 23 45 67 89 AB CD EF 01 23 45 67 89 AB CD EF 01 "),
+            "01 23 45 67 89 AB CD EF 01 23 45 67 89 AB CD EF 01 "
+        );
+        assert_eq!(
+            m("hci.c.123: handle 0x0040 addr 00:11:22:33:44:55"),
+            "hci.c.123: handle 0x0040 addr 00:11:22:33:44:55"
+        );
+        assert_eq!(m("sm: hash 0123456789ABCDEF0123456789ABCDE"), "sm: hash 0123456789ABCDEF0123456789ABCDE");
+        assert_eq!(m("x0123456789ABCDEF0123456789ABCDEF0"), "x0123456789ABCDEF0123456789ABCDEF0");
+        assert!(matches!(m("plain"), std::borrow::Cow::Borrowed(_)));
+    }
 
     #[test]
     fn chipset_driver_lines() {

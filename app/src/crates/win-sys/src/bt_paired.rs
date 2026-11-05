@@ -43,6 +43,11 @@ impl PairedDevice {
     pub fn address_string(&self) -> String {
         format_address(&self.address)
     }
+
+    /// BTH_ADDR
+    pub fn bth_addr(&self) -> u64 {
+        self.address.iter().fold(0u64, |a, &b| (a << 8) | u64::from(b))
+    }
 }
 
 /// v1 `check_a2dp_sink`: a device whose major class is Audio/Video
@@ -90,6 +95,16 @@ fn device_from_info(info: &BLUETOOTH_DEVICE_INFO) -> PairedDevice {
 /// Ok(empty) when there are none; Err with the Win32 error otherwise
 /// (e.g. no Bluetooth support at all).
 pub fn paired_devices() -> windows::core::Result<Vec<PairedDevice>> {
+    // All radios
+    search(HANDLE::default())
+}
+
+/// The devices of one radio (a handle `bt_radios` opened); empty on errors
+pub(crate) fn devices_of(radio: HANDLE) -> Vec<PairedDevice> {
+    search(radio).unwrap_or_default()
+}
+
+fn search(radio: HANDLE) -> windows::core::Result<Vec<PairedDevice>> {
     let params = BLUETOOTH_DEVICE_SEARCH_PARAMS {
         dwSize: size_of::<BLUETOOTH_DEVICE_SEARCH_PARAMS>() as u32,
         fReturnAuthenticated: true.into(),
@@ -98,30 +113,145 @@ pub fn paired_devices() -> windows::core::Result<Vec<PairedDevice>> {
         fReturnConnected: true.into(),
         fIssueInquiry: false.into(),
         cTimeoutMultiplier: 0,
-        // All radios
-        hRadio: HANDLE::default(),
+        hRadio: radio,
     };
     let mut info = BLUETOOTH_DEVICE_INFO { dwSize: size_of::<BLUETOOTH_DEVICE_INFO>() as u32, ..Default::default() };
     // SAFETY: both structs are initialised with their dwSize; the handle
     // returned is closed below.
     let find = match unsafe { BluetoothFindFirstDevice(&params, &mut info) } {
         Ok(h) => h,
-        Err(e) if e.code() == ERROR_NO_MORE_ITEMS.to_hresult() => return Ok(Vec::new()),
-        Err(e) => return Err(e),
+        Err(e) if e.code() == ERROR_NO_MORE_ITEMS.to_hresult() => {
+            tracing::debug!("bt_paired: Windows knows no Bluetooth devices");
+            return Ok(Vec::new());
+        }
+        Err(e) => {
+            tracing::debug!("bt_paired: BluetoothFindFirstDevice failed: {e}");
+            return Err(e);
+        }
     };
     let mut devices = vec![device_from_info(&info)];
     loop {
         info = BLUETOOTH_DEVICE_INFO { dwSize: size_of::<BLUETOOTH_DEVICE_INFO>() as u32, ..Default::default() };
         // SAFETY: `find` is the open search handle; `info` is initialised
         // with its dwSize.
-        if unsafe { BluetoothFindNextDevice(find, &mut info) }.is_err() {
+        if let Err(e) = unsafe { BluetoothFindNextDevice(find, &mut info) } {
+            if e.code() != ERROR_NO_MORE_ITEMS.to_hresult() {
+                tracing::debug!("bt_paired: BluetoothFindNextDevice stopped: {e}");
+            }
             break;
         }
         devices.push(device_from_info(&info));
     }
     // SAFETY: the handle was opened above and is closed once.
     let _ = unsafe { BluetoothFindDeviceClose(find) };
+    tracing::debug!("bt_paired: {} device(s)", devices.len());
+    for d in &devices {
+        tracing::debug!(
+            "bt_paired: {} \u{201C}{}\u{201D} CoD 0x{:06X} (A2DP sink {}), connected {}, remembered {}, authenticated {}",
+            d.address_string(),
+            d.name,
+            d.class_of_device,
+            d.is_a2dp_sink(),
+            d.connected,
+            d.remembered,
+            d.authenticated
+        );
+    }
     Ok(devices)
+}
+
+/// The classic devices Windows' Bluetooth paired through the USB device
+/// `instance_id` (an adapter A2DPWB now has on WinUSB): Windows keeps a
+/// device node per paired device (`BTHENUM\DEV_<address>\...`) below the
+/// radio's, also once the radio has left its stack. Unlike
+/// `paired_devices`, this needs no running radio, and it leaves out what
+/// other radios paired (their keys are no use on this adapter). Read
+/// without administrator rights, unlike the keys themselves. The name and
+/// class of device come from the node too (not connected, not otherwise
+/// known: `connected`, `remembered` and `authenticated` are false).
+pub fn paired_through(instance_id: &str) -> Vec<PairedDevice> {
+    use crate::usb_adapters::DevInfoSet;
+    use windows::Win32::Devices::DeviceAndDriverInstallation::{
+        DIGCF_ALLCLASSES, SP_DEVINFO_DATA, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW,
+    };
+    use windows::Win32::Devices::Properties::{DEVPKEY_Device_FriendlyName, DEVPKEY_Device_Parent};
+    use windows::Win32::Foundation::DEVPROPKEY;
+    use windows::core::{GUID, w};
+    /// DEVPKEY_Bluetooth_ClassOfDevice (bthdef.h)
+    const CLASS_OF_DEVICE: DEVPROPKEY =
+        DEVPROPKEY { fmtid: GUID::from_u128(0x2BD67D8B_8BEB_48D5_87E0_6CDA3428040A), pid: 10 };
+
+    // Present or not: the adapter's own driver is WinUSB now
+    // SAFETY: no class, enumerator "BTHENUM", no window.
+    let set = match unsafe { SetupDiGetClassDevsW(None, w!("BTHENUM"), None, DIGCF_ALLCLASSES) } {
+        Ok(h) => DevInfoSet(h),
+        Err(e) => {
+            tracing::debug!("bt_paired: no BTHENUM devices: {e}");
+            return Vec::new();
+        }
+    };
+    let parent_of = |id: &str| {
+        let (set, data) = DevInfoSet::open(id).ok()?;
+        set.property_string(&data, &DEVPKEY_Device_Parent)
+    };
+    let mut found: Vec<PairedDevice> = Vec::new();
+    for index in 0.. {
+        let mut data = SP_DEVINFO_DATA { cbSize: size_of::<SP_DEVINFO_DATA>() as u32, ..Default::default() };
+        // SAFETY: valid set; out structure with its size.
+        if unsafe { SetupDiEnumDeviceInfo(set.0, index, &mut data) }.is_err() {
+            break;
+        }
+        let Some(id) = set.instance_id(&data) else { continue };
+        let Some(address) = device_node_address(&id) else { continue };
+        // DEV_ -> radio (BTH\MS_BTHBRB) -> USB device, or a composite
+        // device's function and then the device; the bound guards a loop
+        let mut parent = set.property_string(&data, &DEVPKEY_Device_Parent);
+        for _ in 0..4 {
+            let Some(p) = parent else { break };
+            if p.eq_ignore_ascii_case(instance_id) {
+                if !found.iter().any(|d| d.address == address) {
+                    found.push(PairedDevice {
+                        address,
+                        name: set.property_string(&data, &DEVPKEY_Device_FriendlyName).unwrap_or_default(),
+                        class_of_device: set.property_u32(&data, &CLASS_OF_DEVICE).unwrap_or(0),
+                        connected: false,
+                        remembered: false,
+                        authenticated: false,
+                    });
+                }
+                break;
+            }
+            parent = parent_of(&p);
+        }
+    }
+    tracing::debug!(
+        "bt_paired: paired through {instance_id}: {}",
+        found
+            .iter()
+            .map(|d| format!("{} \u{201C}{}\u{201D} CoD 0x{:06X}", d.address_string(), d.name, d.class_of_device))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    found
+}
+
+/// The address of a paired device's own node, `BTHENUM\DEV_581862027AD7\...`
+/// (the service nodes beside it and LE devices are not matched)
+fn device_node_address(instance_id: &str) -> Option<[u8; 6]> {
+    let id = instance_id.to_ascii_uppercase();
+    let mut parts = id.split('\\');
+    if parts.next()? != "BTHENUM" {
+        return None;
+    }
+    let hex = parts.next()?.strip_prefix("DEV_")?;
+    if hex.len() != 12 {
+        return None;
+    }
+    let mut a = [0u8; 6];
+    for (i, b) in a.iter_mut().enumerate() {
+        *b = u8::from_str_radix(hex.get(2 * i..2 * i + 2)?, 16).ok()?;
+    }
+    Some(a)
 }
 
 /// The first A2DP sink in `devices` (v1's automatic choice without -d)
@@ -192,6 +322,42 @@ mod tests {
         }
         assert_eq!(name_from_wide(&w), "WH-1000");
         assert_eq!(name_from_wide(&[]), "");
+    }
+
+    #[test]
+    fn address_of_a_paired_device_node() {
+        assert_eq!(
+            device_node_address(r"BTHENUM\DEV_581862027AD7\A&1DD01ED2&0&BLUETOOTHDEVICE_581862027AD7"),
+            Some([0x58, 0x18, 0x62, 0x02, 0x7A, 0xD7])
+        );
+        assert_eq!(device_node_address(r"bthenum\dev_581862027ad7\x"), Some([0x58, 0x18, 0x62, 0x02, 0x7A, 0xD7]));
+        // A service node of the same device, an LE device, a short address
+        assert_eq!(
+            device_node_address(
+                r"BTHENUM\{0000110B-0000-1000-8000-00805F9B34FB}_VID&0002054C_PID&0D58\A&1DD01ED2&0&581862027AD7_C00000000"
+            ),
+            None
+        );
+        assert_eq!(device_node_address(r"BTHLE\DEV_581862027AD7\x"), None);
+        assert_eq!(device_node_address(r"BTHENUM\DEV_5818620\x"), None);
+    }
+
+    /// This PC's devices paired through a USB device (A2DPWB_ADAPTER=<its
+    /// instance ID> cargo test -p win-sys list_paired_through -- --ignored
+    /// --nocapture)
+    #[test]
+    #[ignore = "reads this PC's Bluetooth devices"]
+    fn list_paired_through() {
+        let id = std::env::var("A2DPWB_ADAPTER").unwrap_or_default();
+        for d in paired_through(&id) {
+            println!(
+                "{} \u{201C}{}\u{201D} CoD 0x{:06X} audio {}",
+                d.address_string(),
+                d.name,
+                d.class_of_device,
+                d.is_a2dp_sink()
+            );
+        }
     }
 
     #[test]

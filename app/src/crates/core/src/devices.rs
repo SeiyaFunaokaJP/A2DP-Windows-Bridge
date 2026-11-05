@@ -9,7 +9,10 @@
 //! they are read as LE Audio entries and moved to le_audio_devices.txt the
 //! next time the files are written (as v1 did).
 
+use std::collections::BTreeMap;
 use std::path::Path;
+
+use crate::stream::KnownCodecs;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SavedDevice {
@@ -20,7 +23,7 @@ pub struct SavedDevice {
     pub le_audio: bool,
 }
 
-const FILE: &str = "devices.txt";
+pub(crate) const FILE: &str = "devices.txt";
 const LE_FILE: &str = "le_audio_devices.txt";
 /// The suffix of the prototype's LE Audio lines in devices.txt
 const LEGACY_LE_SUFFIX: &str = "|le";
@@ -35,8 +38,13 @@ fn parse_line(line: &str) -> Option<(String, &str)> {
 }
 
 fn read_lines(dir: &Path, file: &str) -> Vec<(String, String)> {
-    let Ok(text) = std::fs::read_to_string(dir.join(file)) else { return Vec::new() };
-    text.lines().filter_map(parse_line).map(|(a, n)| (a, n.to_string())).collect()
+    let Ok(text) = std::fs::read_to_string(dir.join(file)) else {
+        tracing::trace!("devices: no {file}");
+        return Vec::new();
+    };
+    let lines: Vec<(String, String)> = text.lines().filter_map(parse_line).map(|(a, n)| (a, n.to_string())).collect();
+    tracing::trace!("devices: {file}: {} device(s) of {} line(s)", lines.len(), text.lines().count());
+    lines
 }
 
 /// Both files: the classic devices, then the LE Audio ones (le_audio set;
@@ -99,15 +107,23 @@ fn save_kind(dir: &Path, address: &str, name: &str, le_audio: bool) -> std::io::
                 d.name = name.to_string();
             }
         }
-        None => devices.push(SavedDevice { address, name: name.to_string(), le_audio }),
+        None => {
+            tracing::debug!("devices: adding {address} \"{name}\" (LE Audio {le_audio})");
+            devices.push(SavedDevice { address, name: name.to_string(), le_audio });
+        }
     }
-    write_all(dir, &devices)
+    let r = write_all(dir, &devices);
+    tracing::debug!("devices: saved {} device(s) to {}: {r:?}", devices.len(), dir.display());
+    r
 }
 
 fn remove_kind(dir: &Path, address: &str, le_audio: bool) -> std::io::Result<()> {
     let mut devices = load_all(dir);
+    let before = devices.len();
     devices.retain(|d| !(d.le_audio == le_audio && d.address.eq_ignore_ascii_case(address)));
-    write_all(dir, &devices)
+    let r = write_all(dir, &devices);
+    tracing::debug!("devices: removing {address} (LE Audio {le_audio}): {} removed, {r:?}", before - devices.len());
+    r
 }
 
 /// Adds or renames a classic device (an empty name keeps the known one)
@@ -128,6 +144,19 @@ pub fn save_le(dir: &Path, address: &str, name: &str) -> std::io::Result<()> {
 /// Forgets an LE Audio device (its classic entry stays)
 pub fn remove_le(dir: &Path, address: &str) -> std::io::Result<()> {
     remove_kind(dir, address, true)
+}
+
+/// What each classic device offered when it last connected, by upper-case
+/// address: kept so the Codecs screen knows it after a restart (issue #86)
+const CODECS_FILE: &str = "device_codecs.json";
+
+pub fn load_codecs(dir: &Path) -> BTreeMap<String, KnownCodecs> {
+    std::fs::read_to_string(dir.join(CODECS_FILE)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+pub fn save_codecs(dir: &Path, codecs: &BTreeMap<String, KnownCodecs>) -> std::io::Result<()> {
+    let text = serde_json::to_string_pretty(codecs).map_err(std::io::Error::other)?;
+    std::fs::write(dir.join(CODECS_FILE), text)
 }
 
 #[cfg(test)]
@@ -156,6 +185,23 @@ mod tests {
         assert_eq!(load(&dir).len(), 1);
         // No LE Audio device: no file of them
         assert!(!dir.join(LE_FILE).exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn codecs_survive_a_restart() {
+        let dir = temp_dir("codecs");
+        assert!(load_codecs(&dir).is_empty());
+        let mut map = BTreeMap::new();
+        map.insert(
+            "AA:BB:CC:DD:EE:FF".to_string(),
+            KnownCodecs { keys: vec!["sbc".into(), "aac".into()], ..Default::default() },
+        );
+        save_codecs(&dir, &map).unwrap();
+        assert_eq!(load_codecs(&dir), map);
+        // A damaged file is as none
+        std::fs::write(dir.join(CODECS_FILE), "{ not json").unwrap();
+        assert!(load_codecs(&dir).is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

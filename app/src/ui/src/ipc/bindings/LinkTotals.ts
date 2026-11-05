@@ -15,4 +15,10 @@ dropped: number,
 /**
  * Captured frames, and those dropped because the encoder fell behind
  */
-capture_frames: number, capture_dropped: number, };
+capture_frames: number, capture_dropped: number, 
+/**
+ * Gaps Windows reported in the captured audio (its own glitches), and
+ * the frames lost in them where the capture could tell (at the capture
+ * rate, like capture_dropped). 0 from a core before these.
+ */
+capture_discontinuities: number, capture_lost: number, };

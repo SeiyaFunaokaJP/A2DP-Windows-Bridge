@@ -7,9 +7,11 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-default = ["ldac", "aptx", "aac", "lhdcv5", "opus", "lc3"]
+default = ["ldac", "aptx", "aptx-adaptive", "aac", "lhdcv5", "opus", "lc3"]
 ldac = ["dep:ldac-sys"]
 aptx = ["dep:openaptx-sys"]
+# Pure-Rust aptX Adaptive encoder (vendored, MIT)
+aptx-adaptive = ["dep:aptx-adaptive"]
 aac = ["dep:fdkaac-sys"]
 lhdcv5 = ["dep:lhdcv5-sys"]
 opus = ["dep:opus-sys"]
@@ -18,9 +20,11 @@ lc3 = ["dep:lc3-sys"]
 
 [dependencies]
 thiserror.workspace = true
+serde.workspace = true
 tracing.workspace = true
 ldac-sys = { path = "../ldac-sys", optional = true }
 openaptx-sys = { path = "../openaptx-sys", optional = true }
+aptx-adaptive = { workspace = true, optional = true }
 fdkaac-sys = { path = "../fdkaac-sys", optional = true }
 lhdcv5-sys = { path = "../lhdcv5-sys", optional = true }
 opus-sys = { path = "../opus-sys", optional = true }

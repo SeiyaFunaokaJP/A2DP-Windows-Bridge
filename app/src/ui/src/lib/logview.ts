@@ -3,7 +3,7 @@
 // v1's debug console (wx_debug_console_dialog.cpp on the develop branch) had them.
 
 import type { FlowView, LogLevel, LogLine } from "../ipc/types";
-import { maskAddresses } from "./format";
+import { maskIdentifiers } from "./format";
 
 /** Most severe first */
 export const LEVEL_ORDER: LogLevel[] = ["error", "warn", "info", "debug", "trace"];
@@ -53,7 +53,7 @@ export function logKey(l: LogLine): string {
 
 /** One line as copied: time, level, target, message */
 export function formatLogLine(l: LogLine, time: string, mask: boolean): string {
-  const msg = mask ? maskAddresses(l.message) : l.message;
+  const msg = mask ? maskIdentifiers(l.message) : l.message;
   return `${time} ${l.level.toUpperCase().padEnd(5)} ${l.target}: ${msg}`;
 }
 

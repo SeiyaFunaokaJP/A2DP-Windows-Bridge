@@ -41,7 +41,11 @@ impl HciBackend for TcpH4 {
             .map_err(|e| format!("{}: {e}", self.address))?
             .next()
             .ok_or_else(|| format!("{}: no address", self.address))?;
-        let stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).map_err(|e| format!("{addr}: {e}"))?;
+        tracing::debug!("H4 over TCP: connecting to {addr} ({})", self.address);
+        let stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).map_err(|e| {
+            tracing::debug!("H4 over TCP: connecting to {addr} failed: {e} ({:?})", e.kind());
+            format!("{addr}: {e}")
+        })?;
         // Small HCI packets must not wait for Nagle
         stream.set_nodelay(true).map_err(|e| e.to_string())?;
         let read_side = stream.try_clone().map_err(|e| e.to_string())?;
@@ -58,15 +62,23 @@ impl HciBackend for TcpH4 {
 
     fn close(&mut self) {
         if let Some(stream) = self.stream.take() {
-            let _ = stream.shutdown(Shutdown::Both);
+            tracing::debug!("H4 over TCP: closing the connection to {}", self.address);
+            if let Err(e) = stream.shutdown(Shutdown::Both) {
+                tracing::debug!("H4 over TCP: shutdown: {e}");
+            }
         }
         if let Some(reader) = self.reader.take() {
             let _ = reader.join();
+            tracing::debug!("H4 over TCP: reader stopped");
         }
     }
 
     fn send(&mut self, packet_type: u8, packet: &[u8]) -> bool {
-        let Some(stream) = self.stream.as_mut() else { return false };
+        let Some(stream) = self.stream.as_mut() else {
+            tracing::debug!("H4 over TCP: packet type {packet_type} not sent, not connected");
+            return false;
+        };
+        tracing::trace!("H4 over TCP: type {packet_type} out, {} bytes", packet.len());
         // One write for type and packet, so they travel in one segment
         self.out.clear();
         self.out.push(packet_type);
@@ -91,15 +103,18 @@ impl Drop for TcpH4 {
 fn read_loop(mut stream: TcpStream, upstream: Upstream) {
     let mut buf: Vec<u8> = Vec::with_capacity(8192);
     let mut chunk = [0u8; 4096];
+    tracing::debug!("H4 over TCP: reader started");
     loop {
         let n = match stream.read(&mut chunk) {
             Ok(0) => {
+                tracing::debug!("H4 over TCP: end of stream ({} bytes buffered)", buf.len());
                 upstream.fail("the virtual controller closed the connection");
                 return;
             }
             Ok(n) => n,
             Err(e) if e.kind() == ErrorKind::Interrupted => continue,
             Err(e) => {
+                tracing::debug!("H4 over TCP: read: {e} ({:?})", e.kind());
                 // shutdown() by close() ends up here too; fail() is ignored
                 // once the run that opened us has ended
                 if !matches!(e.kind(), ErrorKind::ConnectionAborted | ErrorKind::NotConnected) {
@@ -122,6 +137,7 @@ fn read_loop(mut stream: TcpStream, upstream: Upstream) {
             if buf.len() - start - 1 < len {
                 break;
             }
+            tracing::trace!("H4 over TCP: type {packet_type} in, {len} bytes");
             upstream.deliver(packet_type, &buf[start + 1..start + 1 + len]);
             start += 1 + len;
         }

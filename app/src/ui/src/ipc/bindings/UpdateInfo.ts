@@ -9,4 +9,9 @@ url: string, prerelease: boolean,
  * The updater manifest attached to the release (latest.json): the UI
  * installs from it when it is an installed copy with an updater key
  */
-manifest_url: string, };
+manifest_url: string, 
+/**
+ * A few lines on what is new, shown with the update (the release's
+ * in-app notes); empty when it has none
+ */
+notes: string, };

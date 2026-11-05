@@ -23,6 +23,31 @@
 //!
 //! Schema 3 (2.0.1): LE Audio is on by default, so a folder of schema 2 gets
 //! `le_audio_experimental` turned on once (2.0.0 wrote it off for everyone).
+//!
+//! Schema 4 (2.0.2): each device's volume is remembered by default (issue
+//! #86). Always on now, so nothing is left of this step.
+//!
+//! Schema 5 (issue #86): "Auto-select the codec with the highest quality"
+//! is one setting for every device (`auto_codec`) instead of each profile's
+//! codec "auto". It starts on only when no profile had a codec chosen, so
+//! a device someone chose a codec for keeps streaming with it (v1's folders
+//! too: each v1 profile chose its codec).
+//!
+//! Schema 6 (issue #86): Windows Volume Sync, the media keys and "remember
+//! volume" are one setting each for every device. `volume_sync` starts as
+//! the profile in use had it (the last one streamed, else the first; on
+//! without a profile); a device a profile followed stays in the file but
+//! no longer counts (the core's state.rs).
+//! The per-device overrides of media keys and remember volume
+//! (`device_options`) are dropped: the global values count.
+//!
+//! Schema 7 (issue #86): forgetting a device takes its profile, volume, codecs
+//! and link key with it. What an earlier version left behind goes once.
+//!
+//! At every start, the profiles are folded into one per device
+//! ([`profiles::consolidate`]: the Codecs screen keeps one); the
+//! first time that changes anything, profiles.json is copied as it was to
+//! `profiles-before-codecs.json`.
 
 use std::path::Path;
 
@@ -39,6 +64,8 @@ const BACKUP_TMP: &str = "backup-v1.tmp";
 const NOT_COPIED: [&str; 3] = [BACKUP_DIR, BACKUP_TMP, "logs"];
 /// v1's files that mean "v1 used this folder" even without settings.json
 const V1_FILES: [&str; 3] = ["profiles.json", "devices.txt", "link_keys.txt"];
+/// profiles.json as it was before profiles were first folded into one per device
+pub const PROFILES_BACKUP: &str = "profiles-before-codecs.json";
 
 const BACKUP_README: &str = "\
 This folder is a copy of the A2DPWB settings folder as A2DP Windows Bridge v1
@@ -67,6 +94,8 @@ pub struct Report {
     pub profiles_renamed: usize,
     /// settings.json was rewritten with the current schema_version
     pub schema_written: bool,
+    /// Profiles folded into another one of the same device
+    pub profiles_folded: usize,
 }
 
 /// schema_version of the settings file: None without a readable file, 1 for
@@ -106,6 +135,7 @@ fn copy_tree(from: &Path, to: &Path, top: bool) -> std::io::Result<u64> {
 fn backup(dir: &Path) -> std::io::Result<u64> {
     let tmp = dir.join(BACKUP_TMP);
     if tmp.exists() {
+        tracing::debug!("migrate: removing an interrupted backup {}", tmp.display());
         std::fs::remove_dir_all(&tmp)?;
     }
     let result = copy_tree(dir, &tmp, true).and_then(|bytes| {
@@ -123,6 +153,49 @@ fn backup(dir: &Path) -> std::io::Result<u64> {
 /// Never fails: problems are logged, and a failed backup leaves v1's files
 /// unchanged so that the next start tries again.
 pub fn prepare(dir: &Path) -> Report {
+    let mut report = prepare_settings(dir);
+    // After v1's files were backed up as they were
+    crate::paths::move_loose_firmware(dir);
+    report.profiles_folded = consolidate_profiles(dir);
+    report
+}
+
+/// One profile per device (see the module documentation); how many were
+/// folded away. Nothing changes when the backup cannot be made.
+fn consolidate_profiles(dir: &Path) -> usize {
+    if !profiles::path(dir).is_file() {
+        return 0;
+    }
+    let mut list = profiles::load(dir);
+    let folded = profiles::consolidate(&mut list, &Settings::load(dir).last_profile);
+    if folded.is_empty() {
+        return 0;
+    }
+    let backup = dir.join(PROFILES_BACKUP);
+    if !backup.exists()
+        && let Err(e) = std::fs::copy(profiles::path(dir), &backup)
+    {
+        tracing::error!("profiles: cannot copy them to {}: {e}; not folded", backup.display());
+        return 0;
+    }
+    match profiles::save(dir, &list) {
+        Ok(()) => {
+            tracing::info!(
+                "profiles: {} folded into the profile of their device ({} kept), the file before in {}",
+                folded.len(),
+                list.len(),
+                backup.display()
+            );
+            folded.len()
+        }
+        Err(e) => {
+            tracing::error!("profiles: cannot save {}: {e}", profiles::path(dir).display());
+            0
+        }
+    }
+}
+
+fn prepare_settings(dir: &Path) -> Report {
     let schema_before = schema_of(dir);
     let v1_files = V1_FILES.iter().any(|f| dir.join(f).is_file());
     let from_v1 = match schema_before {
@@ -132,13 +205,19 @@ pub fn prepare(dir: &Path) -> Report {
         None => v1_files || Settings::path(dir).is_file(),
     };
     let mut report = Report { schema_before, from_v1, ..Report::default() };
+    tracing::debug!(
+        "migrate: {}: schema {schema_before:?} (current {SCHEMA_VERSION}), v1 files {v1_files}, from v1 {from_v1}",
+        dir.display()
+    );
     if !from_v1 {
         if schema_before.is_some_and(|n| n < SCHEMA_VERSION) {
+            tracing::debug!("migrate: upgrading the v2 schema");
             upgrade_v2(dir, &mut report);
         }
         return report;
     }
 
+    tracing::debug!("migrate: backup {} exists {}", BACKUP_DIR, dir.join(BACKUP_DIR).exists());
     if !dir.join(BACKUP_DIR).exists() {
         match backup(dir) {
             Ok(bytes) => {
@@ -160,6 +239,8 @@ pub fn prepare(dir: &Path) -> Report {
     // it); v2 honours the setting, so it is set to keep that
     settings.start_minimized = true;
     let (mut list, renamed) = profiles::load_counted(dir);
+    settings.auto_codec = auto_codec_from(&list);
+    settings.volume_sync = volume_sync_from(&settings, &list);
     let mut seeded = 0;
     if settings.max_media_payload.is_some() {
         let legacy = settings.legacy_max_media_payload();
@@ -193,7 +274,80 @@ pub fn prepare(dir: &Path) -> Report {
             Err(e) => tracing::error!("settings from v1: cannot save {}: {e}", Settings::path(dir).display()),
         }
     }
+    tracing::debug!("migrate: {report:?}");
     report
+}
+
+/// Schema 5's Auto-select for every device: on unless a profile chose a
+/// codec (LE Audio profiles have only LC3)
+fn auto_codec_from(list: &[profiles::Profile]) -> bool {
+    let chosen = list.iter().filter(|p| !p.le_audio && p.codec != "auto").count();
+    if chosen > 0 {
+        tracing::info!("settings: Auto-select for every device off, {chosen} profile(s) chose their codec");
+    }
+    chosen == 0
+}
+
+/// Schema 6's Windows Volume Sync for every device: as the profile in use
+/// had it (the last one streamed, else the first); on without a profile
+fn volume_sync_from(settings: &Settings, list: &[profiles::Profile]) -> bool {
+    let p = list.iter().find(|p| p.name == settings.last_profile).or(list.first());
+    let on = p.is_none_or(|p| p.volume_sync != "off");
+    if let Some(p) = p {
+        tracing::info!(
+            "settings: Windows Volume Sync for every device {}, as profile {} had it",
+            if on { "on" } else { "off" },
+            crate::diag::quoted(&p.name)
+        );
+    }
+    on
+}
+
+/// Schema 7: profiles of devices forgotten before forgetting took them along.
+/// No saved devices file: nothing says what was forgotten.
+fn drop_forgotten(dir: &Path, settings: &mut Settings) {
+    if !dir.join(crate::devices::FILE).is_file() || !profiles::path(dir).is_file() {
+        return;
+    }
+    let saved = crate::devices::load(dir);
+    let saved_le = crate::devices::load_le(dir);
+    let mut list = profiles::load(dir);
+    let (kept, gone): (Vec<_>, Vec<_>) = list.drain(..).partition(|p| {
+        let same = |d: &crate::devices::SavedDevice| d.address.eq_ignore_ascii_case(&p.device_address);
+        if p.le_audio { saved_le.iter().any(same) } else { saved.iter().any(same) }
+    });
+    if gone.is_empty() {
+        return;
+    }
+    let backup = dir.join(PROFILES_BACKUP);
+    if !backup.exists()
+        && let Err(e) = std::fs::copy(profiles::path(dir), &backup)
+    {
+        tracing::error!("profiles: cannot copy them to {}: {e}; forgotten devices' profiles kept", backup.display());
+        return;
+    }
+    if let Err(e) = profiles::save(dir, &kept) {
+        tracing::error!("profiles: cannot save {}: {e}", profiles::path(dir).display());
+        return;
+    }
+    tracing::info!("profiles: {} of forgotten devices removed", gone.len());
+    let mut codecs = crate::devices::load_codecs(dir);
+    for p in gone {
+        let key = p.device_address.to_uppercase();
+        settings.saved_volumes.remove(&key);
+        if settings.last_profile == p.name {
+            settings.last_profile.clear();
+        }
+        if !p.le_audio {
+            codecs.remove(&key);
+            if let Some(addr) = bt_host::parse_addr(&p.device_address) {
+                bt_host::link_keys::forget(dir, &addr);
+            }
+        }
+    }
+    if let Err(e) = crate::devices::save_codecs(dir, &codecs) {
+        tracing::warn!("cannot save the devices' codecs: {e}");
+    }
 }
 
 /// The schema steps after v2's first one, for a folder v2 already used
@@ -204,10 +358,31 @@ fn upgrade_v2(dir: &Path, report: &mut Report) {
         settings.le_audio_experimental = true;
         tracing::info!("settings: LE Audio (experimental) turned on, as it now is by default");
     }
+    // 5: one Auto-select for every device
+    if report.schema_before.is_some_and(|n| n < 5) {
+        settings.auto_codec = auto_codec_from(&profiles::load(dir));
+    }
+    // 6: one Windows Volume Sync, media keys and remember volume for every
+    // device (the overrides in device_options are not written back)
+    if report.schema_before.is_some_and(|n| n < 6) {
+        settings.volume_sync = volume_sync_from(&settings, &profiles::load(dir));
+        if settings.device_options.take().is_some() {
+            tracing::info!("settings: the per-device media keys and remember volume give way to the global ones");
+        }
+    }
+    // 7: what forgetting a device left behind
+    if report.schema_before.is_some_and(|n| n < 7) {
+        drop_forgotten(dir, &mut settings);
+    }
     match settings.save(dir) {
         Ok(()) => report.schema_written = true,
         Err(e) => tracing::error!("settings: cannot save {}: {e}", Settings::path(dir).display()),
     }
+    tracing::debug!(
+        "migrate: schema {:?} -> {SCHEMA_VERSION}, written {}",
+        report.schema_before,
+        report.schema_written
+    );
 }
 
 #[cfg(test)]
@@ -258,7 +433,8 @@ mod tests {
                 backed_up: true,
                 profiles_seeded: 1,
                 profiles_renamed: 0,
-                schema_written: true
+                schema_written: true,
+                profiles_folded: 0
             }
         );
         // The backup has v1's files as they were, without v2's logs
@@ -275,6 +451,8 @@ mod tests {
         let s = read_json(&Settings::path(dir));
         assert_eq!(s["schema_version"], SCHEMA_VERSION);
         assert_eq!(s["language"], "ja");
+        // Profile A chose LDAC: no Auto-select for every device
+        assert_eq!(s["auto_codec"], false);
         assert_eq!(s["window_x"], 10);
         assert!(s.get("max_media_payload").is_none());
         // v1 started hidden at logon: kept
@@ -320,6 +498,142 @@ mod tests {
     }
 
     #[test]
+    fn v2_settings_keep_each_volume() {
+        let t = TempDir::new("schema4");
+        let dir = &t.0;
+        std::fs::write(
+            Settings::path(dir),
+            r#"{"schema_version":3,"remember_volume":false,"saved_volumes":{"AA:BB:CC:DD:EE:FF":40},
+                "device_options":{"11:22:33:44:55:66":{"remember_volume":false}}}"#,
+        )
+        .unwrap();
+        let r = prepare(dir);
+        assert_eq!(r, Report { schema_before: Some(3), schema_written: true, ..Report::default() });
+        let s = Settings::load(dir);
+        assert_eq!(s.schema_version, SCHEMA_VERSION);
+        assert_eq!(s.saved_volumes["AA:BB:CC:DD:EE:FF"], 40);
+        // A device's own value gave way to the one for every device (schema 6)
+        assert!(s.device_options.is_none());
+        assert!(read_json(&Settings::path(dir)).get("device_options").is_none());
+        assert!(read_json(&Settings::path(dir)).get("remember_volume").is_none());
+    }
+
+    #[test]
+    fn v2_settings_get_one_auto_select_from_the_profiles() {
+        let t = TempDir::new("schema5");
+        let dir = &t.0;
+        let write = |profiles: &str| {
+            std::fs::write(Settings::path(dir), r#"{"schema_version":4}"#).unwrap();
+            std::fs::write(profiles::path(dir), profiles).unwrap();
+        };
+        // Every device on Auto (an LE Audio profile counts as Auto): on
+        write(
+            r#"{"profiles":[{"name":"A","device_address":"AA:BB:CC:DD:EE:FF","codec":"auto"},
+                {"name":"B","device_address":"11:22:33:44:55:66","codec":"lc3","le_audio":true}]}"#,
+        );
+        assert!(prepare(dir).schema_written);
+        assert!(Settings::load(dir).auto_codec);
+        // A device with its codec chosen: off, and it keeps that codec
+        write(
+            r#"{"profiles":[{"name":"A","device_address":"AA:BB:CC:DD:EE:FF","codec":"auto"},
+                {"name":"B","device_address":"11:22:33:44:55:66","codec":"aac"}]}"#,
+        );
+        prepare(dir);
+        let s = Settings::load(dir);
+        assert_eq!(s.schema_version, SCHEMA_VERSION);
+        assert!(!s.auto_codec);
+        assert_eq!(profiles::load(dir)[1].codec, "aac");
+
+        // Turned on by the user: stays on
+        let mut on = s;
+        on.auto_codec = true;
+        on.save(dir).unwrap();
+        assert_eq!(prepare(dir), Report { schema_before: Some(SCHEMA_VERSION), ..Report::default() });
+        assert!(Settings::load(dir).auto_codec);
+    }
+
+    #[test]
+    fn v2_settings_get_one_volume_sync_from_the_profile_in_use() {
+        let t = TempDir::new("schema6");
+        let dir = &t.0;
+        let write = |settings: &str| {
+            std::fs::write(Settings::path(dir), settings).unwrap();
+            std::fs::write(
+                profiles::path(dir),
+                r#"{"profiles":[{"name":"A","device_address":"AA:BB:CC:DD:EE:FF","volume_sync":"auto"},
+                    {"name":"B","device_address":"11:22:33:44:55:66","volume_sync":"off"}]}"#,
+            )
+            .unwrap();
+        };
+        // The last profile streamed had it off: off for every device
+        write(
+            r#"{"schema_version":5,"last_profile":"B","media_keys":true,
+                "device_options":{"AA:BB:CC:DD:EE:FF":{"media_keys":false}}}"#,
+        );
+        assert!(prepare(dir).schema_written);
+        let s = Settings::load(dir);
+        assert_eq!(s.schema_version, SCHEMA_VERSION);
+        assert!(!s.volume_sync);
+        // The device's own media keys are gone: the global value counts
+        assert!(s.media_keys && s.device_options.is_none());
+        assert!(read_json(&Settings::path(dir)).get("device_options").is_none());
+        // No profile streamed yet: the first one's (on)
+        write(r#"{"schema_version":5}"#);
+        prepare(dir);
+        assert!(Settings::load(dir).volume_sync);
+
+        // Turned off by the user: stays off
+        let mut off = Settings::load(dir);
+        off.volume_sync = false;
+        off.save(dir).unwrap();
+        assert_eq!(prepare(dir), Report { schema_before: Some(SCHEMA_VERSION), ..Report::default() });
+        assert!(!Settings::load(dir).volume_sync);
+    }
+
+    #[test]
+    fn profiles_of_forgotten_devices_go_once() {
+        let t = TempDir::new("forgotten");
+        let dir = &t.0;
+        let (kept, gone) = ("AA:AA:AA:AA:AA:01", "AA:AA:AA:AA:AA:02");
+        std::fs::write(
+            Settings::path(dir),
+            format!(r#"{{"schema_version":6,"last_profile":"Gone","saved_volumes":{{"{gone}":90,"{kept}":80}}}}"#),
+        )
+        .unwrap();
+        crate::devices::save(dir, kept, "Kept").unwrap();
+        let profile = |name: &str, address: &str| profiles::Profile {
+            name: name.into(),
+            device_address: address.into(),
+            ..Default::default()
+        };
+        profiles::save(dir, &[profile("Kept", kept), profile("Gone", gone)]).unwrap();
+        std::fs::write(dir.join("link_keys.txt"), format!("{} {} 4\n", gone.replace(':', "-"), "00".repeat(16)))
+            .unwrap();
+
+        prepare(dir);
+
+        let names: Vec<String> = profiles::load(dir).into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["Kept"]);
+        let s = Settings::load(dir);
+        assert_eq!(s.last_profile, "");
+        assert_eq!(s.saved_volumes.keys().collect::<Vec<_>>(), [kept]);
+        assert!(bt_host::link_keys::FileLinkKeyStore::open(dir).entries().is_empty());
+        assert!(dir.join(PROFILES_BACKUP).is_file());
+    }
+
+    #[test]
+    fn profiles_stay_without_a_devices_file() {
+        let t = TempDir::new("no-devices");
+        let dir = &t.0;
+        std::fs::write(Settings::path(dir), r#"{"schema_version":6}"#).unwrap();
+        let p =
+            profiles::Profile { name: "P".into(), device_address: "AA:AA:AA:AA:AA:01".into(), ..Default::default() };
+        profiles::save(dir, &[p]).unwrap();
+        prepare(dir);
+        assert_eq!(profiles::load(dir).len(), 1);
+    }
+
+    #[test]
     fn v1_again_after_v2_keeps_the_first_backup() {
         // v1 ran again in between and wrote settings.json without the schema
         let t = TempDir::new("again");
@@ -335,12 +649,13 @@ mod tests {
 
     #[test]
     fn repeated_v1_profile_names_are_numbered() {
+        // Of three devices (the profiles of one device are folded into one)
         let t = TempDir::new("dup");
         let dir = &t.0;
         std::fs::write(Settings::path(dir), r#"{"language":"ja","last_profile":"WH LDAC"}"#).unwrap();
         let text = r#"{"profiles":[{"name":"WH LDAC","device_address":"AA:BB:CC:DD:EE:FF","codec":"ldac"},
-            {"name":"WH LDAC","device_address":"AA:BB:CC:DD:EE:FF","codec":"ldac","quality":"mq"},
-            {"name":"WH LDAC","device_address":"AA:BB:CC:DD:EE:FF","codec":"ldac","quality":"sq"}]}"#;
+            {"name":"WH LDAC","device_address":"AA:BB:CC:DD:EE:01","codec":"ldac","quality":"mq"},
+            {"name":"WH LDAC","device_address":"AA:BB:CC:DD:EE:02","codec":"ldac","quality":"sq"}]}"#;
         std::fs::write(profiles::path(dir), text).unwrap();
         let r = prepare(dir);
         assert_eq!(r.profiles_renamed, 2);
@@ -389,5 +704,29 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"language":"ja"}"#).unwrap();
         assert_eq!(s.schema_version, 1);
         assert_eq!(Settings::default().schema_version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn profiles_are_folded_once_with_a_backup() {
+        let t = TempDir::new("fold");
+        let dir = &t.0;
+        std::fs::write(Settings::path(dir), r#"{"schema_version":3,"last_profile":"WH | LDAC"}"#).unwrap();
+        let text = r#"{"profiles":[{"name":"WH | Auto","device_address":"00:A2:D0:00:00:02"},
+            {"name":"WH | LDAC","device_address":"00:A2:D0:00:00:02","codec":"ldac"},
+            {"name":"WH AAC","device_address":"00:A2:D0:00:00:02","codec":"aac","abr":true}]}"#;
+        std::fs::write(profiles::path(dir), text).unwrap();
+        let r = prepare(dir);
+        assert_eq!(r.profiles_folded, 2);
+        assert_eq!(std::fs::read_to_string(dir.join(PROFILES_BACKUP)).unwrap(), text);
+        let list = profiles::load(dir);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "WH | LDAC");
+        assert!(list[0].codec_settings["aac"].abr);
+        // Nothing left to fold; a later fold keeps the first backup
+        assert_eq!(prepare(dir).profiles_folded, 0);
+        let again = r#"{"profiles":[{"name":"A","device_address":"00:A2:D0:00:00:02"},{"name":"B","device_address":"00:A2:D0:00:00:02"}]}"#;
+        std::fs::write(profiles::path(dir), again).unwrap();
+        assert_eq!(prepare(dir).profiles_folded, 1);
+        assert_eq!(std::fs::read_to_string(dir.join(PROFILES_BACKUP)).unwrap(), text);
     }
 }

@@ -201,6 +201,16 @@ impl SbcFrameEncoder {
         &self.config
     }
 
+    /// Encodes the next frames with another bitpool (lowered to what the
+    /// mode allows, as [`SbcConfig::bitpool`]). Every SBC frame carries its
+    /// bitpool in its header, so a stream may change it between frames; the
+    /// analysis filter history stays.
+    pub fn set_bitpool(&mut self, bitpool: u8) {
+        self.config.bitpool = bitpool;
+        self.bitpool = self.config.effective_bitpool();
+        self.alloc.bitpool = self.bitpool as i32;
+    }
+
     /// Interleaved samples one frame takes
     pub fn pcm_samples(&self) -> usize {
         self.blocks * self.subbands * self.channels

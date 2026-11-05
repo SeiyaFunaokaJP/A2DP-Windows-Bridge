@@ -2,6 +2,7 @@
 
 export type DiagInfoParams = { 
 /**
- * Bluetooth addresses as AA:BB:CC:xx:xx:xx (default true)
+ * Bluetooth addresses as <addr-N>, device names as <device-N>, the
+ * Windows user name and USB serial numbers hidden (default true)
  */
 mask?: boolean | null, };

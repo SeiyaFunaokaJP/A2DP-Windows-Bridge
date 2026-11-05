@@ -12,9 +12,10 @@ Output (`target/dist`):
 
 | File | What it is |
 | --- | --- |
-| `A2DPWB-<ver>-win64-setup.exe` / `-arm64-setup.exe` | Installer (Tauri's NSIS bundler, `app/src/ui/src-tauri/tauri.conf.json`) |
+| `A2DPWB-<ver>-win64-setup.exe` / `-arm64-setup.exe` | Installer (Inno Setup, `installer/A2DPWB.iss`) |
 | `A2DPWB-<ver>-win64-setup.exe.sig` / `-arm64-…` | Updater signature of the installer |
 | `A2DPWB-<ver>-win64-portable.zip` / `-arm64-…` | Portable copy |
+| `A2DPWB-<ver>-win64-symbols.zip` / `-arm64-…` | `.pdb` files, to read the crash reports' minidumps |
 | `latest.json` | Updater manifest of this release (both architectures) |
 
 Attach all of them to the GitHub release `v<ver>` (`gh release create v<ver> ... --prerelease` for a
@@ -23,13 +24,17 @@ pre-release). The version comes from `version` in `Cargo.toml` (`[workspace.pack
 
 Prerequisites: Rust with the target (`rustup target add aarch64-pc-windows-msvc`), pnpm and
 `pnpm install` in `app/src/ui`, the submodules (`git submodule update --init --recursive`),
-`cargo install cargo-about`. Tauri downloads NSIS on first use. Build from a clean checkout of
+`cargo install cargo-about`, and Inno Setup 7.1.0 (`winget install JRSoftware.InnoSetup.7 --version 7.1.0`;
+the script looks in its default folders, on PATH and in `$env:ISCC`). The WebView2 bootstrapper
+is downloaded once into `target/installer-cache` and must carry Microsoft's signature. Build from
+a clean checkout of
 the release commit: `SOURCE.txt` in the package names the commit and says so if the tree had
 local changes.
 
 ## Updater signing keys
 
-The installer is signed with a minisign key pair of the updater (Tauri's `tauri signer`). The
+The installer is signed with a minisign key pair of the updater (`tauri signer sign
+--app-version <ver>`: the version is part of what is signed, `requireSignedVersion`). The
 app has the public key built in and installs only updates signed with the private key. **The
 keys are not in the repository.** On the release machine:
 
@@ -45,7 +50,7 @@ keys are not in the repository.** On the release machine:
    ```
 
 `build-release.ps1` passes the public key to the build in a generated configuration
-(`stage-<arch>/tauri.release.conf.json`, merged with `tauri build --config`). The public key is
+(`stage-<arch>/tauri.release.conf.json`, merged with `tauri build --no-bundle --config`). The public key is
 not secret; once it is final it may also be committed as `plugins.updater.pubkey` in
 `tauri.conf.json`. Without `TAURI_SIGNING_PRIVATE_KEY` the build still works, but writes no
 `.sig` and no `latest.json`, and its in-app update stays off.
@@ -62,37 +67,62 @@ not secret; once it is final it may also be committed as `plugins.updater.pubkey
 - "Update now" (Settings) in an installed copy downloads the installer from the manifest
   (`app/src/ui/src-tauri/src/update.rs`) and checks its signature. While something streams it
   waits; then it asks the core to exit (`app.quit_for_update`, refused while streaming), runs the
-  installer in passive mode and exits. The installer starts the UI again, which starts the core.
-- The portable copy (no `uninstall.exe` next to `a2dpwb.exe`) and builds without a key only
+  installer with `/UPDATE /SILENT /NORESTART` (progress only) and exits. The installer starts
+  the UI again, which starts the core.
+- The plugin treats every `.exe` as an NSIS installer. The updater of 2.0.2-beta.5 and earlier
+  passes NSIS's `/P /UPDATE /R /ARGS`; with `/P` the installer skips its pages and shows only
+  the progress (as NSIS's passive mode), so those copies update as before.
+- The portable copy (no `unins000.exe` next to `a2dpwb.exe`) and builds without a key only
   open the release page.
 
-## What the installer does (`hooks.nsh`)
+## What the installer does (`A2DPWB.iss`)
 
-- Installs for the current user (no administrator rights), in 8 languages, with the WebView2
-  bootstrapper embedded (it runs only where WebView2 is missing).
-- Asks a running v1 to exit (its mutex `A2DPWB_SingleInstance`), closes a running v2 core with
-  `a2dpwb-core.exe --quit` (stream stopped, adapter released) and starts it again afterwards.
-- Uninstalls v1 when Inno Setup installed it (for the user or for all users). `%APPDATA%\A2DPWB`
-  stays; at its first start the core copies it to `backup-v1\` and adds `schema_version` to
-  `settings.json` (`crates/core/src/migrate.rs`).
+- Installs for the current user (no administrator rights), in 8 languages, into
+  `%LOCALAPPDATA%\A2DP Windows Bridge`, with the WebView2 bootstrapper embedded (it runs only
+  where WebView2 is missing). Every run writes a log, `%TEMP%\Setup Log <date> #<n>.txt`.
+- A new installation asks for the language (preselected from the Windows display language); an
+  update uses the one chosen before, and so do `/SILENT`, `/VERYSILENT`, `/P` and `/LANG=`. Setup
+  writes it to `HKCU\Software\A2DPWB`, value `SetupLanguage`, which the core uses while its
+  settings have no language yet.
+- Tasks: a Start menu shortcut and a desktop icon, both checked; an update keeps the previous
+  choice.
+- Closes a running v2 core with `a2dpwb-core.exe --quit` (stream stopped, adapter released),
+  ends what still runs from the folder (Restart Manager) and starts the core again afterwards.
+- Asks a running v1 to exit (its mutex `A2DPWB_SingleInstance`) and uninstalls v1 (Inno Setup,
+  AppId `{4D8EA889-…}`, for the user or for all users). `%APPDATA%\A2DPWB` stays; at its first
+  start the core copies it to `backup-v1\` and adds `schema_version` to `settings.json`
+  (`crates/core/src/migrate.rs`).
+- Uninstalls an installation of 2.0.0 – 2.0.2-beta.5 (Tauri's NSIS installer, registered as
+  `HKCU\…\Uninstall\A2DP Windows Bridge`) before installing the files: it runs that
+  installation's `uninstall.exe /S /UPDATE`, which removes its files and registration, and then
+  deletes what is left of its registry keys. In update mode the NSIS uninstaller keeps the
+  adapters on WinUSB, the settings, the shortcuts and the Run value. An installation that fails
+  or is cancelled after this leaves nothing installed; running the setup again installs it. The
+  core or, after an update, `a2dpwb.exe` is started after the WebView2 Runtime is installed, not
+  from `[Run]`, which comes first.
 - Points "start with Windows" (HKCU Run, value `A2DPWB`) at `a2dpwb-core.exe --background` when
   it was on; the uninstaller removes it when it points at that installation.
-- The uninstaller gives the adapters A2DPWB put on WinUSB back to Windows, after asking. The core
-  keeps one record per assigned adapter in `%APPDATA%\A2DPWB\driver\` (the `assign` result,
-  deleted by **Restore driver**); when there are records, the uninstaller asks (No is the default
-  while v1 is running or installed, since v1 needs WinUSB too) and runs
-  `a2dpwb-driver.exe restore --records <folder>` elevated: one UAC prompt for all adapters, and the
-  records of the adapters given back are deleted. An unplugged adapter keeps its record and the
-  uninstaller points to Device Manager. Not on updates, and not in silent mode (`/S`: nobody to
-  ask, and no UAC prompt), where the adapters stay on WinUSB. An adapter that already had WinUSB
-  (Zadig) when A2DPWB was asked to assign it is left alone.
+- The uninstall wizard has a page with two choices, both on by default:
+  - **Restore the original Bluetooth driver** (shown only when there are records): the core
+    keeps one record per adapter it put on WinUSB in `%APPDATA%\A2DPWB\driver\` (the `assign`
+    result, deleted by **Restore driver**); the uninstaller runs
+    `a2dpwb-driver.exe restore --records <folder>` elevated: one UAC prompt for all adapters, and
+    the records of the adapters given back are deleted. An unplugged adapter keeps its record and
+    the uninstaller points to Device Manager. An adapter that already had WinUSB (Zadig) when
+    A2DPWB was asked to assign it is left alone.
+  - **Delete user data**: `%APPDATA%\A2DPWB` (settings, codecs, pairings, firmware; not a folder
+    that `A2DPWB_CONFIG_DIR` names) and the window's own data
+    (`%LOCALAPPDATA%\io.github.seiyafunaokajp.a2dpwb`).
+
+  Silent mode (`/SILENT`, `/VERYSILENT`) shows no page: the adapters stay on WinUSB and the data
+  stays. Updates do not run the uninstaller. The download cache `%TEMP%\A2DPWB_cache` always
+  stays.
 - `/KEEPV1` on the command line leaves v1, a running v1 and the Run value alone. Only for testing
   v2 beside an installed v1 (both use the same settings folder). The core still replaces v1 when it
   starts, as in a normal install: it asks a running v1 to exit and takes over v1's Run value.
-  For example, a throwaway install: `A2DPWB-<ver>-win64-setup.exe /S /NS /KEEPV1 /D=C:\temp\a2dpwb-test`
-  (`/NS`: no shortcuts; `/D` must come last). Remove it with its `uninstall.exe /S`, then delete
-  `HKCU\Software\Seiya Funaoka\A2DP Windows Bridge`: Tauri's uninstaller keeps that folder there,
-  and the next install would offer it again.
+  For example, a throwaway install:
+  `A2DPWB-<ver>-win64-setup.exe /VERYSILENT /NOICONS /KEEPV1 /DIR=C:\temp\a2dpwb-test`.
+  Remove it with its `unins000.exe /VERYSILENT`.
 
 ## Portable copy
 
@@ -108,6 +138,6 @@ uses the real settings folder.
 
 ```powershell
 $env:A2DPWB_CONFIG_DIR = "$env:TEMP\a2dpwb-test"; $env:A2DPWB_INSTANCE = 'test'
-v2\target\release\a2dpwb-core.exe --background
-v2\target\release\a2dpwb-core.exe --quit
+target\release\a2dpwb-core.exe --background
+target\release\a2dpwb-core.exe --quit
 ```

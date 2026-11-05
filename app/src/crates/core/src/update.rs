@@ -39,6 +39,8 @@ pub struct Release {
     /// Its release page (html_url)
     pub url: String,
     pub prerelease: bool,
+    /// What the app shows of its notes ([`in_app_notes`]); empty without
+    pub notes: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -104,7 +106,30 @@ fn release_of(j: &Value) -> Option<Release> {
         .get("prerelease")
         .and_then(Value::as_bool)
         .unwrap_or_else(|| parse_version(&version).is_some_and(|v| !v.pre.is_empty()));
-    Some(Release { version, tag: tag.to_string(), url, prerelease })
+    let notes = in_app_notes(j.get("body").and_then(Value::as_str).unwrap_or_default());
+    Some(Release { version, tag: tag.to_string(), url, prerelease, notes })
+}
+
+/// Marks the part of a release's notes the app shows with its update
+/// (issue #86: a few lines, the rest on the release page). HTML comments, so
+/// the page shows the text as part of the notes.
+pub const IN_APP_NOTES_START: &str = "<!-- in-app -->";
+pub const IN_APP_NOTES_END: &str = "<!-- /in-app -->";
+/// The longest notes shown in the app (characters); longer ones are cut
+const IN_APP_NOTES_MAX: usize = 1000;
+
+/// The part of a release body between [`IN_APP_NOTES_START`] and
+/// [`IN_APP_NOTES_END`] (trimmed, CRLF as LF, cut at [`IN_APP_NOTES_MAX`]);
+/// empty when the body has none
+pub fn in_app_notes(body: &str) -> String {
+    let Some((_, rest)) = body.split_once(IN_APP_NOTES_START) else { return String::new() };
+    let notes = rest.split_once(IN_APP_NOTES_END).map_or(rest, |(n, _)| n);
+    let notes = notes.replace("\r\n", "\n");
+    let notes = notes.trim();
+    match notes.char_indices().nth(IN_APP_NOTES_MAX) {
+        Some((cut, _)) => format!("{}…", notes[..cut].trim_end()),
+        None => notes.to_string(),
+    }
 }
 
 /// The updater manifest of a release: every release (pre-release or not)
@@ -142,16 +167,29 @@ fn get(url: &str) -> Result<String, UpdateError> {
         .user_agent(concat!("A2DPWB/", env!("CARGO_PKG_VERSION")))
         .build()
         .into();
+    let started = std::time::Instant::now();
+    tracing::debug!("update check: GET {url}");
     let mut response = agent
         .get(url)
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
         .call()
-        .map_err(|e| match e {
-            ureq::Error::StatusCode(code) => UpdateError::Status(code),
-            e => UpdateError::Http(e.to_string()),
+        .map_err(|e| {
+            tracing::debug!("update check: request failed after {} ms: {e}", started.elapsed().as_millis());
+            match e {
+                ureq::Error::StatusCode(code) => UpdateError::Status(code),
+                e => UpdateError::Http(e.to_string()),
+            }
         })?;
-    response.body_mut().with_config().limit(MAX_RESPONSE).read_to_string().map_err(|e| UpdateError::Http(e.to_string()))
+    tracing::debug!("update check: status {} in {} ms", response.status(), started.elapsed().as_millis());
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(MAX_RESPONSE)
+        .read_to_string()
+        .map_err(|e| UpdateError::Http(e.to_string()));
+    tracing::debug!("update check: body {:?}", body.as_ref().map(String::len));
+    body
 }
 
 /// The newest release of the channel (blocking)
@@ -165,11 +203,19 @@ pub fn latest_release(include_prereleases: bool) -> Result<Release, UpdateError>
 
 /// A release newer than `current_version`, if there is one (blocking)
 pub fn check(current_version: &str, include_prereleases: bool) -> Result<Option<Release>, UpdateError> {
+    tracing::debug!("update check: running {current_version}, pre-releases {include_prereleases}");
     let latest = latest_release(include_prereleases)?;
     tracing::info!(
         "update check: latest {}{} (running {current_version})",
         latest.version,
         if latest.prerelease { " (pre-release)" } else { "" }
+    );
+    tracing::debug!(
+        "update check: {} ({}) vs {current_version}: {:?}, newer {}",
+        latest.tag,
+        latest.url,
+        compare_versions(&latest.version, current_version),
+        is_newer(&latest.version, current_version)
     );
     Ok(is_newer(&latest.version, current_version).then_some(latest))
 }
@@ -249,7 +295,8 @@ mod tests {
                 version: "1.1.0".into(),
                 tag: "v1.1.0".into(),
                 url: "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/tag/v1.1.0".into(),
-                prerelease: false
+                prerelease: false,
+                notes: String::new(),
             }
         );
         assert_eq!(
@@ -281,6 +328,20 @@ mod tests {
 
         assert!(parse_list("[]").is_err());
         assert!(parse_list(r#"{"tag_name":"v1.0.0"}"#).is_err());
+    }
+
+    #[test]
+    fn in_app_notes_are_the_marked_part() {
+        let body = "Intro\r\n\r\n<!-- in-app -->\r\n- Faster scan\r\n- A toast when it connects\r\n<!-- /in-app -->\r\n\r\n## Changes\r\n- more";
+        assert_eq!(in_app_notes(body), "- Faster scan\n- A toast when it connects");
+        let r = parse_latest(&serde_json::json!({ "tag_name": "v2.0.3", "body": body }).to_string()).unwrap();
+        assert_eq!(r.notes, "- Faster scan\n- A toast when it connects");
+        // None marked: no notes; no end: to the end of the body
+        assert_eq!(in_app_notes("## Changes\n- a"), "");
+        assert_eq!(in_app_notes("<!-- in-app -->\nonly this"), "only this");
+        // Cut at 1000 characters
+        let long = format!("{IN_APP_NOTES_START}{}{IN_APP_NOTES_END}", "é".repeat(1200));
+        assert_eq!(in_app_notes(&long).chars().count(), 1001);
     }
 
     #[test]

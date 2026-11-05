@@ -48,7 +48,11 @@ impl MmcssGuard {
         // SAFETY: `name` is a NUL-terminated UTF-16 string that outlives the
         // call, and `task_index` is a valid out pointer. The task index starts
         // at 0, which asks MMCSS to assign a new one.
-        let handle = unsafe { AvSetMmThreadCharacteristicsW(PCWSTR(name.as_ptr()), &mut task_index)? };
+        let handle =
+            unsafe { AvSetMmThreadCharacteristicsW(PCWSTR(name.as_ptr()), &mut task_index) }.inspect_err(|e| {
+                tracing::debug!("MMCSS: registering {:?} as \"{}\" failed: {e}", thread_name(), task.name())
+            })?;
+        tracing::debug!("MMCSS: {:?} registered as \"{}\", task index {task_index}", thread_name(), task.name());
         Ok(MmcssGuard { handle, task_index })
     }
 
@@ -64,8 +68,15 @@ impl Drop for MmcssGuard {
         // thread (the guard is !Send) and is reverted exactly once, here.
         if let Err(e) = unsafe { AvRevertMmThreadCharacteristics(self.handle) } {
             tracing::debug!("MMCSS revert failed: {e}");
+        } else {
+            tracing::debug!("MMCSS: {:?} reverted (task index {})", thread_name(), self.task_index);
         }
     }
+}
+
+fn thread_name() -> String {
+    let t = std::thread::current();
+    t.name().map_or_else(|| format!("{:?}", t.id()), str::to_owned)
 }
 
 #[cfg(test)]

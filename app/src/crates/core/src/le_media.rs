@@ -136,6 +136,7 @@ pub(crate) struct WindowsMedia {
 
 impl MediaBackend for WindowsMedia {
     fn start(&mut self, changed: ChangedFn) {
+        tracing::debug!("MCP media: starting the Windows backend");
         self.stop();
         self.shared = Arc::new(Shared::default());
         let shared = self.shared.clone();
@@ -150,6 +151,7 @@ impl MediaBackend for WindowsMedia {
         let Some(t) = self.thread.take() else { return };
         {
             let mut s = self.shared.lock();
+            tracing::debug!("MCP media: stopping, {} task(s) dropped", s.tasks.len());
             s.stopping = true;
             s.tasks.clear();
         }
@@ -166,6 +168,11 @@ impl MediaBackend for WindowsMedia {
     }
 
     fn command(&mut self, opcode: u8, param: i32, done: DoneFn) {
+        tracing::debug!(
+            "MCP media: command {} (param {param}), backend running {}",
+            mcp_model::opcode_name(opcode),
+            self.thread.is_some()
+        );
         if self.thread.is_none() {
             return done(RESULT_MEDIA_PLAYER_INACTIVE);
         }
@@ -173,6 +180,7 @@ impl MediaBackend for WindowsMedia {
     }
 
     fn seek(&mut self, position: i32) {
+        tracing::debug!("MCP media: seek to {position} cs, backend running {}", self.thread.is_some());
         if self.thread.is_some() {
             self.post(Task::Seek(position));
         }
@@ -224,6 +232,16 @@ impl Worker {
         if !prev.differs_from(&next, now_ms()) {
             return;
         }
+        tracing::debug!(
+            "MCP media: changed: state {}, track {:08x} -> {:08x}, duration {} cs, position {} cs, rate {}, seek {}",
+            mcp_model::state_name(next.state),
+            prev.track,
+            next.track,
+            next.duration,
+            next.position,
+            next.rate,
+            next.can_seek
+        );
         if prev.state != next.state || prev.player != next.player {
             tracing::info!(
                 "MCP: media player \"{}\": {}",
@@ -241,7 +259,12 @@ impl Worker {
             return;
         }
         self.manager_tried = Some(Instant::now());
+        pin_factory_dll::<Manager>("session manager factory");
         self.manager = wait_result!(Manager::RequestAsync());
+        tracing::debug!("MCP media: session manager request: available {}", self.manager.is_some());
+        if let Some(m) = &self.manager {
+            pin_dll_of("session manager", m);
+        }
         match &self.manager {
             Some(_) => tracing::info!("MCP: reading the Windows media session (System Media Transport Controls)"),
             None if !self.manager_logged => {
@@ -261,13 +284,16 @@ impl Worker {
         if let Some(n) = self.names.get(aumid) {
             return n.clone();
         }
+        pin_factory_dll::<AppInfo>("app info factory");
         let name = AppInfo::GetFromAppUserModelId(&HSTRING::from(aumid))
+            .inspect(|a| pin_dll_of("app info", a))
             .and_then(|a| a.DisplayInfo())
             .and_then(|d| d.DisplayName())
             .map(|n| n.to_string_lossy())
             .ok()
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| name_from_aumid(aumid));
+        tracing::debug!("MCP media: player {aumid} is \"{name}\"");
         self.names.insert(aumid.to_string(), name.clone());
         name
     }
@@ -377,6 +403,10 @@ impl Worker {
             OP_MOVE_RELATIVE => {
                 let now = cur.position_now(now_ms());
                 if !cur.can_seek || now < 0 {
+                    tracing::debug!(
+                        "MCP media: move relative {param} not possible (seek {}, position {now})",
+                        cur.can_seek
+                    );
                     return RESULT_COMMAND_CANNOT_BE_COMPLETED;
                 }
                 let mut target = (i64::from(now) + i64::from(param)).max(0);
@@ -385,7 +415,10 @@ impl Worker {
                 }
                 Some(Worker::seek_session(&s, target as i32))
             }
-            _ => return RESULT_OPCODE_NOT_SUPPORTED,
+            _ => {
+                tracing::debug!("MCP media: opcode 0x{op:02x} not supported");
+                return RESULT_OPCODE_NOT_SUPPORTED;
+            }
         };
         tracing::info!(
             "MCP: {} -> \"{}\": {}",
@@ -402,8 +435,12 @@ impl Worker {
 
     fn seek(&mut self, mut position: i32) {
         let cur = self.current();
-        let Some(s) = self.session() else { return };
+        let Some(s) = self.session() else {
+            tracing::debug!("MCP media: seek ignored, no media session");
+            return;
+        };
         if !cur.can_seek {
+            tracing::debug!("MCP media: seek ignored, \"{}\" cannot seek", cur.player);
             return;
         }
         if cur.duration > 0 {
@@ -452,6 +489,48 @@ impl Worker {
     }
 }
 
+/// True the first time it is asked for `what`
+fn first_pin(what: &'static str) -> bool {
+    static PINNED: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+    let mut pinned = PINNED.lock().unwrap_or_else(|e| e.into_inner());
+    if pinned.contains(&what) {
+        return false;
+    }
+    pinned.push(what);
+    true
+}
+
+/// Keeps the DLL of a WinRT class's activation factory loaded for good,
+/// before the first static call caches the factory: windows-rs caches it
+/// for the process, and a media thread that started after COM unloaded the
+/// DLL crashed in it (win_sys::com). Pinning the object a call returns is
+/// not enough: a call that fails caches the factory too, and returns
+/// nothing to pin (GetFromAppUserModelId for Chrome, no packaged app,
+/// left Windows.ApplicationModel.dll to be unloaded: crash on 2026-10-22).
+fn pin_factory_dll<C: windows::core::RuntimeName>(what: &'static str) {
+    if !first_pin(what) {
+        return;
+    }
+    let pinned =
+        windows::core::factory::<C, windows::core::IInspectable>().ok().and_then(|f| win_sys::com::pin_module_of(&f));
+    match pinned {
+        Some(dll) => tracing::debug!("MCP media: {what}: {dll} kept loaded"),
+        None => tracing::warn!("MCP media: {what}: cannot keep its DLL loaded"),
+    }
+}
+
+/// Keeps the DLL of a WinRT object loaded for good, once per class (see
+/// [`pin_factory_dll`])
+fn pin_dll_of<I: windows::core::Interface>(what: &'static str, object: &I) {
+    if !first_pin(what) {
+        return;
+    }
+    match win_sys::com::pin_module_of(object) {
+        Some(dll) => tracing::debug!("MCP media: {what}: {dll} kept loaded"),
+        None => tracing::warn!("MCP media: {what}: cannot keep its DLL loaded"),
+    }
+}
+
 /// Now as a WinRT DateTime (100 ns since 1601-01-01 UTC)
 fn filetime_now() -> i64 {
     const UNIX_TO_1601: i64 = 11_644_473_600 * 10_000_000;
@@ -488,5 +567,16 @@ mod tests {
     fn filetime_is_after_2020() {
         // 2020-01-01 in 100 ns since 1601
         assert!(filetime_now() > 132_223_104_000_000_000);
+    }
+
+    /// The session manager's DLL stays loaded for the cached factory
+    /// (two crashes on 2026-10-22 in RequestAsync after COM unloaded it)
+    #[test]
+    fn the_session_manager_dll_is_kept_loaded() {
+        let _com = win_sys::audio_policy::ComApartment::init_mta().unwrap();
+        // No media sessions on a build machine: nothing to check there
+        let Some(m) = wait_result!(Manager::RequestAsync()) else { return };
+        let dll = win_sys::com::pin_module_of(&m).unwrap();
+        assert!(dll.to_ascii_lowercase().ends_with(".dll"), "{dll}");
     }
 }

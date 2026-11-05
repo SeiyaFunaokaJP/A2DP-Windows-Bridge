@@ -43,11 +43,14 @@ pub fn ask_v1_to_exit() -> usize {
     let mut windows: Vec<HWND> = Vec::new();
     // SAFETY: the callback only uses `windows` through lparam during the call.
     let _ = unsafe { EnumWindows(Some(collect), LPARAM(&mut windows as *mut Vec<HWND> as isize)) };
-    windows
+    let found = windows.len();
+    let asked = windows
         .into_iter()
         // SAFETY: posting a message to a window handle; a stale one fails.
         .filter(|&w| unsafe { PostMessageW(Some(w), WM_COMMAND, WPARAM(V1_EXIT_COMMAND), LPARAM(0)) }.is_ok())
-        .count()
+        .count();
+    tracing::debug!("single_instance: {found} v1 window(s) found, {asked} asked to exit");
+    asked
 }
 
 /// Holds the named mutex; another `acquire` of the same name fails while
@@ -70,14 +73,17 @@ impl SingleInstance {
         // Not taking ownership: only the mutex's existence matters, and an
         // owned mutex would be "abandoned" when the creating thread ends
         // SAFETY: default security, NUL-terminated name.
-        let handle = unsafe { CreateMutexW(None, false, &HSTRING::from(name)) }?;
+        let handle = unsafe { CreateMutexW(None, false, &HSTRING::from(name)) }
+            .inspect_err(|e| tracing::debug!("single_instance: CreateMutex({name}) failed: {e}"))?;
         // SAFETY: reads this thread's last error, set by CreateMutexW just
         // above (it reports an existing mutex with a valid handle).
         if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
             // SAFETY: the handle was just opened here.
             let _ = unsafe { CloseHandle(handle) };
+            tracing::debug!("single_instance: {name} exists, another instance runs");
             return Ok(None);
         }
+        tracing::debug!("single_instance: {name} acquired");
         Ok(Some(SingleInstance { handle }))
     }
 }
@@ -98,9 +104,13 @@ pub fn is_held(name: &str) -> bool {
         Ok(handle) => {
             // SAFETY: just opened here.
             let _ = unsafe { CloseHandle(handle) };
+            tracing::trace!("single_instance: {name} is held");
             true
         }
-        Err(e) => e.code() == ERROR_ACCESS_DENIED.to_hresult(),
+        Err(e) => {
+            tracing::trace!("single_instance: OpenMutex({name}): {e}");
+            e.code() == ERROR_ACCESS_DENIED.to_hresult()
+        }
     }
 }
 

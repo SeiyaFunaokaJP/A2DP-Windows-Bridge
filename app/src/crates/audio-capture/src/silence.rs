@@ -12,7 +12,7 @@ use std::time::Duration;
 #[derive(Debug)]
 pub(crate) struct SilenceFill {
     sample_rate: u32,
-    /// No packet for this long = the device is silent (~2 periods)
+    /// No packet for this long = the device is silent
     threshold: Duration,
     /// When the last captured packet arrived (or the stream started)
     last_audio: Duration,
@@ -28,11 +28,22 @@ pub(crate) struct SilenceFill {
 /// dropped and the clock moves on.
 const MAX_BURST: Duration = Duration::from_millis(200);
 
+/// The shortest wait before a device counts as silent. Loopback packets
+/// come a period apart only on average: a missed wake-up delivers two
+/// periods at once 20 ms after the last (VB-Audio Cable at 10 ms periods
+/// did so every few seconds), and a fill at two periods then spliced 20 ms
+/// of silence into the music, heard as crackles and skips. The pipeline
+/// sends what arrives, so a later start of the fill only delays the
+/// silence, not the audio.
+const MIN_THRESHOLD: Duration = Duration::from_millis(50);
+
 impl SilenceFill {
     /// `period`: the stream's device period; silence starts after two of
-    /// them without a packet. `now`: the stream start.
+    /// them without a packet, and not before [`MIN_THRESHOLD`]. `now`: the
+    /// stream start.
     pub fn new(sample_rate: u32, period: Duration, now: Duration) -> SilenceFill {
-        SilenceFill { sample_rate, threshold: period * 2, last_audio: now, silent_since: None, emitted: 0 }
+        let threshold = (period * 2).max(MIN_THRESHOLD);
+        SilenceFill { sample_rate, threshold, last_audio: now, silent_since: None, emitted: 0 }
     }
 
     /// A captured packet arrived at `now`
@@ -56,6 +67,10 @@ impl SilenceFill {
         let max = frames(MAX_BURST, self.sample_rate);
         if n > max {
             // Resynchronise: count everything up to `now` as delivered
+            tracing::debug!(
+                "silence fill: {} frames due at once, delivering {max} and dropping the rest (thread stalled?)",
+                n
+            );
             self.emitted = due;
             return max as usize;
         }
@@ -86,23 +101,48 @@ mod tests {
     }
 
     #[test]
-    fn nothing_before_two_periods() {
+    fn nothing_before_the_threshold() {
         let mut f = SilenceFill::new(48_000, PERIOD, Duration::ZERO);
         assert_eq!(f.poll(10 * MS), 0);
-        assert_eq!(f.poll(19 * MS), 0);
+        assert_eq!(f.poll(49 * MS), 0);
+        // Long periods: two of them
+        let mut f = SilenceFill::new(48_000, 40 * MS, Duration::ZERO);
+        assert_eq!(f.poll(79 * MS), 0);
+        assert_eq!(f.poll(80 * MS), 3840);
+    }
+
+    #[test]
+    fn late_packets_are_not_silence() {
+        // 10 ms periods, packets now and then two at once 20-30 ms after the
+        // previous (a missed wake-up), polled every 5 ms: never a fill
+        let mut f = SilenceFill::new(48_000, PERIOD, Duration::ZERO);
+        let mut now = Duration::ZERO;
+        for i in 0..1000u32 {
+            let gap = match i % 7 {
+                3 => 20 * MS,
+                5 => 30 * MS,
+                _ => PERIOD,
+            };
+            let next = now + gap;
+            while now < next {
+                now += 5 * MS;
+                assert_eq!(f.poll(now), 0, "at {now:?}");
+            }
+            f.on_audio(now);
+        }
     }
 
     #[test]
     fn fills_elapsed_time_from_last_packet() {
         let mut f = SilenceFill::new(48_000, PERIOD, Duration::ZERO);
         f.on_audio(100 * MS);
-        assert_eq!(f.poll(110 * MS), 0);
-        // 20 ms after the last packet: the whole 20 ms at once
-        assert_eq!(f.poll(120 * MS), 960);
+        assert_eq!(f.poll(140 * MS), 0);
+        // 50 ms after the last packet: the whole 50 ms at once
+        assert_eq!(f.poll(150 * MS), 2400);
         // then whatever elapsed since the previous poll
-        assert_eq!(f.poll(130 * MS), 480);
-        assert_eq!(f.poll(135 * MS), 240);
-        assert_eq!(f.poll(135 * MS), 0);
+        assert_eq!(f.poll(160 * MS), 480);
+        assert_eq!(f.poll(165 * MS), 240);
+        assert_eq!(f.poll(165 * MS), 0);
     }
 
     #[test]
@@ -126,10 +166,10 @@ mod tests {
     #[test]
     fn audio_resets_the_stretch() {
         let mut f = SilenceFill::new(48_000, PERIOD, Duration::ZERO);
-        assert_eq!(f.poll(30 * MS), 1440);
-        f.on_audio(40 * MS);
-        assert_eq!(f.poll(50 * MS), 0);
-        assert_eq!(f.poll(60 * MS), 960);
+        assert_eq!(f.poll(60 * MS), 2880);
+        f.on_audio(70 * MS);
+        assert_eq!(f.poll(110 * MS), 0);
+        assert_eq!(f.poll(120 * MS), 2400);
     }
 
     #[test]

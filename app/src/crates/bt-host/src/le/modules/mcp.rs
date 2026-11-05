@@ -201,9 +201,15 @@ impl McpModule {
         let Some(&op) = value.first() else { return Err(ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LENGTH) };
         let mi = self.backend.info();
         tracing::info!("MCP: control point {} (0x{op:02x}) from 0x{con:04x}", opcode_name(op));
+        tracing::debug!("MCP: control point value {value:02X?}, media state 0x{:02X}", mi.state);
         let param = match control_point_check(&mi, value) {
             Ok((_, param)) => param,
             Err(result) => {
+                tracing::debug!(
+                    "MCP: control point {} refused by the check ({})",
+                    opcode_name(op),
+                    result_name(result)
+                );
                 (self.reply_later)(con, op, result);
                 return Ok(());
             }
@@ -224,8 +230,12 @@ impl McpModule {
         let Ok(raw) = <[u8; 4]>::try_from(value) else { return Err(ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LENGTH) };
         let mi = self.backend.info();
         // Ignored without an active seekable player
-        let Some(p) = seek_target(&mi, i32::from_le_bytes(raw)) else { return Ok(()) };
+        let Some(p) = seek_target(&mi, i32::from_le_bytes(raw)) else {
+            tracing::debug!("MCP: Track Position write {} ignored (no seekable player)", i32::from_le_bytes(raw));
+            return Ok(());
+        };
         if !self.dry_run && !media_keys {
+            tracing::debug!("MCP: Track Position write ignored (media keys off)");
             return Ok(());
         }
         tracing::info!("MCP: Track Position write {p}");
@@ -259,6 +269,9 @@ fn send(server: &mut GattServer, handle: u16, value: &[u8], text: bool) {
 fn publish(ctx: &mut LeCtx<'_>) {
     let Some(m) = ctx.module_mut::<McpModule>() else { return };
     let notes = m.publish_values(now_ms());
+    if !notes.is_empty() {
+        tracing::debug!("MCP: publishing {:04X?}", notes.iter().map(|(h, _, _)| *h).collect::<Vec<_>>());
+    }
     let server = ctx.gatt_server();
     for (handle, value, text) in notes {
         send(server, handle, &value, text);
@@ -343,7 +356,15 @@ impl LeModule for McpModule {
     }
 
     fn on_att_read(&mut self, _ctx: &mut LeCtx<'_>, read: &AttRead) -> Result<Vec<u8>, u8> {
-        self.read_value(read.con, read.handle, read.offset)
+        let r = self.read_value(read.con, read.handle, read.offset);
+        tracing::debug!(
+            "MCP: read 0x{:04X} offset {} by 0x{:04X}: {:02X?}",
+            read.handle,
+            read.offset,
+            read.con,
+            r.as_deref()
+        );
+        r
     }
 
     fn on_att_write(&mut self, ctx: &mut LeCtx<'_>, write: &AttWrite<'_>) -> Result<(), u8> {
@@ -385,7 +406,7 @@ mod tests {
         let r = replies.clone();
         m.reply_later = Arc::new(move |con, op, result| r.lock().unwrap().push((con, op, result)));
         let mut server = GattServer::new();
-        server.build_base();
+        server.build_base("A2DPWB");
         m.add_gatt_services(&mut server.builder(2));
         m.backend.start(Box::new(|| {}));
         (m, replies, server)

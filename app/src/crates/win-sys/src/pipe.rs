@@ -80,6 +80,12 @@ pub fn create_server(name: &str, first: bool) -> std::io::Result<NamedPipeServer
         unsafe { options.create_with_security_attributes_raw(name, std::ptr::from_mut(&mut attrs).cast::<c_void>()) };
     // SAFETY: allocated by ConvertStringSecurityDescriptorToSecurityDescriptorW.
     unsafe { LocalFree(Some(HLOCAL(sd.0))) };
+    match &server {
+        Ok(_) => tracing::debug!("pipe: instance of {name} created (first {first}, owner {sid})"),
+        Err(e) => {
+            tracing::debug!("pipe: creating {name} (first {first}) failed: {e} (os error {:?})", e.raw_os_error())
+        }
+    }
     server
 }
 

@@ -23,7 +23,14 @@ pub async fn ipc_request(
     method: String,
     params: Option<Value>,
 ) -> Result<Value, ErrorInfo> {
-    ipc.request(window.label(), &method, params).await
+    let result = ipc.request(window.label(), &method, params).await;
+    // Only the connection's failures: the core's own errors are in its log
+    if let Err(e) = &result
+        && e.code.starts_with("ipc.")
+    {
+        tracing::warn!("[{}] {method} failed: {}", window.label(), e.code);
+    }
+    result
 }
 
 #[tauri::command]
@@ -72,9 +79,34 @@ pub async fn show_flyout(app: AppHandle) -> Result<(), String> {
     windows::show_flyout(&app).map_err(|e| e.to_string())
 }
 
+/// The flyout's page height (logical pixels): the flyout window fits it
+#[tauri::command]
+pub async fn fit_flyout(window: WebviewWindow, height: f64) -> Result<(), String> {
+    windows::fit_flyout(&window, height).map_err(|e| e.to_string())
+}
+
+/// The first-run setup opened or closed: the main window fits it
+#[tauri::command]
+pub async fn setup_window(window: WebviewWindow, active: bool) -> Result<(), String> {
+    windows::setup_window(&window, active).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn set_theme(app: AppHandle, theme: String) {
     windows::set_theme(&app, &theme);
+}
+
+#[derive(Serialize)]
+pub struct Accent {
+    light: String,
+    dark: String,
+}
+
+/// Windows' accent colours (read again when the window gets the focus, so a
+/// change in Settings shows); None keeps the UI's default
+#[tauri::command]
+pub fn accent_colors() -> Option<Accent> {
+    win_sys::accent::accent_colors().map(|a| Accent { light: a.light, dark: a.dark })
 }
 
 /// Opens a web page in the user's browser (https only)

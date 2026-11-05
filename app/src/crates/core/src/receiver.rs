@@ -353,7 +353,13 @@ fn broadcast_addresses() -> Vec<Ipv4Addr> {
 /// if given. Blocks for up to `timeout` (less when `host` answers).
 pub fn discover(host: Option<&str>, port: u16, timeout: Duration) -> Vec<ReceiverInfo> {
     let mut found: Vec<ReceiverInfo> = Vec::new();
-    let Ok(socket) = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)) else { return found };
+    let socket = match UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::debug!("receiver discovery: cannot bind a UDP socket: {e}");
+            return found;
+        }
+    };
     let _ = socket.set_broadcast(true);
     let targets: Vec<SocketAddr> = match host {
         None => broadcast_addresses().into_iter().map(|ip| SocketAddr::from((ip, port))).collect(),
@@ -361,8 +367,11 @@ pub fn discover(host: Option<&str>, port: u16, timeout: Duration) -> Vec<Receive
             (h, port).to_socket_addrs().map(|a| a.filter(SocketAddr::is_ipv4).take(1).collect()).unwrap_or_default()
         }
     };
+    tracing::debug!("receiver discovery: asking {targets:?} (timeout {} ms)", timeout.as_millis());
     for t in &targets {
-        let _ = socket.send_to(DISCOVER_REQUEST, t);
+        if let Err(e) = socket.send_to(DISCOVER_REQUEST, t) {
+            tracing::debug!("receiver discovery: send to {t} failed: {e}");
+        }
     }
     let deadline = Instant::now() + timeout;
     let mut buf = [0u8; 4096];
@@ -378,15 +387,20 @@ pub fn discover(host: Option<&str>, port: u16, timeout: Duration) -> Vec<Receive
             Err(e) if e.kind() == ErrorKind::ConnectionReset => continue,
             Err(_) => break,
         };
-        let Some(mut info) = std::str::from_utf8(&buf[..n]).ok().and_then(parse_info) else { continue };
+        let Some(mut info) = std::str::from_utf8(&buf[..n]).ok().and_then(parse_info) else {
+            tracing::trace!("receiver discovery: {n} byte(s) from {from} not a receiver's reply");
+            continue;
+        };
         info.ip = from.ip().to_string();
         if !found.iter().any(|f| f.ip == info.ip && f.port == info.port) {
+            tracing::debug!("receiver discovery: {}", info.describe(false));
             found.push(info);
         }
         if host.is_some() {
             break; // the one asked for answered
         }
     }
+    tracing::debug!("receiver discovery: {} receiver(s) found", found.len());
     found
 }
 
@@ -398,13 +412,16 @@ fn connect(host: &str, port: u16) -> Result<TcpStream, String> {
     }
     let mut error = "cannot connect".to_string();
     for addr in addrs {
+        tracing::debug!("receiver: connecting to {addr}");
         match TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) {
             Ok(s) => {
+                tracing::debug!("receiver: connected to {addr}");
                 let _ = s.set_read_timeout(Some(READ_POLL));
                 let _ = s.set_nodelay(true);
                 return Ok(s);
             }
             Err(e) => {
+                tracing::debug!("receiver: {addr}: {e}");
                 error = match e.kind() {
                     ErrorKind::ConnectionRefused => "connection refused".into(),
                     ErrorKind::TimedOut => "connection timed out".into(),
@@ -472,9 +489,11 @@ impl ReceiverClient {
         s.stats = None;
         s.info = None;
         let Some((host, port)) = split_target(target) else {
+            tracing::debug!("receiver: invalid target {target:?}");
             s.status = Some((ReceiverStatus::Failed, "invalid address (host or host:port)".into()));
             return;
         };
+        tracing::debug!("receiver: start, host {host} port {port}");
         s.stop = false;
         s.status = Some((ReceiverStatus::Connecting, String::new()));
         drop(s);
@@ -539,11 +558,13 @@ impl ReceiverClient {
         }
         let line = format!("{msg}\n");
         let s = self.shared.lock();
-        match s.socket.as_ref() {
+        let sent = match s.socket.as_ref() {
             // &TcpStream writes: the reader thread keeps its own handle
             Some(mut sock) => sock.write_all(line.as_bytes()).is_ok(),
             None => false,
-        }
+        };
+        tracing::debug!("receiver: configure {msg}: sent {sent}");
+        sent
     }
 
     /// The CLI's line: what the receiver measured, or why there is nothing
@@ -602,6 +623,7 @@ fn run(shared: &Shared, host: &str, port: u16) {
         if s.stop {
             return;
         }
+        tracing::debug!("receiver: {error}, trying again in {} ms", RECONNECT_DELAY.as_millis());
         s.status = Some((ReceiverStatus::Failed, error));
         s.stats = None;
         let (s, _) = shared.wake.wait_timeout_while(s, RECONNECT_DELAY, |s| !s.stop).unwrap_or_else(|e| e.into_inner());
@@ -639,7 +661,10 @@ fn read_lines(shared: &Shared, mut stream: TcpStream, host: &str) -> Option<Stri
                 continue;
             }
             Err(e) if e.kind() == ErrorKind::Interrupted => continue,
-            Err(_) => break "connection lost".to_string(),
+            Err(e) => {
+                tracing::debug!("receiver: read failed: {e}");
+                break "connection lost".to_string();
+            }
         };
         last_data = Instant::now();
         buf.extend_from_slice(&chunk[..n]);
@@ -647,10 +672,14 @@ fn read_lines(shared: &Shared, mut stream: TcpStream, host: &str) -> Option<Stri
             let line: Vec<u8> = buf.drain(..=nl).collect();
             let Ok(line) = std::str::from_utf8(&line) else { continue };
             if let Some(stats) = parse_stats(line) {
+                tracing::trace!("receiver: {}", stats.summary());
                 shared.lock().stats = Some(stats);
             } else if let Some(mut info) = parse_info(line) {
                 info.ip = host.to_string();
+                tracing::debug!("receiver: hello, {}", info.describe(false));
                 shared.lock().info = Some(info);
+            } else {
+                tracing::trace!("receiver: line not understood: {}", line.trim());
             }
         }
         if buf.len() > MAX_LINE {
@@ -863,8 +892,14 @@ mod tests {
         let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
         let client = ReceiverClient::new();
         client.start(&format!("127.0.0.1:{port}"));
-        assert!(wait_for(|| client.status().0 == ReceiverStatus::Failed));
-        assert!(client.status().1.contains("refused") || client.status().1.contains("timed out"));
+        assert!(wait_for(|| client.status().0 == ReceiverStatus::Failed), "no failure: {:?}", client.status());
+        // Refused, or slow to be (timed out), or another error of the connect
+        // (CI runners have given other ones); what came is in the message
+        let why = client.status().1;
+        assert!(
+            why.contains("refused") || why.contains("timed out") || why.starts_with("cannot connect"),
+            "port {port}: {why:?}"
+        );
         client.start("host:99999");
         assert_eq!(client.status(), (ReceiverStatus::Failed, "invalid address (host or host:port)".into()));
         client.stop();

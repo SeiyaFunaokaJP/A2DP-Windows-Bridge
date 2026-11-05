@@ -35,10 +35,16 @@ export interface Transport {
 
   showMain(route?: string): Promise<void>;
   hideWindow(): Promise<void>;
+  /** The flyout's page is this tall (CSS pixels): its window fits it */
+  fitHeight?(height: number): Promise<void>;
+  /** The main window takes the setup's size, or the size it had before */
+  setupWindow?(active: boolean): Promise<void>;
   openUrl(url: string): Promise<void>;
   openFolder(path: string): Promise<void>;
   revealPath(path: string): Promise<void>;
   setTheme(theme: string): Promise<void>;
+  /** Windows' accent colours ("#rrggbb"), null if not known */
+  accentColors?(): Promise<{ light: string; dark: string } | null>;
   /** The backend asks the main window to show a screen */
   onNavigate(cb: (route: string) => void): void;
   /** The window was minimized */

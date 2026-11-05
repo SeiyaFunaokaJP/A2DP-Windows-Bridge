@@ -11,4 +11,15 @@ profile: string | null, info: StreamInfo | null,
 /**
  * Headphone volume (AVRCP, 0..127), None while unknown
  */
-volume: number | null, };
+volume: number | null, 
+/**
+ * Headphone battery level in percent, None while unknown (needs
+ * Settings.battery_experimental and headphones that report it)
+ */
+battery: number | null, 
+/**
+ * The headphones refused the connection that reports the battery
+ * (another device such as a phone may hold their hands-free profile):
+ * the battery shows as unknown
+ */
+battery_refused: boolean, };

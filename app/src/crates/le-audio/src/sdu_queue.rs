@@ -169,6 +169,12 @@ impl SduQueue {
         self.prefill_max = self.prefill + PREFILL_GROWTH;
         self.stats = QueueStats::default();
         self.underrun = None;
+        tracing::debug!(
+            "SDU queue: {} CIS, controller queue depth {queue_depth}, prefill {} (max {})",
+            self.silence.len(),
+            self.prefill,
+            self.prefill_max
+        );
     }
 
     /// Encode thread: a new set (drops the oldest when full)
@@ -178,6 +184,7 @@ impl SduQueue {
             && let Some(old) = self.sets.pop_front()
         {
             self.stats.overflows += 1;
+            tracing::trace!("SDU queue full: oldest set dropped ({} overflows)", self.stats.overflows);
             self.recycle(old);
         }
         self.sets.push_back(set);
@@ -188,6 +195,7 @@ impl SduQueue {
     /// maximum). The caller sends [`SduQueue::silence`] for None.
     pub fn pop(&mut self) -> Option<SduSet> {
         if self.buffering && self.sets.len() >= self.prefill {
+            tracing::trace!("SDU queue: prefill of {} reached, sending", self.prefill);
             self.buffering = false;
         }
         if !self.buffering
@@ -204,6 +212,7 @@ impl SduQueue {
             if self.prefill < self.prefill_max {
                 self.prefill += 1;
             }
+            tracing::trace!("SDU queue underrun {}: buffering again, prefill {}", self.stats.underruns, self.prefill);
             if self.stats.underruns <= LOGGED_UNDERRUNS {
                 self.underrun = Some(Underrun {
                     set: self.stats.sets_popped + self.stats.silence_sets,

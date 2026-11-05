@@ -7,37 +7,33 @@ import type { Core } from "../ipc/store";
 import { IpcError } from "../ipc/types";
 import { t, tm } from "../i18n";
 
-export type RouteName = "home" | "profiles" | "diagnostics" | "adapter" | "settings" | "setup";
+export type RouteName = "home" | "codecs" | "devices" | "diagnostics" | "mixer" | "developer" | "adapter" | "settings" | "about" | "setup";
 
 export interface Route {
   name: RouteName;
-  /** profiles: "new" or the name of the profile being edited; adapter:
-   *  "afh" for its channel hopping section */
+  /** adapter: "afh" for its channel hopping section, "firmware" for the
+   *  firmware */
   arg?: string;
 }
 
 export function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/");
-  const names: RouteName[] = ["home", "profiles", "diagnostics", "adapter", "settings", "setup"];
-  const name = names.find((n) => n === parts[0]) ?? "home";
-  if (name === "profiles" && parts[1] === "new") return { name, arg: "new" };
-  if (name === "profiles" && parts[1] === "edit" && parts[2] !== undefined) {
-    return { name, arg: decodeURIComponent(parts.slice(2).join("/")) };
-  }
-  if (name === "adapter" && parts[1] === "afh") return { name, arg: "afh" };
+  const names: RouteName[] = ["home", "codecs", "devices", "diagnostics", "mixer", "developer", "adapter", "settings", "about", "setup"];
+  // Profiles became Codecs (issue #86): its links still lead there
+  const name = parts[0] === "profiles" ? "codecs" : (names.find((n) => n === parts[0]) ?? "home");
+  if (name === "adapter" && (parts[1] === "afh" || parts[1] === "firmware")) return { name, arg: parts[1] };
   return { name };
 }
 
 export function routeHash(r: Route): string {
-  if (r.name === "profiles" && r.arg === "new") return "#/profiles/new";
-  if (r.name === "profiles" && r.arg) return `#/profiles/edit/${encodeURIComponent(r.arg)}`;
-  if (r.name === "adapter" && r.arg === "afh") return "#/adapter/afh";
+  if (r.name === "adapter" && (r.arg === "afh" || r.arg === "firmware")) return `#/adapter/${r.arg}`;
   return `#/${r.name}`;
 }
 
 export interface Notice {
   text: string;
-  kind: "info" | "error";
+  /** info: done ("Copied"); hint: what to do instead (no success mark) */
+  kind: "info" | "hint" | "error";
 }
 
 export interface AppContext {

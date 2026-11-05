@@ -6,19 +6,25 @@ import { createEffect, createSignal, For, Match, on, onCleanup, Show, Switch } f
 import { Icon } from "../components/Icon";
 import { NoticeLine } from "../components/Notice";
 import type { IconName } from "../components/icons";
-import { CodecBadge, stateLabel } from "../components/stream";
+import { BatteryLevel, CodecBadge, codecDetails, codecName, showsBattery, stateLabel } from "../components/stream";
 import { lang, setLanguage, t } from "../i18n";
 import type { Core } from "../ipc/store";
+import { About } from "../screens/About";
 import { Adapter } from "../screens/Adapter";
+import { Codecs } from "../screens/Codecs";
+import { Devices } from "../screens/Devices";
+import { Developer } from "../screens/Developer";
 import { Diagnostics } from "../screens/Diagnostics";
 import { Flyout } from "../screens/Flyout";
-import { Home } from "../screens/Home";
-import { Profiles } from "../screens/Profiles";
+import { entryState, Home } from "../screens/Home";
+import { audioEntries, entryByKey, type AudioEntry } from "../lib/profile";
 import { Settings } from "../screens/Settings";
+import { Mixer } from "../screens/Mixer";
 import { Setup, needsSetup } from "../screens/Setup";
-import { applyTheme } from "../theme";
+import { applyTheme, followAccent } from "../theme";
 import { AppProvider, useApp, type RouteName } from "./context";
-import { CaptureSign, UpdateNotice } from "./indicators";
+import { mixerShown } from "./settings";
+import { CaptureSign, CrashNotice, UpdateNotice } from "./indicators";
 import "./shell.css";
 
 export function App(props: { core: Core }) {
@@ -29,9 +35,10 @@ export function App(props: { core: Core }) {
     if (l) void setLanguage(l);
   });
   createEffect(() => {
-    const theme = core.state.snap?.settings.theme ?? "dark";
+    const theme = core.state.snap?.settings.theme ?? "system";
     onCleanup(applyTheme(theme, core.transport));
   });
+  followAccent(core.transport);
   if (core.transport.mica) document.documentElement.classList.add("mica");
   document.documentElement.classList.add(`win-${core.transport.window}`);
 
@@ -85,15 +92,24 @@ function ConnectionScreen(props: { compact?: boolean }) {
 
 const NAV: { name: RouteName; icon: IconName; label: string }[] = [
   { name: "home", icon: "home", label: "ui.nav.home" },
-  { name: "profiles", icon: "headphones", label: "ui.nav.profiles" },
-  { name: "diagnostics", icon: "pulse", label: "ui.nav.diagnostics" },
+  { name: "codecs", icon: "headphones", label: "ui.nav.codecs" },
+  { name: "devices", icon: "bluetooth", label: "ui.nav.devices" },
   { name: "adapter", icon: "usb_stick", label: "ui.nav.adapter" },
+  { name: "mixer", icon: "speaker_2", label: "ui.nav.mixer" },
+  { name: "diagnostics", icon: "pulse", label: "ui.nav.diagnostics" },
   { name: "settings", icon: "settings", label: "ui.nav.settings" },
+  { name: "about", icon: "info", label: "ui.nav.about" },
+  // Shown in developer mode only: last, out of the way
+  { name: "developer", icon: "wrench", label: "ui.nav.developer" },
 ];
 
 function MainWindow() {
   const app = useApp();
   const { core, route } = app;
+  const shown = (n: { name: RouteName }) => {
+    if (n.name === "mixer") return mixerShown(core.state.snap?.settings);
+    return n.name !== "developer" || core.state.snap?.settings.developer_mode;
+  };
   const [collapsed, setCollapsed] = createSignal<boolean | null>(null);
 
   // The first-run setup: decided once when the state first arrives (and
@@ -160,11 +176,9 @@ function MainWindow() {
               >
                 <Icon name="navigation" />
               </button>
-              <img src="/app-icon.png" alt="" class="nav-logo" width="20" height="20" />
-              <span class="nav-title">{t("app.title")}</span>
             </div>
             <ul class="nav-list">
-              <For each={NAV}>
+              <For each={NAV.filter(shown)}>
                 {(item) => (
                   <li>
                     <a
@@ -186,20 +200,33 @@ function MainWindow() {
           </nav>
           <main class="content" id="main" tabindex="-1" lang={lang()}>
             <div class="app-notices">
+              <CrashNotice />
               <UpdateNotice />
             </div>
             <Switch>
               <Match when={route().name === "home"}>
                 <Home />
               </Match>
-              <Match when={route().name === "profiles"}>
-                <Profiles />
+              <Match when={route().name === "codecs"}>
+                <Codecs />
+              </Match>
+              <Match when={route().name === "devices"}>
+                <Devices />
               </Match>
               <Match when={route().name === "diagnostics"}>
                 <Diagnostics />
               </Match>
+              <Match when={route().name === "mixer" && mixerShown(core.state.snap?.settings)}>
+                <Mixer />
+              </Match>
+              <Match when={route().name === "developer" && core.state.snap?.settings.developer_mode}>
+                <Developer />
+              </Match>
               <Match when={route().name === "adapter"}>
                 <Adapter />
+              </Match>
+              <Match when={route().name === "about"}>
+                <About />
               </Match>
               <Match when={route().name === "settings" || route().name === "setup"}>
                 <Settings />
@@ -225,23 +252,72 @@ export async function hideToTray(core: Core): Promise<void> {
   await core.request("app.hidden_to_tray").catch(() => {});
 }
 
-/** Always visible (design principle 2): stream state, codec, bitrate */
+/** Always visible (design principle 2): each device and its state, and the
+ *  codec and what it runs with for the one streaming, so other screens need
+ *  no trip to Home (issue #86) */
 function StatusPill() {
+  const { core } = useApp();
+  const snap = () => core.state.snap!;
+  const entries = () => audioEntries(snap());
+  return (
+    <div class="status-pills">
+      <Show when={entries().length > 0} fallback={<DevicePill entry={null} />}>
+        <For each={entries().map((e) => e.key)}>
+          {(key) => {
+            const entry = entryByKey(entries, key);
+            return <DevicePill entry={entry()} />;
+          }}
+        </For>
+      </Show>
+    </div>
+  );
+}
+
+/** One device's block (issue #86): the device and its state; battery and
+ *  codec for the one streaming. Without devices: the state alone. */
+function DevicePill(props: { entry: AudioEntry | null }) {
   const { core, navigate } = useApp();
-  const stream = () => core.state.snap!.stream;
+  const snap = () => core.state.snap!;
+  const stream = () => snap().stream;
+  const state = () => (props.entry ? entryState(snap(), props.entry) : stream().state);
+  const live = () => state() !== "idle";
+  const device = () => (props.entry ? props.entry.name || props.entry.address : "");
+  const details = () => {
+    const i = stream().info;
+    return i ? codecDetails(i).join(" ") : "";
+  };
+  const info = () => (live() ? stream().info : null);
+  // Also the name while collapsed to the dot
+  const label = () => {
+    const i = info();
+    return [device(), stateLabel(state()), i ? `${codecName(i)} ${details()}` : ""].filter((x) => x).join(", ");
+  };
   return (
     <button
       type="button"
-      class={`status-pill st-${stream().state}`}
+      class={`status-pill st-${state()}`}
       onClick={() => navigate({ name: "home" })}
-      aria-label={`${stateLabel(stream().state)}`}
-      title={stateLabel(stream().state)}
+      aria-label={label()}
+      title={label()}
     >
       <span class="dot" aria-hidden="true" />
       <span class="status-pill-text">
-        <span class="status-pill-state">{stateLabel(stream().state)}</span>
-        <Show when={stream().info}>
-          <CodecBadge compact />
+        {/* As Home's card: the device, battery and state, the codec */}
+        <Show when={device()}>
+          <span class="status-pill-device ellipsis">{device()}</span>
+        </Show>
+        <span class="status-pill-line">
+          <Show when={live() && showsBattery(stream())}>
+            <BatteryLevel class="status-pill-sub" percent={stream().battery} />
+            <span class="status-pill-sub" aria-hidden="true">
+              |
+            </span>
+          </Show>
+          <span class="status-pill-state">{stateLabel(state())}</span>
+        </span>
+        {/* The codec, then its details below it, as on Home and in the tray (issue #86) */}
+        <Show when={info()}>
+          <CodecBadge />
         </Show>
       </span>
     </button>

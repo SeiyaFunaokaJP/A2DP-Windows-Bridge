@@ -17,8 +17,7 @@
     }
   },
   "bundle": {
-    "active": true,
-    "targets": ["nsis"],
+    "active": false,
     "icon": ["icons/icon.ico"],
     "publisher": "Seiya Funaoka",
     "copyright": "Copyright (c) Seiya Funaoka. Apache-2.0 OR MIT.",
@@ -26,23 +25,13 @@
     "license": "Apache-2.0 OR MIT",
     "licenseFile": "../../../../LICENSE",
     "category": "Utility",
-    "shortDescription": "Bluetooth A2DP audio from Windows through a USB Bluetooth adapter",
-    "windows": {
-      "webviewInstallMode": { "type": "embedBootstrapper", "silent": true },
-      "nsis": {
-        "installMode": "currentUser",
-        "installerIcon": "icons/icon.ico",
-        "installerHooks": "../../../../installer/hooks.nsh",
-        "languages": ["English", "Japanese", "German", "French", "Spanish", "Korean", "SimpChinese", "TradChinese"],
-        "displayLanguageSelector": false
-      }
-    }
+    "shortDescription": "Bluetooth A2DP audio from Windows through a USB Bluetooth adapter"
   },
   "plugins": {
     "updater": {
       "pubkey": "",
       "requireSignedVersion": true,
-      "windows": { "installMode": "passive" }
+      "windows": { "installMode": "basicUi" }
     }
   }
 }

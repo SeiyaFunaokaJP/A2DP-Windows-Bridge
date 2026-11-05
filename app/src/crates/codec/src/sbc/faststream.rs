@@ -7,7 +7,7 @@
 //! SBC from the headset) is not implemented.
 
 use super::{Allocation, ChannelMode, SbcConfig, SbcFrameEncoder};
-use crate::{CodecKind, Encoded, Encoder, EncoderConfig, EncoderError, Pcm, PcmFormat};
+use crate::{CodecKind, Encoded, Encoder, EncoderConfig, EncoderDetails, EncoderError, Pcm, PcmFormat};
 
 const BLOCKS: u8 = 16;
 const SUBBANDS: u8 = 8;
@@ -109,6 +109,16 @@ impl Encoder for FastStreamEncoder {
     /// The padded frames: 8 * 72 * rate / 128, in kbps (198 / 216)
     fn bitrate_kbps(&self) -> u32 {
         (8 * FASTSTREAM_FRAME_BYTES as u32 * self.sample_rate) / PCM_FRAMES as u32 / 1000
+    }
+
+    /// Frames as sent (padded); the SBC setup is fixed
+    fn details(&self) -> EncoderDetails {
+        let c = *self.frame.config();
+        EncoderDetails {
+            frame_bytes: Some(FASTSTREAM_FRAME_BYTES as u32),
+            sbc: Some(SbcConfig { bitpool: c.effective_bitpool(), ..c }),
+            sbc_abr: None,
+        }
     }
 }
 

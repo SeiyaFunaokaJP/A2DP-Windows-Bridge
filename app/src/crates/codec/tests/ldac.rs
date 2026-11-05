@@ -61,7 +61,7 @@ fn config(sample_rate: u32, channels: u32, quality: Quality, bits: u8, mtu: u16)
 /// (tbl_ldacbt_config: 2 x 165 / 110 / 55 bytes per channel)
 fn frame_bytes(quality: Quality, channels: u32) -> usize {
     let per_ch = match quality {
-        Quality::High | Quality::MediumHigh => 165,
+        Quality::High | Quality::MediumHigh | Quality::LowLatency => 165,
         Quality::Standard => 110,
         Quality::Mobile => 55,
     };
@@ -189,7 +189,7 @@ fn every_rate_quality_depth_and_mtu() {
                     let fb = frame_bytes(quality, 2);
                     let expected = bitrate_of(fb, sample_rate, per_frame);
                     let nominal = match quality {
-                        Quality::High | Quality::MediumHigh => 990,
+                        Quality::High | Quality::MediumHigh | Quality::LowLatency => 990,
                         Quality::Standard => 660,
                         Quality::Mobile => 330,
                     };

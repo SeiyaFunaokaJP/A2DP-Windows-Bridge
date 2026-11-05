@@ -287,6 +287,12 @@ fn read_u(ctx: &mut LeCtx<'_>, shared: &SharedState, id: LeDeviceId, con: u16, r
             {
                 let mut s = lock(&shared);
                 let Some(st) = s.devices.get_mut(&id) else { return };
+                tracing::debug!(
+                    "LE Audio: device {}: {} 0x{:04X} (0x{status:02X}): {value:02X?}",
+                    id.0,
+                    r.what,
+                    r.handle
+                );
                 if status == 0 && value.len() >= r.size {
                     let x = value[..r.size].iter().rev().fold(0u32, |x, b| (x << 8) | u32::from(*b));
                     (r.apply)(&mut st.info, x);
@@ -355,6 +361,12 @@ impl LeModule for TmapGmapModule {
         let gmap = dev.find_char(UUID_SERVICE_GMAS, UUID_CHR_GMAP_ROLE).map(|c| c.value_handle);
         let ugt = gmap.and(dev.find_char(UUID_SERVICE_GMAS, UUID_CHR_UGT_FEATURES).map(|c| c.value_handle));
         lock(&self.shared).devices.insert(id, DeviceState::default());
+        tracing::debug!(
+            "LE Audio: {addr}: TMAP Role {:04X?}, GMAP Role {:04X?}, UGT Features {:04X?}",
+            tmap,
+            gmap,
+            ugt
+        );
         if let Some(handle) = tmap {
             let apply = |i: &mut TmapGmapInfo, v: u32| {
                 i.has_tmas = true;
@@ -397,6 +409,7 @@ impl LeModule for TmapGmapModule {
     }
 
     fn on_att_read(&mut self, _ctx: &mut LeCtx<'_>, read: &AttRead) -> Result<Vec<u8>, u8> {
+        tracing::debug!("LE Audio: TMAS / GMAS read 0x{:04X} by 0x{:04X}", read.handle, read.con);
         match read.handle {
             h if h == self.tmap_role_handle => Ok(PC_TMAP_ROLE.to_le_bytes().to_vec()),
             h if h == self.gmap_role_handle => Ok(vec![PC_GMAP_ROLE]),
@@ -429,6 +442,7 @@ impl LeGroupHooks for TmapGmapHooks {
         }
 
         let infos: Vec<_> = devices.iter().map(|&id| (id, info_of(&self.shared, id))).collect();
+        tracing::debug!("LE Audio: GMAP: device roles {infos:?}");
         if let Some(why) = low_latency_refusal(&infos) {
             tracing::info!("LE Audio: GMAP: low latency not used: {why}; media configuration");
             return;
@@ -444,6 +458,7 @@ impl LeGroupHooks for TmapGmapHooks {
             })
             .unwrap_or_default();
         let (contexts, note) = game_context(&available);
+        tracing::debug!("LE Audio: GMAP: available sink contexts {available:?} -> 0x{contexts:04X}");
         if let Some(note) = note {
             let what = if contexts == CONTEXT_MEDIA { "Media context instead" } else { "left to the stream planning" };
             tracing::info!("LE Audio: GMAP: {note}: {what}");

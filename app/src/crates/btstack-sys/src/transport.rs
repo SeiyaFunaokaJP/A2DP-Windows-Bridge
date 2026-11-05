@@ -32,7 +32,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 
 use crate::consts::{
     ERROR_CODE_UNKNOWN_HCI_COMMAND, HCI_COMMAND_DATA_PACKET, HCI_EVENT_COMMAND_COMPLETE, HCI_EVENT_PACKET,
@@ -59,6 +59,144 @@ pub trait HciBackend: Send {
     }
     /// Sends one packet (H4 packet type, packet without type byte)
     fn send(&mut self, packet_type: u8, packet: &[u8]) -> bool;
+    /// The controller runs its bootloader (an Intel controller before its
+    /// firmware download): events also arrive on the ACL data pipe (an
+    /// Intel bootloader answers there), and close sends no HCI Reset (a
+    /// bootloader does not know it; one was seen to answer nothing after
+    /// it). Off again at every open. Transports that tell packet types
+    /// apart and have no reset on close (H4) ignore it.
+    fn set_bootloader(&mut self, _on: bool) {}
+    /// A control transfer on the device's default pipe, for a chip loader
+    /// (vendor registers, string descriptors): IN gives the bytes read, OUT
+    /// none. Transports without one (H4) refuse it.
+    fn control(&mut self, _request: &ControlRequest) -> Result<Vec<u8>, String> {
+        Err("not a USB transport".into())
+    }
+    /// The open device's USB descriptors, for a chip report
+    fn usb_descriptors(&mut self) -> Option<UsbDescriptors> {
+        None
+    }
+}
+
+/// bmRequestType's type bits
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlKind {
+    Standard,
+    Class,
+    Vendor,
+}
+
+/// bmRequestType's recipient bits
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlRecipient {
+    Device,
+    Interface,
+    Endpoint,
+    Other,
+}
+
+/// The data stage: IN with the length to read, or OUT with the bytes
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ControlData {
+    In(u16),
+    Out(Vec<u8>),
+}
+
+/// A USB control transfer ([`HciBackend::control`])
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControlRequest {
+    pub kind: ControlKind,
+    pub recipient: ControlRecipient,
+    pub request: u8,
+    pub value: u16,
+    pub index: u16,
+    pub data: ControlData,
+}
+
+impl ControlRequest {
+    /// GET_DESCRIPTOR of a string (USB 2.0 9.4.3), US English
+    pub fn string_descriptor(index: u8) -> ControlRequest {
+        ControlRequest {
+            kind: ControlKind::Standard,
+            recipient: ControlRecipient::Device,
+            request: 0x06,
+            value: 0x0300 | index as u16,
+            index: 0x0409,
+            data: ControlData::In(255),
+        }
+    }
+
+    /// GET_DESCRIPTOR of the device descriptor (USB 2.0 9.4.3)
+    pub fn device_descriptor() -> ControlRequest {
+        ControlRequest {
+            kind: ControlKind::Standard,
+            recipient: ControlRecipient::Device,
+            request: 0x06,
+            value: 0x0100,
+            index: 0,
+            data: ControlData::In(18),
+        }
+    }
+
+    /// The 8-byte SETUP packet: bmRequestType, bRequest, wValue, wIndex,
+    /// wLength (little endian)
+    pub fn setup_packet(&self) -> [u8; 8] {
+        let (dir, len) = match &self.data {
+            ControlData::In(n) => (0x80, *n),
+            ControlData::Out(d) => (0x00, d.len() as u16),
+        };
+        let kind = match self.kind {
+            ControlKind::Standard => 0,
+            ControlKind::Class => 1,
+            ControlKind::Vendor => 2,
+        };
+        let recipient = match self.recipient {
+            ControlRecipient::Device => 0,
+            ControlRecipient::Interface => 1,
+            ControlRecipient::Endpoint => 2,
+            ControlRecipient::Other => 3,
+        };
+        let [v0, v1] = self.value.to_le_bytes();
+        let [i0, i1] = self.index.to_le_bytes();
+        let [l0, l1] = len.to_le_bytes();
+        [dir | kind << 5 | recipient, self.request, v0, v1, i0, i1, l0, l1]
+    }
+
+    /// The SETUP packet's fields for a log line: "IN vendor/device 0x63
+    /// value 0x0000 index 0x0000 length 4"
+    pub fn describe(&self) -> String {
+        let (dir, len) = match &self.data {
+            ControlData::In(n) => ("IN", *n as usize),
+            ControlData::Out(d) => ("OUT", d.len()),
+        };
+        let kind = match self.kind {
+            ControlKind::Standard => "standard",
+            ControlKind::Class => "class",
+            ControlKind::Vendor => "vendor",
+        };
+        let recipient = match self.recipient {
+            ControlRecipient::Device => "device",
+            ControlRecipient::Interface => "interface",
+            ControlRecipient::Endpoint => "endpoint",
+            ControlRecipient::Other => "other",
+        };
+        format!(
+            "{dir} {kind}/{recipient} 0x{:02X} value 0x{:04X} index 0x{:04X} length {len}",
+            self.request, self.value, self.index
+        )
+    }
+}
+
+/// A USB device's descriptors as the OS keeps them
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UsbDescriptors {
+    /// The device descriptor (18 bytes)
+    pub device: Vec<u8>,
+    /// Each configuration descriptor with its interfaces and endpoints
+    pub configurations: Vec<Vec<u8>>,
+    /// One line per interface setting: "interface 0 alt 0 class E0/01/01:
+    /// 0x81 interrupt 16, 0x02 bulk 64, 0x82 bulk 64"
+    pub summary: Vec<String>,
 }
 
 /// The way back from a backend's I/O threads into BTstack. Belongs to one
@@ -78,12 +216,18 @@ static RX: Mutex<RxQueue> = Mutex::new(RxQueue { packets: VecDeque::new(), free:
 static SENT: AtomicU32 = AtomicU32::new(0);
 static FAILED: AtomicBool = AtomicBool::new(false);
 static LOSS_EXPECTED: AtomicBool = AtomicBool::new(false);
+/// The controller's answer to Read Local Supported Commands of this run, as
+/// it sent it: 0 not seen, 1 without, 2 with the isochronous commands
+static CONTROLLER_ISO: AtomicU8 = AtomicU8::new(0);
 
 thread_local! {
     static BACKEND: RefCell<Option<Box<dyn HciBackend>>> = const { RefCell::new(None) };
     static OPEN: Cell<bool> = const { Cell::new(false) };
     /// The controller's LE support is hidden from BTstack (module docs)
     static LE_HIDDEN: Cell<bool> = const { Cell::new(true) };
+    /// A firmware loader in the app drives the transport (before HCI init):
+    /// received packets go to it, not to BTstack
+    static RAW: Cell<bool> = const { Cell::new(false) };
 }
 
 // ---- LE hidden: pure functions ----
@@ -100,6 +244,21 @@ pub const LE_HIDDEN_COMMAND_BITS: [(usize, u8); 10] =
 
 /// LMP feature bit 38, LE Supported (Controller): octet 4, bit 6
 pub const LE_SUPPORTED_FEATURE: (usize, u8) = (4, 6);
+
+/// LE Read Buffer Size v2 in the supported commands: the controller has the
+/// isochronous channels LE Audio streams over (Bluetooth 5.2)
+pub const ISO_COMMAND_BIT: (usize, u8) = (41, 5);
+
+/// Whether a successful Read Local Supported Commands answer lists the
+/// isochronous commands; None for every other packet
+pub fn iso_commands_in(packet: &[u8]) -> Option<bool> {
+    if packet.len() < 6 + 64 || packet[0] != HCI_EVENT_COMMAND_COMPLETE || packet[5] != 0 {
+        return None;
+    }
+    let opcode = u16::from_le_bytes([packet[3], packet[4]]);
+    let (octet, bit) = ISO_COMMAND_BIT;
+    (opcode == HCI_OPCODE_READ_LOCAL_SUPPORTED_COMMANDS).then(|| packet[6 + octet] & (1 << bit) != 0)
+}
 
 /// The opcode of a command that is answered locally while LE is hidden (an
 /// LE controller command, OGF 0x08, or Write LE Host Supported), None for
@@ -152,6 +311,14 @@ pub(crate) fn set_le_hidden(hidden: bool) -> bool {
 
 pub(crate) fn le_hidden() -> bool {
     LE_HIDDEN.with(|h| h.get())
+}
+
+/// See [`crate::Stack::controller_iso`]
+pub(crate) fn controller_iso() -> Option<bool> {
+    match CONTROLLER_ISO.load(Ordering::Acquire) {
+        0 => None,
+        v => Some(v == 2),
+    }
 }
 
 impl Upstream {
@@ -215,10 +382,15 @@ pub(crate) fn loss_expected() -> bool {
 /// Clears what a previous run left
 pub(crate) fn reset() {
     let mut q = RX.lock().unwrap_or_else(|e| e.into_inner());
+    if !q.packets.is_empty() {
+        tracing::debug!(target: "hci", "transport reset: {} queued packet(s) dropped", q.packets.len());
+    }
     q.packets.clear();
     SENT.store(0, Ordering::Release);
     FAILED.store(false, Ordering::Release);
+    CONTROLLER_ISO.store(0, Ordering::Release);
     LE_HIDDEN.with(|h| h.set(true));
+    RAW.with(|r| r.set(false));
 }
 
 pub(crate) fn failed() -> bool {
@@ -227,6 +399,7 @@ pub(crate) fn failed() -> bool {
 
 pub(crate) fn install(backend: Box<dyn HciBackend>) -> bool {
     let is_async = backend.is_async();
+    tracing::debug!(target: "hci", "transport installed (async {is_async})");
     BACKEND.with(|b| *b.borrow_mut() = Some(backend));
     is_async
 }
@@ -243,6 +416,7 @@ pub(crate) fn open() -> bool {
     });
     match result {
         Ok(()) => {
+            tracing::debug!(target: "hci", "HCI transport opened");
             OPEN.with(|o| o.set(true));
             true
         }
@@ -254,6 +428,7 @@ pub(crate) fn open() -> bool {
 }
 
 pub(crate) fn close() {
+    tracing::debug!(target: "hci", "HCI transport closing (open {})", OPEN.with(|o| o.get()));
     OPEN.with(|o| o.set(false));
     BACKEND.with(|b| {
         if let Some(backend) = b.borrow_mut().as_mut() {
@@ -268,6 +443,43 @@ pub(crate) fn uninstall() {
     BACKEND.with(|b| b.borrow_mut().take());
 }
 
+/// Raw mode on or off ([`crate::Stack::raw_begin`])
+pub(crate) fn set_raw(on: bool) {
+    RAW.with(|r| r.set(on));
+    if !on {
+        // The loader's "packet sent" reports are not BTstack's: HCI would
+        // take one for its first command
+        SENT.store(0, Ordering::Release);
+    }
+}
+
+/// Sends without LE hidden (raw mode)
+pub(crate) fn send_raw(packet_type: u8, packet: &[u8]) -> bool {
+    let ok = BACKEND.with(|b| b.borrow_mut().as_mut().is_some_and(|b| b.send(packet_type, packet)));
+    tracing::trace!(target: "hci", "raw send type 0x{packet_type:02X}, {} bytes: {ok}", packet.len());
+    ok
+}
+
+/// A control transfer for a chip loader ([`HciBackend::control`])
+pub(crate) fn control(request: &ControlRequest) -> Result<Vec<u8>, String> {
+    BACKEND.with(|b| match b.borrow_mut().as_mut() {
+        Some(b) => b.control(request),
+        None => Err("no transport".into()),
+    })
+}
+
+pub(crate) fn usb_descriptors() -> Option<UsbDescriptors> {
+    BACKEND.with(|b| b.borrow_mut().as_mut().and_then(|b| b.usb_descriptors()))
+}
+
+pub(crate) fn set_bootloader(on: bool) {
+    BACKEND.with(|b| {
+        if let Some(backend) = b.borrow_mut().as_mut() {
+            backend.set_bootloader(on);
+        }
+    });
+}
+
 pub(crate) fn can_send(packet_type: u8) -> bool {
     BACKEND.with(|b| b.borrow_mut().as_mut().is_some_and(|b| b.can_send(packet_type)))
 }
@@ -279,7 +491,9 @@ pub(crate) fn send(packet_type: u8, packet: &[u8]) -> bool {
         answer_locally(opcode);
         return true;
     }
-    BACKEND.with(|b| b.borrow_mut().as_mut().is_some_and(|b| b.send(packet_type, packet)))
+    let ok = BACKEND.with(|b| b.borrow_mut().as_mut().is_some_and(|b| b.send(packet_type, packet)));
+    tracing::trace!(target: "hci", "send type 0x{packet_type:02X}, {} bytes: {ok}", packet.len());
+    ok
 }
 
 /// LE hidden: the command is not sent; from the run loop, as after any
@@ -300,31 +514,56 @@ fn answer_locally(opcode: u16) {
     post_wake();
 }
 
-/// On the run loop: hands queued completions and packets to BTstack
-pub(crate) fn pump() {
+/// On the run loop: hands queued completions and packets to BTstack, or
+/// in raw mode the packets to `raw` (the app's firmware loader)
+pub(crate) fn pump(mut raw: impl FnMut(u8, &[u8])) {
     let sent = SENT.swap(0, Ordering::AcqRel);
-    for _ in 0..sent {
-        // SAFETY: on the run loop thread; the shim checks for a handler.
-        unsafe { crate::ffi::a2dpwb_transport_packet_sent() };
+    if sent > 0 {
+        tracing::trace!(target: "hci", "{sent} packet(s) sent");
     }
-    let hidden = le_hidden();
+    if !RAW.with(|r| r.get()) {
+        for _ in 0..sent {
+            // SAFETY: on the run loop thread; the shim checks for a handler.
+            unsafe { crate::ffi::a2dpwb_transport_packet_sent() };
+        }
+    }
     loop {
         let next = RX.lock().unwrap_or_else(|e| e.into_inner()).packets.pop_front();
         let Some((packet_type, mut buf)) = next else { break };
-        if hidden && packet_type == HCI_EVENT_PACKET {
-            le_hidden_patch_event(&mut buf);
-        }
-        if buf.len() <= u16::MAX as usize {
-            // SAFETY: on the run loop thread; buf is valid for its length;
-            // the shim copies it and checks the size.
-            let ok = unsafe { crate::ffi::a2dpwb_transport_deliver(packet_type, buf.as_ptr(), buf.len() as u16) };
-            if ok == 0 {
-                tracing::warn!(target: "hci", "dropped an incoming HCI packet of {} bytes", buf.len());
-            }
+        // Checked per packet: the loader may end raw mode, and HCI init
+        // start, in between
+        if RAW.with(|r| r.get()) {
+            tracing::trace!(target: "hci", "raw deliver type 0x{packet_type:02X}, {} bytes", buf.len());
+            raw(packet_type, &buf);
+        } else {
+            deliver(packet_type, &mut buf, le_hidden());
         }
         let mut q = RX.lock().unwrap_or_else(|e| e.into_inner());
         if q.free.len() < 64 {
             q.free.push(buf);
+        }
+    }
+}
+
+/// One received packet to BTstack
+fn deliver(packet_type: u8, buf: &mut [u8], hidden: bool) {
+    if packet_type == HCI_EVENT_PACKET {
+        // As the controller sent it, before LE hidden clears its LE bits
+        if let Some(iso) = iso_commands_in(buf) {
+            tracing::debug!(target: "hci", "supported commands: ISO {}", if iso { "yes" } else { "no" });
+            CONTROLLER_ISO.store(if iso { 2 } else { 1 }, Ordering::Release);
+        }
+        if hidden {
+            le_hidden_patch_event(buf);
+        }
+    }
+    tracing::trace!(target: "hci", "deliver type 0x{packet_type:02X}, {} bytes", buf.len());
+    if buf.len() <= u16::MAX as usize {
+        // SAFETY: on the run loop thread; buf is valid for its length;
+        // the shim copies it and checks the size.
+        let ok = unsafe { crate::ffi::a2dpwb_transport_deliver(packet_type, buf.as_ptr(), buf.len() as u16) };
+        if ok == 0 {
+            tracing::warn!(target: "hci", "dropped an incoming HCI packet of {} bytes", buf.len());
         }
     }
 }
@@ -403,6 +642,20 @@ mod tests {
         assert_eq!(commands[24], 0xBF);
         assert_eq!(commands[35], 0xD5);
         assert_eq!(commands[48], 0x7F);
+    }
+
+    #[test]
+    fn iso_commands_from_supported_commands() {
+        let mut commands = [0u8; 64];
+        assert_eq!(iso_commands_in(&command_complete(0x1002, &commands)), Some(false));
+        commands[41] = 1 << 5;
+        assert_eq!(iso_commands_in(&command_complete(0x1002, &commands)), Some(true));
+        // Other commands, a failed answer, a short one
+        assert_eq!(iso_commands_in(&command_complete(0x1003, &[0xFF; 64])), None);
+        let mut failed = command_complete(0x1002, &[0xFF; 64]);
+        failed[5] = 1;
+        assert_eq!(iso_commands_in(&failed), None);
+        assert_eq!(iso_commands_in(&command_complete(0x1002, &[0xFF; 8])), None);
     }
 
     #[test]

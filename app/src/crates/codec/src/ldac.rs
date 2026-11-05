@@ -79,11 +79,18 @@ impl LdacEncoder {
             )));
         }
         let eqmid = match config.quality {
-            Quality::High | Quality::MediumHigh => ffi::LDACBT_EQMID_HQ,
+            Quality::High | Quality::MediumHigh | Quality::LowLatency => ffi::LDACBT_EQMID_HQ,
             Quality::Standard => ffi::LDACBT_EQMID_SQ,
             Quality::Mobile => ffi::LDACBT_EQMID_MQ,
         };
 
+        tracing::debug!(
+            "LDAC: quality {:?} -> eqmid {eqmid}, channel mode {channel_mode}, {format:?} input, transport mtu \
+             {transport_mtu} (media mtu {}), abr asked {}",
+            config.quality,
+            config.mtu,
+            config.abr
+        );
         let init_err = |e: ldac_sys::Error| EncoderError::Init { codec: CODEC, what: e.to_string() };
         let mut bt = LdacBt::new().map_err(init_err)?;
         bt.init_encode(

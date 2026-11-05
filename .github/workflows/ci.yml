@@ -151,7 +151,7 @@ jobs:
           --a2dpwb target/release/a2dpwb-core.exe
           --decoder build/a2dp_decode/Release/a2dpwb_decode.exe
           --out emu-out
-      # LE Audio (experimental): the 39 cases of tools/emu/le_audio_tests,
+      # LE Audio (experimental): the 41 cases of tools/emu/le_audio_tests,
       # also when an A2DP case failed
       - name: run_test.py --le-audio
         if: ${{ !cancelled() }}

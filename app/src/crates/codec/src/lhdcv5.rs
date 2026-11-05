@@ -144,10 +144,10 @@ impl LhdcV5Encoder {
             ffi::LHDC_QUALITY_AUTO
         } else {
             match config.quality {
-                Quality::High => ffi::LHDC_QUALITY_HIGH1,      // 1000 kbps
-                Quality::MediumHigh => ffi::LHDC_QUALITY_HIGH, // 900 kbps
-                Quality::Standard => ffi::LHDC_QUALITY_MID,    // 500 kbps (480 at 44.1 kHz)
-                Quality::Mobile => ffi::LHDC_QUALITY_LOW,      // 400 kbps
+                Quality::High | Quality::LowLatency => ffi::LHDC_QUALITY_HIGH1, // 1000 kbps
+                Quality::MediumHigh => ffi::LHDC_QUALITY_HIGH,                  // 900 kbps
+                Quality::Standard => ffi::LHDC_QUALITY_MID,                     // 500 kbps (480 at 44.1 kHz)
+                Quality::Mobile => ffi::LHDC_QUALITY_LOW,                       // 400 kbps
             }
         };
 
@@ -186,6 +186,12 @@ impl LhdcV5Encoder {
         // for 1000 kbps lasts 5.44 ms there: 682 bytes), so cap the bit rate
         // at what fits (900 kbps then). v1 sent those packets anyway.
         let fitting = fitting_bitrate_index(config.sample_rate, block_size, enc_mtu);
+        tracing::debug!(
+            "LHDC V5: quality {:?}, abr {} -> bitrate index {bitrate_inx}; sink limits byte 0x{p7:02x} -> index \
+             {min_inx}..{max_inx}, fits the {enc_mtu}-byte mtu up to index {fitting}, frame {block_size} samples",
+            config.quality,
+            config.abr
+        );
         if fitting < max_inx {
             tracing::info!(
                 "LHDC V5: {} kbps frames do not fit the {enc_mtu}-byte MTU at {} Hz, capping the bit rate",

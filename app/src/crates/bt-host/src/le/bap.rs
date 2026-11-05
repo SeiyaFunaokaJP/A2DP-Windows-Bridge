@@ -72,6 +72,18 @@ pub fn read_device(ctx: &mut LeCtx<'_>, dev: LeDeviceId, done: ReadDeviceDone) {
     let source_ases: Vec<GattChar> =
         d.find_chars(UUID_SERVICE_ASCS, UUID_CHR_SOURCE_ASE).into_iter().cloned().collect();
     let cp = d.find_char(UUID_SERVICE_ASCS, UUID_CHR_ASE_CONTROL_POINT).cloned();
+    tracing::debug!(
+        "LE Audio: {}: reading PACS / ASCS: sink PAC {:04X?}, locations {:04X?}, available {:04X?}, supported {:04X?}, \
+         sink ASE {:04X?}, source ASE {:04X?}, control point {:04X?}",
+        d.addr,
+        sink_pacs.iter().map(|c| c.value_handle).collect::<Vec<_>>(),
+        locations.as_ref().map(|c| c.value_handle),
+        available.as_ref().map(|c| c.value_handle),
+        supported.as_ref().map(|c| c.value_handle),
+        sink_ases.iter().map(|c| c.value_handle).collect::<Vec<_>>(),
+        source_ases.iter().map(|c| c.value_handle).collect::<Vec<_>>(),
+        cp.as_ref().map(|c| c.value_handle)
+    );
     ctx.core.sink_pacs_by_char.retain(|(c, _), _| *c != con);
 
     // Everything queued below counts; done() once all completed
@@ -92,6 +104,11 @@ pub fn read_device(ctx: &mut LeCtx<'_>, dev: LeDeviceId, done: ReadDeviceDone) {
             Some(Box::new(move |ctx, status| {
                 if status != 0 {
                     tracing::warn!("LE Audio: enabling notifications of 0x{h:04x} failed (0x{status:02x})");
+                } else {
+                    tracing::debug!(
+                        "LE Audio: {} enabled on 0x{h:04X}",
+                        if ind { "indications" } else { "notifications" }
+                    );
                 }
                 Counter::end(&c, ctx);
             })),
@@ -108,6 +125,8 @@ pub fn read_device(ctx: &mut LeCtx<'_>, dev: LeDeviceId, done: ReadDeviceDone) {
             Box::new(move |ctx, status, v| {
                 if status == 0 {
                     f(ctx, v);
+                } else {
+                    tracing::debug!("LE Audio: read of 0x{h:04X} failed (ATT 0x{status:02X})");
                 }
                 Counter::end(&c, ctx);
             }),
@@ -122,6 +141,7 @@ pub fn read_device(ctx: &mut LeCtx<'_>, dev: LeDeviceId, done: ReadDeviceDone) {
         let h = chr.value_handle;
         let on_value = Rc::new(move |ctx: &mut LeCtx<'_>, v: &[u8]| {
             let Some(d) = ctx.device_on(dev, con) else { return };
+            tracing::debug!("LE Audio: {}: Sink PAC 0x{h:04X}: {v:02X?}", d.addr);
             let Some(recs) = parse_pac_records(v) else {
                 tracing::warn!("LE Audio: {}: malformed Sink PAC ({} bytes)", d.addr, v.len());
                 return;
@@ -147,6 +167,7 @@ pub fn read_device(ctx: &mut LeCtx<'_>, dev: LeDeviceId, done: ReadDeviceDone) {
                 && v.len() >= 4
             {
                 d.sink_locations = u32::from_le_bytes([v[0], v[1], v[2], v[3]]);
+                tracing::debug!("LE Audio: {}: sink audio locations 0x{:08X}", d.addr, d.sink_locations);
             }
         });
         read_and_listen(ctx, chr.value_handle, on_value, true);
@@ -159,6 +180,12 @@ pub fn read_device(ctx: &mut LeCtx<'_>, dev: LeDeviceId, done: ReadDeviceDone) {
             {
                 d.available_sink_contexts = u16::from_le_bytes([v[0], v[1]]);
                 d.available_source_contexts = u16::from_le_bytes([v[2], v[3]]);
+                tracing::debug!(
+                    "LE Audio: {}: available contexts sink 0x{:04X} source 0x{:04X}",
+                    d.addr,
+                    d.available_sink_contexts,
+                    d.available_source_contexts
+                );
                 ctx.with_unicast(|u, env| u.on_available_contexts(env, dev));
             }
         });
@@ -172,6 +199,12 @@ pub fn read_device(ctx: &mut LeCtx<'_>, dev: LeDeviceId, done: ReadDeviceDone) {
             {
                 d.supported_sink_contexts = u16::from_le_bytes([v[0], v[1]]);
                 d.supported_source_contexts = u16::from_le_bytes([v[2], v[3]]);
+                tracing::debug!(
+                    "LE Audio: {}: supported contexts sink 0x{:04X} source 0x{:04X}",
+                    d.addr,
+                    d.supported_sink_contexts,
+                    d.supported_source_contexts
+                );
             }
         });
         read_and_listen(ctx, chr.value_handle, on_value, false);
@@ -252,6 +285,7 @@ pub(crate) fn on_ase_value(ctx: &mut LeCtx<'_>, dev: LeDeviceId, con: u16, h: u1
         return;
     }
     let old = ase.state;
+    tracing::debug!("LE Audio: {addr}: ASE value 0x{h:04X} {v:02X?} -> {parsed:?}");
     *ase = parsed;
     let (id, state, sink) = (ase.id, ase.state, ase.sink);
     if old != state {
@@ -496,6 +530,12 @@ impl Unicast {
     }
 
     pub fn stop(&mut self, env: &mut dyn UnicastEnv, done: UnicastStopped) {
+        tracing::debug!(
+            "LE Audio: unicast stop requested in {} (starting {}, {} stop(s) waiting)",
+            self.phase.name(),
+            self.starting,
+            self.stop_done.len()
+        );
         if self.phase == Phase::Idle {
             done();
             return;
@@ -543,6 +583,16 @@ impl Unicast {
                             config: codec_config_ltvs(&plan, c),
                         })
                         .collect();
+                    for a in &ases {
+                        tracing::debug!(
+                            "LE Audio: device {dev} Config Codec ASE {}: latency {}, PHY 0x{:02X}, codec {:02X?}, config {:02X?}",
+                            a.ase_id,
+                            a.target_latency,
+                            a.target_phy,
+                            a.codec_id,
+                            a.config
+                        );
+                    }
                     env.cp_write(dev, cp_config_codec(&ases), "Config Codec");
                 }
             }
@@ -574,6 +624,9 @@ impl Unicast {
                             presentation_delay_us: plan.presentation_delay_us,
                         })
                         .collect();
+                    for a in &ases {
+                        tracing::debug!("LE Audio: device {dev} Config QoS {a:?}");
+                    }
                     env.cp_write(dev, cp_config_qos(&ases), "Config QoS");
                 }
             }
@@ -615,6 +668,10 @@ impl Unicast {
                 // fragmenting): queue x CIS must stay within the
                 // controller's Total_Num_ISO_Data_Packets
                 let depth = queue_depth(env.iso_packet_count(), handles.len());
+                tracing::debug!(
+                    "LE Audio: streaming on CIS {handles:04X?}: {} ISO buffers -> queue depth {depth} per CIS",
+                    env.iso_packet_count()
+                );
                 if depth == 0 {
                     self.fail(env, "the adapter has fewer ISO data buffers than the stream has CIS");
                     return;
@@ -644,6 +701,7 @@ impl Unicast {
                     if ids.is_empty() {
                         continue;
                     }
+                    tracing::debug!("LE Audio: device {dev} Disable ASE {ids:?}");
                     env.cp_write(dev, cp_ase_ids(ASE_OP_DISABLE, &ids), "Disable");
                     any = true;
                 }
@@ -682,6 +740,7 @@ impl Unicast {
                     if ids.is_empty() {
                         continue;
                     }
+                    tracing::debug!("LE Audio: device {dev} Release ASE {ids:?}");
                     env.cp_write(dev, cp_ase_ids(ASE_OP_RELEASE, &ids), "Release");
                     any = true;
                 }
@@ -711,6 +770,16 @@ impl Unicast {
         let mut framing = plan.preset.framing;
         for c in &plan.cis {
             let Some(a) = ase_of(env, c) else { continue };
+            tracing::debug!(
+                "LE Audio: ASE {} preferences: framing {}, PHY 0x{:02X}, RTN {}, max latency {} ms, presentation delay {}-{} us",
+                c.ase_id,
+                a.pref_framing,
+                a.pref_phy,
+                a.pref_rtn,
+                a.pref_max_latency_ms,
+                a.pd_min_us,
+                a.pd_max_us
+            );
             // Preferred_Framing 0x01: unframed ISO PDUs not supported
             if a.pref_framing == 0x01 {
                 framing = 1;
@@ -805,10 +874,20 @@ impl Unicast {
         // BTstack must not get gap_cig_remove() while it still waits for the
         // CIG or CIS of a running command: it would resume them afterwards
         if self.cig_pending || self.cis_pending > 0 {
+            tracing::debug!(
+                "LE Audio: CIG removal waits (CIG pending {}, {} CIS pending)",
+                self.cig_pending,
+                self.cis_pending
+            );
             return;
         }
         // ... nor while our own CIS disconnections are under way
         if !self.cis_to_drop.is_empty() || !self.cis_dropping.is_empty() {
+            tracing::debug!(
+                "LE Audio: CIG removal waits for CIS disconnections ({:04X?} to send, {:04X?} under way)",
+                self.cis_to_drop,
+                self.cis_dropping
+            );
             return;
         }
         if !self.cig_removing {
@@ -891,6 +970,7 @@ impl Unicast {
         ccids.sort_unstable();
         ccids.dedup();
         let meta = enable_metadata(contexts, &ccids);
+        tracing::debug!("LE Audio: Enable metadata {meta:02X?}");
         if !ccids.is_empty() {
             let list: Vec<String> = ccids.iter().map(|c| c.to_string()).collect();
             tracing::info!("LE Audio: Enable metadata: contexts 0x{contexts:04x}, CCID list {}", list.join(","));
@@ -912,6 +992,7 @@ impl Unicast {
             return;
         }
         let planned = self.plan.as_ref().is_some_and(|p| p.cis.iter().any(|c| c.device_id == dev.0));
+        tracing::debug!("LE Audio: device {} available contexts changed while Enable waits (planned {planned})", dev.0);
         if planned && self.send_enable(env) {
             self.advance(env);
         }
@@ -925,6 +1006,7 @@ impl Unicast {
         env.disarm(UnicastTimer::Drop);
         while let Some(&h) = self.cis_to_drop.first() {
             if !env.can_send_command() {
+                tracing::trace!("LE Audio: HCI busy, CIS disconnect 0x{h:04X} retried");
                 env.arm(UnicastTimer::Drop, 2);
                 return;
             }
@@ -942,6 +1024,7 @@ impl Unicast {
     /// LE Remove CIG completed
     pub fn on_cig_removed(&mut self, env: &mut dyn UnicastEnv) {
         if !self.cig_removing {
+            tracing::debug!("LE Audio: CIG removal complete, none requested (ignored)");
             return;
         }
         self.cig_removing = false;
@@ -1013,6 +1096,14 @@ impl Unicast {
 
     /// The step timer fired
     pub fn on_timeout(&mut self, env: &mut dyn UnicastEnv) {
+        tracing::debug!(
+            "LE Audio: step timeout in {} (CIG exists {}, pending {}, removing {}, {} CIS pending)",
+            self.phase.name(),
+            self.cig_exists,
+            self.cig_pending,
+            self.cig_removing,
+            self.cis_pending
+        );
         match self.phase {
             Phase::Disable => {
                 tracing::warn!("LE Audio: Disable timed out");
@@ -1131,6 +1222,7 @@ impl Unicast {
             return;
         }
         let addr = env.device(dev.0).map(|d| d.addr.to_string()).unwrap_or_default();
+        tracing::debug!("LE Audio: {addr}: ASE control point response {v:02X?} in {}", self.phase.name());
         let (op, count) = (v[0], v[1]);
         if count == 0xFF {
             if v.len() >= 5 && v[3] != 0 {
@@ -1168,8 +1260,10 @@ impl Unicast {
     /// GAP_SUBEVENT_CIG_CREATED
     pub fn on_cig_created(&mut self, env: &mut dyn UnicastEnv, packet: &[u8]) {
         let Some(ev) = events::cig_created(packet) else { return };
+        tracing::debug!("LE Audio: CIG created event {ev:?} in {}", self.phase.name());
         let Some(plan) = self.plan.as_mut() else { return };
         if !self.cig_pending || ev.cig_id != plan.cig_id {
+            tracing::debug!("LE Audio: CIG event ignored (pending {}, planned CIG {})", self.cig_pending, plan.cig_id);
             return;
         }
         self.cig_pending = false;
@@ -1193,6 +1287,7 @@ impl Unicast {
     /// GAP_SUBEVENT_CIS_CREATED
     pub fn on_cis_created(&mut self, env: &mut dyn UnicastEnv, packet: &[u8]) {
         let Some(ev) = events::cis_created(packet) else { return };
+        tracing::debug!("LE Audio: CIS created event {ev:?} in {} ({} pending)", self.phase.name(), self.cis_pending);
         if self.plan.as_ref().is_none_or(|p| p.cig_id != ev.cig_id) || self.cis_pending == 0 {
             return;
         }
@@ -1222,6 +1317,11 @@ impl Unicast {
             return;
         }
         let is_cis = self.plan.as_ref().is_some_and(|p| p.cis.iter().any(|c| c.cis_handle == handle));
+        tracing::debug!(
+            "LE Audio: stream link 0x{handle:04X} ({}) lost in {}",
+            if is_cis { "CIS" } else { "ACL" },
+            self.phase.name()
+        );
         if is_cis {
             if self.cis_dropping.contains(&handle) || self.cis_to_drop.contains(&handle) {
                 tracing::info!("LE Audio: CIS 0x{handle:04x} disconnected");

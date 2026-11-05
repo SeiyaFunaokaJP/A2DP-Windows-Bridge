@@ -22,6 +22,13 @@ pub fn preferred_ui_languages() -> Vec<String> {
     buf.split(|&c| c == 0).filter(|s| !s.is_empty()).map(String::from_utf16_lossy).collect()
 }
 
+/// The language chosen in the installer (installer/A2DPWB.iss writes the
+/// app's code, "ja" or "zh-TW", to HKCU\Software\A2DPWB, value
+/// SetupLanguage); None without one
+pub fn setup_language() -> Option<String> {
+    crate::autostart::get_in(r"Software\A2DPWB", "SetupLanguage").ok().flatten().filter(|l| !l.trim().is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

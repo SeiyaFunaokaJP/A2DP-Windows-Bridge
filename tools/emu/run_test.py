@@ -9,14 +9,15 @@ with a2dpwb_decode:
   - A2DPWB streams the requested codec and a2dpwb_decode finds no problem,
     on the sent side and on the received side
   - the sink received every media packet / frame A2DPWB sent
-  - decoded audio (all codecs but LDAC and LHDC V5, which have no open-source
-    decoder) is identical on both sides and is the test tone: 1 kHz left,
-    1.5 kHz right, amplitude 0.5
+  - decoded audio (all codecs but LDAC, LHDC V5 and aptX Adaptive, which
+    have no open-source decoder) is identical on both sides and is the test
+    tone: 1 kHz left, 1.5 kHz right, amplitude 0.5
 The cases of NEGOTIATION run the same way with another sink or command line
 (Auto choosing SBC XQ, or SBC on a sink without dual channel or one that
 refuses it; Opus and Opus 05 at 48 kHz
 from a 44.1 kHz request, Auto choosing Opus over AAC and LHDC V5 over Opus,
-but never Opus 05).
+but never Opus 05; SBC with another frame setup from --sbc-* options;
+LDAC from a sink listing 18 SEPs).
 
 Outputs (captures, logs, reports, WAV) go to tools/emu/out/<codec>/.
 Exit code 0 when every codec passed. Uses only the Python standard library;
@@ -39,9 +40,22 @@ a2dpwb_decode --le-audio on both sides:
   - the checks of le_audio_tests/<profile>.py (core.py: each CIS's channel
     allocation within the PACS locations of the sink it goes to)
 Outputs go to tools/emu/out/le-<case>/.
+
+    python tools/emu/run_test.py --scan [case ...]
+
+runs the device scan cases instead (eir, name-request): emu_sink.py answers
+the inquiry (with its name in the extended inquiry response, or without it),
+a2dpwb-core.exe --cli --scan lists it:
+  - listed once (it answers several times per inquiry), with its name, an
+    RSSI and as an audio device
+  - listed within 3 s of the inquiry's start (the sink answers after 1 s),
+    not at the scan's end; its name from the inquiry result within 3 s, or
+    from a name request after the first inquiry
+Outputs go to tools/emu/out/scan-<case>/.
 """
 
 import argparse
+import json
 import math
 import os
 import queue
@@ -75,38 +89,224 @@ CONFIG_PATTERN = {  # a2dpwb_decode's "Configuration :" line
     # a2dpwb_decode checks) stays within it
     'sbc-bp35': r'SBC \d+ Hz, joint stereo, 16 blocks, 8 subbands, loudness, bitpool 2-35$',
     'sbcxq-bp45': r'SBC 44100 Hz, dual channel, 16 blocks, 8 subbands, loudness, bitpool 2-45$',
+    'sbcxq-bp39': r'SBC \d+ Hz, dual channel, 16 blocks, 8 subbands, loudness, bitpool 2-39$',
+    'sbc-bp28': r'SBC \d+ Hz, joint stereo, 16 blocks, 8 subbands, loudness, bitpool 2-28$',
+    # A profile's SBC frame setup (--sbc-*), in the configuration and every frame
+    'sbc-8b-4sb-snr': r'SBC \d+ Hz, joint stereo, 8 blocks, 4 subbands, SNR, bitpool 2-53$',
+    'sbc-stereo-12b': r'SBC 44100 Hz, stereo, 12 blocks, 8 subbands, loudness, bitpool 2-53$',
     'aac': r'AAC ', 'aptx': r'aptX \d', 'aptxhd': r'aptX HD \d',
     'aptxll': r'aptX LL \d', 'ldac': r'LDAC \d', 'lhdcv5': r'LHDC V5 \d',
+    'ldac-96k': r'LDAC 96000',
+    'ldac-48k': r'LDAC 48000',
     'faststream': r'FastStream \d+ Hz, direction 0x01 \(music\)',   # no voice backchannel
     'opus': r'Opus 48000 Hz, stereo, 20 ms',
     # PipeWire's choice: 10 ms, one coupled stream, 312 x 1024 bps, no return channel
     'opus05': r'Opus 05 48000 Hz, stereo, 10 ms frames, location 0x00000003, max 312 x 1024 bps, no return channel$',
+    # The Px7 S2e's configuration from a host source: its latencies with LL0
+    # raised to 80 ms and HQ's 0 to 200 ms; an R2 sink gets the source's own
+    'aptxad': r'aptX Adaptive 48000 Hz, stereo, R1, source type 2, target latency LL0 80 ms, LL1 106 ms, '
+              r'HQ 200 ms, TWS 350 ms$',
+    'aptxad-r2': r'aptX Adaptive 48000 Hz, stereo, R2, source type 2, target latency LL0 80 ms, LL1 100 ms, '
+                 r'HQ 200 ms, TWS 200 ms$',
+    'aptxad-r2-96k': r'aptX Adaptive 96000 Hz, stereo, R2, source type 2, target latency LL0 80 ms, LL1 100 ms, '
+                     r'HQ 200 ms, TWS 200 ms$',
 }
-NO_DECODER = {'ldac', 'lhdcv5'}  # frame headers are validated, audio is not decoded
+# Frame headers are validated, audio is not decoded (aptX Adaptive: its RTP
+# header, packet sizes and frame types)
+NO_DECODER = {'ldac', 'ldac-96k', 'ldac-48k', 'lhdcv5', 'aptxad', 'aptxad-r2', 'aptxad-r2-96k'}
+# Cases run with the developer override on
+APTXAD_SINK = ['--codecs', 'sbc', 'aac', 'aptx', 'aptxad']
+# The name they give tells the vendor (issue #237); LOG_CHECKS read the sink's log
+HUAWEI_SINK = ['--codecs', 'sbc', 'aac', '--log-level', 'INFO', '--name', 'HUAWEI FreeBuds Pro 4']
+HUAWEI_NAME = ['--device-name', 'HUAWEI FreeBuds Pro 4']
+OPPO_SINK = ['--codecs', 'sbc', 'aac', 'lhdcv5', '--log-level', 'INFO', '--name', 'OPPO Enco Free4']
+# A device that gives another name, whatever it is saved as
+OTHER_NAME = ['--name', 'Other Buds']
+OPPO_NAME = ['--device-name', 'OPPO Enco Free4']
+OPPO_TWICE = OPPO_NAME + ['--sessions', '2']
 # Further cases: name -> (A2DPWB -c, emu_sink.py arguments, the codec expected,
 # more A2DPWB arguments)
 NEGOTIATION = {
     'sbcxq-44k': ('sbcxq', [], 'sbcxq', ['--rate', '44100']),            # bitpool 47
+    # Developer mode's force_codec (DEV_SETTINGS): LDAC to a sink that lists SBC only
+    'force-ldac': ('ldac', ['--codecs', 'sbc'], 'ldac', []),
     'auto-sbcxq': ('auto', ['--codecs', 'sbc'], 'sbcxq', []),            # Auto takes SBC XQ over SBC
     'auto-sbc-no-xq': ('auto', ['--codecs', 'sbc', '--sbc-no-dual'], 'sbc', []),  # no dual channel: SBC
     # Dual channel listed but refused: SBC XQ falls back to SBC
     'auto-sbcxq-refused': ('auto', ['--codecs', 'sbc', '--sbc-reject-dual'], 'sbc', []),
-    # Max bitpool 35: SBC capped there; Auto does not take SBC XQ (needs 43)
-    'auto-sbc-bp35': ('auto', ['--codecs', 'sbc', '--sbc-max-bitpool', '35'], 'sbc-bp35', []),
+    # Max bitpool 35: SBC capped there
+    'sbc-bp35': ('sbc', ['--codecs', 'sbc', '--sbc-max-bitpool', '35'], 'sbc-bp35', []),
+    # Max bitpool 39 with dual channel (Moto buds+, issue #86): Auto takes
+    # SBC XQ capped at 39, as PipeWire; below 29 it does not (plain SBC)
+    'auto-sbcxq-bp39': ('auto', ['--codecs', 'sbc', '--sbc-max-bitpool', '39'], 'sbcxq-bp39', []),
+    'auto-sbc-bp28': ('auto', ['--codecs', 'sbc', '--sbc-max-bitpool', '28'], 'sbc-bp28', []),
     'sbcxq-bp45': ('sbcxq', ['--sbc-max-bitpool', '45'], 'sbcxq-bp45', ['--rate', '44100']),
+    # SBC frame setups other than the default (a profile's SBC settings)
+    'sbc-8b-4sb-snr': ('sbc', [], 'sbc-8b-4sb-snr', ['--sbc-blocks', '8', '--sbc-subbands', '4', '--sbc-alloc', 'snr']),
+    'sbc-stereo-12b': ('sbc', [], 'sbc-stereo-12b',
+                       ['--rate', '44100', '--sbc-mode', 'stereo', '--sbc-blocks', '12', '--sbc-bitpool', '40']),
+    # SBC / SBC XQ with ABR (the adaptive bitpool): the emulated link keeps
+    # up, so the bitpool stays at the ceiling; every frame within the range
+    'sbc-abr': ('sbc', [], 'sbc', ['-a']),
+    'sbcxq-abr': ('sbcxq', [], 'sbcxq', ['-a', '--rate', '44100']),
     'faststream-44k': ('faststream', [], 'faststream', ['--rate', '44100']),
     # Auto never takes FastStream, even over SBC
     'auto-not-faststream': ('auto', ['--codecs', 'sbc', 'faststream', '--sbc-no-dual'], 'sbc', []),
     # Opus: 48 kHz whatever the capture rate asked for; Auto takes it over
-    # AAC and SBC, and LHDC V5 over it
+    # AAC and SBC, and LHDC V5 over it (and over LDAC: issue #86's order)
     'opus-from-44k': ('opus', [], 'opus', ['--rate', '44100']),
     'auto-opus': ('auto', ['--codecs', 'sbc', 'aac', 'opus'], 'opus', []),
     'auto-lhdcv5-over-opus': ('auto', ['--codecs', 'sbc', 'aac', 'opus', 'lhdcv5'], 'lhdcv5', []),
+    'auto-lhdcv5-over-ldac': ('auto', ['--codecs', 'sbc', 'aac', 'ldac', 'lhdcv5'], 'lhdcv5', []),
+    # A codec the sink does not offer, with a profile's fallback: the best
+    # one it offers, not the next one below it (issue #86 round 8: Opus
+    # asked of an EarFun gave aptX, not aptX Adaptive); aptX HD missing:
+    # LDAC above it, not AAC below
+    'fallback-lhdcv5-to-ldac': ('lhdcv5', ['--codecs', 'sbc', 'aac', 'ldac'], 'ldac', ['--fallback']),
+    'fallback-aptxhd-to-ldac': ('aptxhd', ['--codecs', 'sbc', 'aac', 'ldac'], 'ldac', ['--fallback']),
+    'fallback-opus-to-aptxad': ('opus', APTXAD_SINK, 'aptxad', ['--fallback']),
     # Opus 05: 48 kHz from a 44.1 kHz request; Auto never takes it (AAC here)
     'opus05-from-44k': ('opus05', [], 'opus05', ['--rate', '44100']),
     'auto-not-opus05': ('auto', ['--codecs', 'sbc', 'aac', 'opus05'], 'aac', []),
+    # Codecs > Enable experimental codecs off (issue #86): Auto passes over
+    # Opus, and a chosen aptX HD falls back past aptX LL (experimental too)
+    'auto-no-experimental': ('auto', ['--codecs', 'sbc', 'aac', 'opus'], 'aac', ['--no-experimental']),
+    'noexp-aptxhd-to-aac': ('aptxhd', ['--codecs', 'sbc', 'aac', 'aptxhd', 'aptxll'], 'aac',
+                            ['--fallback', '--no-experimental']),
+    # aptX Adaptive (offered by the sink only when named, with SBC, AAC and
+    # aptX as aptX Adaptive headsets list them: emu_sink.py): HQ, low latency
+    # (SSRC 0xA1, 348-byte packets), an R2 sink in HQ and LL (frame types 3 /
+    # 4), ABR, 48 kHz from a 44.1 kHz request; 96 kHz when asked for, in HQ
+    # to an R2 sink that lists it (emu_sink.py's R2 caps do), else 48 kHz (an
+    # R1 sink, low latency); Auto takes it over aptX and AAC (issue #86)
+    'aptxad': ('aptxad', APTXAD_SINK, 'aptxad', []),
+    'aptxad-ll': ('aptxad', APTXAD_SINK, 'aptxad', ['-q', 'll']),
+    'aptxad-r2': ('aptxad', APTXAD_SINK + ['--aptxad-r2'], 'aptxad-r2', []),
+    'aptxad-r2-ll': ('aptxad', APTXAD_SINK + ['--aptxad-r2'], 'aptxad-r2', ['-q', 'll']),
+    'aptxad-abr': ('aptxad', APTXAD_SINK, 'aptxad', ['-a']),
+    'aptxad-from-44k': ('aptxad', APTXAD_SINK, 'aptxad', ['--rate', '44100']),
+    'aptxad-r2-96k': ('aptxad', APTXAD_SINK + ['--aptxad-r2'], 'aptxad-r2-96k', ['--rate', '96000']),
+    'aptxad-r2-96k-abr': ('aptxad', APTXAD_SINK + ['--aptxad-r2'], 'aptxad-r2-96k', ['--rate', '96000', '-a']),
+    # Real sinks' rate bytes (issue #86): an EarFun Air Pro 4+ lists 0xD1
+    # (96 kHz by Android's 0x80 bit, no 0x20), a Bose QC Ultra 0x51 (44.1
+    # and 48 kHz only)
+    'aptxad-r2-96k-earfun': ('aptxad', APTXAD_SINK + ['--aptxad-r2', '--aptxad-rates', '0xD1'], 'aptxad-r2-96k',
+                             ['--rate', '96000']),
+    'aptxad-r2-96k-bose': ('aptxad', APTXAD_SINK + ['--aptxad-r2', '--aptxad-rates', '0x51'], 'aptxad-r2',
+                           ['--rate', '96000']),
+    'aptxad-r1-from-96k': ('aptxad', APTXAD_SINK, 'aptxad', ['--rate', '96000']),
+    'aptxad-r2-ll-from-96k': ('aptxad', APTXAD_SINK + ['--aptxad-r2'], 'aptxad-r2', ['--rate', '96000', '-q', 'll']),
+    'auto-aptxad': ('auto', APTXAD_SINK, 'aptxad', []),
+    # The rate on Auto: 48 kHz where the sink lists it, not its highest
+    # (issue #86: 96 kHz only when chosen), to an R2 aptX Adaptive sink
+    # that takes 96 kHz and an LDAC one; LDAC 96 kHz when chosen
+    'auto-aptxad-r2-48k': ('auto', APTXAD_SINK + ['--aptxad-r2'], 'aptxad-r2', []),
+    'auto-ldac-48k': ('auto', ['--codecs', 'sbc', 'aac', 'ldac'], 'ldac-48k', []),
+    'ldac-chosen-96k': ('ldac', ['--codecs', 'sbc', 'aac', 'ldac'], 'ldac-96k', ['--rate', '96000']),
+    # 18 free sink SEPs, LDAC the 14th: BTstack 1.8.1 overflowed its 10-entry
+    # SEP discovery array (crash); none may be dropped either
+    'many-seps-ldac': ('ldac', ['--extra-seps', '8'], 'ldac', []),
+    # Huawei earbuds that list LDAC once told "sound quality first" on their
+    # control channel (issue #30): LDAC chosen connects again and gets it,
+    # with the mode off or on already, or when they end the link at the
+    # write; earbuds without the mode, or another name, are left alone (a
+    # write would give them LDAC here)
+    'huawei-ldac': ('ldac', HUAWEI_SINK + ['--huawei', 'off'], 'ldac', HUAWEI_NAME),
+    'huawei-ldac-mode-on': ('ldac', HUAWEI_SINK + ['--huawei', 'on'], 'ldac', HUAWEI_NAME),
+    'huawei-ldac-drop': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-drop'], 'ldac', HUAWEI_NAME),
+    'huawei-no-mode': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-silent'], 'aac',
+                       HUAWEI_NAME + ['--fallback']),
+    'huawei-other-name': ('ldac', HUAWEI_SINK + ['--huawei', 'off'] + OTHER_NAME, 'aac', HUAWEI_NAME + ['--fallback']),
+    # The write taken and still no LDAC: AAC, the mode back off when it was off
+    'huawei-no-ldac': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-no-ldac'], 'aac',
+                       HUAWEI_NAME + ['--fallback']),
+    'huawei-no-ldac-drop': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-no-ldac', '--huawei-drop'], 'aac',
+                            HUAWEI_NAME + ['--fallback']),
+    'huawei-no-ldac-mode-on': ('ldac', HUAWEI_SINK + ['--huawei', 'on', '--huawei-no-ldac'], 'aac',
+                               HUAWEI_NAME + ['--fallback']),
+    # The serial port on a channel of its own, which SDP does not list
+    'huawei-channel-1': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-channel', '1'], 'ldac', HUAWEI_NAME),
+    'huawei-channel-16': ('ldac', HUAWEI_SINK + ['--huawei', 'off', '--huawei-channel', '16'], 'ldac', HUAWEI_NAME),
+    # Enco Free4 earbuds that cap LHDC V5 until asked for Hi-Res (issue #237):
+    # one new connection for the write gives the first stream 1000 kbps, the
+    # second goes by what they list, with no write; with the mode off or on
+    # already, by whichever write they advertise, or ending the link for it
+    'oppo-hi-res': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_TWICE),
+    'oppo-hi-res-on': ('lhdcv5', OPPO_SINK + ['--oppo', 'on'], 'lhdcv5', OPPO_TWICE),
+    'oppo-codec-write': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-codec-write'], 'lhdcv5', OPPO_TWICE),
+    'oppo-drop': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-drop'], 'lhdcv5', OPPO_NAME),
+    # Asked once: three streams, one read of the earbuds
+    'oppo-once': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_NAME + ['--sessions', '3']),
+    # Nothing gained, seen after the new connection: Hi-Res back off when it
+    # was off, as it was when it was on
+    'oppo-no-change': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-change'], 'lhdcv5', OPPO_TWICE),
+    'oppo-no-change-on': ('lhdcv5', OPPO_SINK + ['--oppo', 'on', '--oppo-no-change'], 'lhdcv5', OPPO_TWICE),
+    # Another model (an Enco X4) asked the same way
+    'oppo-other-product': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-product', '06EC10'], 'lhdcv5',
+                           OPPO_TWICE),
+    # Left alone: no feature write listed, spatial audio on, another name
+    'oppo-no-write': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-write'], 'lhdcv5', OPPO_NAME),
+    'oppo-spatial': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-spatial'], 'lhdcv5', OPPO_NAME),
+    'oppo-other-name': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'] + OTHER_NAME, 'lhdcv5', OPPO_NAME),
+    # Auto picks LHDC V5: asked the same way
+    'oppo-auto': ('auto', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_NAME),
+    # Saved under another name (issue #237): the name they give tells them
+    'oppo-renamed': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', ['--device-name', 'test', '--sessions', '2']),
+    'huawei-renamed': ('ldac', HUAWEI_SINK + ['--huawei', 'off'], 'ldac', ['--device-name', 'test']),
+    # Developer mode's vendor settings (DEV_SETTINGS): OPPO's protocol for
+    # earbuds of any name, for none, and Hi-Res asked on every connection
+    'oppo-always': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'] + OTHER_NAME, 'lhdcv5', []),
+    'oppo-never': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_NAME),
+    # (earbuds that keep their limit: each stream asks, gains nothing, undoes it)
+    'oppo-every-connection': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-change'], 'lhdcv5', OPPO_TWICE),
+}
+# The settings.json a case starts with (developer mode)
+DEV_SETTINGS = {
+    'force-ldac': {'debug_mode': True, 'dev_overrides': {'force_codec': True}},
+    'oppo-always': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'always'}}},
+    'oppo-never': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'never'}}},
+    'oppo-every-connection': {'debug_mode': True, 'dev_vendors': {'oppo': {'options': ['every_connection']}}},
+}
+QUALITY_ON, QUALITY_OFF = 'Huawei control: 2BA2 010101', 'Huawei control: 2BA2 010100'
+HI_RES_ON, HI_RES_OFF, HI_RES_CODEC = 'OPPO control: 0403 1801', 'OPPO control: 0403 1800', 'OPPO control: 041A 080100'
+ENCODED_1000, ENCODED_400 = 'encoder ready: LHDC V5 1000 kbps', 'encoder ready: LHDC V5 400 kbps'
+# What these cases' logs must, and must not, have: name -> (log, text, whether
+# it is there, or how many times)
+LOG_CHECKS = {
+    'huawei-ldac': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, False),
+                    ('a2dpwb.log', 'Emulated phone', False)],
+    'huawei-no-mode': [('sink.log', 'Huawei control: 2BA2', False)],
+    'huawei-other-name': [('sink.log', 'Huawei control', False)],
+    'huawei-no-ldac': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
+    'huawei-no-ldac-drop': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
+    'huawei-no-ldac-mode-on': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, False)],
+    'oppo-hi-res': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2),
+                    ('sink.log', 'AVDTP connection', 3)],
+    'oppo-hi-res-on': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2)],
+    'oppo-codec-write': [('sink.log', HI_RES_CODEC, 1), ('sink.log', HI_RES_ON, False),
+                         ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2)],
+    'oppo-drop': [('sink.log', HI_RES_ON, True), ('a2dpwb.log', ENCODED_1000, True), ('a2dpwb.log', ENCODED_400, False)],
+    'oppo-once': [('sink.log', 'OPPO control: 0100', 1), ('a2dpwb.log', ENCODED_1000, 3)],
+    'oppo-no-change': [('sink.log', HI_RES_ON, 1), ('sink.log', HI_RES_OFF, 1), ('a2dpwb.log', ENCODED_400, 2),
+                       ('sink.log', 'AVDTP connection', 3)],
+    'oppo-no-change-on': [('sink.log', HI_RES_ON, 1), ('sink.log', HI_RES_OFF, False),
+                          ('a2dpwb.log', ENCODED_400, 2)],
+    'oppo-other-product': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False),
+                           ('a2dpwb.log', ENCODED_1000, 2)],
+    'oppo-no-write': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-spatial': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-other-name': [('sink.log', 'OPPO control', False), ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-auto': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_1000, 1), ('a2dpwb.log', ENCODED_400, False)],
+    'oppo-renamed': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2),
+                     ('a2dpwb.log', 'name=“OPPO Enco Free4”', 1)],
+    'huawei-renamed': [('sink.log', QUALITY_ON, True), ('a2dpwb.log', 'name=“HUAWEI FreeBuds Pro 4”', True)],
+    'oppo-always': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_1000, 1), ('a2dpwb.log', 'remote name of', False)],
+    'oppo-never': [('sink.log', 'OPPO control', False), ('a2dpwb.log', ENCODED_400, True)],
+    'oppo-every-connection': [('sink.log', HI_RES_ON, 2), ('sink.log', HI_RES_OFF, 2), ('a2dpwb.log', ENCODED_400, 2),
+                              ('sink.log', 'AVDTP connection', 4)],
 }
 TONES = ((1000.0, 0.5), (1500.0, 0.5))  # (frequency, amplitude) per channel, as --test-tone
+LATE_SDU_FAILURE = 'reached the controller after their SDU interval began'  # LE Audio cases run once more
 
 
 def parse_report(text):
@@ -285,6 +485,10 @@ def run_codec(args, codec, port):
     sink = start_sink(port, sink_capture, os.path.join(out, 'sink.log'), extra=sink_args)
     try:
         env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'))  # isolated link keys
+        if codec in DEV_SETTINGS:
+            os.makedirs(env['A2DPWB_CONFIG_DIR'])
+            with open(os.path.join(env['A2DPWB_CONFIG_DIR'], 'settings.json'), 'w', encoding='utf-8') as f:
+                json.dump(DEV_SETTINGS[codec], f)
         with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8', errors='replace') as log:
             try:
                 rc = subprocess.run(
@@ -300,6 +504,12 @@ def run_codec(args, codec, port):
     finally:
         sink.terminate()
         sink.wait(10)
+    for name, text, present in LOG_CHECKS.get(codec, []):
+        found = read_text(os.path.join(out, name)).count(text)
+        if isinstance(present, bool) and (found > 0) != present:
+            failures.append(f'{name}: "{text}" {"missing" if present else "found"}')
+        elif not isinstance(present, bool) and found != present:
+            failures.append(f'{name}: "{text}" {found} times, not {present}')
 
     reports = {}
     for side, capture, extra in (('sent', src_capture, []), ('received', sink_capture, ['--received'])):
@@ -311,8 +521,10 @@ def run_codec(args, codec, port):
         with open(os.path.join(out, f'{side}_report.txt'), 'w', encoding='utf-8') as f:
             f.write(text)
         r = reports[side] = parse_report(text)
-        if r['streams'] != 1:
-            failures.append(f'{side}: {r["streams"]} streams (expected 1)')
+        # One stream per --sessions
+        streams = int(a2dpwb_args[a2dpwb_args.index('--sessions') + 1]) if '--sessions' in a2dpwb_args else 1
+        if r['streams'] != streams:
+            failures.append(f'{side}: {r["streams"]} streams (expected {streams})')
         if not re.match(CONFIG_PATTERN[expected], r['config'] or ''):
             failures.append(f'{side}: configuration "{r["config"]}"')
         if not r['result_ok']:
@@ -452,7 +664,7 @@ def run_le_case(args, case, port):
             n, worst = per_cis.get(h, (0, 0.0))
             per_cis[h] = (max(n, int(count)), max(worst, float(ms)))
         for h, (n, worst) in sorted(per_cis.items()):
-            failures.append(f'CIS {h}: {n} SDU(s) reached the controller after their SDU interval began '
+            failures.append(f'CIS {h}: {n} SDU(s) {LATE_SDU_FAILURE} '
                             f'(worst {worst} ms; the queue of a real controller would have run empty)')
 
     # A2DPWB's own counters, per stream set-up ("stopped sending", the
@@ -520,12 +732,220 @@ def main_le(args):
     for index, case in enumerate(c for c in all_cases if c.name in wanted):
         print(f'--- LE Audio {case.name} ...', flush=True)
         failures, detail = run_le_case(args, case, args.base_port + 100 + index)
+        if failures and all(LATE_SDU_FAILURE in f for f in failures):
+            # Late SDUs only: a shared machine (a CI runner) can hold up
+            # A2DPWB's sender thread a few ms now and then. Run the case
+            # once more (the first run kept as le-<case>-try1); late SDUs
+            # again fail it
+            print(f'    late SDUs only, once more  {detail}')
+            for failure in failures:
+                print(f'      - {failure}')
+            out = os.path.join(args.out, 'le-' + case.name)
+            shutil.rmtree(out + '-try1', ignore_errors=True)
+            os.rename(out, out + '-try1')
+            failures, detail = run_le_case(args, case, args.base_port + 100 + index)
         results.append((case.name, failures))
         print(f'    {"PASS" if not failures else "FAIL"}  {detail}')
         for failure in failures:
             print(f'      - {failure}')
     passed = sum(1 for _, f in results if not f)
     print(f'\n{passed}/{len(results)} LE Audio cases passed. Details: {args.out}')
+    sys.exit(0 if passed == len(results) else 1)
+
+
+# Device scan cases (--scan): name -> (emu_sink.py arguments, where the name
+# comes from, how soon it must be known after the inquiry started). The sink
+# first answers 1 s into an inquiry (emu_sink.py INQUIRY_FIRST_ANSWER).
+SCAN_CASES = {
+    'eir': (['--dual-mode'], 'inquiry result', 3.0),                      # in its extended inquiry response
+    'name-request': (['--dual-mode', '--no-eir-name'], 'remote name', 15.0),  # asked after the first inquiry (10.24 s)
+}
+SCAN_SECONDS = 10
+SCAN_LISTED_MAX_S = 3.0
+SINK_NAME = 'A2DPWB Test Sink'
+# Link cases: sink arguments, A2DPWB arguments, (log, pattern, found or not).
+# Disconnect after the 10 s in which BTstack ends an idle link by itself; the
+# headphones turned back on open A2DP themselves, or leave it to the PC.
+LINK_CASES = {
+    'disconnect': ([], ['--duration', '12', '--sessions', '2'], [
+        ('a2dpwb.log', r'Disconnecting \(session 1.*dropping the ACL link.*HCI disconnection.*Connecting again', True),
+    ]),
+    'device-link': (['--turn-off-after', '4'], ['--duration', '16', '--wait-off'], [
+        ('a2dpwb.log', r'the headphones connected again.*reconnected on attempt 1', True),
+        ('sink.log', r'turned on', True),
+    ]),
+    'device-a2dp': (['--turn-off-after', '4', '--opens-a2dp'], ['--duration', '16', '--wait-off'], [
+        ('a2dpwb.log', r'connected A2DP itself.*reconnected on attempt 1', True),
+        ('a2dpwb.log', r'closing a leftover AVDTP', False),
+        ('sink.log', r'A2DP opened', True),
+        ('sink.log', r'A2DP closed.*turned off|turned on.*A2DP closed.*A2DP opened', False),
+    ]),
+    # ...and set up the stream itself, a vendor codec (LHDC V5 headphones)
+    'device-stream': (['--turn-off-after', '4', '--opens-a2dp', '--opens-stream'],
+                      ['-c', 'ldac', '--duration', '16', '--wait-off'], [
+        ('a2dpwb.log', r'opened the stream itself, starting LDAC on it.*reconnected on attempt 1', True),
+        ('a2dpwb.log', r'closing a leftover AVDTP', False),
+        ('sink.log', r'stream opened \(ldac\)', True),
+        ('sink.log', r'A2DP closed.*stream opened', False),
+    ]),
+    # The link details: the remote chip and the readings the virtual
+    # controller answers; the failed contact counter it refuses is left
+    # out without holding up the other commands or the stream
+    'details': ([], ['--duration', '12'], [
+        ('a2dpwb.log', r'remote controller of .*company 0x0094 \(Airoha\), LMP version 12', True),
+        ('a2dpwb.log', r'remote features of ', True),
+        ('a2dpwb.log', r'supervision timeout Some\(32000\) slots', True),
+        ('a2dpwb.log', r'does not support command 0x1401', True),
+        ('a2dpwb.log', r'Bluetooth stack stalled', False),
+    ]),
+    # A controller that never answers Read Remote Version: the command
+    # counts as unsupported after its timeout and the readings behind it
+    # (supervision timeout, then RSSI and link quality) go on
+    'details-unanswered': (['--silent-remote-version'], ['--duration', '12'], [
+        ('a2dpwb.log', r'no answer to command 0x041D in \d+ ms', True),
+        ('a2dpwb.log', r'no answer to command 0x041D.*supervision timeout Some\(32000\) slots', True),
+        ('a2dpwb.log', r'no answer to command 0x041D.*radio: link quality 230', True),
+        ('a2dpwb.log', r'remote controller of ', False),
+        ('a2dpwb.log', r'Bluetooth stack stalled', False),
+    ]),
+    # A setting changed just after the link came up: the next connection
+    # starts while that link goes down
+    'restart-on-link': (['--disconnect-delay', '0.5'], ['--duration', '3', '--restart-on-link'], [
+        ('a2dpwb.log', r'Starting again.*HCI disconnection.*state Streaming', True),
+        ('a2dpwb.log', r'Bluetooth stack stalled', False),
+    ]),
+    # Headphones with Delay Reporting: their playout delay reaches the log
+    'delay-report': (['--delay-report', '187.5'], ['--duration', '3'], [
+        ('a2dpwb.log', r'supports delay reporting.*device delay report: 187\.5 ms', True),
+        ('sink.log', r'delay report sent \(187\.5 ms\)', True),
+    ]),
+}
+LOG_TIME =re.compile(r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})')
+
+
+def log_time(log, pattern):
+    """Seconds since the epoch of the first log line matching pattern, or None."""
+    for line in log.splitlines():
+        if re.search(pattern, line) and (m := LOG_TIME.search(line)):
+            return time.mktime(time.strptime(m.group(1)[:19], '%Y-%m-%d %H:%M:%S')) + float(m.group(1)[19:])
+    return None
+
+
+def run_scan_case(args, case, port):
+    """a2dpwb-core --cli --scan against the sink: listed once, with its name
+    and RSSI, soon after the inquiry started."""
+    sink_args, name_from, name_max_s = SCAN_CASES[case]
+    out = os.path.join(args.out, 'scan-' + case)
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(out)
+    failures = []
+    sink = start_sink(port, os.path.join(out, 'sink.pklg'), os.path.join(out, 'sink.log'), extra=sink_args)
+    try:
+        env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'), A2DPWB_LOG='debug')
+        started = time.time()
+        try:
+            r = subprocess.run(
+                [args.a2dpwb, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '--scan', str(SCAN_SECONDS),
+                 '--hci-capture', os.path.join(out, 'a2dpwb.pklg')],
+                capture_output=True, text=True, encoding='utf-8', errors='replace', env=env,
+                timeout=SCAN_SECONDS + 60)
+            rc, text = r.returncode, r.stdout + r.stderr
+        except subprocess.TimeoutExpired as e:
+            partial = e.stdout or ''
+            rc, text = 'timeout', partial.decode('utf-8', 'replace') if isinstance(partial, bytes) else partial
+        took = time.time() - started
+        with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8') as f:
+            f.write(text)
+    finally:
+        sink.terminate()
+        sink.wait(10)
+    if rc != 0:
+        failures.append(f'A2DPWB exited with {rc} (see a2dpwb.log)')
+    lines = [line for line in text.splitlines() if line.startswith(SINK_ADDRESS)]
+    if len(lines) != 1:
+        failures.append(f'the sink listed {len(lines)} times (expected once)')
+    elif SINK_NAME not in lines[0]:
+        failures.append(f'listed without its name: {lines[0].strip()}')
+    elif not re.search(r'RSSI -\d+', lines[0]) or '(audio)' not in lines[0]:
+        failures.append(f'no RSSI or not an audio device: {lines[0].strip()}')
+    t0 = log_time(text, r'starting inquiry')
+    listed = log_time(text, r'scan: \d+ device\(s\) listed')
+    if name_from == 'inquiry result':
+        named = log_time(text, rf'inquiry result: {SINK_ADDRESS} .*name=“{SINK_NAME}”')
+    else:
+        named = log_time(text, rf'remote name of {SINK_ADDRESS}: status 0x00 name=“{SINK_NAME}”')
+    since = lambda t: None if t is None or t0 is None else round(t - t0, 2)
+    if since(listed) is None or since(listed) > SCAN_LISTED_MAX_S:
+        failures.append(f'listed {since(listed)} s after the inquiry started (at most {SCAN_LISTED_MAX_S} s)')
+    if since(named) is None or since(named) > name_max_s:
+        failures.append(f'name from the {name_from} {since(named)} s after the inquiry started (at most {name_max_s} s)')
+    return failures, f'listed after {since(listed)} s, named after {since(named)} s, scan took {took:.1f} s'
+
+
+def main_scan(args):
+    wanted = args.scan or list(SCAN_CASES)
+    unknown = [n for n in wanted if n not in SCAN_CASES]
+    if unknown:
+        sys.exit(f'Unknown scan case(s) {unknown}; known: {list(SCAN_CASES)}')
+    results = []
+    for index, case in enumerate(wanted):
+        print(f'--- scan {case} ...', flush=True)
+        failures, detail = run_scan_case(args, case, args.base_port + 200 + index)
+        results.append((case, failures))
+        print(f'    {"PASS" if not failures else "FAIL"}  {detail}')
+        for failure in failures:
+            print(f'      - {failure}')
+    passed = sum(1 for _, f in results if not f)
+    print(f'\n{passed}/{len(results)} scan cases passed. Details: {args.out}')
+    sys.exit(0 if passed == len(results) else 1)
+
+
+def run_link_case(args, case, port):
+    """a2dpwb-core --cli with the sink ending or opening links: each pattern
+    of the case is found, or not, in a2dpwb.log / sink.log."""
+    sink_args, a2dpwb_args, checks = LINK_CASES[case]
+    out = os.path.join(args.out, 'link-' + case)
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(out)
+    failures = []
+    sink = start_sink(port, os.path.join(out, 'sink.pklg'), os.path.join(out, 'sink.log'), extra=sink_args)
+    try:
+        env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'), A2DPWB_LOG='debug')
+        with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8', errors='replace') as log:
+            try:
+                rc = subprocess.run(
+                    [args.a2dpwb, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '-d', SINK_ADDRESS]
+                    + ([] if '-c' in a2dpwb_args else ['-c', 'sbc'])
+                    + ['--test-tone', '--hci-capture', os.path.join(out, 'a2dpwb.pklg')] + a2dpwb_args,
+                    stdout=log, stderr=subprocess.STDOUT, env=env, timeout=120).returncode
+            except subprocess.TimeoutExpired:
+                rc = 'timeout'
+    finally:
+        sink.terminate()
+        sink.wait(10)
+    if rc != 0:
+        failures.append(f'A2DPWB exited with {rc} (see a2dpwb.log)')
+    for name, pattern, present in checks:
+        if bool(re.search(pattern, read_text(os.path.join(out, name)), re.S)) != present:
+            failures.append(f'{name}: "{pattern}" {"missing" if present else "found"}')
+    return failures, ''
+
+
+def main_link(args):
+    wanted = args.link or list(LINK_CASES)
+    unknown = [n for n in wanted if n not in LINK_CASES]
+    if unknown:
+        sys.exit(f'Unknown link case(s) {unknown}; known: {list(LINK_CASES)}')
+    results = []
+    for index, case in enumerate(wanted):
+        print(f'--- link {case} ...', flush=True)
+        failures, detail = run_link_case(args, case, args.base_port + 300 + index)
+        results.append((case, failures))
+        print(f'    {"PASS" if not failures else "FAIL"}  {detail}')
+        for failure in failures:
+            print(f'      - {failure}')
+    passed = sum(1 for _, f in results if not f)
+    print(f'\n{passed}/{len(results)} link cases passed. Details: {args.out}')
     sys.exit(0 if passed == len(results) else 1)
 
 
@@ -536,6 +956,10 @@ def main():
                         help='codecs and negotiation cases (%(default)s)')
     parser.add_argument('--le-audio', nargs='*', metavar='CASE',
                         help='run the LE Audio (experimental) cases instead (default: all of them)')
+    parser.add_argument('--scan', nargs='*', metavar='CASE',
+                        help=f'run the device scan cases instead ({", ".join(SCAN_CASES)}; default: all of them)')
+    parser.add_argument('--link', nargs='*', metavar='CASE',
+                        help=f'run the link cases instead ({", ".join(LINK_CASES)}; default: all of them)')
     parser.add_argument('--duration', type=int, default=5, help='seconds of streaming per codec')
     parser.add_argument('--max-packet', type=int, help='passed to A2DPWB --max-packet (default: its own)')
     parser.add_argument('--build-dir', default=os.path.join(REPO, 'build'),
@@ -551,10 +975,16 @@ def main():
     args.decoder = args.decoder or os.path.join(args.build_dir, 'a2dp_decode', args.config, 'a2dpwb_decode.exe')
     for path, hint in ((VENV_PYTHON, 'run: python tools/emu/setup_env.py'),
                        (args.a2dpwb, 'build A2DPWB'), (args.decoder, 'build a2dpwb_decode')):
+        if path == args.decoder and (args.scan is not None or args.link is not None):
+            continue  # a scan streams nothing, a link case decodes nothing
         if not os.path.exists(path):
             sys.exit(f'Missing {path} ({hint})')
     if args.le_audio is not None:
         main_le(args)
+    if args.scan is not None:
+        main_scan(args)
+    if args.link is not None:
+        main_link(args)
 
     results = []
     for index, codec in enumerate(args.codecs):

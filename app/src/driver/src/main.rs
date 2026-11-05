@@ -7,11 +7,18 @@
 //! a2dpwb-driver assign <instance-id> [--out <file>]
 //! a2dpwb-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
 //! a2dpwb-driver restore --records <dir> [--out <file>]
+//! a2dpwb-driver windows-keys <radio-address> [--out <file>]
 //! ```
 //!
 //! The result is one JSON object on stdout (and in `--out`), logs go to
-//! stderr, nothing is asked interactively. `assign` and `restore` need
+//! stderr (and to the file of `--log <file>`, at debug level with
+//! `--verbose`: every command takes both), nothing is asked interactively. `assign` and `restore` need
 //! administrator rights; `list` and `state` do not.
+//!
+//! `windows-keys` reads the link keys Windows' Bluetooth keeps for the radio
+//! with that address (win-sys::bt_keys), for the core to take over the
+//! devices paired with it. It needs administrator rights too; the keys go to
+//! stdout and `--out` only, never to the log.
 //!
 //! Elevation: the exe has no manifest asking for administrator rights, so
 //! `list` and `state` run without a UAC prompt. The caller starts `assign`
@@ -63,7 +70,9 @@ const USAGE: &str = "usage:
   a2dpwb-driver state <instance-id> [--out <file>]
   a2dpwb-driver assign <instance-id> [--out <file>]
   a2dpwb-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
-  a2dpwb-driver restore --records <dir> [--out <file>]";
+  a2dpwb-driver restore --records <dir> [--out <file>]
+  a2dpwb-driver windows-keys <radio-address> [--out <file>]
+every command: [--log <file>] [--verbose]";
 
 #[derive(Debug, PartialEq)]
 enum Command {
@@ -72,6 +81,7 @@ enum Command {
     Assign { instance_id: String },
     Restore { instance_id: String, previous: Option<String> },
     RestoreRecords { dir: PathBuf },
+    WindowsKeys { radio: [u8; 6] },
 }
 
 #[derive(Debug, PartialEq)]
@@ -80,17 +90,58 @@ struct Args {
     out: Option<PathBuf>,
 }
 
-fn main() -> ExitCode {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .with_ansi(false)
-        .init();
+/// A log file this big is moved to `<name>.old` before the next run writes
+/// to it
+const LOG_ROTATE_BYTES: u64 = 1024 * 1024;
 
-    let argv: Vec<String> = std::env::args().skip(1).collect();
+/// `--log <file>` (append the log to it as well) and `--verbose` (debug
+/// level): the core passes them so that the elevated run's log ends up in
+/// its logs folder. They are taken out before the command is parsed.
+fn log_args(argv: Vec<String>) -> (Option<PathBuf>, bool, Vec<String>) {
+    let (mut log, mut verbose, mut rest) = (None, false, Vec::new());
+    let mut it = argv.into_iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--log" => log = it.next().map(PathBuf::from),
+            "--verbose" => verbose = true,
+            _ => rest.push(a),
+        }
+    }
+    (log, verbose, rest)
+}
+
+fn init_logging(log: Option<&std::path::Path>, verbose: bool) {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    let level = if verbose { "debug" } else { "info" };
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level));
+    let file = log.and_then(|path| {
+        if std::fs::metadata(path).is_ok_and(|m| m.len() > LOG_ROTATE_BYTES) {
+            let _ = std::fs::rename(path, path.with_extension("log.old"));
+        }
+        std::fs::OpenOptions::new().create(true).append(true).open(path).ok()
+    });
+    let file_layer =
+        file.map(|f| tracing_subscriber::fmt::layer().with_writer(std::sync::Mutex::new(f)).with_ansi(false));
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr).with_ansi(false))
+        .with(file_layer)
+        .try_init();
+}
+
+fn main() -> ExitCode {
+    let (log, verbose, argv) = log_args(std::env::args().skip(1).collect());
+    init_logging(log.as_deref(), verbose);
+    tracing::info!(
+        "a2dpwb-driver {} ({}), elevated {}: {}",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::ARCH,
+        win_sys::elevation::is_elevated(),
+        argv.join(" ")
+    );
+
     let (code, result, out) = match parse_args(&argv) {
         Ok(args) => {
             let (code, result) = run(&args.command);
@@ -104,6 +155,11 @@ fn main() -> ExitCode {
     let mut result = result;
     result["exit_code"] = json!(code);
     let text = serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".into());
+    // Link keys are secrets: the log gets their number only
+    match result.get("keys").and_then(Value::as_array) {
+        Some(keys) => tracing::info!("exit {code}: {} key(s)", keys.len()),
+        None => tracing::info!("exit {code}: {result}"),
+    }
     println!("{text}");
     if let Some(path) = out
         && let Err(e) = std::fs::write(&path, &text)
@@ -142,6 +198,10 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
             Command::RestoreRecords { dir: records.take().unwrap_or_default() }
         }
         "restore" => Command::Restore { instance_id: instance_id()?, previous: previous.take() },
+        "windows-keys" => {
+            let a = positional.next().ok_or("windows-keys needs the radio's address")?;
+            Command::WindowsKeys { radio: parse_address(&a).ok_or(format!("bad address {a}"))? }
+        }
         other => return Err(format!("unknown command {other}")),
     };
     if let Some(extra) = positional.next() {
@@ -166,6 +226,45 @@ fn run(command: &Command) -> (u8, Value) {
         Command::Assign { instance_id } => assign(instance_id),
         Command::Restore { instance_id, previous } => restore(instance_id, previous.as_deref()),
         Command::RestoreRecords { dir } => restore_records(dir),
+        Command::WindowsKeys { radio } => windows_keys(radio),
+    }
+}
+
+/// "XX:XX:XX:XX:XX:XX" (or with dashes) in display order
+fn parse_address(s: &str) -> Option<[u8; 6]> {
+    let parts: Vec<&str> = s.split([':', '-']).collect();
+    let mut a = [0u8; 6];
+    if parts.len() != 6 {
+        return None;
+    }
+    for (b, p) in a.iter_mut().zip(parts) {
+        if p.len() != 2 {
+            return None;
+        }
+        *b = u8::from_str_radix(p, 16).ok()?;
+    }
+    Some(a)
+}
+
+fn windows_keys(radio: &[u8; 6]) -> (u8, Value) {
+    if !win_sys::elevation::is_elevated() {
+        return (exit::NOT_ELEVATED, error_json("not_elevated", "windows-keys needs administrator rights"));
+    }
+    match win_sys::bt_keys::read_link_keys(radio) {
+        Ok(keys) => {
+            let list: Vec<Value> = keys
+                .iter()
+                .flatten()
+                .map(|k| {
+                    json!({
+                        "address": win_sys::bt_paired::format_address(&k.address),
+                        "key": k.key.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+                    })
+                })
+                .collect();
+            (exit::OK, json!({ "ok": true, "command": "windows-keys", "radio_found": keys.is_some(), "keys": list }))
+        }
+        Err(e) => (exit::FAILED, error_json("registry", &e.to_string())),
     }
 }
 
@@ -204,6 +303,7 @@ fn assign(instance_id: &str) -> (u8, Value) {
                     "class_changed": outcome.class_changed,
                     "reboot_required": outcome.reboot_required,
                     "state": StateJson::from(&outcome.state),
+                    "disconnected": outcome.disconnected,
                 }),
             )
         }
@@ -540,6 +640,19 @@ mod tests {
     }
 
     #[test]
+    fn log_options_come_out_first() {
+        let argv: Vec<String> = ["assign", "--log", r"C:\l\a2dpwb-driver.log", "X", "--verbose", "--out", "o.json"]
+            .map(String::from)
+            .into();
+        let (log, verbose, rest) = log_args(argv);
+        assert_eq!(log, Some(PathBuf::from(r"C:\l\a2dpwb-driver.log")));
+        assert!(verbose);
+        assert_eq!(rest, ["assign", "X", "--out", "o.json"]);
+        let (log, verbose, _) = log_args(vec!["list".into()]);
+        assert_eq!((log, verbose), (None, false));
+    }
+
+    #[test]
     fn command_line() {
         assert_eq!(args(&["list"]).unwrap(), Args { command: Command::List { all: false }, out: None });
         assert_eq!(
@@ -576,6 +689,13 @@ mod tests {
         assert!(args(&["restore", "X", "--records", "D"]).is_err());
         assert!(args(&["restore", "--records", "D", "--previous", "{}"]).is_err());
         assert!(args(&["list", "--records", "D"]).is_err());
+        assert_eq!(
+            args(&["windows-keys", "00:1A:7D:da:71:13"]).unwrap().command,
+            Command::WindowsKeys { radio: [0x00, 0x1A, 0x7D, 0xDA, 0x71, 0x13] }
+        );
+        assert!(args(&["windows-keys"]).is_err());
+        assert!(args(&["windows-keys", "00:1A:7D:DA:71"]).is_err());
+        assert!(args(&["windows-keys", "00:1A:7D:DA:71:1G"]).is_err());
     }
 
     #[test]

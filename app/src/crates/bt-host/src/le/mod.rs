@@ -23,12 +23,15 @@
 //! - [`gatt_server`]: the PC's GATT server (GAP, GATT with Service Changed
 //!   and Database Hash, the modules' services)
 //! - [`bap`]: PACS / ASCS client and the BAP unicast state machine
-//! - [`iso_send`]: ISO SDU sending on HCI_EVENT_CIS_CAN_SEND_NOW
+//! - [`broadcast`]: the broadcast source (Auracast, developer mode):
+//!   advertising and the BIG
+//! - [`iso_send`]: ISO SDU sending on HCI_EVENT_CIS/BIS_CAN_SEND_NOW
 //! - [`modules`]: CSIP, VCP, MCP, CCP, TMAP / GMAP (registered in that
 //!   order)
 
 pub mod api;
 pub mod bap;
+pub mod broadcast;
 pub mod core;
 pub mod gatt_client;
 pub mod gatt_server;
@@ -115,6 +118,20 @@ pub struct LeRequest {
     /// GMAP low-latency presets for a gaming headset (setting
     /// le_audio_low_latency, `--le-low-latency`)
     pub low_latency: bool,
+    /// Broadcast instead (Auracast source, developer mode): no device;
+    /// `preset` is a broadcast preset (`le_audio::broadcast::presets`)
+    pub broadcast: Option<LeBroadcast>,
+}
+
+/// What a broadcast was asked for (`stream.start_broadcast`, `--auracast`)
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LeBroadcast {
+    /// Broadcast Name
+    pub name: String,
+    /// Broadcast Code as typed; None or empty: open
+    pub code: Option<String>,
+    /// One mono BIS instead of left and right
+    pub mono: bool,
 }
 
 /// One advertiser seen by [`crate::BtHost::le_scan`] /
@@ -193,6 +210,8 @@ pub struct LeDeviceInfo {
     pub name: String,
     pub connected: bool,
     pub ready: bool,
+    /// HCI reason the link last went down (0 since a connect)
+    pub last_error: u8,
     pub sink_locations: u32,
     pub sink_ases: usize,
     /// Short summary of the sink PAC records
@@ -216,7 +235,9 @@ impl LeSduSink {
 
     /// One SDU per CIS for the next frame interval, in plan order
     pub fn push(&self, set: SduSet) {
-        self.queue.lock().unwrap_or_else(|e| e.into_inner()).push(set);
+        let mut q = self.queue.lock().unwrap_or_else(|e| e.into_inner());
+        q.push(set);
+        tracing::trace!("LE Audio: SDU set queued, {} buffered", q.len());
     }
 
     /// A set to encode the next frame into (one the sender has sent and

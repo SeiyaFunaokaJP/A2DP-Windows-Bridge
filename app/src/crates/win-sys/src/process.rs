@@ -54,6 +54,7 @@ pub fn processes() -> windows::core::Result<Vec<ProcessEntry>> {
         // SAFETY: as for Process32FirstW above.
         ok = unsafe { Process32NextW(snap_handle, &mut pe) }.is_ok();
     }
+    tracing::trace!("process: {} running", out.len());
     Ok(out)
 }
 
@@ -62,7 +63,13 @@ pub fn processes() -> windows::core::Result<Vec<ProcessEntry>> {
 /// including elevated ones, but not for protected system processes)
 pub fn image_path(pid: u32) -> Option<String> {
     // SAFETY: plain call; the handle is owned and closed on drop.
-    let process = owned(unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?);
+    let process = match unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) } {
+        Ok(h) => owned(h),
+        Err(e) => {
+            tracing::trace!("process: cannot open {pid} for its image path: {e}");
+            return None;
+        }
+    };
     let mut buf = [0u16; 1024];
     let mut len = buf.len() as u32;
     // SAFETY: `buf` is writable for `len` UTF-16 units, and the call writes
@@ -153,7 +160,14 @@ impl ProcessWatch {
     /// cannot be opened, which SYNCHRONIZE access almost never prevents)
     pub fn open(pid: u32) -> Option<ProcessWatch> {
         // SAFETY: plain call; the handle is owned and closed on drop.
-        let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) }.ok()?;
+        let handle = match unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) } {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::debug!("process: cannot watch {pid}: {e}");
+                return None;
+            }
+        };
+        tracing::debug!("process: watching {pid}");
         Some(ProcessWatch { pid, handle: owned(handle) })
     }
 
@@ -190,9 +204,12 @@ pub fn windows_build() -> u32 {
     let rtl_get_version: RtlGetVersionFn = unsafe { core::mem::transmute(proc) };
     let mut vi = OSVERSIONINFOW { dwOSVersionInfoSize: size_of::<OSVERSIONINFOW>() as u32, ..Default::default() };
     // SAFETY: `vi` is a valid OSVERSIONINFOW with its size field set.
-    if unsafe { rtl_get_version(&mut vi) } != 0 {
+    let status = unsafe { rtl_get_version(&mut vi) };
+    if status != 0 {
+        tracing::debug!("process: RtlGetVersion failed (0x{:08X})", status as u32);
         return 0;
     }
+    tracing::debug!("process: Windows {}.{} build {}", vi.dwMajorVersion, vi.dwMinorVersion, vi.dwBuildNumber);
     vi.dwBuildNumber
 }
 

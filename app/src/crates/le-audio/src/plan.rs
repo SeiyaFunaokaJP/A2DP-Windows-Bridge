@@ -186,6 +186,13 @@ pub fn plan_stream(
         return Err("the Bluetooth adapter reports no ISO data buffers (no LE Audio / CIS support)".into());
     }
     let max_cis = MAX_CIS.min(iso.packet_count as usize);
+    tracing::debug!(
+        "LE Audio plan: {} device(s), ISO packets {} x {iso_len} bytes (max {max_cis} CIS), preset order {:?}, prefer 2-channel ASE {}",
+        devices.len(),
+        iso.packet_count,
+        request.preset_order,
+        request.prefer_two_channel_ase
+    );
     let fits = |sdu_len: u32| sdu_len + 4 <= iso_len;
 
     let mut sink_ases: Vec<Vec<u8>> = Vec::with_capacity(devices.len());
@@ -195,6 +202,13 @@ pub fn plan_stream(
         if ids.is_empty() {
             return Err(format!("{}: no sink ASE (not an LE Audio sink?)", d.name));
         }
+        tracing::debug!(
+            "LE Audio plan: {} sink ASEs {ids:?}, sink locations 0x{:08X}, available sink contexts 0x{:04X}, {} sink PAC record(s)",
+            d.name,
+            d.sink_locations,
+            d.available_sink_contexts,
+            d.sink_pacs.len()
+        );
         sink_ases.push(ids);
     }
 
@@ -252,9 +266,16 @@ pub fn plan_stream(
     let mut chosen = None;
     let mut too_many = false;
     for name in &request.preset_order {
-        let Some(p) = presets.find(name) else { continue };
-        let Some(cis) = layout(p) else { continue };
+        let Some(p) = presets.find(name) else {
+            tracing::debug!("LE Audio plan: preset {name} unknown, skipped");
+            continue;
+        };
+        let Some(cis) = layout(p) else {
+            tracing::debug!("LE Audio plan: preset {name} not supported by every device");
+            continue;
+        };
         if cis.len() > max_cis {
+            tracing::debug!("LE Audio plan: preset {name} needs {} CIS (max {max_cis})", cis.len());
             too_many = true;
             continue;
         }
@@ -274,6 +295,7 @@ pub fn plan_stream(
     // Channel sources: left / right only when the group has both
     let has = |loc: u32| cis.iter().any(|c| c.channels.iter().any(|ch| ch.allocation == loc));
     let stereo = has(LOCATION_FRONT_LEFT) && has(LOCATION_FRONT_RIGHT);
+    tracing::debug!("LE Audio plan: preset {}, {} CIS, stereo {stereo}", preset.name, cis.len());
     for (i, c) in cis.iter_mut().enumerate() {
         c.cis_id = i as u8;
         for ch in &mut c.channels {
@@ -330,7 +352,9 @@ pub fn choose_streaming_contexts(available: &[u16], requested: u16) -> u16 {
         common &= a;
         unspecified &= a;
     }
-    if common != 0 { common } else { unspecified }
+    let chosen = if common != 0 { common } else { unspecified };
+    tracing::debug!("LE Audio contexts: requested 0x{requested:04X}, available {available:04X?} -> 0x{chosen:04X}");
+    chosen
 }
 
 /// Codec Specific Configuration LTVs of an ASE for the plan (sampling

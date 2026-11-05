@@ -3,7 +3,8 @@
 //! streaming when this process ends.
 //!
 //! Arguments: `--flyout` opens the tray flyout instead of the main window
-//! (the core starts the UI this way when the tray icon is clicked).
+//! (the core starts the UI this way when the tray icon is clicked);
+//! `--quick-settings` opens it above Quick Settings, which just opened.
 
 #![forbid(unsafe_code)]
 // No console window in release builds
@@ -11,13 +12,24 @@
 
 mod commands;
 mod connection;
+mod logging;
+mod recovery;
 mod update;
 mod windows;
 
 use tauri::Manager;
+use tauri::webview::PageLoadEvent;
 
 fn main() {
+    let _log = logging::init();
     let flyout = std::env::args().any(|a| a == "--flyout");
+    let quick_settings = std::env::args().any(|a| a == "--quick-settings");
+    tracing::info!(
+        "a2dpwb {} starting{} (WebView2 {})",
+        env!("CARGO_PKG_VERSION"),
+        if flyout { " with the flyout" } else { "" },
+        tauri::webview_version().unwrap_or_else(|e| format!("unknown: {e}"))
+    );
     let ipc = connection::Ipc::new();
     let app = tauri::Builder::default()
         // Must be the first plugin: a second launch ends before anything
@@ -27,13 +39,29 @@ fn main() {
         // go through update.rs only
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ipc.clone())
+        .manage(logging::Probes::default())
+        .on_page_load(|webview, payload| {
+            let event = match payload.event() {
+                PageLoadEvent::Started => "loading",
+                PageLoadEvent::Finished => {
+                    windows::page_loaded(webview.label());
+                    "loaded"
+                }
+            };
+            tracing::info!("[{}] page {event}: {}", webview.label(), payload.url());
+        })
         .invoke_handler(tauri::generate_handler![
+            logging::ui_log,
+            logging::ui_probe,
             commands::ipc_request,
             commands::ipc_status,
             commands::ui_info,
             commands::show_main,
             commands::show_flyout,
+            commands::fit_flyout,
+            commands::setup_window,
             commands::set_theme,
+            commands::accent_colors,
             commands::open_url,
             commands::open_folder,
             commands::reveal_path,
@@ -45,7 +73,9 @@ fn main() {
             let handle = app.handle().clone();
             app.manage(update::Updates::new(&handle));
             connection::start(handle.clone(), ipc);
-            if flyout {
+            if quick_settings {
+                windows::show_with_quick_settings(&handle);
+            } else if flyout {
                 windows::show_flyout(&handle)?;
             } else {
                 windows::show_main(&handle, None)?;
@@ -57,16 +87,24 @@ fn main() {
     let app = match app {
         Ok(app) => app,
         Err(e) => {
+            tracing::error!("cannot start the window: {e}");
             eprintln!("a2dpwb: cannot start the window: {e}");
+            drop(_log);
             std::process::exit(1);
         }
     };
-    app.run(|_, event| {
+    app.run(|_, event| match event {
         // Windows are hidden, not closed (see windows.rs), so this comes
         // only from app.exit() or the last window being destroyed by the
         // system; only the explicit exit ends the process
-        if let tauri::RunEvent::ExitRequested { api, code: None, .. } = event {
+        tauri::RunEvent::ExitRequested { api, code: None, .. } => {
+            tracing::info!("the last window is gone; staying (tray)");
             api.prevent_exit();
         }
+        tauri::RunEvent::Exit => {
+            tracing::info!("a2dpwb exiting");
+            recovery::relaunch_if_due();
+        }
+        _ => {}
     });
 }

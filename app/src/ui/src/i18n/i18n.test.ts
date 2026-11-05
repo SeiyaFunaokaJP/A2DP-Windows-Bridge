@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lang, LANGUAGES, setLanguage, t, tm } from "./index";
+import en from "../../../../../app/lang/en.json";
 import { printf } from "./printf";
 
 describe("printf", () => {
@@ -58,5 +59,23 @@ describe("translations", () => {
       const key = Object.keys(names).find((p) => p.endsWith(`/${l.code}.json`))!;
       expect(names[key]).toBe(l.name);
     }
+  });
+
+  it("has every key the screens ask for by name", () => {
+    // A key removed from the language files while still used shows as the
+    // key itself (ui.home.profile_line on the setup, issue #86)
+    const sources = import.meta.glob<string>(["../**/*.{ts,tsx}", "!../**/*.test.{ts,tsx}"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    });
+    expect(Object.keys(sources)).toContain("../screens/Setup.tsx");
+    const missing: string[] = [];
+    for (const [file, text] of Object.entries(sources)) {
+      for (const m of text.matchAll(/\bt\(\s*"([a-z0-9_]+(?:\.[a-z0-9_]+)+)"/g)) {
+        if (!(m[1] in en)) missing.push(`${file}: ${m[1]}`);
+      }
+    }
+    expect(missing).toEqual([]);
   });
 });

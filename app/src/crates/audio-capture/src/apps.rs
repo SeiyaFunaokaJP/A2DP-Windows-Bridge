@@ -41,10 +41,17 @@ pub struct AudioApp {
 
 /// Process IDs with an audio session (COM set up for the call)
 fn session_pids() -> Vec<u32> {
-    let Ok(_com) = ComApartment::init_mta() else {
-        return Vec::new();
+    let _com = match ComApartment::init_mta() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::debug!("audio apps: CoInitializeEx failed: HRESULT 0x{:08x}", e.code().0 as u32);
+            return Vec::new();
+        }
     };
-    audio_policy::session_process_ids().unwrap_or_default()
+    audio_policy::session_process_ids().unwrap_or_else(|e| {
+        tracing::debug!("audio apps: listing audio sessions failed: {e}");
+        Vec::new()
+    })
 }
 
 /// Apps with an audio session on any active output device, one entry per
@@ -73,6 +80,12 @@ pub fn audio_apps() -> Vec<AudioApp> {
     }
     let mut out: Vec<AudioApp> = by_exe.into_values().collect();
     out.sort_by_key(|a| a.name.to_lowercase());
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        tracing::debug!("audio apps: {} apps with an audio session", out.len());
+        for a in &out {
+            tracing::debug!("audio apps: {} (pid {})", a.name, a.process_id);
+        }
+    }
     out
 }
 
@@ -100,7 +113,12 @@ pub fn find_process(exe: &str) -> Option<u32> {
     }
     // Sessions are only looked up when there is a choice to make
     let sessions = if matches.len() > 1 { session_pids() } else { Vec::new() };
-    pick_process(&matches, &sessions)
+    let picked = pick_process(&matches, &sessions);
+    tracing::trace!(
+        "audio apps: {exe}: {} processes {matches:?} (pid, parent), sessions {sessions:?}, picked {picked:?}",
+        matches.len()
+    );
+    picked
 }
 
 /// v1's choice among the processes of one executable. `matches`: (pid,

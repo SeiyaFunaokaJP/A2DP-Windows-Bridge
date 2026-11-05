@@ -15,7 +15,7 @@ import type { IconName } from "../components/icons";
 import { t, tm } from "../i18n";
 import type { Core } from "../ipc/store";
 import type { ReceiverInfo } from "../ipc/types";
-import { bitDepths, CODECS, codecSpec, sampleRates } from "../lib/codecs";
+import { bitDepths, CODECS, codecSpec, fixedBitDepth, sampleRates } from "../lib/codecs";
 import { copyText, khz } from "../lib/format";
 import {
   BUFFERS_MS,
@@ -393,53 +393,73 @@ export function ReceiverTest() {
       </Section>
 
       <Section title={t("receiver.settings_sent")}>
-        <div class="advanced-grid">
-          <Field label={t("receiver.codec")}>
-            {(id) => <Select id={id} value={choices().codec} disabled={locked()} options={codecOptions()} onChange={setCodec} />}
-          </Field>
-          <Field label={t("receiver.quality")}>
-            {(id) => (
+        <Field label={t("receiver.codec")}>
+          {(id) => <Select id={id} value={choices().codec} disabled={locked()} options={codecOptions()} onChange={setCodec} />}
+        </Field>
+        {/* A codec with one quality or one bit depth: a value, not a list */}
+        <Field label={t("receiver.quality")}>
+          {(id) => (
+            <Show
+              when={codecSpec(choices().codec).qualities.length > 0}
+              fallback={
+                <input
+                  id={id}
+                  class="input readonly"
+                  readOnly
+                  value={qualityOptions().find((o) => o.value === choices().quality)?.label ?? "–"}
+                />
+              }
+            >
               <Select
                 id={id}
                 value={choices().quality}
-                disabled={locked() || codecSpec(choices().codec).qualities.length === 0}
+                disabled={locked()}
                 options={qualityOptions()}
                 onChange={(quality) => set({ quality })}
               />
-            )}
-          </Field>
-          <Field label={t("receiver.sample_rate")}>
-            {(id) => (
-              <Select
-                id={id}
-                value={choices().rate}
-                disabled={locked()}
-                options={sampleRates(choices().codec).map((r) => ({ value: r, label: rateLabel(r) }))}
-                onChange={(rate) => set({ rate })}
-              />
-            )}
-          </Field>
-          <Field label={t("receiver.bit_depth")}>
-            {(id) => (
+            </Show>
+          )}
+        </Field>
+        <Field label={t("receiver.sample_rate")}>
+          {(id) => (
+            <Select
+              id={id}
+              value={choices().rate}
+              disabled={locked()}
+              options={sampleRates(choices().codec).map((r) => ({ value: r, label: rateLabel(r) }))}
+              onChange={(rate) => set({ rate })}
+            />
+          )}
+        </Field>
+        <Field label={t("receiver.bit_depth")}>
+          {(id) => (
+            <Show
+              when={bitDepths(choices().codec).length > 1}
+              fallback={
+                <input id={id} class="input readonly" readOnly value={t(`bitdepth.${fixedBitDepth(choices().codec)}`)} />
+              }
+            >
               <Select
                 id={id}
                 value={choices().depth}
-                disabled={locked() || bitDepths(choices().codec).length < 2}
+                disabled={locked()}
                 options={bitDepths(choices().codec).map((d) => ({ value: d, label: depthLabel(d) }))}
                 onChange={(depth) => set({ depth })}
               />
-            )}
-          </Field>
-        </div>
-        <div class="field">
-          <span class="field-label">{t("receiver.source")}</span>
+            </Show>
+          )}
+        </Field>
+        <div class="row">
+          <span class="row-text">
+            <span class="row-label">{t("receiver.source")}</span>
+            <span class="hint">{t("receiver.source_tooltip")}</span>
+          </span>
           <Segmented<Source>
             label={t("receiver.source")}
             value={choices().source}
             options={(["tone", "loopback"] as Source[]).map((s) => ({ value: s, label: sourceLabel(s), disabled: locked() }))}
             onChange={(source) => set({ source })}
           />
-          <span class="hint">{t("receiver.source_tooltip")}</span>
         </div>
         <p class="hint">
           {t("ui.receiver.afh_hint")}{" "}
@@ -450,31 +470,29 @@ export function ReceiverTest() {
       </Section>
 
       <Section title={t("receiver.settings_received")}>
-        <div class="advanced-grid">
-          <Field label={t("receiver.mtu")} hint={t("receiver.mtu_tooltip")}>
-            {(id, described) => (
-              <Select
-                id={id}
-                describedBy={described}
-                value={choices().mtu}
-                disabled={locked()}
-                options={MTUS.map((v) => ({ value: v, label: mtuLabel(v) }))}
-                onChange={(mtu) => set({ mtu })}
-              />
-            )}
-          </Field>
-          <Field label={t("receiver.buffer")}>
-            {(id) => (
-              <Select
-                id={id}
-                value={choices().buffer}
-                disabled={locked()}
-                options={BUFFERS_MS.map((v) => ({ value: v, label: bufferLabel(v) }))}
-                onChange={(buffer) => set({ buffer })}
-              />
-            )}
-          </Field>
-        </div>
+        <Field label={t("receiver.mtu")} hint={t("receiver.mtu_tooltip")}>
+          {(id, described) => (
+            <Select
+              id={id}
+              describedBy={described}
+              value={choices().mtu}
+              disabled={locked()}
+              options={MTUS.map((v) => ({ value: v, label: mtuLabel(v) }))}
+              onChange={(mtu) => set({ mtu })}
+            />
+          )}
+        </Field>
+        <Field label={t("receiver.buffer")}>
+          {(id) => (
+            <Select
+              id={id}
+              value={choices().buffer}
+              disabled={locked()}
+              options={BUFFERS_MS.map((v) => ({ value: v, label: bufferLabel(v) }))}
+              onChange={(buffer) => set({ buffer })}
+            />
+          )}
+        </Field>
       </Section>
 
       <Section

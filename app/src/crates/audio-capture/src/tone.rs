@@ -76,6 +76,7 @@ pub(crate) fn run(sample_rate: u32, mut sink: Box<dyn Sink>, shared: Arc<Shared>
     let frames = tone.block_frames();
     let mut buf = vec![0u8; frames * fmt.bytes_per_frame()];
     let mut next = Instant::now();
+    tracing::debug!("test tone: {sample_rate} Hz, {frames} frames per {} ms block", BLOCK.as_millis());
     while !shared.stop.load(Ordering::Acquire) {
         tone.fill(&mut buf);
         sink.audio(&buf, frames, fmt);
@@ -88,9 +89,11 @@ pub(crate) fn run(sample_rate: u32, mut sink: Box<dyn Sink>, shared: Arc<Shared>
             // 10 ms pacing
             thread::sleep(next - now);
         } else if now - next > MAX_LAG {
+            tracing::debug!("test tone: {} ms behind, restarting the clock", (now - next).as_millis());
             next = now;
         }
     }
+    tracing::debug!("test tone: stopped after {} frames", shared.frames.load(Ordering::Relaxed));
 }
 
 #[cfg(test)]

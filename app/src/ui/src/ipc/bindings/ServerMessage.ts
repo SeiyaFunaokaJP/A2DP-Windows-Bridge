@@ -7,4 +7,9 @@ export type ServerMessage = { "type": "welcome", protocol: number,
 /**
  * "a2dpwb-core/2.0.0"
  */
-server: string, } | { "type": "reject", reason: string, } | { "type": "snapshot", rev: number, state: Snapshot, } | { "type": "event", rev: number, event: Event, } | { "type": "response", id: number, result: unknown, error: ErrorInfo | null, };
+server: string, 
+/**
+ * Additions to the protocol this core has ([`FEATURES`]): a client
+ * checks for one before using it. Absent from older cores.
+ */
+features: Array<string>, } | { "type": "reject", reason: string, } | { "type": "snapshot", rev: number, state: Snapshot, } | { "type": "event", rev: number, event: Event, } | { "type": "response", id: number, result: unknown, error: ErrorInfo | null, };

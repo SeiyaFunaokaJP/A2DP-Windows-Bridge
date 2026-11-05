@@ -66,6 +66,7 @@ pub fn parse_pac_records(data: &[u8]) -> Option<Vec<PacRecord>> {
     let mut out = Vec::with_capacity(count as usize);
     for _ in 0..count {
         if pos + 6 > len {
+            tracing::debug!("PACS: PAC record header past the end at {pos} of {len}: {data:02X?}");
             return None;
         }
         let mut r = PacRecord::default();
@@ -74,6 +75,7 @@ pub fn parse_pac_records(data: &[u8]) -> Option<Vec<PacRecord>> {
         let cap_len = data[pos] as usize;
         pos += 1;
         if pos + cap_len + 1 > len {
+            tracing::debug!("PACS: PAC capabilities of {cap_len} bytes past the end at {pos} of {len}: {data:02X?}");
             return None;
         }
         r.capabilities = data[pos..pos + cap_len].to_vec();
@@ -81,6 +83,7 @@ pub fn parse_pac_records(data: &[u8]) -> Option<Vec<PacRecord>> {
         let meta_len = data[pos] as usize;
         pos += 1;
         if pos + meta_len > len {
+            tracing::debug!("PACS: PAC metadata of {meta_len} bytes past the end at {pos} of {len}: {data:02X?}");
             return None;
         }
         r.metadata = data[pos..pos + meta_len].to_vec();
@@ -109,6 +112,15 @@ pub fn parse_pac_records(data: &[u8]) -> Option<Vec<PacRecord>> {
         if let Some(v) = ltv::find(&r.metadata, META_PREFERRED_CONTEXTS).filter(|v| v.len() >= 2) {
             r.preferred_contexts = rd16(v);
         }
+        tracing::debug!(
+            "PACS: record codec {:02X?}, LC3 {}, caps {:?}, preferred contexts 0x{:04X}, raw caps {:02X?}, metadata {:02X?}",
+            r.codec_id,
+            r.lc3,
+            r.caps,
+            r.preferred_contexts,
+            r.capabilities,
+            r.metadata
+        );
         out.push(r);
     }
     Some(out)
@@ -192,6 +204,7 @@ impl Default for Ase {
 /// `sink` and `value_handle` are left as they are.
 pub fn parse_ase_value(data: &[u8], ase: &mut Ase) -> bool {
     if data.len() < 2 {
+        tracing::debug!("ASCS: ASE value too short: {data:02X?}");
         return false;
     }
     ase.id = data[0];
@@ -233,7 +246,10 @@ pub fn parse_ase_value(data: &[u8], ase: &mut Ase) -> bool {
             ase.cis_id = p[1];
         }
         AseState::Idle | AseState::Releasing => {}
-        AseState::Unknown => return false,
+        AseState::Unknown => {
+            tracing::debug!("ASCS: ASE {} in unknown state 0x{:02X}", data[0], data[1]);
+            return false;
+        }
     }
     true
 }

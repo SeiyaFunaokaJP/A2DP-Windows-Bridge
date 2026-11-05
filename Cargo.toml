@@ -21,9 +21,12 @@ members = [
     "app/src/driver",
     "app/src/ui/src-tauri",
 ]
+# Vendored aptX Adaptive encoder: a path dependency of codec, kept out of the
+# workspace (its unit tests read upstream's reference vectors, not vendored)
+exclude = ["app/src/crates/aptx-adaptive"]
 
 [workspace.package]
-version = "2.0.1"
+version = "2.0.2-beta.18"
 edition = "2024"
 rust-version = "1.90"
 license = "Apache-2.0 OR MIT"
@@ -44,6 +47,7 @@ audio-capture = { path = "app/src/crates/audio-capture" }
 ipc = { path = "app/src/crates/ipc" }
 le-audio = { path = "app/src/crates/le-audio" }
 lc3-sys = { path = "app/src/crates/lc3-sys" }
+aptx-adaptive = { path = "app/src/crates/aptx-adaptive" }
 
 cc = "1.2"
 tracing = "0.1"

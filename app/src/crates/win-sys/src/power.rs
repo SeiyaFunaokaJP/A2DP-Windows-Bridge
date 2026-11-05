@@ -64,11 +64,13 @@ impl PowerNotifier {
             )
         };
         if err != ERROR_SUCCESS {
+            tracing::debug!("power: PowerRegisterSuspendResumeNotification failed (error {})", err.0);
             // SAFETY: registration failed, so Windows holds no copy of the
             // pointer; it came from Box::into_raw above.
             drop(unsafe { Box::from_raw(callback) });
             return Err(err.into());
         }
+        tracing::debug!("power: sleep / resume notifications registered");
         Ok(PowerNotifier { handle, callback })
     }
 }
@@ -84,6 +86,7 @@ impl Drop for PowerNotifier {
             tracing::warn!("power: unregistering sleep / resume notifications failed ({err:?})");
             return;
         }
+        tracing::debug!("power: sleep / resume notifications unregistered");
         // SAFETY: unregistered, so Windows no longer calls with this
         // context (the unregister call waits for a running callback, which
         // v1 relied on as well); the pointer came from Box::into_raw.
@@ -95,8 +98,12 @@ unsafe extern "system" fn on_power_event(context: *const c_void, kind: u32, _set
     let event = match kind {
         PBT_APMSUSPEND => PowerEvent::Suspend,
         PBT_APMRESUMEAUTOMATIC | PBT_APMRESUMESUSPEND => PowerEvent::Resume,
-        _ => return 0,
+        _ => {
+            tracing::debug!("power: notification 0x{kind:04X} ignored");
+            return 0;
+        }
     };
+    tracing::debug!("power: notification 0x{kind:04X} -> {event:?}");
     // SAFETY: the context is the Callback box registered in
     // PowerNotifier::new, alive until it is unregistered.
     let callback = unsafe { &*context.cast::<Callback>() };

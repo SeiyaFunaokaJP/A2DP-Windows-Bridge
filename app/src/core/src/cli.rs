@@ -30,24 +30,44 @@ Usage: a2dpwb-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
 
   -d <address>          Bluetooth address of the headphones / receiver
                         (default: the first audio device paired with Windows)
-  -l                    list the Bluetooth devices paired with Windows and exit
+  --device-name <name>  its name, with -d (as a saved device's: Huawei earbuds
+                        are told by it)
+  -l                  list the Bluetooth devices paired with Windows and exit
   -u <adapter>          USB Bluetooth adapter to use when several have WinUSB:
                         instance ID (USB\\VID_0BDA&PID_8771\\...), device path
                         (\\\\?\\usb#vid_0bda&pid_8771#...) or VID:PID (0bda:8771)
-  -c <codec>           ldac, aptxhd, aptxll, aptx, sbcxq, sbc, aac, lhdcv5, opus, opus05, faststream, auto (default)
-  -q <quality>          hq (default), sq, mq; mhq for LHDC V5
-  -a                    adaptive bit rate (LDAC, LHDC V5)
+  -c <codec>           ldac, aptxhd, aptxll, aptx, aptxad, sbcxq, sbc, aac, lhdcv5, opus, opus05, faststream, auto (default)
+  -q <quality>          hq (default); sq, mq for LDAC and LHDC V5; mhq for LHDC V5; ll (low latency)
+                        for aptX Adaptive (other codecs: hq, their highest bit rate)
+  -a                    adaptive bit rate (LDAC, LHDC V5, aptX Adaptive; SBC / SBC XQ: bitpool)
+  --fallback            a codec -c the device does not offer falls back to the
+                        best one it offers (as the app does), instead of an error
+  --no-experimental     never use the experimental codecs (aptX HD, aptX LL, Opus,
+                        Opus 05, FastStream: experimental in the README)
   -m <mode>             capture: loopback (default), virtual, app
   --audio-device <id>   render device for -m virtual
   --app <exe>           executable for -m app
-  --rate <hz>           capture sample rate (default: the device's)
+  --rate <hz>           capture sample rate (default: 48 kHz, or the best the device lists)
   --bits <16|24>        bit depth (default: 24 where the codec carries it)
   --max-packet <bytes>  max media packet size (679-1679, default 1023)
-  --afh <policy>        auto, off or Wi-Fi channels to avoid such as 6,11
+  --sbc-blocks <n>      SBC / SBC XQ block length: 4, 8, 12, 16 (default)
+  --sbc-subbands <n>    SBC / SBC XQ subbands: 4, 8 (default)
+  --sbc-alloc <method>  SBC / SBC XQ allocation: loudness (default), snr
+  --sbc-mode <mode>     SBC channel mode: joint_stereo (default), stereo,
+                        mono (dual channel: -c sbcxq)
+  --sbc-bitpool <n>     SBC / SBC XQ bitpool (default: by quality)
+  --afh <policy>        auto, off or Wi-Fi channels to avoid such as 6,11;
+                        blend-mild, blend-medium, blend-strong (experimental)
   --remote-sink <host[:port]|auto>
                         statistics of a measuring receiver (tools/linux_sink);
                         without -d, stream to that receiver
   --scan [seconds]      list nearby devices and exit
+  --probe               read what the adapter answers (read commands only, no
+                        HCI init; for adapters A2DPWB cannot use yet), save it
+                        to logs\\probe and exit
+  --script <file>       run a chip script on the adapter in place of HCI init
+                        (docs/chip-support.md), save its report and exit
+  --allow-writes        let --script send requests that may change the chip
 
 LE Audio (experimental, LC3 over LE isochronous channels):
   --le-audio            stream to the LE Audio device -d (BAP unicast, LC3)
@@ -55,12 +75,26 @@ LE Audio (experimental, LC3 over LE isochronous channels):
   --le-preset <name>    use only this BAP configuration (e.g. 48_2_2, 16_2_1)
   --le-low-latency      GMAP low latency (7.5 / 10 ms frames) for a gaming headset
   --le-scan [seconds]   list the LE Audio devices nearby and exit
+  --auracast <name>     broadcast under this name instead (Auracast source, no
+                        device; --le-preset picks 16_2_2 ... 48_6_2, default
+                        48_4_2)
+  --auracast-code <code>
+                        encrypt the broadcast with this code (4-16 bytes)
+  --auracast-mono       one mono channel instead of left and right
 
 Development / testing:
   --hci-tcp <host:port> H4 over TCP to a virtual controller (tools/emu)
   --hci-capture <path>  HCI capture (.pklg) of the whole run
   --test-tone           1 kHz left / 1.5 kHz right at 48 kHz instead of capture
   --duration <seconds>  stop after this time (default: Ctrl+C)
+  --sessions <n>        stream n times in a row with --duration each, as
+                        Disconnect / Connect in the app (A2DP)
+  --wait-off            headphones turned off: wait for them, as the app does
+  --services            once streaming, list the services the device gives in SDP
+  --restart-on-link     start the session again as soon as its link is up, as
+                        a setting changed while connecting does
+  --restart             with --sessions: between sessions restart Bluetooth
+                        as the Adapters page does, which connects again
   --le-sim-volume <level>[,<s>:<level>...]
                         LE Audio: VolumeSync with a simulated Windows volume
                         0-127 (changed at <s> seconds); the real volume is not
@@ -75,6 +109,7 @@ Development / testing:
 
 struct Args {
     device: Option<String>,
+    device_name: String,
     /// -l: list the Windows-paired devices and exit
     list: bool,
     /// -u: the adapter, as given and as parsed
@@ -82,19 +117,41 @@ struct Args {
     codec: Option<CodecKind>,
     quality: Quality,
     abr: bool,
+    /// --fallback: a codec the device does not offer falls back, as a profile's
+    fallback: bool,
+    /// --no-experimental: settings experimental_codecs off
+    no_experimental: bool,
     mode: String,
     audio_device: String,
     app: String,
     rate: Option<u32>,
     bits: Option<u8>,
     max_packet: u16,
+    /// --sbc-*: the SBC setup and bitpool (defaults: 0 / None)
+    sbc: codec::sbc::SbcParams,
+    sbc_bitpool: u8,
     afh: Option<String>,
     remote_sink: Option<String>,
     scan: Option<u32>,
+    probe: bool,
+    /// --services: once streaming, the services the device lists in SDP
+    services: bool,
+    script: Option<PathBuf>,
+    allow_writes: bool,
     hci_tcp: Option<String>,
     hci_capture: Option<PathBuf>,
     test_tone: bool,
     duration: Option<u64>,
+    /// --sessions: streams one after the other in this process (Connect,
+    /// --duration, Disconnect), as the UI's Disconnect / Connect (issue #84)
+    sessions: u32,
+    /// --restart: between sessions Bluetooth is restarted instead, as on
+    /// the Adapters page, and the session connects again (issue #86)
+    restart: bool,
+    /// --restart-on-link: the first session starts again once its link is up
+    restart_on_link: bool,
+    /// --wait-off: headphones turned off do not end the run
+    wait_off: bool,
     le: LeArgs,
 }
 
@@ -113,6 +170,12 @@ struct LeArgs {
     mcp_dry_run: bool,
     ccp_sim: Option<String>,
     ccp_console: bool,
+    /// --auracast <name>: broadcast instead of a unicast stream
+    broadcast: Option<String>,
+    /// --auracast-code
+    broadcast_code: Option<String>,
+    /// --auracast-mono
+    broadcast_mono: bool,
 }
 
 /// --le-scan without a time (v1 scan_seconds)
@@ -137,24 +200,37 @@ impl LeArgs {
 fn parse(args: &[String]) -> Result<Args, String> {
     let mut a = Args {
         device: None,
+        device_name: String::new(),
         list: false,
         usb: None,
         codec: None,
         quality: Quality::High,
         abr: false,
+        fallback: false,
+        no_experimental: false,
         mode: "loopback".into(),
         audio_device: String::new(),
         app: String::new(),
         rate: None,
         bits: None,
         max_packet: bt_host::media::MEDIA_PAYLOAD_LIMIT_DEFAULT,
+        sbc: codec::sbc::SbcParams::default(),
+        sbc_bitpool: 0,
         afh: None,
         remote_sink: None,
         scan: None,
+        probe: false,
+        services: false,
+        script: None,
+        allow_writes: false,
         hci_tcp: None,
         hci_capture: None,
         test_tone: false,
         duration: None,
+        sessions: 1,
+        restart: false,
+        restart_on_link: false,
+        wait_off: false,
         le: LeArgs::default(),
     };
     let mut it = args.iter().peekable();
@@ -165,6 +241,7 @@ fn parse(args: &[String]) -> Result<Args, String> {
         match arg.as_str() {
             "--cli" => {}
             "-d" => a.device = Some(value(&mut it, "-d")?),
+            "--device-name" => a.device_name = value(&mut it, "--device-name")?,
             "-l" => a.list = true,
             "-u" => {
                 let u = value(&mut it, "-u")?;
@@ -177,12 +254,14 @@ fn parse(args: &[String]) -> Result<Args, String> {
                     None
                 } else {
                     Some(CodecKind::from_key(&c).ok_or_else(|| {
-                        format!("Unknown codec '{c}'. Use: ldac, aptxhd, aptxll, aptx, sbcxq, sbc, aac, lhdcv5, opus, opus05, faststream, auto")
+                        format!("Unknown codec '{c}'. Use: ldac, aptxhd, aptxll, aptx, aptxad, sbcxq, sbc, aac, lhdcv5, opus, opus05, faststream, auto")
                     })?)
                 };
             }
             "-q" => a.quality = Quality::from_key(&value(&mut it, "-q")?.to_lowercase()),
             "-a" => a.abr = true,
+            "--fallback" => a.fallback = true,
+            "--no-experimental" => a.no_experimental = true,
             "-m" => a.mode = value(&mut it, "-m")?.to_lowercase(),
             "--audio-device" => a.audio_device = value(&mut it, "--audio-device")?,
             "--app" => a.app = value(&mut it, "--app")?,
@@ -195,6 +274,38 @@ fn parse(args: &[String]) -> Result<Args, String> {
                     println!("--max-packet {v} is outside 679-1679, using {}", a.max_packet);
                 }
             }
+            "--sbc-blocks" => {
+                a.sbc.blocks = value(&mut it, "--sbc-blocks")?.parse().map_err(|_| "bad --sbc-blocks")?;
+                if !matches!(a.sbc.blocks, 4 | 8 | 12 | 16) {
+                    return Err("--sbc-blocks takes 4, 8, 12 or 16".into());
+                }
+            }
+            "--sbc-subbands" => {
+                a.sbc.subbands = value(&mut it, "--sbc-subbands")?.parse().map_err(|_| "bad --sbc-subbands")?;
+                if !matches!(a.sbc.subbands, 4 | 8) {
+                    return Err("--sbc-subbands takes 4 or 8".into());
+                }
+            }
+            "--sbc-alloc" => {
+                let v = value(&mut it, "--sbc-alloc")?.to_lowercase();
+                a.sbc.allocation =
+                    Some(codec::sbc::Allocation::from_key(&v).ok_or("--sbc-alloc takes loudness or snr")?);
+            }
+            "--sbc-mode" => {
+                let v = value(&mut it, "--sbc-mode")?.to_lowercase();
+                // Dual channel is SBC XQ's (issue #86)
+                a.sbc.channel_mode = Some(
+                    codec::sbc::ChannelMode::from_key(&v)
+                        .filter(|m| *m != codec::sbc::ChannelMode::DualChannel)
+                        .ok_or("--sbc-mode takes joint_stereo, stereo or mono (dual channel: -c sbcxq)")?,
+                );
+            }
+            "--sbc-bitpool" => {
+                a.sbc_bitpool = value(&mut it, "--sbc-bitpool")?.parse().map_err(|_| "bad --sbc-bitpool")?;
+                if !(2..=53).contains(&a.sbc_bitpool) {
+                    return Err("--sbc-bitpool takes 2 to 53".into());
+                }
+            }
             "--afh" => a.afh = Some(value(&mut it, "--afh")?),
             "--remote-sink" => a.remote_sink = Some(value(&mut it, "--remote-sink")?),
             "--scan" => {
@@ -204,10 +315,23 @@ fn parse(args: &[String]) -> Result<Args, String> {
                 };
                 a.scan = Some(secs);
             }
+            "--probe" => a.probe = true,
+            "--services" => a.services = true,
+            "--script" => a.script = Some(value(&mut it, "--script")?.into()),
+            "--allow-writes" => a.allow_writes = true,
             "--hci-tcp" => a.hci_tcp = Some(value(&mut it, "--hci-tcp")?),
             "--hci-capture" => a.hci_capture = Some(value(&mut it, "--hci-capture")?.into()),
             "--test-tone" => a.test_tone = true,
             "--duration" => a.duration = Some(value(&mut it, "--duration")?.parse().map_err(|_| "bad --duration")?),
+            "--sessions" => {
+                a.sessions = value(&mut it, "--sessions")?.parse().map_err(|_| "bad --sessions")?;
+                if a.sessions == 0 {
+                    return Err("--sessions needs at least 1".into());
+                }
+            }
+            "--restart" => a.restart = true,
+            "--restart-on-link" => a.restart_on_link = true,
+            "--wait-off" => a.wait_off = true,
             "--le-audio" => a.le.on = true,
             "--le-device" => {
                 a.le.on = true;
@@ -227,6 +351,12 @@ fn parse(args: &[String]) -> Result<Args, String> {
             "--mcp-dry-run" => a.le.mcp_dry_run = true,
             "--ccp-sim" => a.le.ccp_sim = Some(value(&mut it, "--ccp-sim")?),
             "--ccp-console" => a.le.ccp_console = true,
+            "--auracast" => {
+                a.le.on = true;
+                a.le.broadcast = Some(value(&mut it, "--auracast")?);
+            }
+            "--auracast-code" => a.le.broadcast_code = Some(value(&mut it, "--auracast-code")?),
+            "--auracast-mono" => a.le.broadcast_mono = true,
             "-h" | "--help" => return Err(String::new()),
             other => return Err(format!("unknown option {other}")),
         }
@@ -294,9 +424,68 @@ pub fn run(args: &[String]) -> i32 {
         tx,
     );
 
+    if a.le.broadcast.is_some() {
+        let code = le_broadcast(&a, &service, &rx, &running);
+        service.shutdown();
+        capture.stop();
+        return code;
+    }
+
     if a.le.on {
         // LE Audio (experimental): its own flow (v1 le_audio_cli.cpp)
         let code = le_run(&a, &service, &running);
+        service.shutdown();
+        capture.stop();
+        return code;
+    }
+
+    if let Some(file) = &a.script {
+        let code = run_script(&service, file, a.allow_writes, a.usb.as_ref().map(|(u, _)| u.as_str()));
+        service.shutdown();
+        capture.stop();
+        return code;
+    }
+
+    if a.probe {
+        let code = match service.probe_adapter(None) {
+            Ok(report) => {
+                for s in &report.steps {
+                    let answer = match (&s.answer, &s.error) {
+                        (Some(a), _) => a.iter().map(|b| format!("{b:02x}")).collect(),
+                        (None, Some(e)) => format!("failed: {e}"),
+                        (None, None) => "no answer".to_owned(),
+                    };
+                    println!("{:<34} {:>5} ms  {answer}", s.name, s.millis);
+                }
+                if let Some(usb) = &report.usb {
+                    println!();
+                    for line in &usb.summary {
+                        println!("{line}");
+                    }
+                }
+                println!("\n{}", a2dpwb_core::probe_report::summary_line(&report));
+                let adapter = a.usb.as_ref().map(|(u, _)| u.as_str());
+                match a2dpwb_core::probe_report::save(
+                    &a2dpwb_core::paths::config_dir(),
+                    &report,
+                    adapter,
+                    env!("CARGO_PKG_VERSION"),
+                ) {
+                    Ok(path) => {
+                        println!("Saved to {}", path.display());
+                        0
+                    }
+                    Err(e) => {
+                        eprintln!("The report could not be saved: {e}");
+                        1
+                    }
+                }
+            }
+            Err(m) => {
+                eprintln!("{m}");
+                1
+            }
+        };
         service.shutdown();
         capture.stop();
         return code;
@@ -365,7 +554,7 @@ pub fn run(args: &[String]) -> i32 {
         }
         code
     };
-    let mut device_name = String::new();
+    let mut device_name = a.device_name.clone();
     let device = match device_arg.as_deref() {
         Some(d) => match parse_device_address(d) {
             Some(addr) => addr,
@@ -419,59 +608,75 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     println!("Target device: {}", bt_host::addr_str(&device));
-    service.start_streaming(StreamRequest {
+    let request = StreamRequest {
         device,
         device_name,
         codec: a.codec,
-        codec_fallback: false,
+        codec_fallback: a.fallback,
+        experimental_codecs: !a.no_experimental,
+        auto_order: codec::AutoOrder::default(),
         quality: a.quality,
         abr: a.abr,
+        sbc_bitpool: a.sbc_bitpool,
+        sbcxq_bitpool: a.sbc_bitpool,
+        sbc_min_bitpool: 0,
+        sbcxq_min_bitpool: 0,
+        sbc: a.sbc,
         sample_rate: a.rate,
         bit_depth: a.bits,
+        codec_values: Vec::new(),
         source,
         volume_sync: VolumeSync::Off,
+        mute_output: false,
         max_media_payload: a.max_packet,
         le: None,
-    });
+    };
 
-    let mut streaming_since: Option<Instant> = None;
-    let mut last_summary = Instant::now();
     let mut code = 0;
-    loop {
-        if a.remote_sink.is_some() && streaming_since.is_some() && last_summary.elapsed() >= Duration::from_secs(5) {
-            last_summary = Instant::now();
-            println!("{}", receiver.summary());
-        }
-        if !running.load(Ordering::Acquire) {
-            println!("\nStopping...");
-            break;
-        }
-        if let (Some(since), Some(d)) = (streaming_since, a.duration)
-            && since.elapsed() >= Duration::from_secs(d)
-        {
-            println!("\n--duration {d} s reached");
-            break;
-        }
-        match rx.recv_timeout(Duration::from_millis(200)) {
-            Ok(ServiceEvent::State(state, msg)) => {
-                println!("[{state:?}] {msg}");
-                match state {
-                    StreamState::Streaming if streaming_since.is_none() => streaming_since = Some(Instant::now()),
-                    StreamState::Error => {
-                        code = 1;
-                        break;
-                    }
-                    StreamState::Idle if streaming_since.is_some() || !service.is_running() => break,
-                    _ => {}
+    let mut request = request;
+    for session in 1..=a.sessions {
+        if session > 1 && a.restart {
+            // Restart Bluetooth, as the Adapters page does: the session
+            // connects again on the new stack
+            println!("\nRestarting Bluetooth (session {} of {})...", session - 1, a.sessions);
+            let Some(again) = service.restart_adapter() else {
+                println!("Bluetooth restarted, but nothing to connect again");
+                code = 1;
+                break;
+            };
+            request = again;
+            std::thread::sleep(SESSION_PAUSE);
+            if !running.load(Ordering::Acquire) {
+                break;
+            }
+            println!("Connecting again after the restart (session {session} of {})", a.sessions);
+        } else if session > 1 {
+            // Disconnect, as the app's button does, and connect again
+            println!("\nDisconnecting (session {} of {})...", session - 1, a.sessions);
+            service.disconnect();
+            while let Ok(e) = rx.try_recv() {
+                if let ServiceEvent::State(state, msg) = e {
+                    println!("[{state:?}] {msg}");
                 }
             }
-            Ok(ServiceEvent::StreamInfo(i)) => println!(
-                "Codec: {} | Bitrate: {} kbps | Sample rate: {} Hz | Channels: {}",
-                i.codec, i.bitrate_kbps, i.sample_rate, i.channels
-            ),
-            Ok(ServiceEvent::Volume(v)) => println!("Headphone volume: {v} ({}%)", v as u32 * 100 / 127),
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            std::thread::sleep(SESSION_PAUSE);
+            if !running.load(Ordering::Acquire) {
+                break;
+            }
+            println!("Connecting again (session {session} of {})", a.sessions);
+        }
+        service.start_streaming(request.clone());
+        if a.restart_on_link && session == 1 {
+            let until = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < until && !service.host().is_some_and(|h| h.link_age(device).is_some()) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            println!("Starting again while connecting");
+            service.start_streaming(request.clone());
+        }
+        let duration_reached = stream_session(&a, &service, &rx, &running, &receiver, &mut code);
+        if !duration_reached || code != 0 {
+            break;
         }
     }
     service.shutdown();
@@ -492,6 +697,85 @@ pub fn run(args: &[String]) -> i32 {
         receiver.stop();
     }
     code
+}
+
+/// --sessions: the pause between Disconnect and the next Connect
+const SESSION_PAUSE: Duration = Duration::from_secs(3);
+
+/// One stream until --duration, Ctrl+C, an error or the end of the
+/// session; true when --duration ended it
+fn stream_session(
+    a: &Args,
+    service: &Service,
+    rx: &mpsc::Receiver<ServiceEvent>,
+    running: &AtomicBool,
+    receiver: &a2dpwb_core::receiver::ReceiverClient,
+    code: &mut i32,
+) -> bool {
+    let mut streaming_since: Option<Instant> = None;
+    let mut last_summary = Instant::now();
+    loop {
+        if a.remote_sink.is_some() && streaming_since.is_some() && last_summary.elapsed() >= Duration::from_secs(5) {
+            last_summary = Instant::now();
+            println!("{}", receiver.summary());
+        }
+        if !running.load(Ordering::Acquire) {
+            println!("\nStopping...");
+            return false;
+        }
+        if let (Some(since), Some(d)) = (streaming_since, a.duration)
+            && since.elapsed() >= Duration::from_secs(d)
+        {
+            println!("\n--duration {d} s reached");
+            return true;
+        }
+        match rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(ServiceEvent::State(state, msg)) => {
+                println!("[{state:?}] {msg}");
+                match state {
+                    StreamState::Streaming if streaming_since.is_none() => {
+                        streaming_since = Some(Instant::now());
+                        if a.services {
+                            print_services(service, a.device.as_deref());
+                        }
+                    }
+                    StreamState::Error => {
+                        *code = 1;
+                        return false;
+                    }
+                    StreamState::Idle if a.wait_off && service.is_running() => {}
+                    StreamState::Idle if streaming_since.is_some() || !service.is_running() => return false,
+                    _ => {}
+                }
+            }
+            Ok(ServiceEvent::StreamInfo(i)) => println!(
+                "Codec: {} | Bitrate: {} kbps | Sample rate: {} Hz | Channels: {}",
+                i.codec, i.bitrate_kbps, i.sample_rate, i.channels
+            ),
+            Ok(ServiceEvent::Volume(v)) => println!("Headphone volume: {v} ({}%)", v as u32 * 100 / 127),
+            Ok(ServiceEvent::Battery(v)) => println!("Headphone battery: {v}%"),
+            Ok(ServiceEvent::BatteryRefused) => println!("Headphone battery: unknown (HFP refused)"),
+            Ok(ServiceEvent::OtherDeviceBack(a)) => println!("Another device connected: {}", bt_host::addr_str(&a)),
+            // The loader's own log lines say it
+            Ok(ServiceEvent::Loader(_)) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return false,
+        }
+    }
+}
+
+/// --services: asked on a thread of its own, the stream goes on meanwhile
+fn print_services(service: &Service, device: Option<&str>) {
+    let (Some(host), Some(addr)) = (service.host(), device.and_then(bt_host::parse_addr)) else { return };
+    let _ = std::thread::Builder::new().name("cli-services".into()).spawn(move || match host.device_services(addr) {
+        Ok(records) => {
+            println!("Services: {} record(s)", records.len());
+            for r in records {
+                println!("  {} {}", r.classes.join(" "), r.name.as_deref().unwrap_or("-"));
+            }
+        }
+        Err(e) => println!("Services: {e:?}"),
+    });
 }
 
 // ---- LE Audio (experimental): v1 le_audio_cli.cpp ----
@@ -574,6 +858,78 @@ fn le_connect_group(
     Some(ids)
 }
 
+/// --script: checks the script as the window does (writes need
+/// --allow-writes, denied opcodes never run), runs it, prints each line and
+/// saves the report
+fn run_script(service: &Service, file: &std::path::Path, allow_writes: bool, adapter: Option<&str>) -> i32 {
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Cannot read {}: {e}", file.display());
+            return 1;
+        }
+    };
+    let script = match bt_host::script::parse(&text) {
+        Ok(s) => s,
+        Err(errors) => {
+            for e in errors {
+                eprintln!("{e}");
+            }
+            return 1;
+        }
+    };
+    let line = |l: &bt_host::script::ScriptLine| format!("line {}: {}", l.line, l.text);
+    // The vendor from -u VID:PID; a selector by instance ID or none gets no
+    // deny list (the window knows the adapter)
+    let vendor = adapter
+        .and_then(|u| UsbSelector::from_arg(u).ok())
+        .and_then(|s| s.vid_pid)
+        .map_or(bt_host::chips::ChipVendor::Unknown, |(vid, pid)| bt_host::chips::vendor_for_usb(vid, pid, None));
+    let denied = script.denied(bt_host::chips::denied_opcodes(vendor));
+    if !denied.is_empty() {
+        eprintln!("These lines could change the chip for good and never run on a {} adapter:", vendor.name());
+        for l in denied {
+            eprintln!("  {}", line(l));
+        }
+        return 1;
+    }
+    let writes = script.writes();
+    if !writes.is_empty() && !allow_writes {
+        eprintln!("These lines may change the chip; run with --allow-writes to send them:");
+        for l in writes {
+            eprintln!("  {}", line(l));
+        }
+        return 1;
+    }
+    let total = script.lines.len();
+    match service.run_script(None, script) {
+        Ok(report) => {
+            for l in bt_host::script::report_text(&report) {
+                println!("{l}");
+            }
+            match &report.error {
+                Some(e) => println!("\nStopped at {e}"),
+                None => println!("\n{} of {total} lines done", report.steps.len()),
+            }
+            match a2dpwb_core::probe_report::save_script(
+                &a2dpwb_core::paths::config_dir(),
+                &report,
+                &text,
+                adapter,
+                env!("CARGO_PKG_VERSION"),
+            ) {
+                Ok(path) => println!("Saved to {}", path.display()),
+                Err(e) => eprintln!("The report could not be saved: {e}"),
+            }
+            i32::from(report.error.is_some())
+        }
+        Err(m) => {
+            eprintln!("{m}");
+            1
+        }
+    }
+}
+
 /// v1's --le-scan listing line
 fn le_scan_line(r: &bt_host::LeScanResult) -> String {
     format!(
@@ -597,6 +953,52 @@ fn le_setup(
     // (a failed connection printed why)
     let ids = le_connect_group(host, devices, &mut std::io::stdout()).ok_or_else(String::new)?;
     host.le_start_stream(ids, request.clone(), &a2dpwb_core::le_silence_set)
+}
+
+/// The LE Audio source of the command line: the test tone, a virtual
+/// device, or system audio
+fn le_source(a: &Args) -> SourceRequest {
+    if a.test_tone {
+        SourceRequest::TestTone
+    } else if a.mode == "virtual" && !a.audio_device.is_empty() {
+        SourceRequest::VirtualDevice { id: a.audio_device.clone(), name: a.audio_device.clone(), auto_switch: false }
+    } else {
+        SourceRequest::SystemLoopback
+    }
+}
+
+/// --auracast: broadcast until --duration or Ctrl+C, through the service as
+/// the app's stream.start_broadcast does; the exit code
+fn le_broadcast(a: &Args, service: &Service, rx: &mpsc::Receiver<ServiceEvent>, running: &AtomicBool) -> i32 {
+    let le = &a.le;
+    let b = crate::state::BroadcastStream {
+        name: le.broadcast.clone().unwrap_or_default(),
+        code: le.broadcast_code.clone(),
+        quality: "hq".into(),
+        mono: Some(le.broadcast_mono),
+        source: "tone".into(),
+        ..Default::default()
+    };
+    let mut request = match crate::state::broadcast_request(&b, bt_host::media::MEDIA_PAYLOAD_LIMIT_DEFAULT) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Auracast: {} {:?}", e.code, e.message.args);
+            return 2;
+        }
+    };
+    request.source = le_source(a);
+    if let (Some(p), Some(l)) = (&le.preset, request.le.as_mut()) {
+        l.preset = Some(p.clone());
+    }
+    println!("Starting the broadcast \"{}\"...", b.name.trim());
+    service.start_streaming(request);
+    let mut code = 0;
+    let receiver = a2dpwb_core::receiver::ReceiverClient::new();
+    stream_session(a, service, rx, running, &receiver, &mut code);
+    if let Some(host) = service.host() {
+        le_print_stats(&host);
+    }
+    code
 }
 
 /// The LE Audio flow (v1 le_audio_cli_run); the process exit code
@@ -683,13 +1085,7 @@ fn le_run(a: &Args, service: &Service, running: &Arc<AtomicBool>) -> i32 {
     println!("\nStreaming LE Audio: {}", started.status.summary);
 
     // Audio at the LC3 rate (WASAPI converts to it)
-    let source = if a.test_tone {
-        SourceRequest::TestTone
-    } else if a.mode == "virtual" && !a.audio_device.is_empty() {
-        SourceRequest::VirtualDevice { id: a.audio_device.clone(), name: a.audio_device.clone(), auto_switch: false }
-    } else {
-        SourceRequest::SystemLoopback
-    };
+    let source = le_source(a);
     let mut rc = 0;
     let start_audio = |started: &bt_host::LeStreamStarted| match a2dpwb_core::LeAudioPath::start(
         &source,
@@ -873,6 +1269,38 @@ mod tests {
     }
 
     #[test]
+    fn sbc_options() {
+        use codec::sbc::{Allocation, ChannelMode, SbcParams};
+        let a = parse(&args("--cli -c sbc")).unwrap();
+        assert_eq!((a.sbc, a.sbc_bitpool), (SbcParams::default(), 0));
+        let a = parse(&args(
+            "--cli -c sbc --sbc-blocks 8 --sbc-subbands 4 --sbc-alloc SNR --sbc-mode stereo --sbc-bitpool 40",
+        ))
+        .unwrap();
+        assert_eq!(
+            a.sbc,
+            SbcParams {
+                blocks: 8,
+                subbands: 4,
+                allocation: Some(Allocation::Snr),
+                channel_mode: Some(ChannelMode::Stereo),
+                min_bitpool: 0,
+            }
+        );
+        assert_eq!(a.sbc_bitpool, 40);
+        for bad in [
+            "--sbc-blocks 6",
+            "--sbc-subbands 2",
+            "--sbc-alloc max",
+            "--sbc-mode auto",
+            "--sbc-mode dual_channel",
+            "--sbc-bitpool 60",
+        ] {
+            assert!(parse(&args(&format!("--cli {bad}"))).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
     fn le_audio_options() {
         // As run_test.py --le-audio calls it
         let a = parse(&args(
@@ -923,6 +1351,30 @@ mod tests {
         // The classic --scan is another option
         let a = parse(&args("--cli --scan 4")).unwrap();
         assert_eq!((a.scan, a.le.on), (Some(4), false));
+    }
+
+    #[test]
+    fn auracast_options() {
+        let a = parse(&args("--cli --hci-tcp 127.0.0.1:9900 --auracast A2DPWB-test --test-tone --duration 5")).unwrap();
+        assert!(a.le.on && a.test_tone && a.device.is_none());
+        assert_eq!(a.le.broadcast.as_deref(), Some("A2DPWB-test"));
+        assert!(a.le.broadcast_code.is_none() && !a.le.broadcast_mono);
+        let a = parse(&[
+            "--cli".into(),
+            "--auracast".into(),
+            "Living room".into(),
+            "--auracast-code".into(),
+            "1234abcd".into(),
+            "--auracast-mono".into(),
+            "--le-preset".into(),
+            "24_2_2".into(),
+        ])
+        .unwrap();
+        assert_eq!(a.le.broadcast.as_deref(), Some("Living room"));
+        assert_eq!(a.le.broadcast_code.as_deref(), Some("1234abcd"));
+        assert!(a.le.broadcast_mono);
+        assert_eq!(a.le.preset.as_deref(), Some("24_2_2"));
+        assert_eq!(parse(&args("--cli --auracast")).err().as_deref(), Some("--auracast needs a value"));
     }
 
     #[test]

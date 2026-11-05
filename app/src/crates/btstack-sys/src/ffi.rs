@@ -18,15 +18,25 @@ unsafe extern "C" {
     pub fn a2dpwb_hci_init(is_async: c_int);
     pub fn a2dpwb_transport_deliver(packet_type: u8, packet: *const u8, size: u16) -> c_int;
     pub fn a2dpwb_transport_packet_sent();
-    pub fn a2dpwb_intel_download_firmware(is_async: c_int, firmware_path: *const c_char);
+    pub fn a2dpwb_hci_command_status_inject(opcode: u16, status: u8);
     pub fn a2dpwb_hci_dump_init();
     pub fn a2dpwb_set_link_key_db(rust_store: c_int);
     pub fn a2dpwb_add_hci_event_handler();
     pub fn a2dpwb_a2dp_source_init();
     pub fn a2dpwb_avrcp_init();
+    pub fn a2dpwb_hfp_ag_init();
+    pub fn a2dpwb_hfp_ag_connect(addr: *const u8) -> u8;
+    pub fn a2dpwb_hfp_ag_release(acl_handle: u16) -> u8;
+    pub fn a2dpwb_hfp_ag_deinit();
+    pub fn a2dpwb_rfcomm_init();
+    pub fn a2dpwb_rfcomm_deinit();
+    pub fn a2dpwb_rfcomm_create_channel(addr: *const u8, server_channel: u8, out_cid: *mut u16) -> u8;
+    pub fn a2dpwb_sdp_query_rfcomm(addr: *const u8, uuid128: *const u8) -> u8;
+    pub fn a2dpwb_sdp_query_services(addr: *const u8) -> u8;
+    pub fn a2dpwb_sdp_client_deinit();
 
     // ---- shim.c: GAP, SDP, endpoints, configuration ----
-    pub fn a2dpwb_gap_setup(class_of_device: u32, page_timeout: u16);
+    pub fn a2dpwb_gap_setup(class_of_device: u32, page_timeout: u16, name: *const c_char);
     pub fn a2dpwb_sdp_register_records(controller_features: u16, target_features: u16);
     pub fn a2dpwb_create_stream_endpoint(
         slot: c_int,
@@ -63,13 +73,25 @@ unsafe extern "C" {
 
     // ---- shim.c: state queries, HCI commands ----
     pub fn a2dpwb_acl_state(addr: *const u8, con_handle: *mut u16) -> c_int;
+    pub fn a2dpwb_cmd_create_connection_cancel(addr: *const u8) -> u8;
     pub fn a2dpwb_avdtp_state_for_addr(addr: *const u8, avdtp_cid: *mut u16) -> c_int;
     pub fn a2dpwb_avdtp_state_for_cid(avdtp_cid: u16) -> c_int;
     pub fn a2dpwb_cmd_set_afh_classification(map: *const u8) -> u8;
     pub fn a2dpwb_cmd_read_afh_channel_map(con_handle: u16) -> u8;
     pub fn a2dpwb_cmd_read_rssi(con_handle: u16) -> u8;
+    pub fn a2dpwb_cmd_read_failed_contact_counter(con_handle: u16) -> u8;
+    pub fn a2dpwb_cmd_read_link_quality(con_handle: u16) -> u8;
+    pub fn a2dpwb_cmd_read_remote_version(con_handle: u16) -> u8;
+    pub fn a2dpwb_cmd_read_link_supervision_timeout(con_handle: u16) -> u8;
+    pub fn a2dpwb_acl_packets_in_controller(con_handle: u16) -> c_int;
+    pub fn a2dpwb_acl_role(con_handle: u16) -> c_int;
+    pub fn a2dpwb_acl_encryption_key_size(con_handle: u16) -> c_int;
+    pub fn a2dpwb_remote_features_query(con_handle: u16);
+    pub fn a2dpwb_max_acl_data_packet_length() -> u16;
     pub fn a2dpwb_cmd_read_bd_addr() -> u8;
     pub fn a2dpwb_cmd_read_local_version() -> u8;
+    pub fn a2dpwb_cmd_remote_name_request(addr: *const u8) -> u8;
+    pub fn a2dpwb_cmd_remote_name_request_cancel(addr: *const u8) -> u8;
     pub fn a2dpwb_hci_get_state() -> c_int;
     pub fn a2dpwb_hci_can_send_command_now() -> c_int;
 
@@ -88,11 +110,11 @@ unsafe extern "C" {
     pub fn l2cap_deinit();
     pub fn sdp_init();
     pub fn sdp_deinit();
-    pub fn sdp_client_deinit();
 
     // ---- BTstack: GAP ----
     pub fn gap_inquiry_start(duration_in_1280ms_units: u8) -> c_int;
     pub fn gap_inquiry_stop() -> c_int;
+    pub fn gap_remote_name_request(addr: *const u8, page_scan_repetition_mode: u8, clock_offset: u16) -> c_int;
     pub fn gap_ssp_confirmation_response(addr: *const u8) -> c_int;
     pub fn gap_pin_code_response(addr: *const u8, pin: *const c_char) -> c_int;
     pub fn gap_disconnect(handle: u16) -> u8;
@@ -128,13 +150,21 @@ unsafe extern "C" {
     pub fn avrcp_controller_deinit();
     pub fn avrcp_deinit();
 
+    // ---- BTstack: RFCOMM ----
+    pub fn rfcomm_disconnect(rfcomm_cid: u16) -> u8;
+    pub fn rfcomm_request_can_send_now_event(rfcomm_cid: u16) -> u8;
+    pub fn rfcomm_send(rfcomm_cid: u16, data: *mut u8, len: u16) -> u8;
+
     // ---- BTstack: chipsets ----
     pub fn btstack_chipset_realtek_get_num_usb_controllers() -> u16;
     pub fn btstack_chipset_realtek_get_vendor_product_id(index: u16, vendor_id: *mut u16, product_id: *mut u16);
+    /// csrc/realtek.c
+    pub fn a2dpwb_realtek_usb_fw_name(index: u16) -> *const c_char;
     pub fn btstack_chipset_realtek_set_product_id(id: u16);
     pub fn btstack_chipset_realtek_set_firmware_folder_path(path: *const c_char);
     pub fn btstack_chipset_realtek_set_config_folder_path(path: *const c_char);
-    pub fn btstack_chipset_realtek_instance() -> *const core::ffi::c_void;
+    /// csrc/realtek.c: the Realtek chipset opening the .bin files
+    pub fn a2dpwb_realtek_instance() -> *const core::ffi::c_void;
     pub fn btstack_chipset_bcm_set_hcd_file_path(path: *const c_char);
     pub fn btstack_chipset_bcm_instance() -> *const core::ffi::c_void;
     pub fn hci_set_chipset(chipset: *const core::ffi::c_void);
@@ -212,6 +242,35 @@ unsafe extern "C" {
     ) -> u8;
     pub fn a2dpwb_iso_send(cis_handle: u16, sequence_number: u16, sdu: *const u8, len: u16) -> u8;
 
+    // ---- shim.c: broadcast ----
+    #[allow(clippy::too_many_arguments)]
+    pub fn a2dpwb_broadcast_advertise(
+        sid: u8,
+        adv_interval_min: u16,
+        adv_interval_max: u16,
+        pa_interval_min: u16,
+        pa_interval_max: u16,
+        adv: *const u8,
+        adv_len: u16,
+        pa: *const u8,
+        pa_len: u16,
+        out_handle: *mut u8,
+    ) -> u8;
+    pub fn a2dpwb_broadcast_advertise_stop() -> u8;
+    #[allow(clippy::too_many_arguments)]
+    pub fn a2dpwb_big_create(
+        big_handle: u8,
+        num_bis: u8,
+        sdu_interval_us: u32,
+        max_sdu: u16,
+        max_transport_latency_ms: u16,
+        rtn: u8,
+        phy: u8,
+        framing: u8,
+        code: *const u8,
+    ) -> u8;
+    pub fn a2dpwb_big_terminate(big_handle: u8) -> u8;
+
     // ---- BTstack: GAP (LE) ----
     pub fn gap_set_scan_params(scan_type: u8, scan_interval: u16, scan_window: u16, filter_policy: u8) -> u8;
     pub fn gap_start_scan();
@@ -223,6 +282,7 @@ unsafe extern "C" {
     // ---- BTstack: HCI ISO ----
     pub fn hci_set_num_iso_packets_to_queue(num_packets: u8);
     pub fn hci_request_cis_can_send_now_events(cis_con_handle: u16) -> u8;
+    pub fn hci_request_bis_can_send_now_events(big_handle: u8) -> u8;
 
     // ---- BTstack: SM ----
     pub fn sm_request_pairing(con: u16);

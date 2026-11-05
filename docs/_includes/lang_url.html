@@ -1,2 +1,3 @@
 {%- comment -%}Prints the relative URL of this page in language include.code (lang_vars.html first).{%- endcomment -%}
-{%- if include.code == "en" -%}{{ lang_rel | relative_url }}{%- else -%}{{ "/" | append: include.code | append: lang_rel | relative_url }}{%- endif -%}
+{%- comment -%}A page with english_only: true has no translations: other languages go to their home page.{%- endcomment -%}
+{%- if include.code == "en" -%}{{ lang_rel | relative_url }}{%- elsif page.english_only -%}{{ "/" | append: include.code | append: "/" | relative_url }}{%- else -%}{{ "/" | append: include.code | append: lang_rel | relative_url }}{%- endif -%}

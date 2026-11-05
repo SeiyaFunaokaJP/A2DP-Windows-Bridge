@@ -61,12 +61,6 @@
 .capture-source.st-warn {
   color: var(--warn-text);
 }
-.mini-body .capture-source {
-  color: inherit;
-}
-.mini-body .capture-source.st-warn {
-  color: var(--warn-text);
-}
 
 .fly-meta {
   display: flex;
@@ -84,35 +78,17 @@
   flex: 1;
 }
 
-/* The capture source, chosen in place (Home, flyout) */
-.capture-picker {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s1);
-  flex: 1;
-  min-width: 0;
+/* The codec chosen on the device's card (Home, the flyout), in the name's
+   place (issue #86) */
+.select.codec-picker {
+  min-width: 9rem;
+  width: 14rem;
+  max-width: 100%;
 }
-.capture-picker-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  min-width: 0;
-}
-.capture-picker-row > .icon {
-  flex: none;
-}
-.capture-picker.st-warn .capture-picker-row > .icon,
-.capture-waiting {
-  color: var(--warn-text);
-}
-.capture-waiting {
-  font-size: var(--fs-12);
-}
-.capture-picker .select {
-  flex: 1;
-  min-width: 0;
-}
-.capture-picker select {
-  width: 100%;
+.codec-info .codec-picker select,
+.fly-title .codec-picker select {
+  font-size: var(--fs-14);
+  font-weight: 600;
   text-overflow: ellipsis;
 }
+

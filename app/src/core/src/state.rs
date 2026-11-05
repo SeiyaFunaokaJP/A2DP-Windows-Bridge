@@ -3,24 +3,27 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use a2dpwb_core::diag::AudioRates;
+use a2dpwb_core::paths;
 use a2dpwb_core::profiles::{self, Profile as CoreProfile};
 use a2dpwb_core::receiver::{self, ReceiverClient};
 use a2dpwb_core::settings::Settings as CoreSettings;
+use a2dpwb_core::vendor;
 use a2dpwb_core::{
     LeStreamDetails, ScannedDevice, Service, ServiceEvent, SourceRequest, StreamRequest,
-    StreamState as CoreStreamState, devices,
+    StreamState as CoreStreamState, VolumeSync, devices,
 };
 use bt_host::LinkStats;
 use bt_host::chips::{self, ChipVendor};
 use ipc::{
-    AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, Device, DiagInfo, DriverKind,
-    ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, Method, Msg, Profile, ReceiverConnection, ReceiverState,
-    Settings, SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus, UpdateState,
+    AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, DevLog, DevOverrides, Device,
+    DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, LoaderStatus, Method, MixerApp,
+    Msg, OtherRadio, ProbeResult, Profile, ReceiverConnection, ReceiverState, ScriptCheck, ScriptResult, Settings,
+    SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus, UpdateState, WifiAccessPoint,
 };
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -41,12 +44,60 @@ pub struct BalloonRequest {
 /// the tray" hint was shown once
 const TRAY_HINT_SHOWN: &str = "tray_hint_shown";
 
+/// The low-battery balloon is shown again only after the level was back
+/// this much above the setting's level (charged)
+const BATTERY_REARM_MARGIN: u8 = 5;
+
+/// How long a restart for a save waits for a newer request to take over
+/// ([`CoreState::restart_profile`])
+const RESTART_COALESCE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// How long the "connected" balloon waits for the battery: HFP is opened once
+/// the stream is established, so the level often comes just after it
+const BATTERY_WAIT: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// Whether a battery report shows the low-battery balloon: once when the
+/// level is below `low` (the setting; also the first report of a
+/// connection), again only after it was back [`BATTERY_REARM_MARGIN`]
+/// above. Never when `low` is 0. `warned` is cleared for each connection.
+fn battery_low_alert(warned: &mut bool, level: u8, low: u8) -> bool {
+    if level >= low.saturating_add(BATTERY_REARM_MARGIN) {
+        *warned = false;
+        return false;
+    }
+    if level < low && !*warned {
+        *warned = true;
+        return true;
+    }
+    false
+}
+
+/// The streamed profile's device: its name, else its address
+fn streamed_device(s: &Snapshot) -> Option<&str> {
+    s.stream.profile.as_ref().and_then(|n| s.profiles.iter().find(|p| &p.name == n)).map(|p| device_name(&s.devices, p))
+}
+
+/// What users call a profile (issue #86: never its own name): its saved
+/// device's name (renamed after the profile was made, too), else the name
+/// the profile kept, else the address
+fn device_name<'a>(devices: &'a [Device], p: &'a Profile) -> &'a str {
+    devices
+        .iter()
+        .find(|d| d.saved && d.le_audio == p.le_audio && d.address.eq_ignore_ascii_case(&p.device_address))
+        .map(|d| d.name.as_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or(if p.device_name.is_empty() { p.device_address.as_str() } else { p.device_name.as_str() })
+}
+
 /// What the tray shows
 #[derive(Debug, Clone)]
 pub struct TrayView {
     pub streaming: bool,
     pub tooltip: String,
     pub profiles: Vec<String>,
+    /// The menu's item for each of `profiles`: its device, as the flyout
+    /// lists it
+    pub labels: Vec<String>,
     pub active_profile: Option<String>,
     pub language: String,
 }
@@ -68,6 +119,20 @@ pub struct CoreState {
     /// The profile the last stream.start asked for: the session stopped for
     /// it reports Idle after it, which clears the snapshot's profile
     starting_profile: Mutex<Option<String>>,
+    /// The low-battery balloon was shown for this connection
+    battery_warned: AtomicBool,
+    /// A new connection started: its balloon is shown once it streams with
+    /// the codec settled (not after a reconnect of the same connection)
+    connect_announce: AtomicBool,
+    /// Until when the balloon of this connection waits for the battery
+    /// ([`BATTERY_WAIT`])
+    battery_deadline: Mutex<Option<Instant>>,
+    /// The session starting is the profile in use started again with what
+    /// was saved ([`CoreState::restart_profile`]): no balloon for it
+    quiet_connect: AtomicBool,
+    /// Set by [`CoreState::restart_profile`] for the [`CoreState::begin_stream`]
+    /// it calls
+    restarting: AtomicBool,
     tray: Box<dyn Fn(TrayView) + Send + Sync>,
     quit: Box<dyn Fn() + Send + Sync>,
     balloon: Box<dyn Fn(BalloonRequest) + Send + Sync>,
@@ -77,12 +142,12 @@ pub fn msg(m: &a2dpwb_core::Msg) -> Msg {
     Msg { key: m.key.to_string(), args: m.args.clone() }
 }
 
-fn err(code: &str, key: &str) -> ErrorInfo {
+pub(crate) fn err(code: &str, key: &str) -> ErrorInfo {
     ErrorInfo { code: code.into(), message: Msg::new(key) }
 }
 
 /// A request whose parameters do not make sense (ipc.error.bad_request)
-fn bad_request(code: &str, method: &str, why: String) -> ErrorInfo {
+pub(crate) fn bad_request(code: &str, method: &str, why: String) -> ErrorInfo {
     ErrorInfo {
         code: code.into(),
         message: Msg { key: "ipc.error.bad_request".into(), args: vec![method.into(), why] },
@@ -117,6 +182,50 @@ fn to_ipc_profile(p: &CoreProfile, legacy: u16) -> Profile {
         max_media_payload: p.max_media_payload.unwrap_or(legacy),
         le_audio: p.le_audio,
         le_low_latency: p.le_low_latency,
+        sbc_bitpool: p.sbc_bitpool,
+        sbcxq_bitpool: p.sbcxq_bitpool,
+        sbc_min_bitpool: p.sbc_min_bitpool,
+        sbcxq_min_bitpool: p.sbcxq_min_bitpool,
+        sbc_blocks: p.sbc_blocks,
+        sbc_subbands: p.sbc_subbands,
+        sbc_allocation: p.sbc_allocation.clone(),
+        sbc_channel_mode: p.sbc_channel_mode.clone(),
+        codec_settings: p.codec_settings.iter().map(|(c, v)| (c.clone(), to_ipc_codec_values(v))).collect(),
+        codec_order: p.codec_order.clone(),
+    }
+}
+
+fn to_ipc_codec_values(v: &profiles::CodecValues) -> ipc::CodecValues {
+    ipc::CodecValues {
+        quality: v.quality.clone(),
+        sample_rate: v.sample_rate,
+        bit_depth: v.bit_depth,
+        abr: v.abr,
+        sbc_bitpool: v.sbc_bitpool,
+        sbcxq_bitpool: v.sbcxq_bitpool,
+        sbc_min_bitpool: v.sbc_min_bitpool,
+        sbcxq_min_bitpool: v.sbcxq_min_bitpool,
+        sbc_blocks: v.sbc_blocks,
+        sbc_subbands: v.sbc_subbands,
+        sbc_allocation: v.sbc_allocation.clone(),
+        sbc_channel_mode: v.sbc_channel_mode.clone(),
+    }
+}
+
+fn from_ipc_codec_values(v: &ipc::CodecValues) -> profiles::CodecValues {
+    profiles::CodecValues {
+        quality: v.quality.clone(),
+        sample_rate: v.sample_rate,
+        bit_depth: v.bit_depth,
+        abr: v.abr,
+        sbc_bitpool: v.sbc_bitpool,
+        sbcxq_bitpool: v.sbcxq_bitpool,
+        sbc_min_bitpool: v.sbc_min_bitpool,
+        sbcxq_min_bitpool: v.sbcxq_min_bitpool,
+        sbc_blocks: v.sbc_blocks,
+        sbc_subbands: v.sbc_subbands,
+        sbc_allocation: v.sbc_allocation.clone(),
+        sbc_channel_mode: v.sbc_channel_mode.clone(),
     }
 }
 
@@ -144,6 +253,30 @@ fn merge_profile(base: Option<&CoreProfile>, p: &Profile) -> CoreProfile {
     c.max_media_payload = Some(bt_host::media::clamp_media_payload_limit(p.max_media_payload as u32));
     c.le_audio = p.le_audio;
     c.le_low_latency = p.le_low_latency;
+    c.sbc_bitpool = p.sbc_bitpool;
+    c.sbcxq_bitpool = p.sbcxq_bitpool;
+    c.sbc_min_bitpool = p.sbc_min_bitpool;
+    c.sbcxq_min_bitpool = p.sbcxq_min_bitpool;
+    c.sbc_blocks = p.sbc_blocks;
+    c.sbc_subbands = p.sbc_subbands;
+    c.sbc_allocation = p.sbc_allocation.clone();
+    c.sbc_channel_mode = p.sbc_channel_mode.clone();
+    // The codec in use has its settings in the fields above
+    c.codec_settings = p
+        .codec_settings
+        .iter()
+        .filter(|(k, _)| **k != p.codec)
+        .map(|(k, v)| (k.clone(), from_ipc_codec_values(v)))
+        .collect();
+    // The codecs' keys, each once (the cards' order: FastStream and Opus 05
+    // too, which Auto and the fallback never take); the UI sends none for
+    // the default order
+    c.codec_order = Vec::new();
+    for k in p.codec_order.iter().filter_map(|k| codec::CodecKind::from_key(k)) {
+        if !c.codec_order.iter().any(|x| x == k.key()) {
+            c.codec_order.push(k.key().to_string());
+        }
+    }
     c
 }
 
@@ -154,18 +287,68 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         start_with_windows: s.start_with_windows,
         start_minimized: s.start_minimized,
         minimize_to_tray: s.minimize_to_tray,
+        tray_click_opens_window: s.tray_click_opens_window,
+        flyout_with_quick_settings: s.flyout_with_quick_settings,
+        notify_connected: s.notify_connected,
+        battery_low_percent: s.battery_low_percent,
         check_updates_on_startup: s.check_updates_on_startup,
         include_prereleases: s.include_prereleases,
         media_keys: s.media_keys,
-        remember_volume: s.remember_volume,
+        auto_reconnect: s.auto_reconnect,
+        volume_sync: s.volume_sync,
+        mute_output: s.mute_output,
+        volume_mixer: s.volume_mixer,
         developer_mode: s.debug_mode,
+        dev_overrides: DevOverrides {
+            rtp_marker: s.dev_overrides.rtp_marker,
+            packet_dump: s.dev_overrides.packet_dump,
+            aac_config_bitrate0: s.dev_overrides.aac_config_bitrate0,
+            aac_bitrate_kbps: s.dev_overrides.aac_bitrate_kbps,
+            aac_no_peak: s.dev_overrides.aac_no_peak,
+            aac_no_afterburner: s.dev_overrides.aac_no_afterburner,
+            aac_latm_v0: s.dev_overrides.aac_latm_v0,
+            force_codec: s.dev_overrides.force_codec,
+            auto_codec_settings: s.dev_overrides.auto_codec_settings,
+            match_source: s.dev_overrides.match_source,
+            ignore_sink_max: s.dev_overrides.ignore_sink_max,
+            queue_max_wait_ms: s.dev_overrides.queue_max_wait_ms,
+        },
+        dev_vendors: s
+            .dev_vendors
+            .iter()
+            .map(|(id, o)| {
+                let mode = match o.mode {
+                    vendor::Mode::Auto => ipc::VendorMode::Auto,
+                    vendor::Mode::Always => ipc::VendorMode::Always,
+                    vendor::Mode::Never => ipc::VendorMode::Never,
+                };
+                (id.clone(), ipc::VendorOverride { mode, options: o.options.clone() })
+            })
+            .collect(),
+        dev_log: DevLog {
+            keep_days: s.dev_log.keep_days,
+            day_cap_mb: s.dev_log.day_cap_mb,
+            always_verbose: match s.dev_log.always_verbose.as_str() {
+                "debug" => Some(ipc::LogLevel::Debug),
+                "trace" => Some(ipc::LogLevel::Trace),
+                _ => None,
+            },
+            health_every_interval: s.dev_log.health_every_interval,
+        },
         bt_chip_pid: s.bt_chip_pid,
         bt_chip_fw_stem: s.bt_chip_fw_stem.clone(),
         afh: s.afh.clone(),
         remote_sink: s.remote_sink.clone(),
         le_audio_experimental: s.le_audio_experimental,
         le_audio_low_latency: s.le_audio_low_latency,
+        experimental_codecs: s.experimental_codecs,
+        auto_codec: s.auto_codec,
     }
+}
+
+/// VB-Cable's playback device among Windows' outputs
+fn vb_cable(devices: &[audio_capture::DeviceInfo]) -> Option<&audio_capture::DeviceInfo> {
+    devices.iter().find(|d| d.is_virtual && d.name.to_lowercase().contains("cable"))
 }
 
 fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
@@ -175,22 +358,85 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.start_with_windows = s.start_with_windows;
     c.start_minimized = s.start_minimized;
     c.minimize_to_tray = s.minimize_to_tray;
+    c.tray_click_opens_window = s.tray_click_opens_window;
+    c.flyout_with_quick_settings = s.flyout_with_quick_settings;
+    c.notify_connected = s.notify_connected;
+    c.battery_low_percent = s.battery_low_percent;
     c.check_updates_on_startup = s.check_updates_on_startup;
     c.include_prereleases = s.include_prereleases;
     c.media_keys = s.media_keys;
-    c.remember_volume = s.remember_volume;
+    c.auto_reconnect = s.auto_reconnect;
+    c.volume_sync = s.volume_sync;
+    c.mute_output = s.mute_output;
+    c.volume_mixer = s.volume_mixer;
     c.debug_mode = s.developer_mode;
+    c.dev_overrides = codec::dev::DevOverrides {
+        rtp_marker: s.dev_overrides.rtp_marker,
+        packet_dump: s.dev_overrides.packet_dump,
+        aac_config_bitrate0: s.dev_overrides.aac_config_bitrate0,
+        // A bit rate AAC can use at all: 0 (off) or 32..=512 kbit/s
+        aac_bitrate_kbps: match s.dev_overrides.aac_bitrate_kbps {
+            0 => 0,
+            k => k.clamp(32, 512),
+        },
+        aac_no_peak: s.dev_overrides.aac_no_peak,
+        aac_no_afterburner: s.dev_overrides.aac_no_afterburner,
+        aac_latm_v0: s.dev_overrides.aac_latm_v0,
+        force_codec: s.dev_overrides.force_codec,
+        auto_codec_settings: s.dev_overrides.auto_codec_settings,
+        match_source: s.dev_overrides.match_source,
+        ignore_sink_max: s.dev_overrides.ignore_sink_max,
+        // 0 (the default) or a limit the queue can hold
+        queue_max_wait_ms: match s.dev_overrides.queue_max_wait_ms {
+            0 => 0,
+            ms => ms.clamp(codec::dev::QUEUE_WAIT_MIN, codec::dev::QUEUE_WAIT_MAX),
+        },
+    };
+    // Known vendors and options only, defaults left out
+    c.dev_vendors = s
+        .dev_vendors
+        .iter()
+        .filter_map(|(id, o)| {
+            let v = vendor::vendor(id)?;
+            let mode = match o.mode {
+                ipc::VendorMode::Auto => vendor::Mode::Auto,
+                ipc::VendorMode::Always => vendor::Mode::Always,
+                ipc::VendorMode::Never => vendor::Mode::Never,
+            };
+            let options = o.options.iter().filter(|x| v.options.contains(&x.as_str())).cloned().collect();
+            let o = vendor::Override { mode, options };
+            (!o.is_default()).then(|| (id.clone(), o))
+        })
+        .collect();
+    c.dev_log = a2dpwb_core::settings::DevLog {
+        keep_days: s.dev_log.keep_days,
+        day_cap_mb: s.dev_log.day_cap_mb,
+        always_verbose: match s.dev_log.always_verbose {
+            Some(ipc::LogLevel::Debug) => "debug".into(),
+            Some(ipc::LogLevel::Trace) => "trace".into(),
+            _ => String::new(),
+        },
+        health_every_interval: s.dev_log.health_every_interval,
+    }
+    .clamped();
     c.bt_chip_pid = s.bt_chip_pid;
     c.bt_chip_fw_stem = s.bt_chip_fw_stem.clone();
     c.afh = s.afh.clone();
     c.remote_sink = s.remote_sink.clone();
     c.le_audio_experimental = s.le_audio_experimental;
     c.le_audio_low_latency = s.le_audio_low_latency;
+    // experimental_codecs: always on (issue #86), as loaded
+    c.auto_codec = s.auto_codec;
     c
 }
 
-/// What the UI tells about an adapter's firmware besides Realtek's files
-fn vendor_note(vendor: ChipVendor) -> Option<Msg> {
+/// What the UI tells about an adapter's firmware besides Realtek's files.
+/// Per chip: a vendor's chips without a loader stay unsupported when others
+/// have one (bt_host::chips::LOADER_CHIPS)
+fn vendor_note(vendor: ChipVendor, vid: u16, pid: u16) -> Option<Msg> {
+    if !chips::chip_supported(vendor, vid, pid) {
+        return Some(Msg::new("firmware.vendor_unsupported"));
+    }
     let key = match vendor {
         ChipVendor::Intel => "firmware.vendor_intel",
         ChipVendor::Broadcom => "firmware.vendor_broadcom",
@@ -201,33 +447,146 @@ fn vendor_note(vendor: ChipVendor) -> Option<Msg> {
     Some(Msg::new(key))
 }
 
+/// Device Manager's "Windows cannot start this device until it restarts"
+const CM_PROB_NEED_RESTART: u32 = 14;
+
+/// LE Audio of the adapter A2DPWB uses (AdapterState::le_audio): the
+/// running stack's, else what a stack found out on the first WinUSB adapter
+fn le_audio_now(running: Option<bool>, adapters: &[AdapterInfo]) -> Option<bool> {
+    running.or_else(|| adapters.iter().find(|a| a.driver == DriverKind::Winusb).and_then(|a| a.le_audio))
+}
+
+/// The Realtek chip (PID, firmware stem) whose files an adapter's card
+/// reports on. The chip setting is one for all adapters, so an adapter of
+/// another known vendor (MediaTek, Intel, ...) gets none, else it showed the
+/// Realtek adapter's "Firmware OK" (issue #86)
+fn adapter_chip(vendor: ChipVendor, realtek_pid: Option<u16>, settings: &CoreSettings) -> (u16, &str) {
+    if !matches!(vendor, ChipVendor::Realtek | ChipVendor::Unknown) {
+        return (0, "");
+    }
+    (chips::resolve_chip_pid(settings.bt_chip_pid, &settings.bt_chip_fw_stem, [realtek_pid]), &settings.bt_chip_fw_stem)
+}
+
+/// The devices paired in Windows' Bluetooth (its list is one for all its
+/// radios): what A2DPWB adds may then be taken by both
+fn windows_paired() -> Vec<String> {
+    match win_sys::bt_paired::paired_devices() {
+        Ok(list) => {
+            list.iter().filter(|d| d.remembered || d.authenticated).map(|d| bt_host::addr_str(&d.address)).collect()
+        }
+        Err(e) => {
+            tracing::debug!("Windows' paired devices: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// A radio Windows' Bluetooth has switched on while A2DPWB has an adapter of
+/// its own (WinUSB): Windows' list of paired devices is one for all radios
+fn other_radio(adapters: &[AdapterInfo]) -> Option<OtherRadio> {
+    if !adapters.iter().any(|a| a.driver == DriverKind::Winusb) {
+        return None;
+    }
+    let radio = win_sys::bt_radios::radios().into_iter().find(|r| !r.name.is_empty())?;
+    if win_sys::bt_radios::switched_on() == Some(false) {
+        return None;
+    }
+    let paired =
+        win_sys::bt_paired::paired_devices().is_ok_and(|list| list.iter().any(|d| d.remembered || d.authenticated));
+    Some(OtherRadio { name: radio.name, paired })
+}
+
 fn adapter_infos(config_dir: &Path, settings: &CoreSettings) -> Vec<AdapterInfo> {
+    let radios = win_sys::bt_radios::radios();
     a2dpwb_core::adapter::adapters(false)
         .into_iter()
         .map(|a| {
+            // Windows' Bluetooth runs it: what Device Manager shows, kept
+            // for when it is on WinUSB (issue #86). A radio it cannot be asked
+            // on or that is not running (a vendor's driver, a MediaTek
+            // composite device) may still have what Windows' stack stored on
+            // its device node: also for an adapter A2DPWB does not support
+            let radio = radios
+                .iter()
+                .find(|r| r.on_device(&a.device.instance_id))
+                .cloned()
+                .map(|mut r| {
+                    if r.address.is_none()
+                        && let Some(p) = win_sys::bt_radios::device_radio(&a.device.instance_id)
+                    {
+                        r.address = p.address;
+                        r.hci_version = r.hci_version.or(p.hci_version);
+                        r.lmp_version = r.lmp_version.or(p.lmp_version);
+                    }
+                    r
+                })
+                .or_else(|| win_sys::bt_radios::device_radio(&a.device.instance_id));
+            if let Some(r) = &radio {
+                a2dpwb_core::adapter::save_windows_radio(
+                    config_dir,
+                    a.device.vid,
+                    a.device.pid,
+                    &r.name,
+                    r.address.as_deref(),
+                    r.hci_version,
+                );
+            }
             let driver = match a.device.driver_kind {
                 win_sys::driver::DriverKind::WinUsb => DriverKind::Winusb,
                 win_sys::driver::DriverKind::Bluetooth => DriverKind::Bluetooth,
                 win_sys::driver::DriverKind::Other => DriverKind::Other,
                 win_sys::driver::DriverKind::None => DriverKind::None,
             };
-            let chip_pid = chips::resolve_chip_pid(settings.bt_chip_pid, &settings.bt_chip_fw_stem, [a.realtek_pid]);
-            let files = chips::firmware_files(chip_pid, &settings.bt_chip_fw_stem);
-            let check = chips::firmware_check(config_dir, chip_pid, &settings.bt_chip_fw_stem);
+            let (chip_pid, fw_stem) = adapter_chip(a.vendor, a.realtek_pid, settings);
+            let files = chips::firmware_files(chip_pid, fw_stem);
+            let check = chips::firmware_check(&paths::firmware_dir(config_dir), chip_pid, fw_stem);
             AdapterInfo {
                 instance_id: a.device.instance_id.clone(),
                 vid: a.device.vid,
                 pid: a.device.pid,
                 display_name: a.display_name.clone(),
-                device_name: a.device.name.clone(),
+                device_name: a.device.display_name().to_owned(),
                 vendor: a.vendor.name().to_string(),
                 driver,
                 driver_service: a.device.driver.service.clone(),
                 realtek_chip: a.realtek_pid.and_then(chips::realtek_chip_name).map(str::to_owned),
                 firmware_present: check.as_ref().map(|c| c.present),
+                firmware_download: files.as_ref().is_some_and(|(f, _)| a2dpwb_core::firmware::available(f)),
                 firmware_files: files.map(|(f, c)| vec![f, c]).unwrap_or_default(),
                 firmware_invalid: check.and_then(|c| c.invalid_file),
-                vendor_note: vendor_note(a.vendor),
+                vendor_note: vendor_note(a.vendor, a.device.vid, a.device.pid),
+                restart_needed: a.device.problem_code == Some(CM_PROB_NEED_RESTART),
+                le_audio: a2dpwb_core::adapter::le_audio(config_dir, a.device.vid, a.device.pid),
+                // What Windows' radio of this very device reads now, else
+                // what it or a stack of A2DPWB read when one ran it (kept per
+                // VID:PID), else a Realtek adapter's USB serial: an adapter
+                // neither ran yet (Windows uses one radio only, the second
+                // one tells nothing) still shows it (issue #86)
+                address: radio
+                    .as_ref()
+                    .and_then(|r| r.address.clone())
+                    .or_else(|| a2dpwb_core::adapter::address(config_dir, a.device.vid, a.device.pid))
+                    .or_else(|| a2dpwb_core::adapter::serial_address(a.vendor, &a.device.instance_id)),
+                bt_version: radio
+                    .as_ref()
+                    .and_then(|r| r.hci_version)
+                    .or_else(|| a2dpwb_core::adapter::hci_version(config_dir, a.device.vid, a.device.pid))
+                    .and_then(a2dpwb_core::adapter::bt_core_version)
+                    .map(str::to_owned),
+                // An adapter already on WinUSB when A2DPWB came to know
+                // radios: the device's own product string, as Device
+                // Manager shows it (the WinUSB INF only names it "WinUSB
+                // Device", in Windows' language)
+                windows_name: a2dpwb_core::adapter::windows_name(config_dir, a.device.vid, a.device.pid).or_else(
+                    || {
+                        a.device
+                            .bus_reported_name
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|n| !n.is_empty())
+                            .map(str::to_owned)
+                    },
+                ),
             }
         })
         .collect()
@@ -271,7 +630,11 @@ fn warn_invalid_firmware(config_dir: &Path, invalid: &[(String, String)]) {
 /// The saved devices (classic, then LE Audio), then the scanned ones; with
 /// the codecs each classic device offered. An entry is its address AND its
 /// kind: a dual-mode device can be listed twice, classic and LE Audio.
-fn saved_devices(config_dir: &Path, scanned: &[Device], codecs: &BTreeMap<String, Vec<String>>) -> Vec<Device> {
+fn saved_devices(
+    config_dir: &Path,
+    scanned: &[Device],
+    codecs: &BTreeMap<String, a2dpwb_core::KnownCodecs>,
+) -> Vec<Device> {
     let saved = devices::load(config_dir).into_iter().chain(devices::load_le(config_dir));
     let mut list: Vec<Device> = saved
         .map(|d| Device {
@@ -281,6 +644,9 @@ fn saved_devices(config_dir: &Path, scanned: &[Device], codecs: &BTreeMap<String
             audio: true,
             rssi: None,
             codecs: Vec::new(),
+            sbc: None,
+            codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio: d.le_audio,
             le_audio_set: false,
         })
@@ -299,7 +665,22 @@ fn saved_devices(config_dir: &Path, scanned: &[Device], codecs: &BTreeMap<String
     }
     for d in list.iter_mut().filter(|d| !d.le_audio) {
         if let Some(c) = codecs.get(&d.address.to_uppercase()) {
-            d.codecs = c.clone();
+            d.codecs = c.keys.clone();
+            d.sbc = c.sbc.clone().map(to_ipc_sbc_caps);
+            d.codec_caps = c
+                .caps
+                .iter()
+                .map(|k| ipc::CodecDeviceCaps {
+                    codec: k.codec.clone(),
+                    sample_rates: k.sample_rates.clone(),
+                    bit_depths: k.bit_depths.clone(),
+                    max_bitrate: k.max_bitrate,
+                })
+                .collect();
+        }
+        // These list LDAC only after it was asked for (the stream does)
+        if a2dpwb_core::is_huawei(&d.name) {
+            d.codecs_on_request = vec!["ldac".to_string()];
         }
     }
     list
@@ -314,6 +695,9 @@ fn scanned_device(d: &ScannedDevice) -> Device {
         audio: d.audio,
         rssi: Some(d.rssi),
         codecs: Vec::new(),
+        sbc: None,
+        codec_caps: Vec::new(),
+        codecs_on_request: Vec::new(),
         le_audio: d.le_audio,
         le_audio_set: d.le_audio_set,
     }
@@ -326,6 +710,57 @@ const LE_CODEC: &str = "LC3";
 const LE_SCANNING_KEY: &str = "status.le_scanning";
 
 /// StreamInfo.le of an LE Audio (experimental) stream
+fn to_ipc_sbc_caps(c: a2dpwb_core::SbcDeviceCaps) -> ipc::SbcDeviceCaps {
+    ipc::SbcDeviceCaps {
+        sample_rates: c.sample_rates,
+        channel_modes: c.channel_modes,
+        blocks: c.blocks,
+        subbands: c.subbands,
+        allocations: c.allocations,
+        min_bitpool: c.min_bitpool,
+        max_bitpool: c.max_bitpool,
+    }
+}
+
+/// The codec details as the IPC sends them (the same fields)
+fn to_ipc_codec_details(d: a2dpwb_core::CodecDetails) -> ipc::CodecDetails {
+    ipc::CodecDetails {
+        mtu: d.mtu,
+        rtp: d.rtp,
+        media_header: d.media_header,
+        frame_samples: d.frame_samples,
+        frame_bytes: d.frame_bytes,
+        frames_per_packet: d.frames_per_packet,
+        sbc: d.sbc.map(|s| ipc::SbcDetails {
+            channel_mode: s.channel_mode,
+            blocks: s.blocks,
+            subbands: s.subbands,
+            allocation: s.allocation,
+            bitpool: s.bitpool,
+            config_bitpool: s.config_bitpool,
+            device: s.device.map(to_ipc_sbc_caps),
+            abr_bitpool: s.abr_bitpool,
+        }),
+        aac: d.aac.map(|a| ipc::AacDetails {
+            object_type: a.object_type,
+            bit_rate: a.bit_rate,
+            device: a.device.map(|c| ipc::AacDeviceCaps {
+                object_types: c.object_types,
+                sample_rates: c.sample_rates,
+                channels: c.channels,
+                max_bitrate: c.max_bitrate,
+                vbr: c.vbr,
+            }),
+        }),
+        device: d.device.map(|c| ipc::CodecDeviceCaps {
+            codec: c.codec,
+            sample_rates: c.sample_rates,
+            bit_depths: c.bit_depths,
+            max_bitrate: c.max_bitrate,
+        }),
+    }
+}
+
 fn to_ipc_le_stream(d: &LeStreamDetails) -> LeStreamInfo {
     LeStreamInfo {
         preset: d.preset.clone(),
@@ -336,6 +771,33 @@ fn to_ipc_le_stream(d: &LeStreamDetails) -> LeStreamInfo {
         low_latency: d.low_latency,
         summary: d.summary.clone(),
     }
+}
+
+/// The stream info with what an ABR encoder runs at now (the encode
+/// thread's [`LinkStats::live_codec`]): the bit rate, and SBC's bitpool,
+/// frame length and frames per packet. None when nothing changed, or the
+/// stream is not an A2DP one under ABR (the values may be a stream's that
+/// ended).
+pub fn live_info(info: &ipc::StreamInfo, live: bt_host::LiveCodec) -> Option<ipc::StreamInfo> {
+    if !info.abr || info.le.is_some() {
+        return None;
+    }
+    let mut next = info.clone();
+    next.bitrate_kbps = live.bitrate_kbps;
+    if let Some(d) = next.details.as_deref_mut() {
+        if let Some(s) = d.sbc.as_mut().filter(|s| s.abr_bitpool.is_some() && live.bitpool > 0) {
+            s.bitpool = live.bitpool.into();
+        }
+        if live.frame_bytes > 0 && d.frame_bytes.is_some() {
+            let bytes = u32::from(live.frame_bytes);
+            d.frame_bytes = Some(bytes);
+            // As stream::codec_details: whole frames in the payload, SBC
+            // counts them in 4 bits
+            let n = d.mtu.saturating_sub(d.media_header) / bytes;
+            d.frames_per_packet = Some(if d.media_header == 1 { n.min(15) } else { n });
+        }
+    }
+    (next != *info).then_some(next)
 }
 
 /// The cumulative media counters, those when the current stream started,
@@ -350,6 +812,8 @@ pub fn link_totals(s: &LinkStats) -> (LinkTotals, LinkTotals, u32) {
         dropped: s.start_dropped.load(r),
         capture_frames: s.start_capture_frames.load(r),
         capture_dropped: s.start_capture_dropped.load(r),
+        capture_discontinuities: s.start_capture_discontinuities.load(r),
+        capture_lost: s.start_capture_lost.load(r),
     };
     let total = LinkTotals {
         packets: s.packets_sent.load(r),
@@ -357,8 +821,63 @@ pub fn link_totals(s: &LinkStats) -> (LinkTotals, LinkTotals, u32) {
         dropped: s.queue_drops.load(r) + s.send_errors.load(r),
         capture_frames: s.capture_frames.load(r),
         capture_dropped: s.capture_dropped_frames.load(r),
+        capture_discontinuities: s.capture_discontinuities.load(r),
+        capture_lost: s.capture_lost_frames.load(r),
     };
     (total, start, starts)
+}
+
+/// The remote device's chip of the A2DP link (None before its controller
+/// answered)
+pub fn remote_chip(d: &bt_host::LinkDetails) -> Option<ipc::RemoteChip> {
+    if d.remote_version.is_none() && d.remote_features.is_none() {
+        return None;
+    }
+    let v = d.remote_version;
+    Some(ipc::RemoteChip {
+        company_id: v.map(|v| v.company_id),
+        company: v.map(|v| {
+            chips::company_name(v.company_id).map_or_else(|| format!("0x{:04X}", v.company_id), str::to_owned)
+        }),
+        version: v.and_then(|v| a2dpwb_core::adapter::bt_core_version(v.lmp_version)).map(str::to_owned),
+        lmp_version: v.map(|v| v.lmp_version),
+        lmp_subversion: v.map(|v| v.lmp_subversion),
+        features: d.remote_features.map(|f| ipc::RemoteChipFeatures {
+            edr_2m: f.edr_2m(),
+            edr_3m: f.edr_3m(),
+            three_slot: f.three_slot(),
+            five_slot: f.five_slot(),
+            edr_three_slot: f.edr_three_slot(),
+            edr_five_slot: f.edr_five_slot(),
+            largest_packet: bt_host::link_details::best_packet(&f).to_owned(),
+        }),
+    })
+}
+
+/// The A2DP link's state and readings (None without the link)
+pub fn link_details(d: &bt_host::LinkDetails) -> Option<ipc::LinkDetails> {
+    use a2dpwb_core::link::slots_ms;
+    if d.central.is_none() && d.mode.is_none() {
+        return None;
+    }
+    Some(ipc::LinkDetails {
+        role: d.central.map(|c| if c { ipc::LinkRole::Central } else { ipc::LinkRole::Peripheral }),
+        role_changes: d.role_changes,
+        mode: d.mode.map(|m| match m {
+            bt_host::LinkMode::Active => ipc::LinkMode::Active,
+            bt_host::LinkMode::Hold => ipc::LinkMode::Hold,
+            bt_host::LinkMode::Sniff => ipc::LinkMode::Sniff,
+            bt_host::LinkMode::Park => ipc::LinkMode::Park,
+        }),
+        sniff_interval_ms: d.sniff_interval_slots.map(slots_ms),
+        sniff_entries: d.sniff_entries,
+        encryption_key_size: d.encryption_key_size,
+        supervision_timeout_ms: d.supervision_timeout_slots.map(slots_ms),
+        failed_contacts: d.failed_contacts,
+        failed_contacts_stream: d.failed_contacts.map(|_| d.failed_contacts_stream),
+        failed_contacts_per_second: d.failed_contacts_per_second,
+        link_quality: d.link_quality,
+    })
 }
 
 /// The core's receiver types to the protocol's (the same fields)
@@ -385,6 +904,51 @@ pub struct CustomStream {
     pub max_media_payload: Option<u16>,
     pub abr: Option<bool>,
     pub codec_fallback: Option<bool>,
+}
+
+/// stream.start_broadcast's parameters
+#[derive(Debug, Clone, Default)]
+pub struct BroadcastStream {
+    pub name: String,
+    pub code: Option<String>,
+    /// "hq" or "sq"
+    pub quality: String,
+    pub mono: Option<bool>,
+    pub source: String,
+    pub source_id: Option<String>,
+    pub source_name: Option<String>,
+}
+
+/// What to broadcast for stream.start_broadcast: the source as for
+/// stream.start_custom, no device, LE Audio with the broadcast
+pub fn broadcast_request(b: &BroadcastStream, legacy_max_media_payload: u16) -> Result<StreamRequest, ErrorInfo> {
+    const METHOD: &str = "stream.start_broadcast";
+    let preset = match b.quality.trim().to_ascii_lowercase().as_str() {
+        "" | "hq" => a2dpwb_core::BROADCAST_PRESET_HQ,
+        "sq" => a2dpwb_core::BROADCAST_PRESET_SQ,
+        other => return Err(bad_request("stream.bad_quality", METHOD, format!("unknown quality \"{other}\""))),
+    };
+    let c = CustomStream {
+        device: "00:00:00:00:00:00".into(),
+        device_name: Some(b.name.clone()),
+        codec: "auto".into(),
+        quality: "hq".into(),
+        source: b.source.clone(),
+        source_id: b.source_id.clone(),
+        source_name: b.source_name.clone(),
+        ..CustomStream::default()
+    };
+    let mut req = custom_request(&c, legacy_max_media_payload)?;
+    req.le = Some(bt_host::LeRequest {
+        preset: Some(preset.into()),
+        broadcast: Some(bt_host::LeBroadcast {
+            name: b.name.clone(),
+            code: b.code.clone(),
+            mono: b.mono.unwrap_or(false),
+        }),
+        ..bt_host::LeRequest::default()
+    });
+    Ok(req)
 }
 
 /// What to stream for stream.start_custom: built as a profile is (same
@@ -430,10 +994,21 @@ pub fn custom_request(c: &CustomStream, legacy_max_media_payload: u16) -> Result
     let mut req = p
         .to_request(legacy_max_media_payload)
         .map_err(|_| err("profile.invalid_address", "error.invalid_address_format"))?;
+    // A profile always falls back; a custom stream only when asked
+    req.codec_fallback = c.codec_fallback.unwrap_or(false);
     if tone {
         req.source = SourceRequest::TestTone;
     }
     Ok(req)
+}
+
+/// A profile's Windows Volume Sync: the setting for every device alone
+/// (issue #86), on the captured device (Auto). A profile's own "off" from
+/// before that setting, or a device it followed (once set in developer
+/// mode), stays in the file but no longer counts: no screen shows or
+/// resets it.
+fn effective_volume_sync(global: bool, _profile: VolumeSync) -> VolumeSync {
+    if global { VolumeSync::Auto } else { VolumeSync::Off }
 }
 
 /// HKCU Run value of v2: the resident core, which opens the UI unless
@@ -501,17 +1076,75 @@ fn chip_changed(before: &CoreSettings, after: &CoreSettings) -> bool {
     before.bt_chip_pid != after.bt_chip_pid || before.bt_chip_fw_stem != after.bt_chip_fw_stem
 }
 
+/// The codec and what it runs with: "LDAC 990 kbps | 96 kHz | 24-bit | ABR"
+/// (AAC's variable bit rate is VBR, as the UI calls it)
+fn tray_codec_line(codec: &str, kbps: u32, sample_rate: u32, bits: u32, abr: bool) -> String {
+    format!("{codec} {}", codec_params(codec, kbps, sample_rate, bits, abr))
+}
+
+/// The codec's values without its name: "990 kbps | 96 kHz | 24-bit | ABR"
+fn codec_params(codec: &str, kbps: u32, sample_rate: u32, bits: u32, abr: bool) -> String {
+    let mut line = format!("{kbps} kbps | {} kHz", sample_rate as f64 / 1000.0);
+    if bits > 0 {
+        line.push_str(&format!(" | {bits}-bit"));
+    }
+    if abr {
+        line.push_str(if codec == "AAC" { " | VBR" } else { " | ABR" });
+    }
+    line
+}
+
+/// The balloon of a new connection (issue #86): "WH-1000XM4 connected",
+/// then, as the connection info card shows them, the battery when it is
+/// known already, the codec, its values on a line of their own
+/// ([`codec_params`]), and the codec asked for when another one is used
+/// (the UI's note beside the codec). None without the stream info: the
+/// codec's values are the negotiated ones, known once it is set up.
+fn connected_balloon(lang: &str, device: Option<&str>, stream: &StreamStatus) -> Option<BalloonRequest> {
+    let i = stream.info.as_ref()?;
+    let tr = |key: &str, default: &str| a2dpwb_core::messages::translate(lang, key, default);
+    let printf = a2dpwb_core::messages::format_printf;
+    let title = match device.filter(|d| !d.is_empty()) {
+        Some(d) => printf(&tr("notify.connected", "%s connected"), &[d.to_string()]),
+        None => tr("status.connected", "Connected"),
+    };
+    let mut lines = Vec::new();
+    if let Some(b) = stream.battery {
+        lines.push(printf(&tr("ui.home.battery", "Battery %d%%"), &[b.to_string()]));
+    }
+    lines.push(i.codec.clone());
+    lines.push(codec_params(&i.codec, i.bitrate_kbps, i.sample_rate, i.bits, i.abr));
+    if let Some(req) = &i.requested_codec {
+        let (key, default) = if stream.message.key == "status.connected_fallback_experimental" {
+            ("ui.codec.fallback_experimental", "(%s is experimental)")
+        } else if i.requested_in_use {
+            ("ui.codec.fallback_in_use", "(%s is in use)")
+        } else {
+            ("ui.codec.fallback_unsupported", "(%s is unsupported)")
+        };
+        lines.push(printf(&tr(key, default), std::slice::from_ref(req)));
+    }
+    Some(BalloonRequest { title, text: lines.join("\n"), url: None })
+}
+
 /// The tray icon's tooltip while streaming: "A2DPWB - Streaming (WH-1000XM4)"
-/// and the codec on a second line
-fn tray_tooltip(base: &str, device: Option<&str>, codec: Option<(&str, u32)>) -> String {
+/// and one line each for the codec and the battery
+fn tray_tooltip(base: &str, device: Option<&str>, lines: &[String]) -> String {
     let mut t = match device.filter(|d| !d.is_empty()) {
         Some(d) => format!("{base} ({d})"),
         None => base.to_string(),
     };
-    if let Some((c, kbps)) = codec {
-        t.push_str(&format!("\n{c} {kbps} kbps"));
+    for l in lines {
+        t.push('\n');
+        t.push_str(l);
     }
     t
+}
+
+/// A tray menu item: the device, its LE Audio entry tagged as in the
+/// flyout ("WF-1000XM5 (LE Audio)")
+fn tray_label(device: &str, le_audio: bool, le_tag: &str) -> String {
+    if le_audio { format!("{device} ({le_tag})") } else { device.to_string() }
 }
 
 /// A saved profile is the one streaming or connecting (under its name before
@@ -519,6 +1152,90 @@ fn tray_tooltip(base: &str, device: Option<&str>, codec: Option<(&str, u32)>) ->
 fn restart_after_save(stream: &StreamStatus, saved: &str) -> bool {
     matches!(stream.state, StreamState::Connecting | StreamState::Streaming | StreamState::Reconnecting)
         && stream.profile.as_deref() == Some(saved)
+}
+
+/// The save changed only the source of an A2DP profile streaming: the stream
+/// takes it in place ([`Service::change_source`]). What is still connecting
+/// starts again, as a restart already on its way shows as connecting too.
+fn source_changes_in_place(stream: &StreamStatus, before: Option<&CoreProfile>, saved: &CoreProfile) -> bool {
+    stream.state == StreamState::Streaming && !saved.le_audio && before.is_some_and(|b| b.only_source_differs(saved))
+}
+
+/// The save changed only the bitpools of an A2DP SBC / SBC XQ profile
+/// streaming: the encoder takes them in place ([`Service::change_bitpools`]),
+/// as long as they stay within the range the link was set up with. Its lowest
+/// is the profile's minimum at the time; a lower one needs a new setup.
+fn bitpools_change_in_place(stream: &StreamStatus, before: Option<&CoreProfile>, saved: &CoreProfile) -> bool {
+    if stream.state != StreamState::Streaming
+        || saved.le_audio
+        || !before.is_some_and(|b| b.only_bitpools_differ(saved))
+    {
+        return false;
+    }
+    let Some(info) = stream.info.as_ref() else { return false };
+    let Some(sbc) = info.details.as_ref().and_then(|d| d.sbc.as_ref()) else { return false };
+    let Some((lowest, _)) = sbc.config_bitpool else { return false };
+    let (max, min) = if info.codec == codec::CodecKind::SbcXq.name() {
+        (saved.sbcxq_bitpool, saved.sbcxq_min_bitpool)
+    } else {
+        (saved.sbc_bitpool, saved.sbc_min_bitpool)
+    };
+    // Auto's minimum is the device's
+    let floor = if min != 0 { u32::from(min) } else { sbc.device.as_ref().map_or(2, |d| d.min_bitpool) };
+    floor >= lowest && (max == 0 || u32::from(max) >= lowest)
+}
+
+/// Whether turning Auto-select (for every device) on or off may change the
+/// codec of the profile in use: it chose one, or its own codec order (a
+/// profile left on "auto" in the default order streams as Auto either
+/// way). Not LE Audio (LC3).
+fn restart_for_auto(stream: &StreamStatus, p: &CoreProfile) -> bool {
+    restart_after_save(stream, &p.name) && !p.le_audio && (p.codec != "auto" || !p.order().is_default())
+}
+
+/// Auto-select just turned `auto_now`: whether the profile streaming would
+/// stream the same anyway (issue #86: no reconnect then). The codec streaming
+/// is the one the other side takes among those the device offered (`known`),
+/// with the same settings: Auto's defaults, or each codec's own under
+/// Auto-select in developer mode (`own_settings`). Unsure (no codec list, not
+/// streaming yet): not the same.
+fn same_after_auto_toggle(
+    stream: &StreamStatus,
+    p: &CoreProfile,
+    auto_now: bool,
+    known: Option<&a2dpwb_core::stream::KnownCodecs>,
+    own_settings: bool,
+) -> bool {
+    let (Some(info), Some(known)) = (stream.info.as_ref(), known) else {
+        return false;
+    };
+    if stream.state != StreamState::Streaming {
+        return false;
+    }
+    let offered = |k: &codec::CodecKind| known.keys.iter().any(|key| key == k.key());
+    let pick = |order: codec::AutoOrder| order.codecs().iter().copied().find(offered);
+    let Some(running) = codec::CodecKind::ALL.into_iter().find(|k| k.name() == info.codec) else {
+        return false;
+    };
+    // The profile's own: its codec when offered, else Auto in its order
+    let chosen = codec::CodecKind::from_key(&p.codec).filter(offered).or_else(|| pick(p.order()));
+    let auto = pick(codec::AutoOrder::default());
+    let next = if auto_now { auto } else { chosen };
+    // The settings each side streams that codec with
+    let auto_values = own_settings
+        .then(|| p.all_codec_values().into_iter().find(|(k, _)| Some(*k) == next).map(|(_, v)| v))
+        .flatten()
+        .unwrap_or_default();
+    next == Some(running) && auto_values == p.codec_values()
+}
+
+/// Whether a new codec order of the device (its cards dragged, issue #86
+/// round 8) may change the codec of the profile in use (`p` as it streams):
+/// it is Auto or fell back (the fallback takes the first codec in the
+/// order). Not LE Audio.
+fn restart_for_order(stream: &StreamStatus, p: &CoreProfile) -> bool {
+    let fell_back = stream.info.as_ref().is_some_and(|i| i.requested_codec.is_some());
+    restart_after_save(stream, &p.name) && !p.le_audio && (p.codec == "auto" || fell_back)
 }
 
 fn unix_ms() -> u64 {
@@ -540,7 +1257,15 @@ impl CoreState {
         let adapters = adapter_infos(&dir, &settings);
         warn_invalid_firmware(&dir, &firmware_change(&[], &adapters).invalid);
         let snapshot = Snapshot {
-            adapter: AdapterState { status: AdapterStatus::Stopped, adapters, error: None },
+            adapter: AdapterState {
+                status: AdapterStatus::Stopped,
+                le_audio: le_audio_now(service.le_audio_supported(), &adapters),
+                other_radio: other_radio(&adapters),
+                adapters,
+                error: None,
+                rom_firmware: false,
+                loader: None,
+            },
             devices: saved_devices(&dir, &[], &service.device_codecs()),
             scanning: false,
             le_scanning: false,
@@ -557,6 +1282,16 @@ impl CoreState {
             clock_ms: crate::logging::hub().clock(),
             // Set by the resident core's watch (resident.rs)
             v1_running: false,
+            verbose: crate::logging::verbose(),
+            crashes: crate::crashes::unseen(&dir, &settings),
+            vendors: a2dpwb_core::vendor::VENDORS
+                .iter()
+                .map(|v| ipc::VendorInfo {
+                    id: v.id.into(),
+                    name: v.name.into(),
+                    options: v.options.iter().map(|o| o.to_string()).collect(),
+                })
+                .collect(),
         };
         let (events, _) = broadcast::channel(256);
         let state = Arc::new(CoreState {
@@ -569,6 +1304,11 @@ impl CoreState {
             started: Instant::now(),
             rates: Mutex::new(None),
             starting_profile: Mutex::new(None),
+            battery_warned: AtomicBool::new(false),
+            connect_announce: AtomicBool::new(false),
+            battery_deadline: Mutex::new(None),
+            quiet_connect: AtomicBool::new(false),
+            restarting: AtomicBool::new(false),
             tray,
             quit,
             balloon,
@@ -583,6 +1323,11 @@ impl CoreState {
 
     pub fn snapshot(&self) -> (u64, Snapshot) {
         self.snapshot.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// The revision of the state now
+    pub fn rev(&self) -> u64 {
+        self.snapshot.lock().unwrap_or_else(|e| e.into_inner()).0
     }
 
     /// Reads part of the snapshot without copying all of it
@@ -613,8 +1358,15 @@ impl CoreState {
                 Event::Update(u) => s.update = u.clone(),
                 Event::Capture(c) => s.capture = c.clone(),
                 Event::V1Running(b) => s.v1_running = *b,
+                Event::Verbose(v) => s.verbose = *v,
+                Event::Crashes(c) => s.crashes = c.clone(),
                 // Not state: no revision
-                Event::Link(_) | Event::Log(_) | Event::Receiver(_) | Event::Bye => {
+                Event::Link(_)
+                | Event::Log(_)
+                | Event::Receiver(_)
+                | Event::RfcommData(_)
+                | Event::RfcommClosed(_)
+                | Event::Bye => {
                     let _ = self.events.send((g.0, Arc::new(event)));
                     return;
                 }
@@ -623,6 +1375,32 @@ impl CoreState {
             g.0
         };
         let _ = self.events.send((rev, Arc::new(event)));
+        self.update_tray();
+    }
+
+    /// What an ABR encoder runs at now into the stream info (the sampler, a
+    /// few times a second): published when it changed. Checked and applied
+    /// under one lock, so that a state change meanwhile is never undone.
+    pub fn apply_live_codec(&self, live: Option<bt_host::LiveCodec>) {
+        let Some(live) = live else { return };
+        {
+            let mut g = self.snapshot.lock().unwrap_or_else(|e| e.into_inner());
+            let stream = &g.1.stream;
+            let next = match (&stream.state, &stream.info) {
+                (StreamState::Streaming, Some(i)) => live_info(i, live),
+                _ => None,
+            };
+            let Some(next) = next else { return };
+            tracing::trace!(
+                "stream info: {} kbps, bitpool {:?}",
+                next.bitrate_kbps,
+                next.details.as_ref().and_then(|d| d.sbc.as_ref()).map(|s| s.bitpool)
+            );
+            g.1.stream.info = Some(next);
+            g.0 += 1;
+            let event = Event::Stream(g.1.stream.clone());
+            let _ = self.events.send((g.0, Arc::new(event)));
+        }
         self.update_tray();
     }
 
@@ -644,33 +1422,39 @@ impl CoreState {
         let lang = s.settings.language.clone();
         let streaming = s.stream.state == StreamState::Streaming;
         let base = if streaming {
-            a2dpwb_core::messages::translate(&lang, "tray.tooltip_streaming", "A2DPWB - Streaming")
+            a2dpwb_core::messages::translate(&lang, "tray.tooltip_streaming", "A2DP Windows Bridge - Connected")
         } else {
-            a2dpwb_core::messages::translate(&lang, "tray.tooltip_idle", "A2DPWB - Idle")
+            a2dpwb_core::messages::translate(&lang, "tray.tooltip_idle", "A2DP Windows Bridge - Idle")
         };
         // The streamed profile's device (v1)
-        let device = s
-            .stream
-            .profile
-            .as_ref()
-            .and_then(|n| s.profiles.iter().find(|p| &p.name == n))
-            .map(|p| if p.device_name.is_empty() { p.device_address.as_str() } else { p.device_name.as_str() });
+        let device = streamed_device(&s);
         let tooltip = if streaming {
-            tray_tooltip(&base, device, s.stream.info.as_ref().map(|i| (i.codec.as_str(), i.bitrate_kbps)))
+            let mut lines = Vec::new();
+            if let Some(i) = &s.stream.info {
+                lines.push(tray_codec_line(&i.codec, i.bitrate_kbps, i.sample_rate, i.bits, i.abr));
+            }
+            if let Some(b) = s.stream.battery {
+                let template = a2dpwb_core::messages::translate(&lang, "ui.home.battery", "Battery %d%%");
+                lines.push(a2dpwb_core::messages::format_printf(&template, &[b.to_string()]));
+            }
+            tray_tooltip(&base, device, &lines)
         } else {
             base
         };
+        let le = a2dpwb_core::messages::translate(&lang, "device.tag_le_audio", "LE Audio");
+        let labels = s.profiles.iter().map(|p| tray_label(device_name(&s.devices, p), p.le_audio, &le)).collect();
         (self.tray)(TrayView {
             streaming,
             tooltip,
             profiles: s.profiles.iter().map(|p| p.name.clone()).collect(),
+            labels,
             active_profile: s.active_profile.clone(),
             language: lang,
         });
     }
 
     /// A service event (from its thread)
-    pub fn on_service_event(&self, e: ServiceEvent) {
+    pub fn on_service_event(self: &Arc<Self>, e: ServiceEvent) {
         let (_, s) = self.snapshot();
         let mut stream = s.stream.clone();
         let mut devices_changed = false;
@@ -690,9 +1474,38 @@ impl CoreState {
                     CoreStreamState::Error => StreamState::Error,
                 };
                 stream.message = msg(&m);
+                // A new connection may warn about its battery again
+                if matches!(state, CoreStreamState::Idle | CoreStreamState::Error | CoreStreamState::Connecting) {
+                    self.battery_warned.store(false, Ordering::Release);
+                }
+                // A connection (also the headphones back on after they went
+                // off) is announced; a lost link reconnecting is not, its
+                // dropouts would repeat the same balloon; nor is the same
+                // device started again with a new codec (issue #86)
+                match state {
+                    CoreStreamState::Connecting => {
+                        if !self.quiet_connect.load(Ordering::Acquire) {
+                            self.connect_announce.store(true, Ordering::Release);
+                            *self.battery_deadline.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                        }
+                    }
+                    CoreStreamState::Streaming => self.quiet_connect.store(false, Ordering::Release),
+                    CoreStreamState::Idle | CoreStreamState::Error => {
+                        self.connect_announce.store(false, Ordering::Release)
+                    }
+                    _ => {}
+                }
+                // A lost link's battery is stale until the device reports
+                // again (issue #86: a battery shown while disconnected)
+                if state == CoreStreamState::Reconnecting {
+                    stream.battery = None;
+                    stream.battery_refused = false;
+                }
                 if matches!(state, CoreStreamState::Idle | CoreStreamState::Error) {
                     stream.info = None;
                     stream.volume = None;
+                    stream.battery = None;
+                    stream.battery_refused = false;
                     if state == CoreStreamState::Idle {
                         stream.profile = None;
                     }
@@ -728,6 +1541,7 @@ impl CoreState {
                     bitrate_kbps: i.bitrate_kbps,
                     sample_rate: i.sample_rate,
                     channels: i.channels,
+                    bits: i.bits,
                     source_sample_rate: i.source_sample_rate,
                     source_channels: i.source_channels,
                     source_bits: i.source_bits,
@@ -735,23 +1549,91 @@ impl CoreState {
                     requested_in_use: i.requested_in_use,
                     abr: i.abr,
                     bitrate_capped: i.bitrate_capped,
+                    hi_res_set: i.hi_res_set,
                     source: Some(to_ipc_source(&i.source)),
                     le,
+                    details: i.details.map(|d| Box::new(to_ipc_codec_details(*d))),
                 });
                 // The device was saved when it connected
                 devices_changed = true;
             }
             ServiceEvent::Volume(v) => stream.volume = Some(v),
+            // The Adapters screen shows the loader while the adapter starts
+            ServiceEvent::Loader(p) => {
+                self.publish(Event::Adapter(AdapterState {
+                    loader: Some(LoaderStatus {
+                        vendor: p.vendor.to_owned(),
+                        step: p.step,
+                        percent: p.percent,
+                        ok: p.done,
+                    }),
+                    ..s.adapter
+                }));
+                return;
+            }
+            // Another saved device connected while the one streamed was off
+            // (issue #86): its own profile starts, as a connect on Home
+            ServiceEvent::OtherDeviceBack(addr) => {
+                let address = bt_host::addr_str(&addr);
+                let profile = profiles::load(&self.config_dir())
+                    .into_iter()
+                    .find(|p| !p.le_audio && p.device_address.eq_ignore_ascii_case(&address));
+                match profile {
+                    Some(p) => {
+                        tracing::info!("{address} connected while the device streamed was off: starting {}", p.name);
+                        if let Err(e) = self.start_profile(&p.name) {
+                            tracing::warn!("{address}: {}", e.message.key);
+                        }
+                    }
+                    None => tracing::debug!("{address} connected, but has no profile"),
+                }
+                return;
+            }
+            // A report that arrives after the device went off (HFP still
+            // closing) is not shown on a device no longer connected
+            ServiceEvent::Battery(_) | ServiceEvent::BatteryRefused
+                if matches!(stream.state, StreamState::Idle | StreamState::Error) =>
+            {
+                tracing::debug!("battery report while not connected: ignored");
+            }
+            ServiceEvent::BatteryRefused => {
+                stream.battery = None;
+                stream.battery_refused = true;
+            }
+            ServiceEvent::Battery(v) => {
+                stream.battery = Some(v);
+                stream.battery_refused = false;
+                let mut warned = self.battery_warned.load(Ordering::Acquire);
+                let low = self.service.settings().battery_low_percent;
+                let alert = battery_low_alert(&mut warned, v, low);
+                self.battery_warned.store(warned, Ordering::Release);
+                if alert {
+                    self.battery_low(&s, v, low);
+                }
+            }
         }
         self.publish(Event::Stream(stream));
+        self.announce_connected();
         if devices_changed {
             self.refresh_devices();
+        }
+        // A stack started and found out the adapter's LE Audio (remembered
+        // in adapter_caps.json): the adapters anew
+        if le_audio_now(self.service.le_audio_supported(), &s.adapter.adapters) != s.adapter.le_audio {
+            self.list_adapters();
+        }
+        // The stack found its Realtek adapter on the ROM code, or a new
+        // stack loaded the firmware
+        let rom = self.service.host().is_some_and(|h| h.realtek_rom_firmware());
+        let (_, s) = self.snapshot();
+        if rom != s.adapter.rom_firmware {
+            self.publish(Event::Adapter(AdapterState { rom_firmware: rom, ..s.adapter }));
         }
     }
 
     /// The device list again (saved file, last scan, codecs); published if
     /// it changed
-    fn refresh_devices(&self) {
+    pub(crate) fn refresh_devices(&self) {
         let (_, s) = self.snapshot();
         let scanned: Vec<Device> = s.devices.iter().filter(|d| !d.saved).cloned().collect();
         let list = saved_devices(&self.config_dir(), &scanned, &self.service.device_codecs());
@@ -771,8 +1653,67 @@ impl CoreState {
         Ok(())
     }
 
+    /// Forgets a device: its stream ends, and its entry, profile, volume,
+    /// what it offered and its link key go, so nothing can connect it again
+    /// (issue #86: the tray still could, with the profile left behind)
+    fn forget_device(&self, address: &str, le_audio: bool) -> Result<Value, ErrorInfo> {
+        let dir = self.config_dir();
+        let mut list = profiles::load(&dir);
+        let of_it = |p: &CoreProfile| p.le_audio == le_audio && p.device_address.eq_ignore_ascii_case(address);
+        let (_, s) = self.snapshot();
+        let streaming = s.stream.profile.as_ref().is_some_and(|n| list.iter().any(|p| p.name == *n && of_it(p)));
+        if streaming && s.stream.state != StreamState::Idle {
+            // Waited for: a session ending later would save the device again
+            self.service.disconnect_for(self.service.ticket());
+        }
+        let r = if le_audio { devices::remove_le(&dir, address) } else { devices::remove(&dir, address) };
+        r.map_err(|_| err("device.forget_failed", "error.device_forget"))?;
+        let gone: Vec<String> = list.iter().filter(|p| of_it(p)).map(|p| p.name.clone()).collect();
+        list.retain(|p| !of_it(p));
+        let active = s.active_profile.filter(|a| !gone.contains(a));
+        self.save_profiles(&list, active)?;
+        self.service.forget_device(address, le_audio);
+        let mut settings = self.service.settings();
+        let volume = settings.saved_volumes.remove(&address.to_uppercase()).is_some();
+        let last = gone.contains(&settings.last_profile);
+        if last {
+            settings.last_profile.clear();
+        }
+        if volume || last {
+            let _ = settings.save(&dir);
+            self.service.set_settings(settings);
+        }
+        self.refresh_devices();
+        Ok(Value::Null)
+    }
+
+    /// VB-Cable that came after it was missing is taken into use, one time
+    /// (issue #86): a device the user set up otherwise before stays as it is
+    pub fn watch_vb_cable(&self, devices: &[audio_capture::DeviceInfo]) {
+        let mut s = self.service.settings();
+        match (vb_cable(devices), s.awaiting_vb_cable) {
+            (None, false) => s.awaiting_vb_cable = true,
+            (Some(cable), true) => {
+                s.awaiting_vb_cable = false;
+                let mut list = profiles::load(&self.config_dir());
+                let changed = profiles::use_virtual_device(&mut list, &cable.id, &cable.name);
+                tracing::info!("VB-Cable found: {changed} profile(s) capture it now");
+                let active = Some(s.last_profile.clone()).filter(|n| list.iter().any(|p| &p.name == n));
+                if changed > 0
+                    && let Err(e) = self.save_profiles(&list, active)
+                {
+                    tracing::warn!("VB-Cable: profiles not saved: {}", e.code);
+                }
+            }
+            _ => return,
+        }
+        let _ = s.save(&self.config_dir());
+        self.service.set_settings(s);
+    }
+
     fn save_settings(&self, s: CoreSettings) -> Result<(), ErrorInfo> {
         s.save(&self.config_dir()).map_err(|_| err("settings.save_failed", "error.settings_save"))?;
+        crate::logging::set_dev(&s.log());
         let ui = to_ipc_settings(&s);
         self.service.set_settings(s);
         self.publish(Event::Settings(ui));
@@ -792,6 +1733,16 @@ impl CoreState {
         self.publish(Event::Profiles { profiles: snap.profiles, active_profile: name });
     }
 
+    /// The USB device of the adapter with this address
+    pub(crate) fn adapter_instance(&self, address: &str) -> Option<String> {
+        let (_, s) = self.snapshot();
+        s.adapter
+            .adapters
+            .iter()
+            .find(|a| a.address.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(address)))
+            .map(|a| a.instance_id.clone())
+    }
+
     pub fn refresh_adapters(&self) -> Vec<AdapterInfo> {
         let (list, fixed) = self.list_adapters();
         if fixed {
@@ -809,8 +1760,10 @@ impl CoreState {
         let (_, s) = self.snapshot();
         let list = adapter_infos(&self.config_dir(), &self.service.settings());
         let change = firmware_change(&s.adapter.adapters, &list);
-        warn_invalid_firmware(&self.config_dir(), &change.invalid);
-        self.publish(Event::Adapter(AdapterState { adapters: list.clone(), ..s.adapter }));
+        warn_invalid_firmware(&paths::firmware_dir(&self.config_dir()), &change.invalid);
+        let le_audio = le_audio_now(self.service.le_audio_supported(), &list);
+        let other_radio = other_radio(&list);
+        self.publish(Event::Adapter(AdapterState { adapters: list.clone(), le_audio, other_radio, ..s.adapter }));
         (list, change.fixed)
     }
 
@@ -828,9 +1781,32 @@ impl CoreState {
         let idle = !s.scanning && matches!(s.stream.state, StreamState::Idle | StreamState::Error);
         if self.service.reload_adapter(idle) {
             tracing::info!("adapter settings changed: Bluetooth stopped, it starts again at the next use");
-            self.publish(Event::Adapter(AdapterState { status: AdapterStatus::Stopped, error: None, ..s.adapter }));
+            self.publish(Event::Adapter(AdapterState {
+                status: AdapterStatus::Stopped,
+                error: None,
+                le_audio: le_audio_now(self.service.le_audio_supported(), &s.adapter.adapters),
+                rom_firmware: false,
+                ..s.adapter
+            }));
         } else {
             tracing::info!("adapter settings changed: Bluetooth restarts at its next use");
+        }
+    }
+
+    /// An adapter's driver changed (and the stack was released for it): the
+    /// stack's error from before ("no adapter on WinUSB") is out of date,
+    /// the next use tries again
+    pub fn driver_changed(&self) {
+        let (_, s) = self.snapshot();
+        if s.adapter.status == AdapterStatus::Error {
+            self.publish(Event::Adapter(AdapterState { status: AdapterStatus::Stopped, error: None, ..s.adapter }));
+        }
+        if s.stream.state == StreamState::Error && s.stream.message.key.starts_with("error.btstack") {
+            self.publish(Event::Stream(StreamStatus {
+                message: Msg::new("status.ready"),
+                profile: s.stream.profile,
+                ..StreamStatus::default()
+            }));
         }
     }
 
@@ -841,9 +1817,28 @@ impl CoreState {
         let list = profiles::load(&dir);
         let p =
             list.iter().find(|p| p.name == name).ok_or_else(|| err("profile.not_found", "error.profile_not_found"))?;
-        let req = p
+        // Auto-select for every device: Auto in the default order, whatever
+        // codec and order the profile chose
+        let auto = (settings.auto_codec && !p.le_audio).then(|| p.as_auto());
+        if auto.is_some() && p.codec != "auto" {
+            tracing::debug!(
+                "profile {}: codec {} chosen, Auto-select streams Auto",
+                a2dpwb_core::diag::quoted(&p.name),
+                p.codec
+            );
+        }
+        let mut req = auto
+            .as_ref()
+            .unwrap_or(p)
             .to_request(settings.legacy_max_media_payload())
             .map_err(|_| err("profile.invalid_address", "error.invalid_address"))?;
+        req.experimental_codecs = settings.experimental_codecs;
+        req.volume_sync = effective_volume_sync(settings.volume_sync, req.volume_sync);
+        req.mute_output = settings.mutes_output();
+        req.sbc = settings.sbc_frame(req.sbc);
+        if auto.is_some() && settings.debug_mode {
+            req.codec_values = p.all_codec_values();
+        }
         self.set_active_profile(Some(name.to_string()));
         self.begin_stream(req, Some(name.to_string()));
         Ok(())
@@ -851,8 +1846,24 @@ impl CoreState {
 
     /// Starts streaming without a profile (stream.start_custom)
     pub fn start_custom(&self, c: &CustomStream) -> Result<(), ErrorInfo> {
-        let req = custom_request(c, self.service.settings().legacy_max_media_payload())?;
+        let settings = self.service.settings();
+        let mut req = custom_request(c, settings.legacy_max_media_payload())?;
+        req.experimental_codecs = settings.experimental_codecs;
+        req.mute_output = settings.mutes_output();
         tracing::info!("custom stream to {}: codec {}, source {}", c.device, c.codec, req.source);
+        self.begin_stream(req, None);
+        Ok(())
+    }
+
+    /// stream.start_broadcast (developer mode)
+    pub fn start_broadcast(&self, b: &BroadcastStream) -> Result<(), ErrorInfo> {
+        let settings = self.service.settings();
+        if !settings.debug_mode {
+            return Err(err("developer.off", "ipc.error.developer_only"));
+        }
+        let mut req = broadcast_request(b, settings.legacy_max_media_payload())?;
+        req.mute_output = settings.mutes_output();
+        tracing::info!("broadcast \"{}\": quality {}, source {}", b.name, b.quality, req.source);
         self.begin_stream(req, None);
         Ok(())
     }
@@ -865,15 +1876,54 @@ impl CoreState {
             profile,
             info: None,
             volume: None,
+            battery: None,
+            battery_refused: false,
         }));
         let service = self.service.clone();
-        // start_streaming joins a running session first: not on a runtime thread
-        std::thread::spawn(move || service.start_streaming(req));
+        // A restart for a save waits a moment: a request right behind it
+        // takes over before the first connection is under way (issue #86)
+        let restart = self.restarting.swap(false, Ordering::AcqRel);
+        self.quiet_connect.store(restart, Ordering::Release);
+        // start_streaming joins a running session first: not on a runtime
+        // thread. The ticket, taken now, keeps the order of quick switches:
+        // only the last one asked for starts (issue #86)
+        let ticket = service.ticket();
+        std::thread::spawn(move || {
+            if restart {
+                std::thread::sleep(RESTART_COALESCE);
+            }
+            service.start_streaming_for(req, ticket)
+        });
+    }
+
+    /// Starts the profile in use again with what was saved (a codec chosen,
+    /// Auto-select turned off): the same device, so no "connected" balloon,
+    /// and a second save right behind it (Home turns Auto-select off, then
+    /// saves the codec) is one restart, not two (issue #86: a second restart
+    /// broke off the first one's connection)
+    fn restart_profile(&self, name: &str) -> Result<(), ErrorInfo> {
+        self.restarting.store(true, Ordering::Release);
+        let r = self.start_profile(name);
+        self.restarting.store(false, Ordering::Release);
+        r
     }
 
     pub fn stop(&self) {
         let service = self.service.clone();
-        std::thread::spawn(move || service.stop_streaming());
+        let ticket = service.ticket();
+        std::thread::spawn(move || service.disconnect_for(ticket));
+    }
+
+    /// Settings > the flyout above Quick Settings
+    pub fn flyout_with_quick_settings(&self) -> bool {
+        self.service.settings().flyout_with_quick_settings
+    }
+
+    /// A click on the tray icon opens the flyout, not the main window:
+    /// Settings > where the flyout opens is the tray icon
+    pub fn tray_click_opens_flyout(&self) -> bool {
+        let s = self.service.settings();
+        !s.tray_click_opens_window && !s.flyout_with_quick_settings
     }
 
     pub fn quit(&self) {
@@ -912,6 +1962,28 @@ impl CoreState {
         a2dpwb_core::messages::translate(&self.service.settings().language, key, default)
     }
 
+    // ---- Crash reports -------------------------------------------------------
+
+    /// Lists the crash reports not dismissed yet, if they changed
+    fn refresh_crashes(&self) {
+        let now = crate::crashes::unseen(&self.config_dir(), &self.service.settings());
+        if self.with_snapshot(|s| s.crashes != now) {
+            self.publish(Event::Crashes(now));
+        }
+    }
+
+    /// The reports shown were seen: only newer ones are shown from now on
+    fn crashes_seen(&self) {
+        let Some(newest) = self.with_snapshot(|s| s.crashes.first().map(|c| c.name.clone())) else { return };
+        let mut s = self.service.settings();
+        crate::crashes::mark_seen(&mut s, &newest);
+        if let Err(e) = s.save(&self.config_dir()) {
+            tracing::warn!("cannot save the settings: {e}");
+        }
+        self.service.set_settings(s);
+        self.publish(Event::Crashes(Vec::new()));
+    }
+
     /// The UI hid its window to the tray (app.hidden_to_tray): v1's "still
     /// running in the tray" balloon, once
     pub fn hidden_to_tray(&self) {
@@ -919,9 +1991,11 @@ impl CoreState {
         if s.other.get(TRAY_HINT_SHOWN).and_then(Value::as_bool) == Some(true) {
             return;
         }
+        // No title: Windows heads the notification with the app's name
+        // already (issue #86: the name three times)
         (self.balloon)(BalloonRequest {
-            title: "A2DPWB".into(),
-            text: self.tr("tray.minimized_hint", "A2DPWB is still running in the system tray."),
+            title: String::new(),
+            text: self.tr("tray.minimized_hint", "A2DP Windows Bridge is still running in the system tray."),
             url: None,
         });
         s.other.insert(TRAY_HINT_SHOWN.into(), Value::Bool(true));
@@ -931,12 +2005,73 @@ impl CoreState {
         self.service.set_settings(s);
     }
 
+    /// The streamed headphones' battery went low: a balloon, once per
+    /// connection ([`battery_low_alert`])
+    fn battery_low(&self, s: &Snapshot, level: u8, low: u8) {
+        let device = streamed_device(s).unwrap_or("A2DP Windows Bridge");
+        tracing::info!("battery: {device} at {level}%, below {low}%: balloon");
+        let template = self.tr("notify.battery_low", "%s: battery low (%d%%)");
+        // No title: Windows heads the notification with the app's name
+        // already (issue #86: the name three times)
+        (self.balloon)(BalloonRequest {
+            title: String::new(),
+            text: a2dpwb_core::messages::format_printf(&template, &[device.to_string(), level.to_string()]),
+            url: None,
+        });
+    }
+
+    /// A new connection streams with its codec settled (the stream info
+    /// comes after the Streaming state on a first connection, before it on a
+    /// reconnect): the balloon with what it runs ([`connected_balloon`]),
+    /// once, when the setting is on. A battery not reported yet is waited
+    /// for a moment (issue #86: the balloon came before it on some devices)
+    fn announce_connected(self: &Arc<Self>) {
+        let (_, s) = self.snapshot();
+        if s.stream.state != StreamState::Streaming || s.stream.info.is_none() {
+            return;
+        }
+        if !self.service.settings().notify_connected {
+            self.connect_announce.store(false, Ordering::Release);
+            return;
+        }
+        if !self.connect_announce.load(Ordering::Acquire) {
+            return;
+        }
+        if s.stream.battery.is_none() && !s.stream.battery_refused && self.wait_for_battery() {
+            return;
+        }
+        if !self.connect_announce.swap(false, Ordering::AcqRel) {
+            return;
+        }
+        let Some(b) = connected_balloon(&s.settings.language, streamed_device(&s), &s.stream) else { return };
+        tracing::info!("connected balloon: {} / {}", b.title, b.text.replace('\n', " / "));
+        (self.balloon)(b);
+    }
+
+    /// Whether the balloon still waits for the battery; the first call
+    /// starts the wait, which ends here again without a report. A wait left
+    /// by an earlier connection finds this one's later deadline.
+    fn wait_for_battery(self: &Arc<Self>) -> bool {
+        let now = Instant::now();
+        let mut deadline = self.battery_deadline.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(d) = *deadline {
+            return now < d;
+        }
+        *deadline = Some(now + BATTERY_WAIT);
+        let me = self.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(BATTERY_WAIT);
+            me.announce_connected();
+        });
+        true
+    }
+
     /// The automatic check found a newer release: a balloon whose click
     /// opens its page (v1)
     fn announce_update(&self, u: &UpdateState) {
         let Some(a) = &u.available else { return };
         let text = self
-            .tr("update.balloon", "A2DPWB %s is available. Click here to open the download page.")
+            .tr("update.balloon", "A2DP Windows Bridge %s is available. Click here to open the download page.")
             .replacen("%s", &a.version, 1);
         (self.balloon)(BalloonRequest {
             title: self.tr("update.available_title", "Update Available"),
@@ -953,6 +2088,33 @@ impl CoreState {
 
     pub fn rates(&self) -> Option<AudioRates> {
         *self.rates.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// A chip script read for the adapter `instance_id`: what cannot run,
+    /// what may change the chip, what its vendor never takes from a script
+    fn check_script(
+        &self,
+        instance_id: &str,
+        text: &str,
+    ) -> (Result<bt_host::script::Script, Vec<String>>, ScriptCheck) {
+        let parsed = bt_host::script::parse(text);
+        let (_, s) = self.snapshot();
+        let vendor = s
+            .adapter
+            .adapters
+            .iter()
+            .find(|a| a.instance_id == instance_id)
+            .map_or(ChipVendor::Unknown, |a| chips::vendor_for_usb(a.vid, a.pid, None));
+        let line = |l: &bt_host::script::ScriptLine| format!("line {}: {}", l.line, l.text);
+        let check = match &parsed {
+            Ok(script) => ScriptCheck {
+                errors: Vec::new(),
+                writes: script.writes().into_iter().map(line).collect(),
+                denied: script.denied(chips::denied_opcodes(vendor)).into_iter().map(line).collect(),
+            },
+            Err(errors) => ScriptCheck { errors: errors.clone(), writes: Vec::new(), denied: Vec::new() },
+        };
+        (parsed, check)
     }
 
     // ---- HCI capture -------------------------------------------------------
@@ -991,6 +2153,13 @@ impl CoreState {
             self.publish(Event::Capture(None));
         }
         done
+    }
+
+    /// Verbose logging ran out (the sampler)
+    pub fn expire_verbose(&self) {
+        if crate::logging::expire_verbose() {
+            self.publish(Event::Verbose(None));
+        }
     }
 
     /// The running capture's size (the sampler, every few seconds)
@@ -1054,7 +2223,12 @@ impl CoreState {
                 .unwrap_or_else(|_| Err(err("internal", "error.btstack_crash_stream")))
         };
         match method {
-            Method::StateSnapshot => Ok(json(&self.snapshot().1)),
+            Method::StateSnapshot => {
+                // A window that opens after a crash (of itself, or of the
+                // core while it was closed) finds the report
+                self.refresh_crashes();
+                Ok(json(&self.snapshot().1))
+            }
             Method::StreamStart { profile } => self.start_profile(&profile).map(|()| Value::Null),
             Method::StreamStartCustom {
                 device,
@@ -1086,6 +2260,10 @@ impl CoreState {
                 };
                 self.start_custom(&c).map(|()| Value::Null)
             }
+            Method::StreamStartBroadcast { name, code, quality, mono, source, source_id, source_name } => {
+                let b = BroadcastStream { name, code, quality, mono, source, source_id, source_name };
+                self.start_broadcast(&b).map(|()| Value::Null)
+            }
             Method::StreamStop => {
                 self.stop();
                 Ok(Value::Null)
@@ -1099,8 +2277,20 @@ impl CoreState {
             Method::DeviceScan { seconds } => {
                 blocking(Box::new(move |me| {
                     me.publish(Event::Scanning(true));
+                    // The list shows the devices as they answer: first the
+                    // saved ones alone (the last scan's are gone), then each
+                    // device found. A scan refused (streaming) keeps the list.
+                    let dir = me.config_dir();
+                    let codecs = me.service.device_codecs();
+                    if !me.service.is_running() {
+                        me.publish(Event::Devices(saved_devices(&dir, &[], &codecs)));
+                    }
+                    let mut on_found = |found: &[ScannedDevice]| {
+                        let scanned: Vec<Device> = found.iter().map(scanned_device).collect();
+                        me.publish(Event::Devices(saved_devices(&dir, &scanned, &codecs)));
+                    };
                     // Classic, then (LE Audio on) the LE Audio devices
-                    let r = me.service.scan_devices(seconds.clamp(3, 30));
+                    let r = me.service.scan_devices(seconds.clamp(3, ipc::MAX_SCAN_SECONDS), &mut on_found);
                     if me.with_snapshot(|s| s.le_scanning) {
                         me.publish(Event::LeScanning(false));
                     }
@@ -1113,15 +2303,43 @@ impl CoreState {
                 }))
                 .await
             }
-            Method::DeviceForget { address, le_audio } => {
-                let dir = self.config_dir();
-                let r = if le_audio == Some(true) {
-                    devices::remove_le(&dir, &address)
-                } else {
-                    devices::remove(&dir, &address)
+            Method::DeviceScanStop => {
+                self.service.stop_scan();
+                Ok(Value::Null)
+            }
+            Method::DeviceWindowsPaired => blocking(Box::new(|_| Ok(json(&windows_paired())))).await,
+            Method::DeviceWindowsPairedThrough { adapter } => {
+                let Some(instance_id) = self.adapter_instance(&adapter) else {
+                    return Ok(json(&Vec::<String>::new()));
                 };
-                r.map_err(|_| err("device.forget_failed", "error.device_forget"))?;
-                self.refresh_devices();
+                // The audio devices: only those are saved by an import
+                blocking(Box::new(move |_| {
+                    let list: Vec<String> = win_sys::bt_paired::paired_through(&instance_id)
+                        .iter()
+                        .filter(|d| d.is_a2dp_sink())
+                        .map(|d| bt_host::addr_str(&d.address))
+                        .collect();
+                    Ok(json(&list))
+                }))
+                .await
+            }
+            Method::DevicePairing { address } => crate::pairing::pairing(self, &address),
+            Method::DeviceServices { address } => {
+                blocking(Box::new(move |me| crate::pairing::services(me, &address))).await
+            }
+            Method::DeviceImportWindowsPairings { adapter } => {
+                blocking(Box::new(move |me| crate::pairing::import_windows(me, &adapter))).await
+            }
+            Method::DeviceForget { address, le_audio } => {
+                blocking(Box::new(move |me| me.forget_device(&address, le_audio == Some(true)))).await
+            }
+            Method::DeviceForgetCodecs { address } => {
+                if bt_host::parse_addr(&address).is_none() {
+                    return Err(err("device.invalid_address", "error.invalid_address_format"));
+                }
+                if self.service.forget_device_codecs(&address) {
+                    self.refresh_devices();
+                }
                 Ok(Value::Null)
             }
             Method::DeviceRename { address, name, le_audio } => {
@@ -1151,6 +2369,18 @@ impl CoreState {
                 let key = original_name.as_deref().unwrap_or(&profile.name).to_string();
                 let pos = list.iter().position(|p| p.name == key);
                 let merged = merge_profile(pos.map(|i| &list[i]), &profile);
+                let before = pos.map(|i| list[i].clone());
+                // Only the device's codec order changed (its cards dragged):
+                // the stream goes on unless the order changes its codec
+                let order_only = pos.is_some_and(|i| {
+                    list[i].codec_order != merged.codec_order
+                        && CoreProfile { codec_order: merged.codec_order.clone(), ..list[i].clone() } == merged
+                });
+                // Under Auto-select the order is not used
+                let order_unused = self.service.settings().auto_codec || merged.le_audio;
+                // Settings of a codec not in use: nothing the stream uses
+                let kept_only = pos.is_some_and(|i| list[i].only_kept_settings_differ(&merged));
+                let in_order = merged.clone();
                 // The profile's device joins the saved ones of its kind (as
                 // a connection saves it)
                 let address = merged.device_address.clone();
@@ -1170,16 +2400,42 @@ impl CoreState {
                     None => list.push(merged),
                 }
                 let (_, s) = self.snapshot();
+                let renamed_active = s.active_profile.as_deref() == Some(key.as_str()) && key != profile.name;
                 let active = match s.active_profile {
                     Some(a) if a == key => Some(profile.name.clone()),
                     other => other.or(Some(profile.name.clone())),
                 };
                 self.save_profiles(&list, active)?;
+                // A renamed active profile (its name follows the codec chosen
+                // on the Codecs screen) stays the one remembered
+                if renamed_active {
+                    self.set_active_profile(Some(profile.name.clone()));
+                }
                 self.refresh_devices();
-                // The profile in use starts again with what was saved (v1)
-                if restart_after_save(&s.stream, &key) {
-                    tracing::info!("profile \"{key}\" saved while in use: it starts again as \"{}\"", profile.name);
-                    self.start_profile(&profile.name)?;
+                // The profile in use starts again with what was saved (v1),
+                // but for another source, which needs nothing of the link
+                let order_keeps_codec = order_only && (order_unused || !restart_for_order(&s.stream, &in_order));
+                if restart_after_save(&s.stream, &key) && !order_keeps_codec && !kept_only {
+                    let in_place = source_changes_in_place(&s.stream, before.as_ref(), &in_order)
+                        && self.service.change_source(in_order.source());
+                    let bitpools_in_place = !self.service.settings().auto_codec
+                        && bitpools_change_in_place(&s.stream, before.as_ref(), &in_order)
+                        && self.service.change_bitpools(in_order.bitpools());
+                    if bitpools_in_place {
+                        tracing::debug!("profile {} saved while in use: new bitpools", a2dpwb_core::diag::quoted(&key));
+                    } else if in_place {
+                        tracing::info!(
+                            "profile {} saved while in use: its source changes in place",
+                            a2dpwb_core::diag::quoted(&key)
+                        );
+                    } else {
+                        tracing::info!(
+                            "profile {} saved while in use: it starts again as {}",
+                            a2dpwb_core::diag::quoted(&key),
+                            a2dpwb_core::diag::quoted(&profile.name)
+                        );
+                        self.restart_profile(&profile.name)?;
+                    }
                 }
                 Ok(Value::Null)
             }
@@ -1207,9 +2463,49 @@ impl CoreState {
                     }
                     let chip = chip_changed(&base, &merged);
                     let le_toggled = base.le_audio_experimental != merged.le_audio_experimental;
+                    let auto_toggled = base.auto_codec != merged.auto_codec;
+                    let sync_toggled =
+                        base.volume_sync != merged.volume_sync || base.mutes_output() != merged.mutes_output();
                     me.save_settings(merged)?;
                     if chip {
                         me.reload_adapter();
+                    }
+                    // Auto-select on / off: a profile in use whose codec it
+                    // changes starts again (as a profile save does); Windows
+                    // Volume Sync or the output mute on / off: the profile in
+                    // use starts again (as when it was the profile's own setting)
+                    if auto_toggled || sync_toggled {
+                        let (_, s) = me.snapshot();
+                        let list = profiles::load(&me.config_dir());
+                        let in_use = s.stream.profile.as_deref().and_then(|n| list.iter().find(|p| p.name == n));
+                        let known = me.service.device_codecs();
+                        let own_settings = settings.developer_mode && settings.dev_overrides.auto_codec_settings;
+                        let auto_changes = |p: &CoreProfile| {
+                            let codecs = known.get(&p.device_address.to_uppercase());
+                            let same = same_after_auto_toggle(&s.stream, p, settings.auto_codec, codecs, own_settings);
+                            if same {
+                                tracing::info!(
+                                    "Auto-select {}: profile {} streams the same, no restart",
+                                    if settings.auto_codec { "on" } else { "off" },
+                                    a2dpwb_core::diag::quoted(&p.name)
+                                );
+                            }
+                            restart_for_auto(&s.stream, p) && !same
+                        };
+                        let restart = |p: &&CoreProfile| {
+                            (auto_toggled && auto_changes(p))
+                                || (sync_toggled && restart_after_save(&s.stream, &p.name))
+                        };
+                        if let Some(p) = in_use.filter(restart) {
+                            tracing::info!(
+                                "Auto-select {}, volume sync {}, output mute {}: profile {} starts again",
+                                if settings.auto_codec { "on" } else { "off" },
+                                if settings.volume_sync { "on" } else { "off" },
+                                if settings.mute_output { "on" } else { "off" },
+                                a2dpwb_core::diag::quoted(&p.name)
+                            );
+                            me.restart_profile(&p.name.clone())?;
+                        }
                     }
                     // LE Audio on / off waits for the next scan or connection
                     // while the stack is in use (v1's deferred text)
@@ -1227,20 +2523,108 @@ impl CoreState {
             }
             Method::AdapterRestart => {
                 blocking(Box::new(|me| {
-                    me.service.release_adapter();
+                    let again = me.service.restart_adapter();
+                    let (_, s) = me.snapshot();
+                    me.publish(Event::Adapter(AdapterState {
+                        status: AdapterStatus::Stopped,
+                        error: None,
+                        rom_firmware: false,
+                        ..s.adapter
+                    }));
+                    // The device streamed before connects again on the new
+                    // stack, with the same profile (issue #86)
+                    if let Some(mut req) = again {
+                        req.experimental_codecs = me.service.settings().experimental_codecs;
+                        let profile = me.starting_profile.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                        me.begin_stream(req, profile);
+                    }
+                    Ok(Value::Null)
+                }))
+                .await
+            }
+            Method::AdapterProbe { instance_id } => {
+                blocking(Box::new(move |me| {
+                    let report = me
+                        .service
+                        .probe_adapter(Some(instance_id.clone()))
+                        .map_err(|m| ErrorInfo { code: "adapter.probe_failed".into(), message: msg(&m) })?;
+                    // The stack was stopped for it
                     let (_, s) = me.snapshot();
                     me.publish(Event::Adapter(AdapterState {
                         status: AdapterStatus::Stopped,
                         error: None,
                         ..s.adapter
                     }));
-                    Ok(Value::Null)
+                    let summary = a2dpwb_core::probe_report::summary_line(&report);
+                    tracing::info!("chip probe of {instance_id}: {summary}");
+                    let version = env!("CARGO_PKG_VERSION");
+                    let path = a2dpwb_core::probe_report::save(&me.config_dir(), &report, Some(&instance_id), version)
+                        .map_err(|e| {
+                            tracing::warn!("chip probe: the report could not be saved: {e}");
+                            err("adapter.probe_failed", "error.probe_save")
+                        })?;
+                    Ok(json(&ProbeResult { path: path.display().to_string(), summary }))
+                }))
+                .await
+            }
+            Method::AdapterCheckScript { instance_id, script } => Ok(json(&self.check_script(&instance_id, &script).1)),
+            Method::AdapterRunScript { instance_id, script, allow_writes } => {
+                blocking(Box::new(move |me| {
+                    let (parsed, check) = me.check_script(&instance_id, &script);
+                    let invalid = |key: &str, lines: &[String]| ErrorInfo {
+                        code: "adapter.script_refused".into(),
+                        message: Msg { key: key.into(), args: vec![lines.join("\n")] },
+                    };
+                    let parsed = match parsed {
+                        Ok(s) if check.denied.is_empty() && (allow_writes || check.writes.is_empty()) => s,
+                        Ok(_) if !check.denied.is_empty() => return Err(invalid("error.script_denied", &check.denied)),
+                        Ok(_) => return Err(invalid("error.script_writes", &check.writes)),
+                        Err(_) => return Err(invalid("error.script_invalid", &check.errors)),
+                    };
+                    let total = parsed.lines.len();
+                    tracing::info!(
+                        "chip script on {instance_id}: {total} lines, {} that may change the chip",
+                        check.writes.len()
+                    );
+                    let report = me
+                        .service
+                        .run_script(Some(instance_id.clone()), parsed)
+                        .map_err(|m| ErrorInfo { code: "adapter.script_failed".into(), message: msg(&m) })?;
+                    let (_, s) = me.snapshot();
+                    me.publish(Event::Adapter(AdapterState {
+                        status: AdapterStatus::Stopped,
+                        error: None,
+                        ..s.adapter
+                    }));
+                    let summary = match &report.error {
+                        Some(e) => e.clone(),
+                        None => format!("{} of {total} lines done", report.steps.len()),
+                    };
+                    let version = env!("CARGO_PKG_VERSION");
+                    let path = a2dpwb_core::probe_report::save_script(
+                        &me.config_dir(),
+                        &report,
+                        &script,
+                        Some(&instance_id),
+                        version,
+                    )
+                    .map_err(|e| {
+                        tracing::warn!("chip script: the report could not be saved: {e}");
+                        err("adapter.script_failed", "error.probe_save")
+                    })?;
+                    let hex = |b: &[u8]| b.iter().map(|x| format!("{x:02x}")).collect::<String>();
+                    Ok(json(&ScriptResult {
+                        path: path.display().to_string(),
+                        summary,
+                        lines: bt_host::script::report_text(&report),
+                        other_events: report.other_events.iter().map(|e| hex(e)).collect(),
+                    }))
                 }))
                 .await
             }
             Method::AdapterFirmwareFiles => {
                 blocking(Box::new(|me| {
-                    let list: Vec<FirmwareFile> = chips::scan_firmware_files(&me.config_dir())
+                    let list: Vec<FirmwareFile> = chips::scan_firmware_files(&paths::firmware_dir(&me.config_dir()))
                         .into_iter()
                         .map(|f| FirmwareFile {
                             stem: f.stem,
@@ -1253,9 +2637,32 @@ impl CoreState {
                 }))
                 .await
             }
+            Method::AdapterDownloadFirmware { file } => {
+                blocking(Box::new(move |me| {
+                    if !a2dpwb_core::firmware::available(&file) {
+                        return Err(bad_request(
+                            "firmware.no_download",
+                            "adapter.download_firmware",
+                            format!("no download for {file}"),
+                        ));
+                    }
+                    if let Err(e) = a2dpwb_core::firmware::download(&paths::firmware_dir(&me.config_dir()), &file) {
+                        tracing::warn!("firmware download failed: {e}");
+                        return Err(err("firmware.download_failed", "firmware.download_failed"));
+                    }
+                    // The files are there now: a stack started without them
+                    // loads them anew
+                    Ok(json(&me.refresh_adapters()))
+                }))
+                .await
+            }
             Method::AudioDevices => {
-                blocking(Box::new(|_| {
-                    let list: Vec<AudioDevice> = audio_capture::render_devices()
+                blocking(Box::new(|me| {
+                    let devices = audio_capture::render_devices();
+                    if let Ok(d) = &devices {
+                        me.watch_vb_cable(d);
+                    }
+                    let list: Vec<AudioDevice> = devices
                         .unwrap_or_default()
                         .into_iter()
                         .map(|d| {
@@ -1285,8 +2692,28 @@ impl CoreState {
                 }))
                 .await
             }
+            Method::AudioMixer => {
+                blocking(Box::new(|_| {
+                    let list: Vec<MixerApp> = audio_capture::mixer_apps()
+                        .into_iter()
+                        .map(|a| MixerApp { key: a.key, name: a.name, volume: a.volume, muted: a.muted })
+                        .collect();
+                    Ok(json(&list))
+                }))
+                .await
+            }
+            Method::AudioMixerSet { app, volume, muted } => {
+                blocking(Box::new(move |_| {
+                    audio_capture::set_mixer_app(&app, volume, muted);
+                    Ok(Value::Null)
+                }))
+                .await
+            }
             // Handled per client by the server
             Method::DiagSubscribe { .. } => Ok(Value::Null),
+            Method::RfcommOpen { .. } | Method::RfcommSend { .. } | Method::RfcommClose { .. } => {
+                Err(err("rfcomm.no_channel", "ipc.error.rfcomm_no_channel"))
+            }
             Method::DiagCaptureStart => self.start_capture().map(Value::String),
             Method::DiagCaptureStop => Ok(json(&self.stop_capture())),
             Method::DiagInfo(params) => {
@@ -1294,11 +2721,58 @@ impl CoreState {
                 // Lists the USB adapters: off the runtime
                 blocking(Box::new(move |me| Ok(json(&DiagInfo { text: crate::diag_text(me, mask) })))).await
             }
+            Method::DiagWifiScan => {
+                // Waits for the scan: off the runtime
+                blocking(Box::new(|_| {
+                    use win_sys::wlan::{ScanError, scan};
+                    match scan(std::time::Duration::from_secs(4)) {
+                        Ok(aps) => {
+                            let list: Vec<WifiAccessPoint> = aps
+                                .into_iter()
+                                .map(|a| WifiAccessPoint { ssid: a.ssid, channel: a.channel, mhz: a.mhz, rssi: a.rssi })
+                                .collect();
+                            Ok(json(&list))
+                        }
+                        Err(ScanError::NoWifi) => Err(err("wifi.none", "error.wifi_none")),
+                        Err(ScanError::LocationDenied) => Err(err("wifi.location", "error.wifi_location")),
+                        Err(ScanError::RadioOff) => Err(err("wifi.off", "error.wifi_off")),
+                        Err(ScanError::Failed(code)) => {
+                            tracing::warn!("Wi-Fi scan failed (0x{code:08X})");
+                            Err(err("wifi.failed", "error.wifi_failed"))
+                        }
+                    }
+                }))
+                .await
+            }
             Method::DiagFlow => Ok(json(&crate::flow_view(self))),
             Method::DiagRecentLogs { level } => {
                 let mut lines = crate::logging::hub().recent();
                 lines.retain(|l| l.level <= level);
                 Ok(json(&lines))
+            }
+            Method::DiagCrashesSeen => {
+                self.crashes_seen();
+                Ok(Value::Null)
+            }
+            Method::DiagMark { note } => Ok(json(&crate::logging::mark(&note))),
+            Method::DiagSetVerbose { level } => {
+                let v = crate::logging::set_verbose(level);
+                self.publish(Event::Verbose(v));
+                Ok(json(&v))
+            }
+            Method::DiagBundle(params) => {
+                let p = params.unwrap_or_default();
+                let (mask, hci) = (p.mask.unwrap_or(true), p.hci.unwrap_or(true));
+                blocking(Box::new(move |me| {
+                    crate::bundle::create(me, mask, hci).map(|b| json(&b)).map_err(|e| {
+                        tracing::error!("diagnostic bundle: {e}");
+                        ErrorInfo {
+                            code: "diag.bundle_failed".into(),
+                            message: Msg { key: "error.bundle_failed".into(), args: vec![e] },
+                        }
+                    })
+                }))
+                .await
             }
             Method::ReceiverDiscover => {
                 blocking(Box::new(|_| {
@@ -1390,6 +2864,7 @@ impl CoreState {
                     version: r.version,
                     url: r.url,
                     prerelease: r.prerelease,
+                    notes: r.notes,
                 });
                 let u = UpdateState { checking: false, available, current_version, error: None };
                 self.publish(Event::Update(u.clone()));
@@ -1468,8 +2943,44 @@ mod tests {
             firmware_present: present,
             firmware_files: vec!["rtl8761bu_fw.bin".into(), "rtl8761bu_config.bin".into()],
             firmware_invalid: invalid.map(str::to_owned),
+            firmware_download: true,
             vendor_note: None,
+            restart_needed: false,
+            le_audio: None,
+            address: None,
+            bt_version: None,
+            windows_name: None,
         }
+    }
+
+    #[test]
+    fn a_chosen_realtek_chip_is_not_checked_on_other_vendors_adapters() {
+        // RTL8761BU chosen by hand, a Realtek and a MediaTek adapter (issue #86)
+        let s = CoreSettings { bt_chip_pid: 0x8771, ..CoreSettings::default() };
+        assert_eq!(adapter_chip(ChipVendor::Realtek, Some(0x8771), &s), (0x8771, ""));
+        assert_eq!(adapter_chip(ChipVendor::MediaTek, None, &s), (0, ""));
+        assert_eq!(adapter_chip(ChipVendor::Intel, None, &s), (0, ""));
+        // A chip known only by its files, on an adapter not recognised as another vendor's
+        let stem = CoreSettings { bt_chip_fw_stem: "rtl8723bu".into(), ..s.clone() };
+        assert_eq!(adapter_chip(ChipVendor::Unknown, None, &stem).1, "rtl8723bu");
+        assert_eq!(adapter_chip(ChipVendor::Qualcomm, None, &stem), (0, ""));
+    }
+
+    /// This PC's adapters as the Adapters screen lists them, with nothing
+    /// remembered yet (a fresh config folder; read-only otherwise): cargo
+    /// test -p a2dpwb-core-exe list_adapter_infos -- --ignored --nocapture
+    #[test]
+    #[ignore = "reads this PC's USB devices and Bluetooth radios"]
+    fn list_adapter_infos() {
+        let dir = std::env::temp_dir().join(format!("a2dpwb-adapter-infos-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for a in adapter_infos(&dir, &CoreSettings::default()) {
+            println!(
+                "{} {:04X}:{:04X} {:?} ({}) address {:?} version {:?} name {:?}",
+                a.instance_id, a.vid, a.pid, a.driver, a.driver_service, a.address, a.bt_version, a.windows_name
+            );
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -1493,17 +3004,213 @@ mod tests {
     }
 
     #[test]
-    fn the_tray_tooltip_names_the_device() {
+    fn the_tray_tooltip_names_the_device_and_the_codec() {
+        let ldac = tray_codec_line("LDAC", 990, 96000, 24, true);
+        assert_eq!(ldac, "LDAC 990 kbps | 96 kHz | 24-bit | ABR");
+        assert_eq!(tray_codec_line("SBC", 328, 44100, 16, false), "SBC 328 kbps | 44.1 kHz | 16-bit");
+        assert_eq!(tray_codec_line("LC3", 320, 48000, 0, false), "LC3 320 kbps | 48 kHz");
         assert_eq!(
-            tray_tooltip("A2DPWB - Streaming", Some("WH-1000XM4"), Some(("LDAC", 990))),
-            "A2DPWB - Streaming (WH-1000XM4)\nLDAC 990 kbps"
+            tray_tooltip("A2DP Windows Bridge - Connected", Some("WH-1000XM4"), &[ldac.clone(), "Battery 80%".into()]),
+            "A2DP Windows Bridge - Connected (WH-1000XM4)\nLDAC 990 kbps | 96 kHz | 24-bit | ABR\nBattery 80%"
         );
-        assert_eq!(tray_tooltip("A2DPWB - Streaming", None, Some(("SBC", 328))), "A2DPWB - Streaming\nSBC 328 kbps");
-        assert_eq!(tray_tooltip("A2DPWB - Streaming", Some(""), None), "A2DPWB - Streaming");
         assert_eq!(
-            tray_tooltip("A2DPWB - Streaming", Some("AA:BB:CC:DD:EE:FF"), None),
-            "A2DPWB - Streaming (AA:BB:CC:DD:EE:FF)"
+            tray_tooltip("A2DP Windows Bridge - Connected", None, &[ldac]),
+            "A2DP Windows Bridge - Connected\nLDAC 990 kbps | 96 kHz | 24-bit | ABR"
         );
+        assert_eq!(tray_tooltip("A2DP Windows Bridge - Connected", Some(""), &[]), "A2DP Windows Bridge - Connected");
+        assert_eq!(
+            tray_tooltip("A2DP Windows Bridge - Connected", Some("AA:BB:CC:DD:EE:FF"), &[]),
+            "A2DP Windows Bridge - Connected (AA:BB:CC:DD:EE:FF)"
+        );
+        // AAC's variable bit rate, as the UI calls it
+        assert_eq!(tray_codec_line("AAC", 320, 48000, 16, true), "AAC 320 kbps | 48 kHz | 16-bit | VBR");
+    }
+
+    /// A stream as the core reports it once the codec is set up
+    fn streaming_with(codec: &str, kbps: u32, rate: u32, bits: u32, abr: bool, battery: Option<u8>) -> StreamStatus {
+        StreamStatus {
+            state: StreamState::Streaming,
+            message: Msg::new("status.connected"),
+            info: Some(ipc::StreamInfo {
+                codec: codec.into(),
+                bitrate_kbps: kbps,
+                sample_rate: rate,
+                channels: 2,
+                bits,
+                source_sample_rate: rate,
+                source_channels: 2,
+                source_bits: 32,
+                requested_codec: None,
+                requested_in_use: false,
+                abr,
+                bitrate_capped: false,
+                hi_res_set: false,
+                source: None,
+                le: None,
+                details: None,
+            }),
+            battery,
+            ..StreamStatus::default()
+        }
+    }
+
+    #[test]
+    fn the_connected_balloon_shows_the_device_codec_and_battery() {
+        let ldac = streaming_with("LDAC", 990, 96000, 24, true, Some(80));
+        let b = connected_balloon("en", Some("WH-1000XM4"), &ldac).unwrap();
+        assert_eq!(b.title, "WH-1000XM4 connected");
+        assert_eq!(b.text, "Battery 80%\nLDAC\n990 kbps | 96 kHz | 24-bit | ABR");
+        assert_eq!(b.url, None);
+
+        // Battery not known yet; an address when the device has no name
+        let aptx = streaming_with("aptX Adaptive", 420, 48000, 24, true, None);
+        let b = connected_balloon("en", Some("C0:11:22:33:44:55"), &aptx).unwrap();
+        assert_eq!(b.title, "C0:11:22:33:44:55 connected");
+        assert_eq!(b.text, "aptX Adaptive\n420 kbps | 48 kHz | 24-bit | ABR");
+
+        // Another codec than the one asked for: the reason, as the UI's note
+        let mut aac = streaming_with("AAC", 320, 44100, 16, true, Some(55));
+        aac.info.as_mut().unwrap().requested_codec = Some("LDAC".into());
+        let b = connected_balloon("en", None, &aac).unwrap();
+        assert_eq!(b.title, "Connected");
+        assert_eq!(b.text, "Battery 55%\nAAC\n320 kbps | 44.1 kHz | 16-bit | VBR\n(LDAC is unsupported)");
+        aac.info.as_mut().unwrap().requested_in_use = true;
+        assert!(connected_balloon("en", None, &aac).unwrap().text.contains("(LDAC is in use)"));
+
+        // Translated; nothing before the codec is set up
+        let b = connected_balloon("ja", Some("WH-1000XM4"), &ldac).unwrap();
+        assert_eq!(b.text, "バッテリー 80%\nLDAC\n990 kbps | 96 kHz | 24-bit | ABR");
+        assert!(connected_balloon("en", Some("WH"), &StreamStatus::default()).is_none());
+    }
+
+    #[test]
+    fn a_connection_is_announced_once_with_its_negotiated_codec() {
+        let dir = std::env::temp_dir().join(format!("a2dpwb-state-announce-{}", std::process::id()));
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let options = a2dpwb_core::ServiceOptions {
+            config_dir: dir.clone(),
+            hci_tcp: None,
+            capture: bt_host::HciCapture::new(),
+            afh: None,
+            usb: Default::default(),
+        };
+        let shown = Arc::new(Mutex::new(Vec::<BalloonRequest>::new()));
+        let sink = shown.clone();
+        let state = CoreState::new(
+            Arc::new(Service::new(options, tx)),
+            Box::new(|_| {}),
+            Box::new(|| {}),
+            Box::new(move |b| sink.lock().unwrap().push(b)),
+        );
+        let event = |st| state.on_service_event(ServiceEvent::State(st, a2dpwb_core::Msg::new("status.ready")));
+        let info = |kbps| {
+            state.on_service_event(ServiceEvent::StreamInfo(a2dpwb_core::StreamInfo {
+                codec: "LDAC".into(),
+                bitrate_kbps: kbps,
+                sample_rate: 96000,
+                channels: 2,
+                bits: 24,
+                source_sample_rate: 96000,
+                source_channels: 2,
+                source_bits: 32,
+                requested_codec: None,
+                requested_in_use: false,
+                abr: false,
+                bitrate_capped: false,
+                hi_res_set: false,
+                source: a2dpwb_core::SourceInfo { kind: "tone", name: String::new(), waiting: false },
+                details: None,
+            }))
+        };
+        let texts = || shown.lock().unwrap().iter().map(|b| b.text.clone()).collect::<Vec<_>>();
+        // A first connection: Streaming, the negotiated codec, then a moment
+        // for the battery
+        event(CoreStreamState::Connecting);
+        event(CoreStreamState::Streaming);
+        assert!(texts().is_empty());
+        info(660);
+        assert!(texts().is_empty());
+        state.on_service_event(ServiceEvent::Battery(80));
+        assert_eq!(texts().len(), 1);
+        assert!(texts()[0].ends_with(" 80%\nLDAC\n660 kbps | 96 kHz | 24-bit"));
+        // A lost link reconnecting (its info again, then Streaming): quiet
+        event(CoreStreamState::Reconnecting);
+        info(660);
+        event(CoreStreamState::Streaming);
+        assert_eq!(texts().len(), 1);
+        // The headphones off and back on: a connection again
+        event(CoreStreamState::Idle);
+        event(CoreStreamState::Connecting);
+        info(990);
+        assert_eq!(texts().len(), 1);
+        event(CoreStreamState::Streaming);
+        assert_eq!(texts().len(), 1);
+        // The battery refused: nothing to wait for
+        state.on_service_event(ServiceEvent::BatteryRefused);
+        assert_eq!(texts().len(), 2);
+        assert_eq!(texts()[1], "LDAC\n990 kbps | 96 kHz | 24-bit");
+        // Started again for a codec chosen (restart_profile): quiet, and
+        // the next connection is announced again (issue #86)
+        state.quiet_connect.store(true, Ordering::Release);
+        event(CoreStreamState::Idle);
+        event(CoreStreamState::Connecting);
+        info(660);
+        event(CoreStreamState::Streaming);
+        assert_eq!(texts().len(), 2);
+        event(CoreStreamState::Idle);
+        event(CoreStreamState::Connecting);
+        event(CoreStreamState::Streaming);
+        info(660);
+        assert_eq!(texts().len(), 2);
+        // No report: without the battery once the wait is over
+        *state.battery_deadline.lock().unwrap() = Some(Instant::now());
+        state.announce_connected();
+        assert_eq!(texts().len(), 3);
+        assert_eq!(texts()[2], "LDAC\n660 kbps | 96 kHz | 24-bit");
+        // The setting off: nothing
+        let mut s = state.service.settings();
+        s.notify_connected = false;
+        state.service.set_settings(s);
+        event(CoreStreamState::Idle);
+        event(CoreStreamState::Connecting);
+        event(CoreStreamState::Streaming);
+        info(990);
+        assert_eq!(texts().len(), 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_tray_menu_names_devices_not_profiles() {
+        let saved = |name: &str, le_audio| Device {
+            address: "aa:bb:cc:dd:ee:ff".into(),
+            name: name.into(),
+            saved: true,
+            audio: true,
+            rssi: None,
+            codecs: Vec::new(),
+            sbc: None,
+            codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
+            le_audio,
+            le_audio_set: false,
+        };
+        let core = CoreProfile {
+            name: "EarFun Air Pro 4+ | aptX Adaptive".into(),
+            device_address: "AA:BB:CC:DD:EE:FF".into(),
+            device_name: "EarFun".into(),
+            ..CoreProfile::default()
+        };
+        let p = to_ipc_profile(&core, 679);
+        // The saved device's name (renamed since), else the profile's, else the address
+        assert_eq!(
+            device_name(&[saved("Air Pro 4+", true), saved("Air Pro 4+ (renamed)", false)], &p),
+            "Air Pro 4+ (renamed)"
+        );
+        assert_eq!(device_name(&[], &p), "EarFun");
+        let unnamed = to_ipc_profile(&CoreProfile { device_name: String::new(), ..core }, 679);
+        assert_eq!(device_name(&[], &unnamed), "AA:BB:CC:DD:EE:FF");
+        assert_eq!(tray_label("Air Pro 4+", true, "LE Audio"), "Air Pro 4+ (LE Audio)");
+        assert_eq!(tray_label("Air Pro 4+", false, "LE Audio"), "Air Pro 4+");
     }
 
     #[test]
@@ -1522,6 +3229,110 @@ mod tests {
         for state in [StreamState::Idle, StreamState::Error] {
             assert!(!restart_after_save(&status(state, Some("WH LDAC")), "WH LDAC"));
         }
+    }
+
+    #[test]
+    fn another_source_changes_in_place_only_alone_and_while_streaming() {
+        let before = CoreProfile { name: "WH".into(), ..CoreProfile::default() };
+        let app = CoreProfile { capture_mode: "app".into(), app_exe: "Spotify.exe".into(), ..before.clone() };
+        let stream = |state| StreamStatus { state, profile: Some("WH".into()), ..StreamStatus::default() };
+        let streaming = stream(StreamState::Streaming);
+        assert!(source_changes_in_place(&streaming, Some(&before), &app));
+        // Saved with something else, or nothing that changes the source
+        let codec = CoreProfile { codec: "aac".into(), ..app.clone() };
+        assert!(!source_changes_in_place(&streaming, Some(&before), &codec));
+        let names_only = CoreProfile { app_exe: "Spotify.exe".into(), ..before.clone() };
+        assert!(!source_changes_in_place(&streaming, Some(&before), &names_only));
+        // Still connecting (a restart may be on its way), LE Audio, a new profile
+        for state in [StreamState::Connecting, StreamState::Reconnecting] {
+            assert!(!source_changes_in_place(&stream(state), Some(&before), &app));
+        }
+        let le = CoreProfile { le_audio: true, ..before.clone() };
+        assert!(!source_changes_in_place(&streaming, Some(&le), &CoreProfile { le_audio: true, ..app.clone() }));
+        assert!(!source_changes_in_place(&streaming, None, &app));
+    }
+
+    #[test]
+    fn a_new_codec_order_restarts_a_profile_on_auto_or_fallen_back() {
+        let profile = |codec: &str| CoreProfile { name: "WH".into(), codec: codec.into(), ..CoreProfile::default() };
+        let streaming = |requested: Option<&str>| StreamStatus {
+            state: StreamState::Streaming,
+            profile: Some("WH".into()),
+            info: Some(ipc::StreamInfo {
+                codec: "AAC".into(),
+                bitrate_kbps: 0,
+                sample_rate: 48000,
+                channels: 2,
+                bits: 16,
+                source_sample_rate: 48000,
+                source_channels: 2,
+                source_bits: 32,
+                requested_codec: requested.map(str::to_owned),
+                requested_in_use: false,
+                abr: false,
+                bitrate_capped: false,
+                hi_res_set: false,
+                source: None,
+                le: None,
+                details: None,
+            }),
+            ..StreamStatus::default()
+        };
+        assert!(restart_for_order(&streaming(None), &profile("auto")));
+        assert!(restart_for_order(&streaming(Some("aptX HD")), &profile("aptxhd")));
+        // Its own codec in use, LE Audio
+        assert!(!restart_for_order(&streaming(None), &profile("aac")));
+        assert!(!restart_for_order(&streaming(None), &CoreProfile { le_audio: true, ..profile("auto") }));
+    }
+
+    #[test]
+    fn auto_select_on_or_off_restarts_a_profile_that_chose_its_codec() {
+        let profile = |codec: &str| CoreProfile { name: "WH".into(), codec: codec.into(), ..CoreProfile::default() };
+        let streaming =
+            StreamStatus { state: StreamState::Streaming, profile: Some("WH".into()), ..StreamStatus::default() };
+        assert!(restart_for_auto(&streaming, &profile("aac")));
+        // Auto either way, another profile, nothing running, LE Audio
+        assert!(!restart_for_auto(&streaming, &profile("auto")));
+        // Auto in its own order: Auto-select takes the default order
+        assert!(restart_for_auto(&streaming, &CoreProfile { codec_order: vec!["sbc".into()], ..profile("auto") }));
+        assert!(!restart_for_auto(&streaming, &CoreProfile { name: "Buds".into(), ..profile("aac") }));
+        assert!(!restart_for_auto(&StreamStatus::default(), &profile("aac")));
+        assert!(!restart_for_auto(&streaming, &CoreProfile { le_audio: true, ..profile("aac") }));
+    }
+
+    #[test]
+    fn auto_select_on_or_off_keeps_a_stream_that_would_stay_the_same() {
+        use a2dpwb_core::stream::KnownCodecs;
+        let profile = |codec: &str| CoreProfile { name: "WH".into(), codec: codec.into(), ..CoreProfile::default() };
+        let streaming = |codec: &str| StreamStatus {
+            state: StreamState::Streaming,
+            profile: Some("WH".into()),
+            info: Some(ipc::StreamInfo { codec: codec.into(), requested_codec: None, ..sbc_abr_info() }),
+            ..StreamStatus::default()
+        };
+        let known = KnownCodecs { keys: vec!["sbc".into(), "aac".into(), "ldac".into()], ..KnownCodecs::default() };
+        let same = |s: &StreamStatus, p: &CoreProfile, on: bool, own: bool| {
+            same_after_auto_toggle(s, p, on, Some(&known), own)
+        };
+
+        // LDAC chosen, which is what Auto takes, with Auto's settings
+        assert!(same(&streaming("LDAC"), &profile("ldac"), true, false));
+        assert!(same(&streaming("LDAC"), &profile("ldac"), false, false));
+        // Another codec, or other settings
+        assert!(!same(&streaming("AAC"), &profile("aac"), true, false));
+        let sq = CoreProfile { quality: "sq".into(), ..profile("ldac") };
+        assert!(!same(&streaming("LDAC"), &sq, true, false));
+        // ... which developer mode keeps under Auto-select
+        assert!(same(&streaming("LDAC"), &sq, true, true));
+        // Turned off: AAC chosen while Auto streams LDAC
+        assert!(!same(&streaming("LDAC"), &profile("aac"), false, false));
+        // A codec not offered falls back to the profile's order
+        let order = CoreProfile { codec_order: vec!["aac".into()], ..profile("aptxhd") };
+        assert!(same(&streaming("AAC"), &order, false, false));
+        // Unknown codecs, or not streaming yet: restart
+        assert!(!same_after_auto_toggle(&streaming("LDAC"), &profile("ldac"), true, None, false));
+        let connecting = StreamStatus { state: StreamState::Connecting, ..streaming("LDAC") };
+        assert!(!same(&connecting, &profile("ldac"), true, false));
     }
 
     #[test]
@@ -1547,6 +3358,114 @@ mod tests {
         assert_eq!(state.snapshot().1.stream.profile.as_deref(), Some("B"));
         event(CoreStreamState::Streaming);
         assert_eq!(state.snapshot().1.stream.profile.as_deref(), Some("B"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// SBC at 48 kHz under ABR (bitpool 19..53), 1011-byte payloads
+    fn sbc_abr_info() -> ipc::StreamInfo {
+        serde_json::from_value(serde_json::json!({
+            "codec": "SBC", "bitrate_kbps": 357, "sample_rate": 48000, "channels": 2, "bits": 16,
+            "source_sample_rate": 48000, "source_channels": 2, "source_bits": 32,
+            "requested_codec": null, "requested_in_use": false, "abr": true,
+            "details": {
+                "mtu": 1011, "rtp": true, "media_header": 1, "frame_samples": 128,
+                "frame_bytes": 119, "frames_per_packet": 8,
+                "sbc": {
+                    "channel_mode": "joint_stereo", "blocks": 16, "subbands": 8, "allocation": "loudness",
+                    "bitpool": 53, "config_bitpool": [2, 53], "device": null, "abr_bitpool": [19, 53]
+                },
+                "aac": null
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn bitpools_change_in_place_within_the_range_of_the_link() {
+        let before =
+            CoreProfile { name: "WH".into(), codec: "sbc".into(), sbc_min_bitpool: 20, ..CoreProfile::default() };
+        let mut info = sbc_abr_info();
+        info.details.as_mut().unwrap().sbc.as_mut().unwrap().config_bitpool = Some((20, 53));
+        let stream = |state| StreamStatus {
+            state,
+            profile: Some("WH".into()),
+            info: Some(info.clone()),
+            ..StreamStatus::default()
+        };
+        let streaming = stream(StreamState::Streaming);
+        let with = |max, min| CoreProfile { sbc_bitpool: max, sbc_min_bitpool: min, ..before.clone() };
+        assert!(bitpools_change_in_place(&streaming, Some(&before), &with(30, 20)));
+        assert!(bitpools_change_in_place(&streaming, Some(&before), &with(0, 25)));
+        // Below what the link was set up with
+        assert!(!bitpools_change_in_place(&streaming, Some(&before), &with(30, 10)));
+        assert!(!bitpools_change_in_place(&streaming, Some(&before), &with(15, 20)));
+        assert!(!bitpools_change_in_place(&streaming, Some(&before), &with(30, 0)));
+        // Anything else changes the link
+        let rate = CoreProfile { sample_rate: 44100, ..with(30, 20) };
+        assert!(!bitpools_change_in_place(&streaming, Some(&before), &rate));
+        assert!(!bitpools_change_in_place(&stream(StreamState::Connecting), Some(&before), &with(30, 20)));
+        assert!(!bitpools_change_in_place(&streaming, None, &with(30, 20)));
+    }
+
+    #[test]
+    fn live_codec_values_go_into_the_stream_info() {
+        let info = sbc_abr_info();
+        let live = bt_host::LiveCodec { bitrate_kbps: 249, bitpool: 35, frame_bytes: 83 };
+        let next = live_info(&info, live).unwrap();
+        assert_eq!(next.bitrate_kbps, 249);
+        let d = next.details.as_deref().unwrap();
+        assert_eq!((d.frame_bytes, d.frames_per_packet), (Some(83), Some(12)));
+        let s = d.sbc.as_ref().unwrap();
+        assert_eq!((s.bitpool, s.abr_bitpool, s.config_bitpool), (35, Some((19, 53)), Some((2, 53))));
+        // Nothing changed: nothing to send
+        assert_eq!(live_info(&next, live), None);
+        // At most 15 frames (the 4-bit count)
+        let small = bt_host::LiveCodec { bitrate_kbps: 100, bitpool: 12, frame_bytes: 40 };
+        assert_eq!(live_info(&info, small).unwrap().details.unwrap().frames_per_packet, Some(15));
+        // Not under ABR, or LE Audio: left alone
+        let fixed = ipc::StreamInfo { abr: false, ..info.clone() };
+        assert_eq!(live_info(&fixed, live), None);
+        // LDAC under ABR: the bit rate only
+        let ldac = ipc::StreamInfo { codec: "LDAC".into(), details: None, ..info };
+        assert_eq!(live_info(&ldac, live).map(|i| (i.bitrate_kbps, i.details)), Some((249, None)));
+    }
+
+    #[test]
+    fn live_codec_updates_only_a_streaming_snapshot() {
+        let dir = std::env::temp_dir().join(format!("a2dpwb-state-live-{}", std::process::id()));
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let options = a2dpwb_core::ServiceOptions {
+            config_dir: dir.clone(),
+            hci_tcp: None,
+            capture: bt_host::HciCapture::new(),
+            afh: None,
+            usb: Default::default(),
+        };
+        let state =
+            CoreState::new(Arc::new(Service::new(options, tx)), Box::new(|_| {}), Box::new(|| {}), Box::new(|_| {}));
+        let live = bt_host::LiveCodec { bitrate_kbps: 249, bitpool: 35, frame_bytes: 83 };
+        let mut events = state.subscribe();
+        let set = |st: StreamState| {
+            state.publish(Event::Stream(StreamStatus { state: st, info: Some(sbc_abr_info()), ..Default::default() }))
+        };
+        set(StreamState::Reconnecting);
+        let _ = events.try_recv();
+        state.apply_live_codec(Some(live));
+        assert!(events.try_recv().is_err());
+        set(StreamState::Streaming);
+        let _ = events.try_recv();
+        state.apply_live_codec(None);
+        assert!(events.try_recv().is_err());
+        let rev = state.snapshot().0;
+        state.apply_live_codec(Some(live));
+        let (r, e) = events.try_recv().unwrap();
+        assert_eq!(r, rev + 1);
+        let Event::Stream(st) = &*e else { panic!("{e:?}") };
+        assert_eq!(st.info.as_ref().map(|i| i.bitrate_kbps), Some(249));
+        assert_eq!(state.snapshot().1.stream.info.unwrap().details.unwrap().sbc.unwrap().bitpool, 35);
+        // The same again: no event
+        state.apply_live_codec(Some(live));
+        assert!(events.try_recv().is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1626,6 +3545,28 @@ mod tests {
     }
 
     #[test]
+    fn link_details_to_the_protocol() {
+        let mut d = bt_host::LinkDetails::default();
+        assert_eq!((remote_chip(&d), link_details(&d)), (None, None));
+        d.remote_version = Some(bt_host::RemoteVersion { lmp_version: 12, company_id: 0x7777, lmp_subversion: 3 });
+        let chip = remote_chip(&d).unwrap();
+        // An unlisted maker shows as its ID
+        assert_eq!((chip.company.as_deref(), chip.version.as_deref()), (Some("0x7777"), Some("5.3")));
+        assert!(chip.features.is_none());
+        d.remote_features = Some(bt_host::RemoteFeatures([0x03, 0, 0, 0x02, 0x80, 0x01, 0, 0]));
+        assert_eq!(remote_chip(&d).unwrap().features.unwrap().largest_packet, "2-DH5");
+        d.central = Some(true);
+        d.mode = Some(bt_host::LinkMode::Sniff);
+        d.sniff_interval_slots = Some(80);
+        d.supervision_timeout_slots = Some(8000);
+        let l = link_details(&d).unwrap();
+        assert_eq!((l.role, l.mode), (Some(ipc::LinkRole::Central), Some(ipc::LinkMode::Sniff)));
+        assert_eq!((l.sniff_interval_ms, l.supervision_timeout_ms), (Some(50.0), Some(5000.0)));
+        // The controller does not answer: no counts either
+        assert_eq!((l.failed_contacts, l.failed_contacts_stream, l.link_quality), (None, None, None));
+    }
+
+    #[test]
     fn link_totals_since_the_stream_started() {
         let s = LinkStats::default();
         let r = Ordering::Relaxed;
@@ -1698,9 +3639,9 @@ mod tests {
 
     #[test]
     fn vendors_get_their_notes() {
-        assert_eq!(vendor_note(ChipVendor::Intel).unwrap().key, "firmware.vendor_intel");
-        assert_eq!(vendor_note(ChipVendor::Qualcomm).unwrap().key, "firmware.vendor_unsupported");
-        assert!(vendor_note(ChipVendor::Realtek).is_none());
+        assert_eq!(vendor_note(ChipVendor::Intel, 0x8087, 0x0033).unwrap().key, "firmware.vendor_intel");
+        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0CF3, 0xE300).unwrap().key, "firmware.vendor_unsupported");
+        assert!(vendor_note(ChipVendor::Realtek, 0x0BDA, 0x8771).is_none());
     }
 
     #[test]
@@ -1715,16 +3656,86 @@ mod tests {
             audio: true,
             rssi: Some(-60),
             codecs: Vec::new(),
+            sbc: None,
+            codec_caps: Vec::new(),
+            codecs_on_request: Vec::new(),
             le_audio: false,
             le_audio_set: false,
         }];
         let mut codecs = BTreeMap::new();
-        codecs.insert("AA:BB:CC:DD:EE:FF".to_string(), vec!["sbc".to_string(), "ldac".to_string()]);
+        let sbc = a2dpwb_core::SbcDeviceCaps {
+            sample_rates: vec![44100, 48000],
+            channel_modes: vec!["joint_stereo".into()],
+            blocks: vec![8, 16],
+            subbands: vec![8],
+            allocations: vec!["loudness".into()],
+            min_bitpool: 2,
+            max_bitpool: 53,
+        };
+        codecs.insert(
+            "AA:BB:CC:DD:EE:FF".to_string(),
+            a2dpwb_core::KnownCodecs {
+                keys: vec!["sbc".to_string(), "ldac".to_string()],
+                sbc: Some(sbc),
+                caps: vec![a2dpwb_core::CodecDeviceCaps {
+                    codec: "ldac".into(),
+                    sample_rates: vec![44100, 48000],
+                    ..Default::default()
+                }],
+                hi_res_asked: false,
+            },
+        );
         let list = saved_devices(&dir, &scanned, &codecs);
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].codecs, ["sbc", "ldac"]);
+        // What its SBC endpoint offered, for the profile editor
+        assert_eq!(list[0].sbc.as_ref().map(|s| s.blocks.clone()), Some(vec![8, 16]));
+        // And what each codec lists, for the codec settings (issue #86)
+        assert_eq!(list[0].codec_caps.len(), 1);
+        assert_eq!(
+            (list[0].codec_caps[0].codec.as_str(), list[0].codec_caps[0].sample_rates.clone()),
+            ("ldac", vec![44100, 48000])
+        );
+        assert!(list[1].sbc.is_none());
         assert!(list[0].saved && !list[1].saved && list[1].codecs.is_empty());
+        assert!(list[0].codecs_on_request.is_empty());
+        // Huawei earbuds list LDAC only once it is asked for (issue #30)
+        devices::save(&dir, "AA:BB:CC:DD:EE:FF", "HUAWEI FreeBuds Pro 4").unwrap();
+        let list = saved_devices(&dir, &scanned, &codecs);
+        assert_eq!(list[0].codecs_on_request, ["ldac"]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn battery_low_balloon_once_per_connection() {
+        let mut warned = false;
+        let alerts: Vec<bool> = [50, 30, 20, 19, 15, 10, 22, 18, 25, 19, 5]
+            .into_iter()
+            .map(|v| battery_low_alert(&mut warned, v, 20))
+            .collect();
+        // Below 20 once; back at 22 is not enough, 25 rearms it
+        assert_eq!(alerts, [false, false, false, true, false, false, false, false, false, true, false]);
+        // A connection that starts low warns at its first report
+        let mut warned = false;
+        assert!(battery_low_alert(&mut warned, 12, 20));
+        assert!(!battery_low_alert(&mut warned, 11, 20));
+        // Below 5 %: 10 is not low; 0 never warns
+        let mut warned = false;
+        assert!(!battery_low_alert(&mut warned, 10, 5));
+        assert!(battery_low_alert(&mut warned, 4, 5));
+        let mut warned = false;
+        assert!(!battery_low_alert(&mut warned, 0, 0));
+    }
+
+    #[test]
+    fn codec_order_is_stored_with_known_keys_once() {
+        let ui =
+            to_ipc_profile(&CoreProfile { device_address: "C0:11:22:33:44:55".into(), ..CoreProfile::default() }, 679);
+        assert!(ui.codec_order.is_empty());
+        let order = ["SBCXQ", "nope", "faststream", "sbcxq", "aac"].map(String::from).to_vec();
+        let merged = merge_profile(None, &Profile { codec_order: order, ..ui });
+        assert_eq!(merged.codec_order, ["sbcxq", "faststream", "aac"]);
+        assert_eq!(to_ipc_profile(&merged, 679).codec_order, merged.codec_order);
     }
 
     #[test]
@@ -1750,6 +3761,31 @@ mod tests {
         let merged = merge_settings(&base, &off);
         assert!(!merged.le_audio_experimental && merged.le_audio_low_latency);
         assert_eq!(to_ipc_settings(&merged), off);
+
+        // The output mute: off by default
+        assert!(!to_ipc_settings(&base).mute_output);
+        let mute = Settings { mute_output: true, ..off.clone() };
+        assert!(merge_settings(&base, &mute).mute_output);
+
+        // Windows Volume Sync for every device: on by default
+        assert!(to_ipc_settings(&base).volume_sync);
+        let no_sync = Settings { volume_sync: false, ..off };
+        let merged = merge_settings(&base, &no_sync);
+        assert!(!merged.volume_sync);
+        assert_eq!(to_ipc_settings(&merged), no_sync);
+    }
+
+    #[test]
+    fn volume_sync_for_every_device_overrides_the_profiles() {
+        let dev = || VolumeSync::Device("{0.0.0.00000000}.{x}".into());
+        // Off for every device: no profile syncs
+        for p in [VolumeSync::Auto, VolumeSync::Off, dev()] {
+            assert_eq!(effective_volume_sync(false, p), VolumeSync::Off);
+        }
+        // On: neither a profile's old "off" nor a device it followed counts
+        for p in [VolumeSync::Auto, VolumeSync::Off, dev()] {
+            assert_eq!(effective_volume_sync(true, p), VolumeSync::Auto);
+        }
     }
 
     #[test]
@@ -1793,7 +3829,10 @@ mod tests {
         assert!(scanned[2].le_audio && scanned[2].le_audio_set && !scanned[2].saved);
         assert_eq!(scanned[2].rssi, Some(-60));
         let mut codecs = BTreeMap::new();
-        codecs.insert("AA:BB:CC:DD:EE:FF".to_string(), vec!["sbc".to_string()]);
+        codecs.insert(
+            "AA:BB:CC:DD:EE:FF".to_string(),
+            a2dpwb_core::KnownCodecs { keys: vec!["sbc".to_string()], ..Default::default() },
+        );
         let list = saved_devices(&dir, &scanned, &codecs);
         let kinds: Vec<(&str, bool, bool)> = list.iter().map(|d| (d.name.as_str(), d.le_audio, d.saved)).collect();
         // Merged by address AND kind: each saved entry got its own scan result

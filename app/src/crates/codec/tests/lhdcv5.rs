@@ -69,7 +69,7 @@ fn config(sample_rate: u32, quality: Quality, bits: u8, mtu: u16) -> EncoderConf
 /// The encoder's bit rate table (kbps) for the four quality modes
 fn nominal_kbps(sample_rate: u32, quality: Quality) -> u32 {
     match quality {
-        Quality::High => 1000,
+        Quality::High | Quality::LowLatency => 1000,
         Quality::MediumHigh => 900,
         Quality::Standard if sample_rate == 44100 => 480,
         Quality::Standard => 500,

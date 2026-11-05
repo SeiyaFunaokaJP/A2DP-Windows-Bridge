@@ -1,0 +1,22 @@
+[package]
+name = "aptx-adaptive"
+description = "aptX Adaptive encoder (R1 / R2), vendored from AKS-Logic/aptx-adaptive-linux"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT"
+publish = false
+
+[features]
+fake = []
+
+# Upstream's workspace lints, so its #[expect] attributes stay fulfilled
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"

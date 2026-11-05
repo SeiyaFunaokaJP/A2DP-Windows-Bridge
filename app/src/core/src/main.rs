@@ -7,13 +7,18 @@
 #![forbid(unsafe_code)]
 #![windows_subsystem = "windows"]
 
+mod bundle;
 mod cli;
+mod crashes;
 mod driver;
 mod logging;
+mod pairing;
 mod quit;
 mod resident;
+mod rfcomm;
 mod server;
 mod state;
+mod zip;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -28,9 +33,15 @@ fn main() {
     }
     // The command line logs to the console only; the resident process to
     // daily files in the settings folder
+    let config = a2dpwb_core::paths::config_dir();
+    // Developer mode's logging from the first line (the settings are read
+    // again, with their log lines, when the service starts)
+    let dev = if cli_mode { Default::default() } else { a2dpwb_core::settings::Settings::load(&config).log() };
     let log = logging::init(&logging::LogOptions {
-        dir: (!cli_mode).then(|| a2dpwb_core::paths::config_dir().join("logs")),
+        dir: (!cli_mode).then(|| a2dpwb_core::paths::log_dir(&config)),
         console: cli_mode,
+        crash_dir: Some(a2dpwb_core::paths::crash_dir(&config)),
+        dev,
     });
     let code = if cli_mode { cli::run(&args) } else { resident::run(&args) };
     // process::exit skips destructors: flush the log first
@@ -102,6 +113,53 @@ fn firmware_text(adapters: &[ipc::AdapterInfo]) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join("; "))
 }
 
+/// The codec details back in the core's types (the same fields)
+fn core_codec_details(d: ipc::CodecDetails) -> a2dpwb_core::CodecDetails {
+    a2dpwb_core::CodecDetails {
+        mtu: d.mtu,
+        rtp: d.rtp,
+        media_header: d.media_header,
+        frame_samples: d.frame_samples,
+        frame_bytes: d.frame_bytes,
+        frames_per_packet: d.frames_per_packet,
+        sbc: d.sbc.map(|s| a2dpwb_core::SbcDetails {
+            channel_mode: s.channel_mode,
+            blocks: s.blocks,
+            subbands: s.subbands,
+            allocation: s.allocation,
+            bitpool: s.bitpool,
+            config_bitpool: s.config_bitpool,
+            abr_bitpool: s.abr_bitpool,
+            device: s.device.map(|c| a2dpwb_core::SbcDeviceCaps {
+                sample_rates: c.sample_rates,
+                channel_modes: c.channel_modes,
+                blocks: c.blocks,
+                subbands: c.subbands,
+                allocations: c.allocations,
+                min_bitpool: c.min_bitpool,
+                max_bitpool: c.max_bitpool,
+            }),
+        }),
+        aac: d.aac.map(|a| a2dpwb_core::AacDetails {
+            object_type: a.object_type,
+            bit_rate: a.bit_rate,
+            device: a.device.map(|c| a2dpwb_core::AacDeviceCaps {
+                object_types: c.object_types,
+                sample_rates: c.sample_rates,
+                channels: c.channels,
+                max_bitrate: c.max_bitrate,
+                vbr: c.vbr,
+            }),
+        }),
+        device: d.device.map(|c| a2dpwb_core::CodecDeviceCaps {
+            codec: c.codec,
+            sample_rates: c.sample_rates,
+            bit_depths: c.bit_depths,
+            max_bitrate: c.max_bitrate,
+        }),
+    }
+}
+
 /// The text of "copy diagnostic info"
 pub(crate) fn diag_text(state: &state::CoreState, mask: bool) -> String {
     use a2dpwb_core::diag;
@@ -122,6 +180,7 @@ pub(crate) fn diag_text(state: &state::CoreState, mask: bool) -> String {
         bitrate_kbps: i.bitrate_kbps,
         sample_rate: i.sample_rate,
         channels: i.channels,
+        bits: i.bits,
         source_sample_rate: i.source_sample_rate,
         source_channels: i.source_channels,
         source_bits: i.source_bits,
@@ -129,7 +188,9 @@ pub(crate) fn diag_text(state: &state::CoreState, mask: bool) -> String {
         requested_in_use: i.requested_in_use,
         abr: i.abr,
         bitrate_capped: i.bitrate_capped,
+        hi_res_set: i.hi_res_set,
         source: core_source(i.source.as_ref()),
+        details: i.details.clone().map(|d| Box::new(core_codec_details(*d))),
     });
     let firmware = firmware_text(&s.adapter.adapters);
     // LE Audio (experimental) of the running stack: stream, ISO counters,
@@ -141,6 +202,7 @@ pub(crate) fn diag_text(state: &state::CoreState, mask: bool) -> String {
     let stats = state.service.stats();
     let capture = state.service.capture();
     let capture_path = capture.path();
+    let adapter_addresses = adapter_addresses(&s.adapter.adapters);
     diag::diag_text(&diag::DiagInput {
         env: diag::Environment::current(),
         settings: &settings,
@@ -156,8 +218,42 @@ pub(crate) fn diag_text(state: &state::CoreState, mask: bool) -> String {
         log: &log,
         clock: hub.clock(),
         mask,
+        adapter_addresses: &adapter_addresses,
         le_audio: le_audio.as_ref(),
+        logging: Some(&logging_line(&state.config_dir())),
+        clients: &server::clients(),
     })
+}
+
+/// The adapters' own addresses, as remembered (`<adapter>` in masked text)
+pub(crate) fn adapter_addresses(adapters: &[ipc::AdapterInfo]) -> Vec<String> {
+    adapters.iter().filter_map(|a| a.address.clone()).collect()
+}
+
+/// "Logging" of the diagnostic info: verbose logging, and the crash
+/// reports and flight recorder files a diagnostic bundle would include
+fn logging_line(config: &std::path::Path) -> String {
+    use a2dpwb_core::paths;
+    let count = |dir: std::path::PathBuf, ext: &str| {
+        std::fs::read_dir(dir)
+            .map_or(0, |d| d.flatten().filter(|e| e.path().extension().is_some_and(|x| x == ext)).count())
+    };
+    let verbose = match logging::verbose() {
+        Some(v) => {
+            format!("verbose ({:?}, {} min left)", v.level, v.until_ms.saturating_sub(logging::unix_ms()) / 60_000)
+        }
+        None => "normal".into(),
+    };
+    let always = match logging::always_verbose() {
+        Some(l) => format!(", always {l:?} (developer mode)"),
+        None => String::new(),
+    };
+    let capped = if logging::file_capped() { " (today's file is full: debug lines stopped)" } else { "" };
+    format!(
+        "{verbose}{always}{capped}; {} crash report(s); {} HCI flight recording(s)",
+        count(paths::crash_dir(config), "txt"),
+        count(paths::recorder_dir(config), "pklg")
+    )
 }
 
 /// The protocol's source back to the core's (for diag_text)
@@ -242,7 +338,13 @@ mod tests {
             firmware_present: Some(false),
             firmware_files: vec!["rtl8761bu_fw.bin".into(), "rtl8761bu_config.bin".into()],
             firmware_invalid: None,
+            firmware_download: true,
             vendor_note: None,
+            restart_needed: false,
+            le_audio: None,
+            address: None,
+            bt_version: None,
+            windows_name: None,
         };
         let csr = ipc::AdapterInfo { display_name: "CSR8510".into(), firmware_present: None, ..a.clone() };
         let page = ipc::AdapterInfo { firmware_invalid: Some("rtl8761bu_fw.bin".into()), ..a.clone() };

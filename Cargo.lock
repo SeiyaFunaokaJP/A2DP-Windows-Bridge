@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "a2dpwb-core"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "audio-capture",
  "bt-host",
@@ -16,6 +16,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.21",
  "time",
  "tracing",
@@ -26,14 +27,17 @@ dependencies = [
 
 [[package]]
 name = "a2dpwb-core-exe"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "a2dpwb-core",
  "audio-capture",
+ "base64 0.22.1",
  "bt-host",
  "codec",
+ "crc32fast",
  "ctrlc",
  "embed-resource",
+ "flate2",
  "hci-transport",
  "ipc",
  "serde",
@@ -50,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "a2dpwb-driver"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "embed-resource",
  "serde",
@@ -62,7 +66,7 @@ dependencies = [
 
 [[package]]
 name = "a2dpwb-ui"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "ipc",
  "serde",
@@ -72,7 +76,11 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "time",
  "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
  "win-sys",
  "windows-version",
 ]
@@ -121,6 +129,10 @@ name = "anyhow"
 version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+
+[[package]]
+name = "aptx-adaptive"
+version = "0.1.0"
 
 [[package]]
 name = "async-broadcast"
@@ -284,7 +296,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "audio-capture"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "thiserror 2.0.21",
  "tracing",
@@ -453,7 +465,7 @@ dependencies = [
 
 [[package]]
 name = "bt-host"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "btstack-sys",
  "codec",
@@ -465,7 +477,7 @@ dependencies = [
 
 [[package]]
 name = "btstack-sys"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "cc",
  "tracing",
@@ -640,8 +652,9 @@ dependencies = [
 
 [[package]]
 name = "codec"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
+ "aptx-adaptive",
  "btstack-sys",
  "fdkaac-sys",
  "lc3-sys",
@@ -650,6 +663,7 @@ dependencies = [
  "openaptx-sys",
  "opus-sys",
  "proptest",
+ "serde",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -811,7 +825,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d045de693cb712d0b22c6a64be5b953f67b3ce00ab5ad3dd5d8b441886ab8e1a"
 dependencies = [
  "quote",
- "syn 3.0.9",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -1136,7 +1150,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1176,7 +1190,7 @@ dependencies = [
 
 [[package]]
 name = "fdkaac-sys"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "cc",
  "codec",
@@ -1657,7 +1671,7 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
 name = "hci-transport"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "btstack-sys",
  "nusb",
@@ -1995,7 +2009,7 @@ dependencies = [
 
 [[package]]
 name = "ipc"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "serde",
  "serde_json",
@@ -2237,28 +2251,28 @@ checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "lc3-sys"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "ldac-sys"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "le-audio"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "tracing",
 ]
 
 [[package]]
 name = "lhdcv5-sys"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "cc",
 ]
@@ -2838,7 +2852,7 @@ dependencies = [
 
 [[package]]
 name = "openaptx-sys"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "cc",
 ]
@@ -2857,7 +2871,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "opus-sys"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "cc",
 ]
@@ -3007,7 +3021,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pipeline"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "bt-host",
  "codec",
@@ -3424,7 +3438,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3481,7 +3495,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3492,9 +3506,9 @@ checksum = "eec689c0bc40ff2458a5977b6619cb718087084a18e02a131c599b62d05e1a5f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -4470,7 +4484,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4590,9 +4604,9 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokio"
-version = "1.53.2"
+version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e95f91fcc7a621e8b030f6aa23c71fe9838ae2fb4d8118b75602a328f5144044"
+checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "bytes",
  "libc",
@@ -5299,9 +5313,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dcd9d09a39985f5344844e66b0c530a33843579125f23e21e9f0f220850f22a"
+checksum = "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -5342,11 +5356,12 @@ dependencies = [
 
 [[package]]
 name = "win-sys"
-version = "2.0.1"
+version = "2.0.2-beta.18"
 dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tracing",
+ "webview2-com",
  "windows",
 ]
 
@@ -5372,7 +5387,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

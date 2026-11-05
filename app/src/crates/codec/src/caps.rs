@@ -7,8 +7,8 @@
 //! codec-specific bytes. The values follow v1 (btstack_transport.cpp), which
 //! follows Android and PipeWire.
 
-use crate::CodecKind;
-use crate::sbc::{self, ChannelMode};
+use crate::sbc::{self, Allocation, ChannelMode};
+use crate::{AutoOrder, CodecKind};
 
 pub const LDAC_VENDOR_ID: u32 = 0x0000_012D; // Sony
 pub const LDAC_CODEC_ID: u16 = 0x00AA;
@@ -19,7 +19,7 @@ pub const APTXLL_VENDOR_ID2: u32 = 0x0000_00D7; // some sinks list aptX LL under
 pub const APTXLL_CODEC_ID: u16 = 0x0002;
 pub const APTX_VENDOR_ID: u32 = 0x0000_004F; // APT
 pub const APTX_CODEC_ID: u16 = 0x0001;
-/// aptX Adaptive: no open-source encoder; detected for messages only
+/// aptX Adaptive (Qualcomm)
 pub const APTXAD_VENDOR_ID: u32 = 0x0000_00D7;
 pub const APTXAD_CODEC_ID: u16 = 0x00AD;
 pub const LHDCV5_VENDOR_ID: u32 = 0x0000_053A; // Savitech
@@ -38,6 +38,8 @@ pub const CODEC_TYPE_VENDOR: u8 = 0xFF;
 
 // LDAC byte 6: 0x20 44.1k, 0x10 48k, 0x08 88.2k, 0x04 96k; byte 7: 0x04 mono, 0x02 dual, 0x01 stereo
 const LDAC_FREQ_ALL: u8 = 0x3C;
+/// LDAC rates by byte 6 bit, highest first
+const LDAC_RATES: [(u8, u32); 4] = [(0x04, 96000), (0x08, 88200), (0x10, 48000), (0x20, 44100)];
 const LDAC_CH_ALL: u8 = 0x07;
 
 // aptX family byte 6: high nibble frequency (0x20 44.1k, 0x10 48k), low nibble channels (0x02 stereo, 0x01 mono)
@@ -118,6 +120,65 @@ pub const OPUS05_MAX_BITRATE_UNITS: u16 = 312;
 /// The bit rate field's unit
 pub const OPUS05_BITRATE_UNIT: u32 = 1024;
 
+// aptX Adaptive (AKS-Logic/aptx-adaptive-linux spec/a2dp-integration.md §1,
+// §7G-§7J; the public CodeAurora / LineageOS headers): 40 bytes, the vendor
+// header then
+//   6: bits 7..3 rates, bits 2..0 the source type (0x02: a host encoder,
+//      the sink times playback itself; 0x01 is the sink's own flag, never
+//      sent). The rates as Qualcomm's Android stack defines them
+//      (a2dp_vendor_aptx_adaptive_constants.h): 0x40 44.1k (0x08 in older
+//      headers), 0x10 48k, 0xA0 96k (0x80 | 0x20; 0x80 alone is "reserved").
+//      Android takes a sink with any bit of 0xA0 for 96 kHz and configures
+//      0xA0: an EarFun Air Pro 4+ lists 0xD1 (0x80, no 0x20), a Sennheiser
+//      MOMENTUM 5 0x71 (0x20, no 0x80), a Bose QC Ultra 0x51 (neither, and
+//      it refuses 96 kHz). Issue #86.
+//   7: channel modes (0x01 mono, 0x02 stereo, 0x04 TWS stereo, 0x08 joint
+//      stereo, 0x10 TWS mono, 0x20 TWS+)
+//   8..13: target latencies (LL0, LL1 in ms; HQ, TWS in 2 ms units)
+//   14: reserved; R1: 15 0x00, 16 0xAA (end marker); R2: 15 the capability
+//      extension version 1, 16..19 the features word (LE), 20..23 setup
+//      preferences, 24..25 the end marker 00 AA, then in a configuration
+//      26 the bits per sample (0x02: 24)
+// BTstack reports at most 30 bytes of a remote's codec information, enough
+// for all of it (bytes 27..39 are reserved).
+const APTXAD_INFO_LEN: usize = 40;
+/// The R1 layout's end (its end marker), the least a usable SEP reports
+const APTXAD_R1_LEN: usize = 17;
+const APTXAD_RATE_48000: u8 = 0x10;
+/// 96 kHz as configured (both bits, as a Snapdragon phone sends it)
+const APTXAD_RATE_96000: u8 = 0xA0;
+const APTXAD_SOURCE_TYPE_HOST: u8 = 0x02;
+const APTXAD_CH_STEREO: u8 = 0x02;
+const APTXAD_CH_JOINT_STEREO: u8 = 0x08;
+const APTXAD_DATA: usize = 8;
+const APTXAD_EXT_VERSION: usize = 15;
+const APTXAD_R2_DATA_END: usize = 26;
+/// The target latencies a host source sends where the sink's are 0 (a 0 ms
+/// HQ target makes the sink stutter after a minute or two, §7G): LL0 80 ms,
+/// LL1 100 ms, HQ 200 ms, TWS 200 ms; LL0 at least 80 ms for host jitter
+const APTXAD_TTP_DEFAULTS: [u8; 4] = [0x50, 0x64, 0x64, 0x64];
+const APTXAD_LL0_MIN: u8 = 0x50;
+/// The R1 block a source advertises: target latencies, reserved, then R1's
+/// end marker
+const APTXAD_R1_DATA: [u8; 9] = [0x50, 0x64, 0x64, 0x64, 0xFF, 0xFF, 0x00, 0x00, 0xAA];
+/// What a source sends to an R2 sink from byte 8 on: its own target
+/// latencies, extension version 1, features 0x0F000092 (R2.0's word with the
+/// low byte a Snapdragon phone sends: a zero low byte makes a Bose QC Ultra 2
+/// restart), setup preferences 02 03 03 03, the end marker, 24 bits per
+/// sample (left at 0, a Bose QC Ultra decoder clips)
+const APTXAD_R2_DATA: [u8; 19] =
+    [0x50, 0x64, 0x64, 0x64, 0xFF, 0xFF, 0x00, 0x01, 0x92, 0x00, 0x00, 0x0F, 0x02, 0x03, 0x03, 0x03, 0x00, 0xAA, 0x02];
+
+/// aptX Adaptive codec information: the vendor header, `rate`,
+/// `channel_mode`, then `data` from byte 8 on
+fn aptxad_element(rate: u8, channel_mode: u8, data: &[u8]) -> Vec<u8> {
+    let mut info = vendor_header(APTXAD_VENDOR_ID, APTXAD_CODEC_ID);
+    info.extend_from_slice(&[rate, channel_mode]);
+    info.extend_from_slice(data);
+    info.resize(APTXAD_INFO_LEN, 0);
+    info
+}
+
 /// One Opus 05 direction (9 bytes)
 fn opus05_direction(channels: u8, coupled: u8, location: u32, frames: u8, bitrate: u16) -> [u8; 9] {
     let l = location.to_le_bytes();
@@ -136,10 +197,13 @@ const SBC_CH_DUAL: u8 = 0x04;
 const SBC_BLOCKS_16: u8 = 0x01;
 const SBC_SUBBANDS_8: u8 = 0x01;
 const SBC_ALLOC_LOUDNESS: u8 = 0x01;
-/// SBC XQ needs the sink to take at least this bitpool per channel (the
-/// lowest High / the Standard 44.1 kHz bitpool, ~507 kbps); below it the
-/// sink gets plain SBC
-pub const SBC_XQ_MIN_MAX_BITPOOL: u8 = 43;
+/// SBC XQ needs the sink to take at least this bitpool per channel: the
+/// lowest XQ bitpool (Mobile at 48 kHz, PipeWire's dual channel default),
+/// ~353 kbps at 44.1 kHz, still above the best plain SBC (bitpool 53 joint
+/// stereo, ~328 kbps). Below it the sink gets plain SBC. PipeWire's SBC-XQ
+/// has no floor at all: it caps its bitpool (43 / 39) at the sink's maximum,
+/// so a sink taking up to 39 (Moto buds+, issue #86) streams XQ at 39.
+pub const SBC_XQ_MIN_MAX_BITPOOL: u8 = 29;
 /// The local SBC SEP's largest bitpool
 const SBC_MAX_BITPOOL: u8 = 53;
 
@@ -160,14 +224,148 @@ impl SbcCapabilities {
     /// Dual channel with 16 blocks, 8 subbands, loudness, 44.1 or 48 kHz and
     /// a bitpool up to at least [`SBC_XQ_MIN_MAX_BITPOOL`]
     pub fn allows_xq(&self) -> bool {
-        self.channel_mode & SBC_CH_DUAL != 0
-            && self.block_length & SBC_BLOCKS_16 != 0
-            && self.subbands & SBC_SUBBANDS_8 != 0
-            && self.allocation_method & SBC_ALLOC_LOUDNESS != 0
-            && self.sampling_frequency & (SBC_FREQ_44100 | SBC_FREQ_48000) != 0
-            && self.max_bitpool >= SBC_XQ_MIN_MAX_BITPOOL
-            && self.min_bitpool <= SBC_XQ_MIN_MAX_BITPOOL
+        self.xq_refusal().is_none()
     }
+
+    /// Why these capabilities do not allow SBC XQ (English, for the log and
+    /// diagnostics); None when they do
+    pub fn xq_refusal(&self) -> Option<&'static str> {
+        if self.channel_mode & SBC_CH_DUAL == 0 {
+            Some("no dual channel")
+        } else if self.block_length & SBC_BLOCKS_16 == 0 {
+            Some("no 16 blocks")
+        } else if self.subbands & SBC_SUBBANDS_8 == 0 {
+            Some("no 8 subbands")
+        } else if self.allocation_method & SBC_ALLOC_LOUDNESS == 0 {
+            Some("no loudness allocation")
+        } else if self.sampling_frequency & (SBC_FREQ_44100 | SBC_FREQ_48000) == 0 {
+            Some("neither 44.1 nor 48 kHz")
+        } else if self.max_bitpool < SBC_XQ_MIN_MAX_BITPOOL {
+            Some("largest bitpool below 29")
+        } else if self.min_bitpool > SBC_XQ_MIN_MAX_BITPOOL {
+            Some("smallest bitpool above 29")
+        } else {
+            None
+        }
+    }
+
+    /// Sampling frequencies offered, in Hz
+    pub fn sample_rates(&self) -> Vec<u32> {
+        offered(self.sampling_frequency.into(), &[(0x08, 16000), (0x04, 32000), (0x02, 44100), (0x01, 48000)])
+    }
+
+    pub fn channel_modes(&self) -> Vec<ChannelMode> {
+        use ChannelMode::*;
+        offered(self.channel_mode.into(), &[(0x08, Mono), (0x04, DualChannel), (0x02, Stereo), (0x01, JointStereo)])
+    }
+
+    pub fn block_lengths(&self) -> Vec<u8> {
+        offered(self.block_length.into(), &[(0x08, 4), (0x04, 8), (0x02, 12), (0x01, 16)])
+    }
+
+    pub fn subband_counts(&self) -> Vec<u8> {
+        offered(self.subbands.into(), &[(0x02, 4), (0x01, 8)])
+    }
+
+    pub fn allocations(&self) -> Vec<Allocation> {
+        offered(self.allocation_method.into(), &[(0x02, Allocation::Snr), (0x01, Allocation::Loudness)])
+    }
+}
+
+/// The values whose bit is set in `bits`, in the order of `table`
+fn offered<T: Copy>(bits: u16, table: &[(u16, T)]) -> Vec<T> {
+    table.iter().filter(|(bit, _)| bits & bit != 0).map(|&(_, v)| v).collect()
+}
+
+// AAC codec information (A2DP 4.5.2), as BTstack's AAC capability event
+// splits it: object types (byte 0 >> 1) 0x40 MPEG-2 AAC-LC 0x20 MPEG-4
+// AAC-LC; sampling frequencies (12 bits) 0x010 44.1k 0x008 48k; channels
+// 0x08 one 0x04 two; the largest bit rate (0 = not given)
+pub const AAC_OBJ_MPEG2_LC: u8 = 0x40;
+pub const AAC_OBJ_MPEG4_LC: u8 = 0x20;
+pub const AAC_FREQ_44100: u16 = 0x010;
+pub const AAC_FREQ_48000: u16 = 0x008;
+pub const AAC_CH_1: u8 = 0x08;
+pub const AAC_CH_2: u8 = 0x04;
+/// The largest AAC bit rate configured (the High quality's)
+const AAC_MAX_BITRATE: u32 = 256_000;
+
+/// A remote SEP's AAC capabilities (the fields of BTstack's
+/// A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_MPEG_AAC_CAPABILITY)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AacCapabilities {
+    pub object_types: u8,
+    pub sampling_frequency: u16,
+    pub channels: u8,
+    pub bit_rate: u32,
+    pub vbr: bool,
+}
+
+impl AacCapabilities {
+    /// AAC-LC (MPEG-2 or MPEG-4) at 44.1 or 48 kHz, mono or stereo: what
+    /// the encoder makes
+    pub fn usable(&self) -> bool {
+        self.object_types & (AAC_OBJ_MPEG2_LC | AAC_OBJ_MPEG4_LC) != 0
+            && self.sampling_frequency & (AAC_FREQ_44100 | AAC_FREQ_48000) != 0
+            && self.channels & (AAC_CH_1 | AAC_CH_2) != 0
+    }
+
+    /// Object types offered, by name
+    pub fn object_type_names(&self) -> Vec<&'static str> {
+        offered(
+            self.object_types.into(),
+            &[
+                (0x40, "MPEG-2 AAC-LC"),
+                (0x20, "MPEG-4 AAC-LC"),
+                (0x10, "MPEG-4 AAC-LTP"),
+                (0x08, "MPEG-4 AAC scalable"),
+                (0x04, "MPEG-4 HE-AAC"),
+                (0x02, "MPEG-4 HE-AAC v2"),
+                (0x01, "MPEG-4 AAC-ELD v2"),
+            ],
+        )
+    }
+
+    /// Sampling frequencies offered, in Hz
+    pub fn sample_rates(&self) -> Vec<u32> {
+        offered(
+            self.sampling_frequency,
+            &[
+                (0x800, 8000),
+                (0x400, 11025),
+                (0x200, 12000),
+                (0x100, 16000),
+                (0x080, 22050),
+                (0x040, 24000),
+                (0x020, 32000),
+                (0x010, 44100),
+                (0x008, 48000),
+                (0x004, 64000),
+                (0x002, 88200),
+                (0x001, 96000),
+            ],
+        )
+    }
+
+    pub fn channel_counts(&self) -> Vec<u8> {
+        offered(self.channels.into(), &[(AAC_CH_1.into(), 1), (AAC_CH_2.into(), 2)])
+    }
+}
+
+impl AacObjectType {
+    pub fn name(self) -> &'static str {
+        match self {
+            AacObjectType::Mpeg2Lc => "MPEG-2 AAC-LC",
+            AacObjectType::Mpeg4Lc => "MPEG-4 AAC-LC",
+        }
+    }
+}
+
+/// AAC object type of a configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AacObjectType {
+    Mpeg2Lc,
+    Mpeg4Lc,
 }
 
 /// The local SEP a codec streams from: SBC XQ shares SBC's (it offers all
@@ -259,21 +457,24 @@ pub fn local_endpoints() -> Vec<LocalEndpoint> {
             &[APTX_CONFIG_DEFAULT],
         ));
     }
-    // SBC: 44.1+48k, all channel modes, 16 blocks, 8 subbands, loudness,
-    // bitpool 2..53 (SBC XQ streams from this SEP too, in dual channel)
+    // SBC: 44.1+48k, all channel modes, block lengths, subbands and
+    // allocations (a profile may ask for any), bitpool 2..53; configured 16
+    // blocks, 8 subbands, loudness (SBC XQ streams from this SEP too, in
+    // dual channel)
     eps.push(LocalEndpoint {
         kind: CodecKind::Sbc,
         codec_type: CODEC_TYPE_SBC,
-        caps: vec![0x3F, 0x15, 2, 53],
+        caps: vec![0x3F, 0xFF, 2, 53],
         config: vec![0x11, 0x15, 2, 53],
     });
     if CodecKind::Aac.available() {
-        // MPEG-2 AAC-LC, 44.1+48k, 2 channels, 256 kbps
+        // MPEG-2 and MPEG-4 AAC-LC, 44.1+48k (byte 1 0x01, byte 2 0x80),
+        // 1 or 2 channels, 256 kbps; configured 44.1k stereo
         eps.push(LocalEndpoint {
             kind: CodecKind::Aac,
             codec_type: CODEC_TYPE_AAC,
-            caps: vec![0x80, 0x0C, 0x04, 0x03, 0xE8, 0x00],
-            config: vec![0x80, 0x04, 0x04, 0x03, 0xE8, 0x00],
+            caps: vec![0xC0, 0x01, 0x8C, 0x03, 0xE8, 0x00],
+            config: vec![0x80, 0x01, 0x04, 0x03, 0xE8, 0x00],
         });
     }
     if CodecKind::LhdcV5.available() {
@@ -318,6 +519,18 @@ pub fn local_endpoints() -> Vec<LocalEndpoint> {
             &opus05_direction(2, 1, OPUS05_LOCATION_STEREO, OPUS05_FRAME_10MS, OPUS05_MAX_BITRATE_UNITS),
         ));
     }
+    if CodecKind::AptxAdaptive.available() {
+        // 48 kHz from a host encoder, stereo / joint stereo, the R1 block
+        // (as upstream's plugin; whether a source should advertise the R2
+        // extension is open there)
+        let rate = APTXAD_RATE_48000 | APTXAD_SOURCE_TYPE_HOST;
+        eps.push(LocalEndpoint {
+            kind: CodecKind::AptxAdaptive,
+            codec_type: CODEC_TYPE_VENDOR,
+            caps: aptxad_element(rate, APTXAD_CH_STEREO | APTXAD_CH_JOINT_STEREO, &APTXAD_R1_DATA),
+            config: aptxad_element(rate, APTXAD_CH_STEREO, &APTXAD_R1_DATA),
+        });
+    }
     eps
 }
 
@@ -334,7 +547,11 @@ pub struct RemoteCaps {
     /// The SBC SEP's capabilities, when reported (SBC XQ needs them)
     pub sbc_caps: Option<SbcCapabilities>,
     pub aac: Option<RemoteSep>,
+    /// The AAC SEP's capabilities, when reported
+    pub aac_caps: Option<AacCapabilities>,
     pub ldac: Option<RemoteSep>,
+    /// LDAC byte 6: the rates the sink lists (0 = not reported: assume all)
+    pub ldac_rates: u8,
     pub aptx: Option<RemoteSep>,
     pub aptx_hd: Option<RemoteSep>,
     pub aptx_ll: Option<RemoteSep>,
@@ -351,8 +568,12 @@ pub struct RemoteCaps {
     /// aptX LL: the vendor ID the remote used and its codec information
     pub aptxll_vendor_id: u32,
     pub aptxll_info: Vec<u8>,
-    /// aptX Adaptive offered (never selected: no open encoder)
+    /// aptX Adaptive offered (usable or not, for messages)
     pub aptx_adaptive: bool,
+    /// aptX Adaptive at 48 kHz stereo, and its codec information (as
+    /// reported: up to 30 bytes)
+    pub aptxad: Option<RemoteSep>,
+    pub aptxad_info: Vec<u8>,
     /// LHDC V5 codec information (11 bytes) when usable
     pub lhdcv5_info: [u8; LHDCV5_INFO_LEN],
     /// Opus codec information byte 6 (channel modes, frame durations, rate)
@@ -368,6 +589,9 @@ pub struct RemoteCaps {
     /// codec streaming to another device is missing from the above)
     pub audio_sinks: u8,
     pub audio_sinks_in_use: u8,
+    /// Vendor SEPs of a known codec that were not taken
+    /// ([`VendorCapability::Ignored`]): what [`Self::forcing`] asks first
+    pub ignored: Vec<(CodecKind, RemoteSep)>,
 }
 
 /// How a vendor codec capability was taken, for the log
@@ -377,6 +601,7 @@ pub enum VendorCapability {
     /// Known codec, but not usable (e.g. mono-only aptX, an LHDC version we
     /// do not encode)
     Ignored(CodecKind, &'static str),
+    /// aptX Adaptive, which this build does not encode
     AptxAdaptive,
     Unknown {
         vendor_id: u32,
@@ -394,7 +619,7 @@ impl RemoteCaps {
         match kind {
             CodecKind::Sbc => self.sbc,
             CodecKind::SbcXq => self.sbc.filter(|_| self.sbc_caps.is_some_and(|c| c.allows_xq())),
-            CodecKind::Aac => self.aac,
+            CodecKind::Aac => self.aac.filter(|_| self.aac_caps.is_none_or(|c| c.usable())),
             CodecKind::Ldac => self.ldac,
             CodecKind::Aptx => self.aptx,
             CodecKind::AptxHd => self.aptx_hd,
@@ -403,6 +628,7 @@ impl RemoteCaps {
             CodecKind::Opus => self.opus,
             CodecKind::Opus05 => self.opus05,
             CodecKind::FastStream => self.faststream,
+            CodecKind::AptxAdaptive => self.aptxad,
         }
     }
 
@@ -416,8 +642,10 @@ impl RemoteCaps {
     /// allows SBC XQ wins, else the last.
     pub fn add_sbc_caps(&mut self, seid: u8, caps: SbcCapabilities) {
         if self.sbc_caps.is_some_and(|c| c.allows_xq()) && !caps.allows_xq() {
+            tracing::debug!("caps: SBC SEID {seid} skipped, keeping SEID {:?} that allows SBC XQ", self.sbc);
             return;
         }
+        tracing::debug!("caps: SBC from SEID {seid}, allows SBC XQ {}", caps.allows_xq());
         self.sbc = Some(RemoteSep { seid });
         self.sbc_caps = Some(caps);
     }
@@ -441,18 +669,123 @@ impl RemoteCaps {
         (min.max(2).min(max), max)
     }
 
+    /// The SBC setup of a `kind` stream (SBC or SBC XQ) from what the
+    /// profile asks for: a value the sink does not list falls back to the
+    /// default (the SET_CONFIGURATION would be refused), said in the notes
+    /// returned (English, for the log). Unknown capabilities take every
+    /// value. SBC XQ has no channel mode of its own choice (dual channel);
+    /// plain SBC no dual channel (that is SBC XQ, issue #86).
+    pub fn sbc_params(&self, kind: CodecKind, wanted: sbc::SbcParams) -> (sbc::SbcParams, Vec<String>) {
+        let mut p = wanted;
+        let mut notes = Vec::new();
+        if kind == CodecKind::SbcXq {
+            p.channel_mode = None;
+        } else if p.channel_mode == Some(sbc::ChannelMode::DualChannel) {
+            notes.push("SBC: dual channel is SBC XQ's, using JointStereo".to_string());
+            p.channel_mode = None;
+        }
+        if !matches!(p.blocks, 0 | 4 | 8 | 12 | 16) {
+            p.blocks = 0;
+        }
+        if !matches!(p.subbands, 0 | 4 | 8) {
+            p.subbands = 0;
+        }
+        let Some(c) = self.sbc_caps else { return (p, notes) };
+        let name = kind.name();
+        if p.blocks != 0 && !c.block_lengths().contains(&p.blocks) {
+            notes.push(format!(
+                "{name}: the device does not list {} blocks, using {}",
+                p.blocks,
+                sbc::SbcParams::default().blocks()
+            ));
+            p.blocks = 0;
+        }
+        if p.subbands != 0 && !c.subband_counts().contains(&p.subbands) {
+            notes.push(format!(
+                "{name}: the device does not list {} subbands, using {}",
+                p.subbands,
+                sbc::SbcParams::default().subbands()
+            ));
+            p.subbands = 0;
+        }
+        if let Some(a) = p.allocation
+            && !c.allocations().contains(&a)
+        {
+            notes.push(format!("{name}: the device does not list {a:?} allocation, using Loudness"));
+            p.allocation = None;
+        }
+        if let Some(m) = p.channel_mode
+            && !c.channel_modes().contains(&m)
+        {
+            notes.push(format!("{name}: the device does not list {m:?}, using JointStereo"));
+            p.channel_mode = None;
+        }
+        (p, notes)
+    }
+
+    /// An AAC SEP whose capabilities are not known
     pub fn add_aac(&mut self, seid: u8) {
         self.aac = Some(RemoteSep { seid });
+        self.aac_caps = None;
+    }
+
+    /// An AAC SEP with its capabilities. With several, the first usable one
+    /// wins, else the last.
+    pub fn add_aac_caps(&mut self, seid: u8, caps: AacCapabilities) {
+        if self.aac_caps.is_some_and(|c| c.usable()) {
+            tracing::debug!("caps: AAC SEID {seid} skipped, keeping usable {:?}", self.aac);
+            return;
+        }
+        tracing::debug!("caps: AAC from SEID {seid}: {caps:?}, usable {}", caps.usable());
+        self.aac = Some(RemoteSep { seid });
+        self.aac_caps = Some(caps);
+    }
+
+    /// The largest AAC bit rate of the configuration: the sink's when it
+    /// gives one below [`AAC_MAX_BITRATE`] (as PipeWire's select_config)
+    pub fn aac_max_bitrate(&self) -> u32 {
+        match self.aac_caps.map_or(0, |c| c.bit_rate) {
+            0 => AAC_MAX_BITRATE,
+            b => b.min(AAC_MAX_BITRATE),
+        }
+    }
+
+    /// The sink lists variable bit rate AAC
+    pub fn aac_vbr(&self) -> bool {
+        self.aac_caps.is_some_and(|c| c.vbr)
+    }
+
+    /// Capture rate for AAC: 44.1 or 48 kHz as the sink lists them,
+    /// preferring 44.1k for `wanted` 44.1k, else 48k
+    pub fn pick_aac_sample_rate(&self, wanted: u32) -> u32 {
+        let freqs = self.aac_caps.map_or(AAC_FREQ_44100 | AAC_FREQ_48000, |c| c.sampling_frequency);
+        let has441 = freqs & AAC_FREQ_44100 != 0;
+        let has48 = freqs & AAC_FREQ_48000 != 0;
+        let rate = if (wanted == 44100 && has441) || !has48 { 44100 } else { 48000 };
+        tracing::debug!(
+            "caps: AAC rate {wanted} -> {rate} (frequencies 0x{freqs:x}, caps known {})",
+            self.aac_caps.is_some()
+        );
+        rate
     }
 
     /// A vendor codec capability (media codec information) of SEP `seid`
     pub fn add_vendor(&mut self, seid: u8, info: &[u8]) -> VendorCapability {
+        let taken = self.take_vendor(seid, info);
+        if let VendorCapability::Ignored(kind, _) = taken {
+            self.ignored.push((kind, RemoteSep { seid }));
+        }
+        taken
+    }
+
+    fn take_vendor(&mut self, seid: u8, info: &[u8]) -> VendorCapability {
         let Some((vid, cid)) = read_vendor(info) else {
             return VendorCapability::TooShort;
         };
         let byte = |i: usize| info.get(i).copied().unwrap_or(0);
         if vid == LDAC_VENDOR_ID && cid == LDAC_CODEC_ID {
             self.ldac = Some(RemoteSep { seid });
+            self.ldac_rates = byte(6) & LDAC_FREQ_ALL;
             return VendorCapability::Taken(CodecKind::Ldac);
         }
         if vid == APTXHD_VENDOR_ID && cid == APTXHD_CODEC_ID {
@@ -481,7 +814,22 @@ impl RemoteCaps {
         }
         if vid == APTXAD_VENDOR_ID && cid == APTXAD_CODEC_ID {
             self.aptx_adaptive = true;
-            return VendorCapability::AptxAdaptive;
+            if !CodecKind::AptxAdaptive.available() {
+                return VendorCapability::AptxAdaptive;
+            }
+            // 48 kHz (every sink's rate) in stereo or joint stereo; at least
+            // the R1 layout
+            let usable = info.len() >= APTXAD_R1_LEN
+                && byte(6) & APTXAD_RATE_48000 != 0
+                && byte(7) & (APTXAD_CH_STEREO | APTXAD_CH_JOINT_STEREO) != 0;
+            if !usable {
+                return VendorCapability::Ignored(CodecKind::AptxAdaptive, "no 48 kHz stereo");
+            }
+            if self.aptxad.is_none() {
+                self.aptxad = Some(RemoteSep { seid });
+                self.aptxad_info = info[..info.len().min(APTXAD_INFO_LEN)].to_vec();
+            }
+            return VendorCapability::Taken(CodecKind::AptxAdaptive);
         }
         if vid == LHDCV5_VENDOR_ID && cid == LHDCV5_CODEC_ID {
             let usable = info.len() >= LHDCV5_INFO_LEN
@@ -524,6 +872,10 @@ impl RemoteCaps {
             // PipeWire offers stereo on its opus_05 SEP and a return channel
             // on its opus_05_duplex SEP: prefer the one without
             let bidi = byte(OPUS05_BIDI) != 0;
+            tracing::debug!(
+                "caps: Opus 05 SEID {seid}: {channels} ch, frames 0x{frames:02x}, return channel {bidi}, taken {}",
+                self.opus05.is_none() || (self.opus05_bidi && !bidi)
+            );
             if self.opus05.is_none() || (self.opus05_bidi && !bidi) {
                 self.opus05 = Some(RemoteSep { seid });
                 self.opus05_channels = channels;
@@ -566,6 +918,83 @@ impl RemoteCaps {
 
     pub fn lhdcv5_bitrate_limits(&self) -> u8 {
         self.lhdcv5_info[7] & LHDCV5_BITRATE_LIMITS_MASK
+    }
+
+    /// The sample rates the sink lists for `kind`, lowest first, as the
+    /// codec settings offer them (issue #86); empty when it said none.
+    /// aptX Adaptive lists 96 kHz only when the sink can take it
+    /// ([`Self::aptxad_96k`]); Opus and Opus 05 are 48 kHz.
+    pub fn listed_sample_rates(&self, kind: CodecKind) -> Vec<u32> {
+        let from_bits = |table: &[(u8, u32)], bits: u8| {
+            let mut r: Vec<u32> = table.iter().filter(|&&(b, _)| bits & b != 0).map(|&(_, r)| r).collect();
+            r.sort_unstable();
+            r
+        };
+        let aptx = |caps: u8| match caps & APTX_FREQ_MASK {
+            0 => vec![44100, 48000],
+            f => from_bits(&[(APTX_FREQ_44100, 44100), (APTX_FREQ_48000, 48000)], f),
+        };
+        match kind {
+            _ if !self.has(kind) => Vec::new(),
+            CodecKind::Sbc | CodecKind::SbcXq => self.sbc_caps.map(|c| c.sample_rates()).unwrap_or_default(),
+            CodecKind::Aac => self.aac_caps.map(|c| c.sample_rates()).unwrap_or_default(),
+            CodecKind::Ldac => {
+                from_bits(&LDAC_RATES, if self.ldac_rates == 0 { LDAC_FREQ_ALL } else { self.ldac_rates })
+            }
+            CodecKind::LhdcV5 => from_bits(
+                &[
+                    (LHDCV5_SR_44100, 44100),
+                    (LHDCV5_SR_48000, 48000),
+                    (LHDCV5_SR_96000, 96000),
+                    (LHDCV5_SR_192000, 192000),
+                ],
+                self.lhdcv5_rates(),
+            ),
+            CodecKind::Aptx => aptx(self.aptx_caps),
+            CodecKind::AptxHd => aptx(self.aptxhd_caps),
+            CodecKind::AptxLl => aptx(self.aptxll_caps),
+            CodecKind::FastStream => {
+                from_bits(&[(FASTSTREAM_SINK_44100, 44100), (FASTSTREAM_SINK_48000, 48000)], self.faststream_rates)
+            }
+            CodecKind::AptxAdaptive => {
+                if self.aptxad_96k() {
+                    vec![48000, 96000]
+                } else {
+                    vec![48000]
+                }
+            }
+            CodecKind::Opus | CodecKind::Opus05 => vec![48000],
+        }
+    }
+
+    /// The bit depths the sink lists for `kind` (LHDC V5 only; empty for
+    /// the others: no choice, or the sink does not say)
+    pub fn listed_bit_depths(&self, kind: CodecKind) -> Vec<u32> {
+        if kind != CodecKind::LhdcV5 || !self.has(kind) {
+            return Vec::new();
+        }
+        let bits = self.lhdcv5_info[7] & LHDCV5_BITS_MASK;
+        [(LHDCV5_BITS_16, 16), (LHDCV5_BITS_24, 24)]
+            .into_iter()
+            .filter(|&(b, _)| bits & b != 0)
+            .map(|(_, d)| d)
+            .collect()
+    }
+
+    /// The largest bit rate (bps) the sink lists for `kind`: AAC's bit rate
+    /// field, LHDC V5's maximum (400 / 500 / 900 kbps); 0 when it gives none
+    pub fn listed_max_bitrate(&self, kind: CodecKind) -> u32 {
+        match kind {
+            _ if !self.has(kind) => 0,
+            CodecKind::Aac => self.aac_caps.map_or(0, |c| c.bit_rate),
+            CodecKind::LhdcV5 => match self.lhdcv5_bitrate_limits() & 0x30 {
+                0x10 => 400_000,
+                0x20 => 500_000,
+                0x30 => 900_000,
+                _ => 0,
+            },
+            _ => 0,
+        }
     }
 
     /// Opus: the frame duration (ms) and the channels on the wire for
@@ -614,9 +1043,134 @@ impl RemoteCaps {
         }
     }
 
+    /// aptX Adaptive: the sink is R2 (capability extension version 1), which
+    /// decides the bitstream; else R1 (§1.3)
+    pub fn aptxad_r2(&self) -> bool {
+        self.aptxad_info.get(APTXAD_EXT_VERSION) == Some(&1)
+    }
+
+    /// aptX Adaptive at 96 kHz: an R2 sink that lists the rate, by either
+    /// of its bits as Android checks it (upstream offers 96 kHz to R2 sinks
+    /// only; an R1 sink is always 48 kHz)
+    pub fn aptxad_96k(&self) -> bool {
+        self.aptxad_r2() && self.aptxad_info.get(6).is_some_and(|&b| b & APTXAD_RATE_96000 != 0)
+    }
+
+    /// Capture rate for aptX Adaptive: 96 kHz when the profile asks for it
+    /// (`wanted`), the stream is high quality (96 kHz has no low latency
+    /// bitstream) and the sink can take it ([`Self::aptxad_96k`]); else 48
+    /// kHz, the rate every sink takes
+    pub fn pick_aptxad_sample_rate(&self, wanted: u32, quality: crate::Quality) -> u32 {
+        let no_96k = self.aptxad_no_96k(quality);
+        let rate = if wanted == 96000 && no_96k.is_none() { 96000 } else { 48000 };
+        let (r2, rates) = (self.aptxad_r2(), self.aptxad_info.get(6).copied().unwrap_or(0) & 0xF8);
+        match no_96k {
+            // Asked for and refused: why, with the sink's bytes (issue #86:
+            // an EarFun Air Pro 4+ said to take 96 kHz stayed at 48 kHz)
+            Some(why) if wanted == 96000 => tracing::info!(
+                "caps: aptX Adaptive at 48 kHz, not 96 kHz: {why} (r2 {r2}, rates 0x{rates:02x}, extension {:?})",
+                self.aptxad_info.get(APTXAD_EXT_VERSION)
+            ),
+            _ => tracing::debug!(
+                "caps: aptX Adaptive rate {wanted} -> {rate} ({quality:?}, r2 {r2}, rates 0x{rates:02x})"
+            ),
+        }
+        rate
+    }
+
+    /// Why aptX Adaptive cannot stream at 96 kHz in `quality`; None when it
+    /// can
+    pub fn aptxad_no_96k(&self, quality: crate::Quality) -> Option<&'static str> {
+        if quality == crate::Quality::LowLatency {
+            Some("low latency has no 96 kHz bitstream")
+        } else if !self.aptxad_r2() {
+            Some("the audio device is aptX Adaptive R1 (upstream streams 96 kHz to R2 only)")
+        } else if !self.aptxad_96k() {
+            Some("the audio device does not list 96 kHz")
+        } else {
+            None
+        }
+    }
+
+    /// These capabilities with `kind` usable even though the sink does not
+    /// list it (developer mode's force_codec): it is taken to list what
+    /// A2DPWB offers itself, and the SET_CONFIGURATION goes to the SEP
+    /// that has the codec in a form A2DPWB does not use, else to any SEP
+    /// (SBC's first). None without an encoder for it or a SEP to ask.
+    pub fn forcing(&self, kind: CodecKind) -> Option<RemoteCaps> {
+        if !kind.available() {
+            return None;
+        }
+        if self.has(kind) {
+            return Some(self.clone());
+        }
+        let own = self.ignored.iter().find(|(k, _)| *k == kind).map(|&(_, sep)| sep);
+        let seid = own.or(self.any_sep())?.seid;
+        let mut caps = self.clone();
+        match kind {
+            CodecKind::Sbc => caps.add_sbc(seid),
+            CodecKind::SbcXq => {
+                caps.sbc = Some(RemoteSep { seid });
+                let listed = self.sbc_caps.unwrap_or_default();
+                caps.sbc_caps = Some(SbcCapabilities {
+                    sampling_frequency: listed.sampling_frequency | SBC_FREQ_44100 | SBC_FREQ_48000,
+                    channel_mode: listed.channel_mode | SBC_CH_DUAL,
+                    block_length: listed.block_length | SBC_BLOCKS_16,
+                    subbands: listed.subbands | SBC_SUBBANDS_8,
+                    allocation_method: listed.allocation_method | SBC_ALLOC_LOUDNESS,
+                    min_bitpool: listed.min_bitpool.min(SBC_XQ_MIN_MAX_BITPOOL),
+                    max_bitpool: listed.max_bitpool.max(sbc::xq_max_bitpool(48000)),
+                });
+            }
+            CodecKind::Aac => caps.add_aac(seid),
+            _ => {
+                let ep = local_endpoints().into_iter().find(|e| e.kind == kind)?;
+                caps.add_vendor(seid, &ep.caps);
+            }
+        }
+        caps.has(kind).then_some(caps)
+    }
+
+    /// A SEP of the sink, whatever its codec: SBC's when it has one
+    fn any_sep(&self) -> Option<RemoteSep> {
+        [
+            self.sbc,
+            self.aac,
+            self.ldac,
+            self.aptx,
+            self.aptx_hd,
+            self.aptx_ll,
+            self.aptxad,
+            self.lhdcv5,
+            self.opus,
+            self.opus05,
+            self.faststream,
+        ]
+        .into_iter()
+        .flatten()
+        .next()
+        .or(self.ignored.first().map(|&(_, sep)| sep))
+    }
+
     /// The best codec both sides have (Auto)
     pub fn best(&self) -> Option<CodecKind> {
-        CodecKind::AUTO_PRIORITY.into_iter().find(|&k| k.available() && self.has(k))
+        self.best_of(true)
+    }
+
+    /// The best codec both sides have, leaving out the experimental ones
+    /// unless `experimental`
+    pub fn best_of(&self, experimental: bool) -> Option<CodecKind> {
+        self.best_in(&AutoOrder::default(), experimental)
+    }
+
+    /// The first codec in `order` both sides have, leaving out the
+    /// experimental ones unless `experimental`
+    pub fn best_in(&self, order: &AutoOrder, experimental: bool) -> Option<CodecKind> {
+        order.codecs().into_iter().find(|&k| self.usable(k, experimental))
+    }
+
+    fn usable(&self, kind: CodecKind, experimental: bool) -> bool {
+        kind.available() && self.has(kind) && (experimental || !kind.experimental())
     }
 
     /// Capture rate for the aptX family: 44.1 or 48 kHz as the remote lists
@@ -631,7 +1185,7 @@ impl RemoteCaps {
         let freqs = caps & APTX_FREQ_MASK;
         let has441 = freqs == 0 || freqs & APTX_FREQ_44100 != 0;
         let has48 = freqs == 0 || freqs & APTX_FREQ_48000 != 0;
-        if wanted == 48000 && has48 {
+        let rate = if wanted == 48000 && has48 {
             48000
         } else if wanted == 44100 && has441 {
             44100
@@ -641,7 +1195,20 @@ impl RemoteCaps {
             44100
         } else {
             wanted
-        }
+        };
+        tracing::debug!("caps: {kind} rate {wanted} -> {rate} (caps 0x{caps:02x})");
+        rate
+    }
+
+    /// Capture rate for LDAC: `wanted` when the sink lists it, else the
+    /// highest listed rate below it, else the lowest above it (88.2 / 96 kHz
+    /// are optional for a sink)
+    pub fn pick_ldac_sample_rate(&self, wanted: u32) -> u32 {
+        let rates = if self.ldac_rates == 0 { LDAC_FREQ_ALL } else { self.ldac_rates };
+        let listed = || LDAC_RATES.into_iter().filter(|&(bit, _)| rates & bit != 0).map(|(_, r)| r);
+        let rate = listed().find(|&r| r <= wanted).or_else(|| listed().next_back()).unwrap_or(wanted);
+        tracing::debug!("caps: LDAC rate {wanted} -> {rate} (rates 0x{rates:02x})");
+        rate
     }
 
     /// Capture rate for FastStream: 44.1 or 48 kHz as the sink lists them,
@@ -649,15 +1216,19 @@ impl RemoteCaps {
     pub fn pick_faststream_sample_rate(&self, wanted: u32) -> u32 {
         let has441 = self.faststream_rates & FASTSTREAM_SINK_44100 != 0;
         let has48 = self.faststream_rates & FASTSTREAM_SINK_48000 != 0;
-        if (wanted == 44100 && has441) || !has48 { 44100 } else { 48000 }
+        let rate = if (wanted == 44100 && has441) || !has48 { 44100 } else { 48000 };
+        tracing::debug!("caps: FastStream rate {wanted} -> {rate} (rates 0x{:02x})", self.faststream_rates);
+        rate
     }
 
     /// Capture rate for LHDC V5: 44.1 / 48 / 96 / 192 kHz as the remote
-    /// lists them, preferring `wanted` (88.2k maps to 96k)
+    /// lists them, preferring `wanted`. LHDC V5 has no 88.2 kHz: a profile
+    /// an earlier version saved with it gets Auto's rate, as any rate the
+    /// sink does not list (issue #86: not 96 kHz behind a "88200 Hz")
     pub fn pick_lhdcv5_sample_rate(&self, wanted: u32) -> u32 {
         let rates = self.lhdcv5_rates();
+        tracing::debug!("caps: LHDC V5 rate for {wanted} Hz from rates 0x{rates:02x}");
         let has = |bit: u8| rates & bit != 0;
-        let wanted = if wanted == 88200 { 96000 } else { wanted };
         match wanted {
             44100 if has(LHDCV5_SR_44100) => return 44100,
             48000 if has(LHDCV5_SR_48000) => return 48000,
@@ -683,44 +1254,92 @@ impl RemoteCaps {
         channels: u32,
         bits_per_sample: u8,
     ) -> Result<Configuration, ConfigError> {
+        self.configuration_vbr(kind, sample_rate, channels, bits_per_sample, false)
+    }
+
+    /// [`Self::configuration`] with AAC's variable bit rate asked for (taken
+    /// only where the sink lists it)
+    pub fn configuration_vbr(
+        &self,
+        kind: CodecKind,
+        sample_rate: u32,
+        channels: u32,
+        bits_per_sample: u8,
+        vbr: bool,
+    ) -> Result<Configuration, ConfigError> {
+        self.configuration_with(kind, sample_rate, channels, bits_per_sample, vbr, sbc::SbcParams::default())
+    }
+
+    /// [`Self::configuration_vbr`] with the SBC setup a profile asks for
+    /// (SBC, SBC XQ): what the sink does not list falls back to the default,
+    /// as [`Self::sbc_params`] (the encoder takes the same)
+    pub fn configuration_with(
+        &self,
+        kind: CodecKind,
+        sample_rate: u32,
+        channels: u32,
+        bits_per_sample: u8,
+        vbr: bool,
+        sbc: sbc::SbcParams,
+    ) -> Result<Configuration, ConfigError> {
+        tracing::debug!(
+            "caps: {kind} configuration for {sample_rate} Hz, {channels} ch, {bits_per_sample} bit, vbr {vbr}, {sbc:?}"
+        );
         let Some(sep) = self.sep(kind) else {
             return Err(ConfigError::NotOffered(kind));
         };
         let remote_seid = sep.seid;
         let mono = channels == 1;
         let request = match kind {
-            CodecKind::Sbc => {
+            CodecKind::Sbc | CodecKind::SbcXq => {
                 if sample_rate != 44100 && sample_rate != 48000 {
                     return Err(ConfigError::SampleRate(kind, sample_rate));
                 }
-                // Up to 53 (the local SEP's maximum) within the sink's range;
-                // the encoder's bitpool is capped the same way
-                let (min_bitpool, max_bitpool) = self.sbc_bitpool_range(SBC_MAX_BITPOOL);
+                // SBC: up to 53 (the local SEP's maximum) within the sink's
+                // range; the encoder's bitpool is capped the same way.
+                // SBC XQ: dual channel (mono for one channel), the bitpool
+                // range as PipeWire's select_config: up to the largest XQ
+                // bitpool of the rate, within the sink's range; the encoder's
+                // bitpool (by quality) is never above it.
+                let cap = if kind == CodecKind::SbcXq { sbc::xq_max_bitpool(sample_rate) } else { SBC_MAX_BITPOOL };
+                // The profile's minimum bitpool, when set, raises the
+                // minimum within that range (the encoder never goes below it)
+                let (min_bitpool, max_bitpool) = self.sbc_bitpool_range(cap);
+                let (p, _) = self.sbc_params(kind, sbc);
+                let min_bitpool = p.config_min_bitpool(min_bitpool, max_bitpool);
                 ConfigRequest::Sbc {
                     sampling_frequency: sample_rate as u16,
-                    channel_mode: if mono { ChannelMode::Mono } else { ChannelMode::JointStereo },
-                    min_bitpool,
-                    max_bitpool,
-                }
-            }
-            CodecKind::SbcXq => {
-                if sample_rate != 44100 && sample_rate != 48000 {
-                    return Err(ConfigError::SampleRate(kind, sample_rate));
-                }
-                // Dual channel (mono for one channel). The bitpool range as
-                // PipeWire's select_config: up to the largest XQ bitpool of
-                // the rate, within the sink's range; the encoder's bitpool
-                // (by quality) is never above it.
-                let (min_bitpool, max_bitpool) = self.sbc_bitpool_range(sbc::xq_max_bitpool(sample_rate));
-                ConfigRequest::Sbc {
-                    sampling_frequency: sample_rate as u16,
-                    channel_mode: if mono { ChannelMode::Mono } else { ChannelMode::DualChannel },
+                    channel_mode: p.channel_mode(kind, channels),
+                    blocks: p.blocks(),
+                    subbands: p.subbands(),
+                    allocation: p.allocation(),
                     min_bitpool,
                     max_bitpool,
                 }
             }
             CodecKind::Aac => {
-                ConfigRequest::Aac { sampling_frequency: sample_rate, channels: channels as u8, bit_rate: 256_000 }
+                let caps = self.aac_caps;
+                let freq = match sample_rate {
+                    44100 => AAC_FREQ_44100,
+                    48000 => AAC_FREQ_48000,
+                    _ => 0,
+                };
+                if freq == 0 || caps.is_some_and(|c| c.sampling_frequency & freq == 0) {
+                    return Err(ConfigError::SampleRate(kind, sample_rate));
+                }
+                // MPEG-2 AAC-LC (mandatory for sinks) unless the sink lists
+                // MPEG-4 AAC-LC only; the bit stream is the same
+                let object_type = match caps {
+                    Some(c) if c.object_types & AAC_OBJ_MPEG2_LC == 0 => AacObjectType::Mpeg4Lc,
+                    _ => AacObjectType::Mpeg2Lc,
+                };
+                ConfigRequest::Aac {
+                    object_type,
+                    sampling_frequency: sample_rate,
+                    channels: channels as u8,
+                    bit_rate: if crate::dev::overrides().aac_config_bitrate0 { 0 } else { self.aac_max_bitrate() },
+                    vbr: vbr && self.aac_vbr(),
+                }
             }
             CodecKind::Ldac => {
                 let freq = match sample_rate {
@@ -821,6 +1440,36 @@ impl RemoteCaps {
                 info.push(OPUS_FREQ_48000 | frame | ch);
                 ConfigRequest::Vendor(info)
             }
+            CodecKind::AptxAdaptive => {
+                let freq = match sample_rate {
+                    48000 => APTXAD_RATE_48000,
+                    96000 if self.aptxad_96k() => APTXAD_RATE_96000,
+                    _ => return Err(ConfigError::SampleRate(kind, sample_rate)),
+                };
+                // As upstream's select_config: 48 (or 96) kHz from a host encoder,
+                // stereo (joint stereo if the sink lists only that; the
+                // encoder runs stereo either way). An R2 sink gets the
+                // source's own R2 block, an R1 sink its own bytes 8..25 back
+                // with zero target latencies replaced and LL0 at least 80 ms
+                // (§7G, §7H, §7J).
+                let rc = &self.aptxad_info;
+                let byte = |i: usize| rc.get(i).copied().unwrap_or(0);
+                let mode = if byte(7) & APTXAD_CH_STEREO != 0 { APTXAD_CH_STEREO } else { APTXAD_CH_JOINT_STEREO };
+                let rate = freq | APTXAD_SOURCE_TYPE_HOST;
+                let info = if self.aptxad_r2() {
+                    aptxad_element(rate, mode, &APTXAD_R2_DATA)
+                } else {
+                    let mut data: Vec<u8> = (APTXAD_DATA..APTXAD_R2_DATA_END).map(byte).collect();
+                    for (b, default) in data.iter_mut().zip(APTXAD_TTP_DEFAULTS) {
+                        if *b == 0 {
+                            *b = default;
+                        }
+                    }
+                    data[0] = data[0].max(APTXAD_LL0_MIN);
+                    aptxad_element(rate, mode, &data)
+                };
+                ConfigRequest::Vendor(info)
+            }
             CodecKind::Opus05 => {
                 // The rate is not in the configuration: 48 kHz is the one
                 // PipeWire lists first and the only one A2DPWB encodes
@@ -840,6 +1489,12 @@ impl RemoteCaps {
                 ConfigRequest::Vendor(info)
             }
         };
+        match &request {
+            ConfigRequest::Vendor(info) => {
+                tracing::debug!("caps: {kind} SET_CONFIGURATION to SEID {remote_seid}: {info:02X?}")
+            }
+            other => tracing::debug!("caps: {kind} SET_CONFIGURATION to SEID {remote_seid}: {other:?}"),
+        }
         Ok(Configuration { kind, remote_seid, request })
     }
 }
@@ -852,6 +1507,7 @@ fn aptx_freq_bits(kind: CodecKind, remote_caps: u8, sample_rate: u32) -> Result<
     };
     let remote = remote_caps & APTX_FREQ_MASK;
     if remote != 0 && remote & freq == 0 {
+        tracing::debug!("caps: {kind} {sample_rate} Hz not in the device's rates (caps 0x{remote_caps:02x})");
         return Err(ConfigError::SampleRate(kind, sample_rate));
     }
     Ok(freq)
@@ -867,11 +1523,19 @@ pub struct Configuration {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigRequest {
-    /// 16 blocks, 8 subbands, loudness; SBC joint stereo, SBC XQ dual
-    /// channel (both mono for one channel)
-    Sbc { sampling_frequency: u16, channel_mode: ChannelMode, min_bitpool: u8, max_bitpool: u8 },
-    /// MPEG-2 AAC-LC, constant bit rate
-    Aac { sampling_frequency: u32, channels: u8, bit_rate: u32 },
+    /// By default 16 blocks, 8 subbands, loudness; SBC joint stereo, SBC XQ
+    /// dual channel (both mono for one channel)
+    Sbc {
+        sampling_frequency: u16,
+        channel_mode: ChannelMode,
+        blocks: u8,
+        subbands: u8,
+        allocation: Allocation,
+        min_bitpool: u8,
+        max_bitpool: u8,
+    },
+    /// AAC-LC, constant bit rate up to `bit_rate` (variable when `vbr`)
+    Aac { object_type: AacObjectType, sampling_frequency: u32, channels: u8, bit_rate: u32, vbr: bool },
     /// Vendor codec information
     Vendor(Vec<u8>),
 }
@@ -900,6 +1564,8 @@ pub enum Unavailable {
     /// The sink offers only aptX Adaptive, which has no open encoder
     AdaptiveOnly,
     NotSupported,
+    /// An experimental codec while experimental codecs are turned off
+    Experimental,
 }
 
 /// The codec to stream with
@@ -910,27 +1576,47 @@ pub struct Choice {
     pub replaced: Option<(CodecKind, Unavailable)>,
 }
 
-/// Picks the codec for `requested` (None = Auto). Without `fallback`, a
-/// requested codec the device does not offer is an error.
+/// Picks the codec for `requested` (None = Auto). A requested codec the
+/// device does not offer is replaced, with `fallback`, by the best one it
+/// offers (the first in [`CodecKind::AUTO_PRIORITY`], issue #86 round 8:
+/// not the next one below the codec asked for); without, it is an error.
+/// Unless `experimental`, the experimental codecs are never used: a
+/// requested one is replaced the same way.
 pub fn choose(
     caps: &RemoteCaps,
     requested: Option<CodecKind>,
     fallback: bool,
+    experimental: bool,
+) -> Result<Choice, Option<(CodecKind, Unavailable)>> {
+    choose_in(caps, requested, fallback, experimental, &AutoOrder::default())
+}
+
+/// [`choose`] in the device's codec order as the user set it (the profile's
+/// `codec_order`): Auto, and a fallback, take the first codec in `order`
+/// the device offers
+pub fn choose_in(
+    caps: &RemoteCaps,
+    requested: Option<CodecKind>,
+    fallback: bool,
+    experimental: bool,
+    order: &AutoOrder,
 ) -> Result<Choice, Option<(CodecKind, Unavailable)>> {
     let Some(wanted) = requested else {
-        return caps.best().map(|kind| Choice { kind, replaced: None }).ok_or(None);
+        return caps.best_in(order, experimental).map(|kind| Choice { kind, replaced: None }).ok_or(None);
     };
-    if wanted.available() && caps.has(wanted) {
+    if caps.usable(wanted, experimental) {
         return Ok(Choice { kind: wanted, replaced: None });
     }
-    let why = if caps.audio_sinks_in_use > 0 {
+    let why = if wanted.experimental() && !experimental {
+        Unavailable::Experimental
+    } else if caps.audio_sinks_in_use > 0 {
         Unavailable::SepInUse { in_use: caps.audio_sinks_in_use, total: caps.audio_sinks }
     } else if matches!(wanted, CodecKind::Aptx | CodecKind::AptxHd | CodecKind::AptxLl) && caps.aptx_adaptive {
         Unavailable::AdaptiveOnly
     } else {
         Unavailable::NotSupported
     };
-    if fallback && let Some(kind) = caps.best() {
+    if fallback && let Some(kind) = caps.best_in(order, experimental) {
         return Ok(Choice { kind, replaced: Some((wanted, why)) });
     }
     Err(Some((wanted, why)))
@@ -939,6 +1625,33 @@ pub fn choose(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Quality;
+
+    #[test]
+    fn forcing_makes_every_codec_configurable_on_a_sbc_only_sink() {
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc(3);
+        for kind in CodecKind::ALL.into_iter().filter(|k| k.available()) {
+            let forced = caps.forcing(kind).unwrap();
+            assert!(forced.has(kind), "{kind}");
+            assert_eq!(forced.configuration(kind, 48000, 2, 16).unwrap().remote_seid, 3, "{kind}");
+        }
+    }
+
+    #[test]
+    fn forcing_keeps_what_the_sink_lists_and_asks_the_codec_s_own_sep() {
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc(1);
+        assert_eq!(caps.forcing(CodecKind::Sbc), Some(caps.clone()));
+        // Mono-only aptX: not offered, but its SEP is the one to ask
+        caps.add_vendor(7, &[0x4F, 0, 0, 0, 0x01, 0x00, 0x21]);
+        assert!(!caps.has(CodecKind::Aptx));
+        if CodecKind::Aptx.available() {
+            let c = caps.forcing(CodecKind::Aptx).unwrap().configuration(CodecKind::Aptx, 48000, 2, 16).unwrap();
+            assert_eq!(c.remote_seid, 7);
+        }
+        assert_eq!(RemoteCaps::default().forcing(CodecKind::Sbc), None);
+    }
 
     #[test]
     fn auto_prefers_ldac_then_aptx_family() {
@@ -985,15 +1698,222 @@ mod tests {
     }
 
     #[test]
+    fn auto_order_is_by_sound_quality() {
+        use CodecKind::*;
+        assert_eq!(CodecKind::AUTO_PRIORITY, [LhdcV5, Ldac, AptxAdaptive, Opus, AptxHd, Aptx, AptxLl, Aac, SbcXq, Sbc]);
+        assert!(LhdcV5.quality_rank() < Ldac.quality_rank());
+        assert_eq!(Opus05.quality_rank(), Opus.quality_rank());
+        assert_eq!(FastStream.quality_rank(), CodecKind::AUTO_PRIORITY.len());
+    }
+
+    #[test]
+    fn auto_order_from_keys_keeps_every_codec_once() {
+        use CodecKind::*;
+        assert!(AutoOrder::from_keys::<&str>(&[]).is_default());
+        let o = AutoOrder::from_keys(&["aac", "nope", "ldac", "aac", "fs"]);
+        let c = o.codecs();
+        assert_eq!(&c[..3], &[Aac, Ldac, LhdcV5]);
+        assert_eq!(c.len(), CodecKind::AUTO_PRIORITY.len());
+        assert_eq!(o.rank(Aac), 0);
+        assert_eq!(o.rank(FastStream), c.len());
+        assert_eq!(o.rank(Opus05), o.rank(Opus));
+    }
+
+    #[test]
+    fn auto_and_the_fallback_follow_the_order_set() {
+        use CodecKind::*;
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc(1);
+        caps.add_aac(2);
+        caps.add_vendor(4, &[0x2D, 0x01, 0, 0, 0xAA, 0x00, 0x3C, 0x07]);
+        if !Aac.available() || !Ldac.available() {
+            return;
+        }
+        let aac_first = AutoOrder::from_keys(&["aac"]);
+        assert_eq!(choose_in(&caps, None, true, true, &aac_first).unwrap().kind, Aac);
+        assert_eq!(choose(&caps, None, true, true).unwrap().kind, Ldac);
+        // aptX HD not offered: the first codec in the order set the device
+        // offers (issue #86 round 8), SBC here, not LDAC below aptX HD
+        let order = AutoOrder::from_keys(&["aptxhd", "sbc", "ldac"]);
+        let c = choose_in(&caps, Some(AptxHd), true, true, &order).unwrap();
+        assert_eq!(c.kind, Sbc);
+        assert_eq!(c.replaced.map(|r| r.0), Some(AptxHd));
+        // An offered codec is taken whatever the order
+        assert_eq!(choose_in(&caps, Some(Ldac), true, true, &aac_first).unwrap().kind, Ldac);
+    }
+
+    #[test]
+    fn fallback_takes_the_best_codec_offered() {
+        use CodecKind::*;
+        // SBC, AAC, aptX and LDAC (no aptX HD, no LHDC)
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc(1);
+        caps.add_aac(2);
+        caps.add_vendor(3, &[0x4F, 0, 0, 0, 0x01, 0x00, 0x22]);
+        caps.add_vendor(4, &[0x2D, 0x01, 0, 0, 0xAA, 0x00, 0x3C, 0x07]);
+        let fell = |want| choose(&caps, Some(want), true, true).unwrap().kind;
+        let best = caps.best().unwrap();
+        // Whatever is missing: the best the device offers (issue #86 round
+        // 8: not the next one below the codec asked for)
+        for want in [LhdcV5, AptxHd, Opus, Opus05, SbcXq, FastStream, AptxLl] {
+            assert_eq!(fell(want), best, "{want}");
+        }
+        if Ldac.available() {
+            assert_eq!(fell(AptxHd), Ldac);
+        }
+        // An offered codec is taken as it is
+        assert_eq!(fell(Sbc), Sbc);
+        let r = choose(&caps, Some(SbcXq), true, true).unwrap();
+        assert_eq!(r.replaced, Some((SbcXq, Unavailable::NotSupported)));
+        // Only SBC: whatever was asked for ends there
+        let mut sbc = RemoteCaps::default();
+        sbc.add_sbc(1);
+        for k in CodecKind::ALL {
+            assert_eq!(choose(&sbc, Some(k), true, true).unwrap().kind, Sbc, "{k}");
+        }
+    }
+
+    #[test]
+    fn opus_missing_falls_back_to_aptx_adaptive_not_aptx() {
+        use CodecKind::*;
+        // The tester's EarFun Air Pro 4+ (issue #86 round 8): SBC, AAC, aptX
+        // and aptX Adaptive; Opus chosen
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc(1);
+        caps.add_aac(2);
+        caps.add_vendor(3, &[0x4F, 0, 0, 0, 0x01, 0x00, 0x22]);
+        caps.add_vendor(9, &PX7_S2E_APTXAD);
+        if !AptxAdaptive.available() || !Aptx.available() || !Aac.available() {
+            return;
+        }
+        let c = choose(&caps, Some(Opus), true, true).unwrap();
+        assert_eq!(c.kind, AptxAdaptive);
+        assert_eq!(c.replaced.map(|r| r.0), Some(Opus));
+        // The device's own order, AAC first: AAC
+        let aac_first = AutoOrder::from_keys(&["aac", "sbc"]);
+        assert_eq!(choose_in(&caps, Some(Opus), true, true, &aac_first).unwrap().kind, Aac);
+    }
+
+    #[test]
     fn fallback_reports_why() {
         let mut caps = RemoteCaps::default();
         caps.add_sbc(1);
         caps.audio_sinks = 2;
         caps.audio_sinks_in_use = 1;
-        let c = choose(&caps, Some(CodecKind::Ldac), true).unwrap();
+        let c = choose(&caps, Some(CodecKind::Ldac), true, true).unwrap();
         assert_eq!(c.kind, CodecKind::Sbc);
         assert_eq!(c.replaced, Some((CodecKind::Ldac, Unavailable::SepInUse { in_use: 1, total: 2 })));
-        assert!(choose(&caps, Some(CodecKind::Ldac), false).is_err());
+        assert!(choose(&caps, Some(CodecKind::Ldac), false, true).is_err());
+    }
+
+    #[test]
+    fn ldac_rate_as_the_sink_lists_it() {
+        let ldac = |rates: u8| {
+            let mut caps = RemoteCaps::default();
+            let mut info = vendor_header(LDAC_VENDOR_ID, LDAC_CODEC_ID);
+            info.extend_from_slice(&[rates, LDAC_CH_ALL]);
+            assert_eq!(caps.add_vendor(1, &info), VendorCapability::Taken(CodecKind::Ldac));
+            caps
+        };
+        // Every rate: as asked (96 kHz chosen, Auto's 48 kHz)
+        let all = ldac(LDAC_FREQ_ALL);
+        assert_eq!((all.pick_ldac_sample_rate(96000), all.pick_ldac_sample_rate(48000)), (96000, 48000));
+        // Not reported: as every rate
+        assert_eq!(RemoteCaps::default().pick_ldac_sample_rate(96000), 96000);
+        // 44.1 / 48 kHz only (88.2 / 96 kHz are optional): the highest below
+        let base = ldac(0x30);
+        assert_eq!((base.pick_ldac_sample_rate(96000), base.pick_ldac_sample_rate(44100)), (48000, 44100));
+        // 88.2 kHz the highest
+        assert_eq!(ldac(0x38).pick_ldac_sample_rate(96000), 88200);
+        // Only above: the lowest of them
+        assert_eq!(ldac(0x0C).pick_ldac_sample_rate(48000), 88200);
+    }
+
+    #[test]
+    fn aac_caps_and_configuration() {
+        let all = AacCapabilities {
+            object_types: AAC_OBJ_MPEG2_LC | AAC_OBJ_MPEG4_LC,
+            sampling_frequency: AAC_FREQ_44100 | AAC_FREQ_48000,
+            channels: AAC_CH_1 | AAC_CH_2,
+            bit_rate: 320_000,
+            vbr: true,
+        };
+        // Unknown capabilities: as before
+        let mut caps = RemoteCaps::default();
+        caps.add_aac(2);
+        assert_eq!(caps.aac_max_bitrate(), 256_000);
+        assert_eq!((caps.pick_aac_sample_rate(44100), caps.pick_aac_sample_rate(96000)), (44100, 48000));
+
+        // A sink above 256 kbps: 256 kbps, MPEG-2 AAC-LC
+        caps.add_aac_caps(2, all);
+        let c = caps.configuration(CodecKind::Aac, 48000, 2, 16).unwrap();
+        assert_eq!(
+            c.request,
+            ConfigRequest::Aac {
+                object_type: AacObjectType::Mpeg2Lc,
+                sampling_frequency: 48000,
+                channels: 2,
+                bit_rate: 256_000,
+                vbr: false
+            }
+        );
+
+        // 128 kbps, 44.1 kHz, MPEG-4 AAC-LC only
+        let mut caps = RemoteCaps::default();
+        caps.add_aac_caps(
+            3,
+            AacCapabilities {
+                object_types: AAC_OBJ_MPEG4_LC,
+                sampling_frequency: AAC_FREQ_44100,
+                bit_rate: 128_000,
+                ..all
+            },
+        );
+        assert_eq!(caps.aac_max_bitrate(), 128_000);
+        assert_eq!(caps.pick_aac_sample_rate(48000), 44100);
+        assert_eq!(
+            caps.configuration(CodecKind::Aac, 48000, 2, 16),
+            Err(ConfigError::SampleRate(CodecKind::Aac, 48000))
+        );
+        let c = caps.configuration(CodecKind::Aac, 44100, 2, 16).unwrap();
+        assert_eq!(
+            c.request,
+            ConfigRequest::Aac {
+                object_type: AacObjectType::Mpeg4Lc,
+                sampling_frequency: 44100,
+                channels: 2,
+                bit_rate: 128_000,
+                vbr: false
+            }
+        );
+        // VBR asked for: taken only where the sink lists it
+        let vbr = |c: Configuration| matches!(c.request, ConfigRequest::Aac { vbr: true, .. });
+        assert!(vbr(caps.configuration_vbr(CodecKind::Aac, 44100, 2, 16, true).unwrap()));
+        let mut cbr = RemoteCaps::default();
+        cbr.add_aac_caps(
+            3,
+            AacCapabilities {
+                object_types: AAC_OBJ_MPEG4_LC,
+                sampling_frequency: AAC_FREQ_44100,
+                bit_rate: 128_000,
+                vbr: false,
+                ..all
+            },
+        );
+        assert!(!vbr(cbr.configuration_vbr(CodecKind::Aac, 44100, 2, 16, true).unwrap()));
+        assert!(vbr(caps.configuration_vbr(CodecKind::Aac, 44100, 2, 16, true).unwrap()));
+        assert!(!vbr(caps.configuration(CodecKind::Aac, 44100, 2, 16).unwrap()));
+
+        // HE-AAC only: no AAC for Auto; a later usable SEP is taken
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc(1);
+        caps.add_aac_caps(2, AacCapabilities { object_types: 0x08, ..all });
+        assert!(!caps.has(CodecKind::Aac));
+        assert_eq!(caps.best(), Some(CodecKind::Sbc));
+        caps.add_aac_caps(4, all);
+        assert_eq!(caps.sep(CodecKind::Aac), Some(RemoteSep { seid: 4 }));
+        caps.add_aac_caps(5, AacCapabilities { object_types: 0x08, ..all });
+        assert_eq!(caps.sep(CodecKind::Aac), Some(RemoteSep { seid: 4 }));
     }
 
     /// A headset's SBC SEP: everything, bitpool 2..53
@@ -1007,6 +1927,90 @@ mod tests {
             min_bitpool: 2,
             max_bitpool: 53,
         }
+    }
+
+    #[test]
+    fn capabilities_as_lists() {
+        let c = SbcCapabilities {
+            sampling_frequency: 0x03,
+            channel_mode: 0x09,
+            block_length: 0x05,
+            subbands: 0x01,
+            allocation_method: 0x01,
+            ..sbc_all()
+        };
+        assert_eq!(c.sample_rates(), vec![44100, 48000]);
+        assert_eq!(c.channel_modes(), vec![ChannelMode::Mono, ChannelMode::JointStereo]);
+        assert_eq!((c.block_lengths(), c.subband_counts()), (vec![8, 16], vec![8]));
+        assert_eq!(c.allocations(), vec![Allocation::Loudness]);
+        let all = sbc_all();
+        assert_eq!((all.sample_rates().len(), all.channel_modes().len(), all.allocations().len()), (4, 4, 2));
+        let a = AacCapabilities {
+            object_types: AAC_OBJ_MPEG2_LC | 0x04,
+            sampling_frequency: AAC_FREQ_44100 | AAC_FREQ_48000 | 0x001,
+            channels: AAC_CH_1 | AAC_CH_2,
+            bit_rate: 320_000,
+            vbr: true,
+        };
+        assert_eq!(a.object_type_names(), vec!["MPEG-2 AAC-LC", "MPEG-4 HE-AAC"]);
+        assert_eq!(a.sample_rates(), vec![44100, 48000, 96000]);
+        assert_eq!(a.channel_counts(), vec![1, 2]);
+    }
+
+    #[test]
+    fn listed_rates_depths_and_bit_rates() {
+        // Not offered: nothing listed
+        let none = RemoteCaps::default();
+        assert!(none.listed_sample_rates(CodecKind::Ldac).is_empty());
+        assert_eq!(none.listed_max_bitrate(CodecKind::Aac), 0);
+
+        // An LHDC V5 sink of 44.1 / 48 kHz, 16 / 24-bit, at most 900 kbps
+        // (moto buds+: 48 kHz at most, issue #86)
+        let mut caps = RemoteCaps { lhdcv5: Some(RemoteSep { seid: 1 }), ..Default::default() };
+        caps.lhdcv5_info[6] = LHDCV5_SR_44100 | LHDCV5_SR_48000;
+        caps.lhdcv5_info[7] = LHDCV5_BITS_16 | LHDCV5_BITS_24 | 0x30;
+        assert_eq!(caps.listed_sample_rates(CodecKind::LhdcV5), vec![44100, 48000]);
+        assert_eq!(caps.listed_bit_depths(CodecKind::LhdcV5), vec![16, 24]);
+        assert_eq!(caps.listed_max_bitrate(CodecKind::LhdcV5), 900_000);
+        // No 88.2 kHz: a rate not listed falls back to 48 kHz, not 96 kHz
+        caps.lhdcv5_info[6] |= LHDCV5_SR_96000;
+        assert_eq!(caps.listed_sample_rates(CodecKind::LhdcV5), vec![44100, 48000, 96000]);
+        assert_eq!(caps.pick_lhdcv5_sample_rate(88200), 48000);
+        assert_eq!(caps.pick_lhdcv5_sample_rate(96000), 96000);
+        caps.lhdcv5_info[7] = LHDCV5_BITS_16;
+        assert_eq!(caps.listed_bit_depths(CodecKind::LhdcV5), vec![16]);
+        assert_eq!(caps.listed_max_bitrate(CodecKind::LhdcV5), 0);
+
+        // AAC's bit rate field as it is (0x020000 = 131072 bps)
+        caps.add_aac_caps(
+            2,
+            AacCapabilities {
+                object_types: AAC_OBJ_MPEG2_LC,
+                sampling_frequency: AAC_FREQ_44100 | AAC_FREQ_48000,
+                channels: AAC_CH_2,
+                bit_rate: 0x02_0000,
+                vbr: false,
+            },
+        );
+        assert_eq!(caps.listed_max_bitrate(CodecKind::Aac), 131_072);
+        assert_eq!(caps.listed_sample_rates(CodecKind::Aac), vec![44100, 48000]);
+
+        // SBC from its capabilities; LDAC's rates, every one when not said
+        caps.add_sbc_caps(3, SbcCapabilities { sampling_frequency: SBC_FREQ_48000, ..sbc_all() });
+        assert_eq!(caps.listed_sample_rates(CodecKind::Sbc), vec![48000]);
+        caps.ldac = Some(RemoteSep { seid: 4 });
+        caps.ldac_rates = 0x30;
+        assert_eq!(caps.listed_sample_rates(CodecKind::Ldac), vec![44100, 48000]);
+        caps.ldac_rates = 0;
+        assert_eq!(caps.listed_sample_rates(CodecKind::Ldac), vec![44100, 48000, 88200, 96000]);
+
+        // aptX Adaptive: 96 kHz only to an R2 sink that lists it
+        let mut r2 = RemoteCaps::default();
+        r2.add_vendor(5, &r2_aptxad(0x0F00_0000)[..30]);
+        assert_eq!(r2.listed_sample_rates(CodecKind::AptxAdaptive), vec![48000, 96000]);
+        let mut r1 = RemoteCaps::default();
+        r1.add_vendor(5, &PX7_S2E_APTXAD);
+        assert_eq!(r1.listed_sample_rates(CodecKind::AptxAdaptive), vec![48000]);
     }
 
     #[test]
@@ -1033,6 +2037,9 @@ mod tests {
             ConfigRequest::Sbc {
                 sampling_frequency: 44100,
                 channel_mode: ChannelMode::DualChannel,
+                blocks: 16,
+                subbands: 8,
+                allocation: Allocation::Loudness,
                 min_bitpool: 2,
                 max_bitpool: 47
             }
@@ -1043,6 +2050,9 @@ mod tests {
             ConfigRequest::Sbc {
                 sampling_frequency: 48000,
                 channel_mode: ChannelMode::Mono,
+                blocks: 16,
+                subbands: 8,
+                allocation: Allocation::Loudness,
                 min_bitpool: 2,
                 max_bitpool: 43
             }
@@ -1055,6 +2065,9 @@ mod tests {
             ConfigRequest::Sbc {
                 sampling_frequency: 48000,
                 channel_mode: ChannelMode::JointStereo,
+                blocks: 16,
+                subbands: 8,
+                allocation: Allocation::Loudness,
                 min_bitpool: 2,
                 max_bitpool: 53
             }
@@ -1065,6 +2078,140 @@ mod tests {
         caps.add_sbc_caps(1, SbcCapabilities { max_bitpool: 45, ..sbc_all() });
         let c = caps.configuration(CodecKind::SbcXq, 44100, 2, 16).unwrap();
         assert!(matches!(c.request, ConfigRequest::Sbc { max_bitpool: 45, .. }));
+
+        // Moto buds+ (issue #86): dual channel up to 39. PipeWire streams
+        // SBC-XQ at 39 per channel there (~463 kbps at 44.1 kHz), so do we
+        let moto = SbcCapabilities { min_bitpool: 2, max_bitpool: 39, ..sbc_all() };
+        assert_eq!(moto.xq_refusal(), None);
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc_caps(1, moto);
+        assert!(caps.has(CodecKind::SbcXq));
+        for rate in [44100, 48000] {
+            let c = caps.configuration(CodecKind::SbcXq, rate, 2, 16).unwrap();
+            let ConfigRequest::Sbc { min_bitpool, max_bitpool, channel_mode, .. } = c.request else { panic!() };
+            assert_eq!((min_bitpool, max_bitpool, channel_mode), (2, 39, ChannelMode::DualChannel), "{rate}");
+        }
+        // Below the lowest XQ bitpool: plain SBC, and the log says why
+        let low = SbcCapabilities { max_bitpool: 28, ..sbc_all() };
+        assert_eq!(low.xq_refusal(), Some("largest bitpool below 29"));
+        assert_eq!(SbcCapabilities { channel_mode: 0x0B, ..sbc_all() }.xq_refusal(), Some("no dual channel"));
+    }
+
+    #[test]
+    fn sbc_configuration_takes_the_profiles_setup() {
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc_caps(1, sbc_all());
+        let wanted = sbc::SbcParams {
+            blocks: 8,
+            subbands: 4,
+            allocation: Some(Allocation::Snr),
+            channel_mode: Some(ChannelMode::Stereo),
+            min_bitpool: 0,
+        };
+        let c = caps.configuration_with(CodecKind::Sbc, 44100, 2, 16, false, wanted).unwrap();
+        assert_eq!(
+            c.request,
+            ConfigRequest::Sbc {
+                sampling_frequency: 44100,
+                channel_mode: ChannelMode::Stereo,
+                blocks: 8,
+                subbands: 4,
+                allocation: Allocation::Snr,
+                min_bitpool: 2,
+                max_bitpool: 53
+            }
+        );
+        assert_eq!(caps.sbc_params(CodecKind::Sbc, wanted), (wanted, vec![]));
+        // Mono input stays mono; mono asked for stereo input is mono too
+        let c = caps.configuration_with(CodecKind::Sbc, 48000, 1, 16, false, wanted).unwrap();
+        assert!(matches!(c.request, ConfigRequest::Sbc { channel_mode: ChannelMode::Mono, blocks: 8, .. }));
+        let mono = sbc::SbcParams { channel_mode: Some(ChannelMode::Mono), ..Default::default() };
+        let c = caps.configuration_with(CodecKind::Sbc, 48000, 2, 16, false, mono).unwrap();
+        assert!(matches!(c.request, ConfigRequest::Sbc { channel_mode: ChannelMode::Mono, blocks: 16, .. }));
+        // SBC XQ: the frame setup, but always dual channel and its bitpool cap
+        let c = caps.configuration_with(CodecKind::SbcXq, 44100, 2, 16, false, wanted).unwrap();
+        assert_eq!(
+            c.request,
+            ConfigRequest::Sbc {
+                sampling_frequency: 44100,
+                channel_mode: ChannelMode::DualChannel,
+                blocks: 8,
+                subbands: 4,
+                allocation: Allocation::Snr,
+                min_bitpool: 2,
+                max_bitpool: 47
+            }
+        );
+        // Unknown capabilities: taken as asked
+        let mut unknown = RemoteCaps::default();
+        unknown.add_sbc(1);
+        let c = unknown.configuration_with(CodecKind::Sbc, 44100, 2, 16, false, wanted).unwrap();
+        assert!(matches!(c.request, ConfigRequest::Sbc { blocks: 8, subbands: 4, allocation: Allocation::Snr, .. }));
+    }
+
+    #[test]
+    fn sbc_setup_the_device_does_not_list_falls_back() {
+        // 16 blocks, 8 subbands, loudness, joint stereo and mono only
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc_caps(
+            1,
+            SbcCapabilities {
+                channel_mode: 0x09,
+                block_length: 0x01,
+                subbands: 0x01,
+                allocation_method: 0x01,
+                ..sbc_all()
+            },
+        );
+        let wanted = sbc::SbcParams {
+            blocks: 4,
+            subbands: 4,
+            allocation: Some(Allocation::Snr),
+            channel_mode: Some(ChannelMode::Stereo),
+            min_bitpool: 0,
+        };
+        let (p, notes) = caps.sbc_params(CodecKind::Sbc, wanted);
+        assert!(p.is_default(), "{p:?}");
+        assert_eq!(notes.len(), 4, "{notes:?}");
+        assert!(notes[0].contains("4 blocks"), "{notes:?}");
+        let c = caps.configuration_with(CodecKind::Sbc, 44100, 2, 16, false, wanted).unwrap();
+        assert_eq!(c.request, caps.configuration(CodecKind::Sbc, 44100, 2, 16).unwrap().request);
+        // What it lists is kept
+        let (p, notes) = caps
+            .sbc_params(CodecKind::Sbc, sbc::SbcParams { blocks: 16, channel_mode: Some(ChannelMode::Mono), ..wanted });
+        assert_eq!((p.blocks, p.subbands, p.allocation, p.channel_mode), (16, 0, None, Some(ChannelMode::Mono)));
+        assert_eq!(notes.len(), 2);
+        // Values SBC does not have are the default, without a note
+        let (p, notes) =
+            caps.sbc_params(CodecKind::Sbc, sbc::SbcParams { blocks: 6, subbands: 2, ..Default::default() });
+        assert!(p.is_default() && notes.is_empty());
+        // SBC XQ never takes a channel mode of its own
+        let (p, notes) = caps.sbc_params(
+            CodecKind::SbcXq,
+            sbc::SbcParams { channel_mode: Some(ChannelMode::Stereo), ..Default::default() },
+        );
+        assert!(p.is_default() && notes.is_empty());
+        // Plain SBC has no dual channel (SBC XQ is that, issue #86), even
+        // from a sink that lists it
+        let mut all = RemoteCaps::default();
+        all.add_sbc_caps(1, sbc_all());
+        let dual = sbc::SbcParams { channel_mode: Some(ChannelMode::DualChannel), ..Default::default() };
+        let (p, notes) = all.sbc_params(CodecKind::Sbc, dual);
+        assert!(p.is_default() && notes.len() == 1, "{p:?} {notes:?}");
+        let c = all.configuration_with(CodecKind::Sbc, 44100, 2, 16, false, dual).unwrap();
+        assert!(matches!(
+            c.request,
+            ConfigRequest::Sbc { channel_mode: ChannelMode::JointStereo, max_bitpool: 53, .. }
+        ));
+    }
+
+    #[test]
+    fn local_sbc_endpoint_offers_every_setup() {
+        let sbc = local_endpoints().into_iter().find(|e| e.kind == CodecKind::Sbc).unwrap();
+        // All block lengths, both subbands and allocations
+        assert_eq!(sbc.caps[1], 0xFF);
+        // Configured by default: 16 blocks, 8 subbands, loudness
+        assert_eq!(sbc.config[1], 0x15);
     }
 
     #[test]
@@ -1094,10 +2241,44 @@ mod tests {
     }
 
     #[test]
+    fn sbc_configuration_takes_the_profiles_minimum_bitpool() {
+        let range = |caps: &RemoteCaps, kind: CodecKind, rate: u32, min: u8| {
+            let p = sbc::SbcParams { min_bitpool: min, ..Default::default() };
+            let c = caps.configuration_with(kind, rate, 2, 16, false, p).unwrap();
+            let ConfigRequest::Sbc { min_bitpool, max_bitpool, .. } = c.request else { panic!() };
+            (min_bitpool, max_bitpool)
+        };
+        // (sink min, sink max, profile min) -> configured (min, max)
+        for ((smin, smax), min, want) in [
+            ((2, 53), 0, (2, 53)), // Auto: as before
+            ((2, 53), 30, (30, 53)),
+            ((2, 53), 60, (53, 53)),  // never above the maximum
+            ((10, 40), 5, (10, 40)),  // never below the sink's minimum
+            ((10, 40), 45, (40, 40)), // nor above its maximum
+            ((2, 250), 53, (53, 53)),
+        ] {
+            let mut caps = RemoteCaps::default();
+            caps.add_sbc_caps(1, SbcCapabilities { min_bitpool: smin, max_bitpool: smax, ..sbc_all() });
+            assert_eq!(range(&caps, CodecKind::Sbc, 44100, min), want, "{smin}-{smax} {min}");
+        }
+        // SBC XQ: within its cap of the rate
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc_caps(1, sbc_all());
+        assert_eq!(range(&caps, CodecKind::SbcXq, 48000, 0), (2, 43));
+        assert_eq!(range(&caps, CodecKind::SbcXq, 48000, 30), (30, 43));
+        assert_eq!(range(&caps, CodecKind::SbcXq, 48000, 50), (43, 43));
+        // Capabilities not known: 2..53 and the minimum in it
+        let mut unknown = RemoteCaps::default();
+        unknown.add_sbc(1);
+        assert_eq!(range(&unknown, CodecKind::Sbc, 44100, 0), (2, 53));
+        assert_eq!(range(&unknown, CodecKind::Sbc, 44100, 20), (20, 53));
+    }
+
+    #[test]
     fn sbc_xq_falls_back_to_sbc() {
         let no_xq = [
             SbcCapabilities { channel_mode: 0x0B, ..sbc_all() }, // no dual channel
-            SbcCapabilities { max_bitpool: 42, ..sbc_all() },    // bitpool too low
+            SbcCapabilities { max_bitpool: 28, ..sbc_all() },    // bitpool too low
             SbcCapabilities { block_length: 0x0E, ..sbc_all() }, // no 16 blocks
             SbcCapabilities { subbands: 0x02, ..sbc_all() },     // 4 subbands only
             SbcCapabilities { allocation_method: 0x02, ..sbc_all() }, // SNR only
@@ -1112,10 +2293,10 @@ mod tests {
                 caps.configuration(CodecKind::SbcXq, 48000, 2, 16),
                 Err(ConfigError::NotOffered(CodecKind::SbcXq))
             );
-            let c = choose(&caps, Some(CodecKind::SbcXq), true).unwrap();
+            let c = choose(&caps, Some(CodecKind::SbcXq), true, true).unwrap();
             assert_eq!(c.kind, CodecKind::Sbc);
             assert_eq!(c.replaced, Some((CodecKind::SbcXq, Unavailable::NotSupported)));
-            assert!(choose(&caps, Some(CodecKind::SbcXq), false).is_err());
+            assert!(choose(&caps, Some(CodecKind::SbcXq), false, true).is_err());
         }
         // Capabilities not known: SBC only
         let mut caps = RemoteCaps::default();
@@ -1141,7 +2322,7 @@ mod tests {
         let mut only = RemoteCaps::default();
         only.add_vendor(5, &info);
         assert_eq!(only.best(), None);
-        assert_eq!(choose(&only, Some(CodecKind::FastStream), false).unwrap().kind, CodecKind::FastStream);
+        assert_eq!(choose(&only, Some(CodecKind::FastStream), false, true).unwrap().kind, CodecKind::FastStream);
 
         let c = caps.configuration(CodecKind::FastStream, 48000, 2, 16).unwrap();
         assert_eq!(c.remote_seid, 5);
@@ -1178,7 +2359,7 @@ mod tests {
         // Fallback from FastStream goes to the best codec
         let mut caps = RemoteCaps::default();
         caps.add_sbc(1);
-        let c = choose(&caps, Some(CodecKind::FastStream), true).unwrap();
+        let c = choose(&caps, Some(CodecKind::FastStream), true, true).unwrap();
         assert_eq!((c.kind, c.replaced), (CodecKind::Sbc, Some((CodecKind::FastStream, Unavailable::NotSupported))));
 
         // The local SEP: vendor header, music direction, 44.1 + 48 kHz
@@ -1211,10 +2392,10 @@ mod tests {
             caps.configuration(CodecKind::Opus, 44100, 2, 16),
             Err(ConfigError::SampleRate(CodecKind::Opus, 44100))
         );
-        // LDAC and the aptX family still win Auto
+        // Opus is above the aptX family in Auto's order (issue #86)
         caps.add_vendor(3, &[0x4F, 0, 0, 0, 0x01, 0x00, 0x22]);
-        if CodecKind::Aptx.available() {
-            assert_eq!(caps.best(), Some(CodecKind::Aptx));
+        if CodecKind::Opus.available() {
+            assert_eq!(caps.best(), Some(CodecKind::Opus));
         }
 
         // PipeWire's capabilities: 10 + 20 ms, mono / stereo / dual mono
@@ -1255,7 +2436,7 @@ mod tests {
         assert_eq!(ep.caps, vec![0xE0, 0, 0, 0, 0x01, 0x00, 0x9B]);
         assert_eq!(ep.config, vec![0xE0, 0, 0, 0, 0x01, 0x00, 0x92]);
         // BTstack's static endpoint pool (MAX_NR_AVDTP_STREAM_ENDPOINTS)
-        assert!(eps.len() <= 10);
+        assert!(eps.len() <= 11);
     }
 
     /// PipeWire's opus_05 sink SEP (codec_fill_caps): stereo at front left +
@@ -1280,7 +2461,7 @@ mod tests {
         only.add_vendor(6, &pipewire_opus05(2, 0x1F, 0, 0));
         assert_eq!(only.best(), None);
         if CodecKind::Opus05.available() {
-            assert_eq!(choose(&only, Some(CodecKind::Opus05), false).unwrap().kind, CodecKind::Opus05);
+            assert_eq!(choose(&only, Some(CodecKind::Opus05), false, true).unwrap().kind, CodecKind::Opus05);
         }
 
         // 10 ms, stereo (mono input too), 312 * 1024 bps, no return channel
@@ -1358,7 +2539,7 @@ mod tests {
         config.resize(24, 0);
         assert_eq!(ep.config, config);
         // BTstack's static endpoint pool (MAX_NR_AVDTP_STREAM_ENDPOINTS)
-        assert!(eps.len() <= 10);
+        assert!(eps.len() <= 11);
     }
 
     #[test]
@@ -1368,5 +2549,218 @@ mod tests {
         assert_eq!(caps.pick_aptx_sample_rate(CodecKind::Aptx, 48000), 44100);
         assert_eq!(caps.pick_aptx_sample_rate(CodecKind::Aptx, 96000), 44100);
         assert!(caps.configuration(CodecKind::Aptx, 48000, 2, 16).is_err());
+    }
+
+    /// The B&W Px7 S2e's aptX Adaptive capabilities (upstream's
+    /// spec/px7s2e-a2dp-caps.md): an R1 sink, 48 + 44.1 kHz, stereo + joint
+    /// stereo, vendor-tuned target latencies with HQ 0
+    const PX7_S2E_APTXAD: [u8; 40] = [
+        0xD7, 0, 0, 0, 0xAD, 0, 0x19, 0x0A, 0x37, 0x6A, 0, 0xAF, 0x64, 0x4B, 0, 0, 0xAA, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+
+    /// An R2 sink's capabilities with features `features`
+    fn r2_aptxad(features: u32) -> Vec<u8> {
+        let mut info = PX7_S2E_APTXAD.to_vec();
+        info[6] = 0x18 | 0x20;
+        info[15] = 1;
+        info[16..20].copy_from_slice(&features.to_le_bytes());
+        info[20..24].copy_from_slice(&[0x02, 0x03, 0x03, 0x03]);
+        info[24..26].copy_from_slice(&[0x00, 0xAA]);
+        info
+    }
+
+    #[test]
+    fn aptx_adaptive_caps_and_configuration() {
+        if !CodecKind::AptxAdaptive.available() {
+            let mut caps = RemoteCaps::default();
+            assert_eq!(caps.add_vendor(9, &PX7_S2E_APTXAD), VendorCapability::AptxAdaptive);
+            assert!(caps.aptx_adaptive && !caps.has(CodecKind::AptxAdaptive));
+            return;
+        }
+        // BTstack cuts the 40 bytes to 30: all that is used is there
+        for info in [&PX7_S2E_APTXAD[..], &PX7_S2E_APTXAD[..30]] {
+            let mut caps = RemoteCaps::default();
+            caps.add_sbc(1);
+            assert_eq!(caps.add_vendor(9, info), VendorCapability::Taken(CodecKind::AptxAdaptive));
+            assert!(caps.aptx_adaptive && caps.has(CodecKind::AptxAdaptive));
+            assert!(!caps.aptxad_r2());
+            // Auto's choice above SBC (issue #86)
+            assert_eq!(caps.best(), Some(CodecKind::AptxAdaptive));
+            // Upstream's verified configuration for the Px7 S2e: 48 kHz from
+            // a host encoder (0x12), stereo, the sink's latencies with LL0
+            // raised to 80 ms and the zero HQ byte to 200 ms
+            let c = caps.configuration(CodecKind::AptxAdaptive, 48000, 2, 24).unwrap();
+            assert_eq!(c.remote_seid, 9);
+            let mut want = vec![0xD7, 0, 0, 0, 0xAD, 0, 0x12, 0x02, 0x50, 0x6A, 0x64, 0xAF, 0x64, 0x4B, 0, 0, 0xAA];
+            want.resize(40, 0);
+            assert_eq!(c.request, ConfigRequest::Vendor(want));
+            assert_eq!(
+                caps.configuration(CodecKind::AptxAdaptive, 44100, 2, 24),
+                Err(ConfigError::SampleRate(CodecKind::AptxAdaptive, 44100))
+            );
+        }
+
+        // R2 sinks get the source's own R2 block, whatever their features
+        for features in [0x0F00_0000, 0x0F00_0003, 0x0F00_0017] {
+            let mut caps = RemoteCaps::default();
+            caps.add_vendor(4, &r2_aptxad(features)[..30]);
+            assert!(caps.aptxad_r2());
+            let ConfigRequest::Vendor(info) =
+                caps.configuration(CodecKind::AptxAdaptive, 48000, 2, 24).unwrap().request
+            else {
+                panic!("not a vendor configuration")
+            };
+            assert_eq!(info.len(), 40);
+            assert_eq!(info[6..8], [0x12, 0x02]);
+            assert_eq!(info[8..27], APTXAD_R2_DATA);
+            assert!(info[27..].iter().all(|&b| b == 0));
+        }
+
+        // 96 kHz: an R2 sink that lists it, asked for by the profile, high
+        // quality; 0xA2 in the configuration (both rate bits, as a
+        // Snapdragon phone sends it). Else 48 kHz.
+        let mut r2 = RemoteCaps::default();
+        r2.add_vendor(4, &r2_aptxad(0x0F00_0000)[..30]);
+        assert!(r2.aptxad_96k());
+        assert_eq!(r2.pick_aptxad_sample_rate(96000, Quality::High), 96000);
+        assert_eq!(r2.pick_aptxad_sample_rate(96000, Quality::Mobile), 96000);
+        assert_eq!(r2.pick_aptxad_sample_rate(96000, Quality::LowLatency), 48000);
+        for wanted in [44100, 48000, 88200, 192000] {
+            assert_eq!(r2.pick_aptxad_sample_rate(wanted, Quality::High), 48000, "{wanted}");
+        }
+        let ConfigRequest::Vendor(info) = r2.configuration(CodecKind::AptxAdaptive, 96000, 2, 24).unwrap().request
+        else {
+            panic!("not a vendor configuration")
+        };
+        assert_eq!(info[6..8], [0xA2, 0x02]);
+        assert_eq!(info[8..27], APTXAD_R2_DATA);
+        // Real sinks (issue #86): an EarFun Air Pro 4+ lists 0xD1 (0x80
+        // only), a MOMENTUM 5 0x71 (0x20 only): both take 96 kHz, configured
+        // 0xA2 either way, as Android does
+        for byte6 in [0xD1, 0x71, 0xB1] {
+            let mut info = r2_aptxad(0x0F00_0087);
+            info[6] = byte6;
+            let mut caps = RemoteCaps::default();
+            caps.add_vendor(4, &info[..30]);
+            assert!(caps.aptxad_96k(), "{byte6:#x}");
+            assert_eq!(caps.listed_sample_rates(CodecKind::AptxAdaptive), [48000, 96000], "{byte6:#x}");
+            assert_eq!(caps.aptxad_no_96k(Quality::High), None, "{byte6:#x}");
+            assert_eq!(caps.pick_aptxad_sample_rate(96000, Quality::High), 96000, "{byte6:#x}");
+            let ConfigRequest::Vendor(c) = caps.configuration(CodecKind::AptxAdaptive, 96000, 2, 24).unwrap().request
+            else {
+                panic!("not a vendor configuration")
+            };
+            assert_eq!(c[6..8], [0xA2, 0x02], "{byte6:#x}");
+        }
+        // An R2 sink without 96 kHz (a Bose QC Ultra's 0x51: 44.1 and 48 kHz
+        // only), an R1 sink that lists it anyway: 48 kHz
+        let mut no96 = r2_aptxad(0x0F00_0000);
+        no96[6] = 0x51;
+        let mut r1_96 = PX7_S2E_APTXAD;
+        r1_96[6] |= 0xA0;
+        assert_eq!(r2.aptxad_no_96k(Quality::High), None);
+        assert!(r2.aptxad_no_96k(Quality::LowLatency).is_some_and(|w| w.contains("low latency")));
+        for (info, why) in [(&no96[..30], "does not list"), (&r1_96[..], "R1")] {
+            let mut caps = RemoteCaps::default();
+            caps.add_vendor(4, info);
+            assert!(!caps.aptxad_96k());
+            // Not offered in the codec's settings either
+            assert_eq!(caps.listed_sample_rates(CodecKind::AptxAdaptive), [48000], "{why}");
+            assert!(caps.aptxad_no_96k(Quality::High).is_some_and(|w| w.contains(why)), "{why}");
+            assert_eq!(caps.pick_aptxad_sample_rate(96000, Quality::High), 48000);
+            assert_eq!(
+                caps.configuration(CodecKind::AptxAdaptive, 96000, 2, 24),
+                Err(ConfigError::SampleRate(CodecKind::AptxAdaptive, 96000))
+            );
+        }
+
+        // Joint stereo only: configured as such
+        let mut joint = RemoteCaps::default();
+        let mut info = PX7_S2E_APTXAD;
+        info[7] = 0x08;
+        joint.add_vendor(2, &info);
+        let ConfigRequest::Vendor(c) = joint.configuration(CodecKind::AptxAdaptive, 48000, 2, 24).unwrap().request
+        else {
+            panic!("not a vendor configuration")
+        };
+        assert_eq!(c[7], 0x08);
+
+        // Unusable: no 48 kHz, mono / TWS only, shorter than the R1 layout
+        let mut no48 = PX7_S2E_APTXAD;
+        no48[6] = 0x09;
+        let mut mono = PX7_S2E_APTXAD;
+        mono[7] = 0x01;
+        for info in [&no48[..], &mono[..], &PX7_S2E_APTXAD[..16]] {
+            let mut c = RemoteCaps::default();
+            assert!(
+                matches!(c.add_vendor(3, info), VendorCapability::Ignored(CodecKind::AptxAdaptive, _)),
+                "{info:02X?}"
+            );
+            assert!(c.aptx_adaptive && !c.has(CodecKind::AptxAdaptive));
+        }
+
+        // aptX asked for, aptX Adaptive the only aptX: said so
+        let mut only = RemoteCaps::default();
+        only.add_sbc(1);
+        only.add_vendor(9, &PX7_S2E_APTXAD);
+        assert_eq!(
+            choose(&only, Some(CodecKind::Aptx), false, true),
+            Err(Some((CodecKind::Aptx, Unavailable::AdaptiveOnly)))
+        );
+        assert_eq!(choose(&only, Some(CodecKind::AptxAdaptive), false, true).unwrap().kind, CodecKind::AptxAdaptive);
+        assert_eq!(CodecKind::from_key("aptxad"), Some(CodecKind::AptxAdaptive));
+    }
+
+    #[test]
+    fn experimental_codecs_off_are_never_used() {
+        use CodecKind::*;
+        let experimental: Vec<_> = CodecKind::ALL.into_iter().filter(|k| k.experimental()).collect();
+        assert_eq!(experimental, [AptxHd, AptxLl, Opus, Opus05, FastStream]);
+        if !Opus.available() {
+            return;
+        }
+        // Opus (experimental) above AAC and SBC
+        let mut caps = RemoteCaps::default();
+        caps.add_sbc(1);
+        caps.add_aac(2);
+        caps.add_vendor(5, &[0xE0, 0, 0, 0, 0x01, 0x00, 0x92]);
+        let fallback = if Aac.available() { Aac } else { Sbc };
+        // Auto: Opus while on, the next one down while off
+        assert_eq!(choose(&caps, None, true, true).unwrap().kind, Opus);
+        assert_eq!(choose(&caps, None, true, false).unwrap(), Choice { kind: fallback, replaced: None });
+        // Chosen: falls back, saying why; an error without fallback
+        assert_eq!(
+            choose(&caps, Some(Opus), true, false).unwrap(),
+            Choice { kind: fallback, replaced: Some((Opus, Unavailable::Experimental)) }
+        );
+        assert_eq!(choose(&caps, Some(Opus), false, false), Err(Some((Opus, Unavailable::Experimental))));
+        // Never a fallback for another codec either (LDAC not offered)
+        assert_eq!(choose(&caps, Some(Ldac), true, true).unwrap().kind, Opus);
+        assert_eq!(choose(&caps, Some(Ldac), true, false).unwrap().kind, fallback);
+        // What the device offers is recorded as it is
+        assert!(caps.has(Opus));
+    }
+
+    #[test]
+    fn aptx_adaptive_local_endpoint() {
+        let eps = local_endpoints();
+        let ep = eps.iter().find(|e| e.kind == CodecKind::AptxAdaptive);
+        if !CodecKind::AptxAdaptive.available() {
+            assert!(ep.is_none());
+            return;
+        }
+        let ep = ep.unwrap();
+        assert_eq!(ep.codec_type, CODEC_TYPE_VENDOR);
+        // 48 kHz host source, stereo + joint stereo, the R1 block
+        let mut caps = vec![0xD7, 0, 0, 0, 0xAD, 0, 0x12, 0x0A, 0x50, 0x64, 0x64, 0x64, 0xFF, 0xFF, 0, 0, 0xAA];
+        caps.resize(40, 0);
+        assert_eq!(ep.caps, caps);
+        assert_eq!(ep.config[6..8], [0x12, 0x02]);
+        assert_eq!(ep.config.len(), 40);
+        // BTstack's endpoint pool and the shim's buffers (btstack_config.h,
+        // shim.c) hold them all
+        assert!(eps.len() <= 11);
+        assert!(eps.iter().all(|e| e.caps.len() <= 40 && e.config.len() <= 40));
     }
 }

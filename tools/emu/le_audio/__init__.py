@@ -16,9 +16,9 @@ one of them. emu_le_audio_sink.py calls the modules; add checks for
 run_test.py in your module's own files, not in bap.py.
 """
 
-from . import bap, ccp, controller, csip, mcp, tmap_gmap, vcp
+from . import bap, bas, ccp, controller, csip, mcp, tmap_gmap, vcp
 
-MODULES = [bap, csip, vcp, mcp, ccp, tmap_gmap]
+MODULES = [bap, csip, vcp, mcp, ccp, tmap_gmap, bas]
 
 
 def add_arguments(parser):

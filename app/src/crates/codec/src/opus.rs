@@ -51,7 +51,7 @@ const COMPLEXITY: i32 = 10;
 /// Target bit rate per quality, stereo (mono: half)
 fn quality_bitrate(quality: Quality, channels: u32) -> u32 {
     let stereo = match quality {
-        Quality::High | Quality::MediumHigh => 256_000,
+        Quality::High | Quality::MediumHigh | Quality::LowLatency => 256_000,
         Quality::Standard => 192_000,
         Quality::Mobile => 128_000,
     };
@@ -116,6 +116,13 @@ impl OpusEncoder {
         let max_bitrate = u32::try_from(max_packet as u64 * 8 * 1000 / u64::from(frame_ms)).unwrap_or(u32::MAX);
         let mut bitrate = quality_bitrate(config.quality, channels);
         let configured = config.peer.opus_max_bitrate;
+        tracing::debug!(
+            "{kind}: {frame_ms} ms frames (configured {}), {channels} ch on the wire (configured {}), bit rate {bitrate} \
+             bps by quality {:?}, limits: configuration {configured}, payload {max_bitrate} ({max_packet} bytes)",
+            config.peer.opus_frame_ms,
+            config.peer.opus_channels,
+            config.quality
+        );
         if kind == CodecKind::Opus05 && configured > 0 && bitrate > configured {
             tracing::info!("{kind}: bit rate limited to {configured} bps by the configuration");
             bitrate = configured;

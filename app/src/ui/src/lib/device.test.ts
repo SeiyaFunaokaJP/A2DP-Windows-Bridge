@@ -10,6 +10,7 @@ import {
   captureDevice,
   defaultProfileName,
   deviceKey,
+  entryBase,
   formatMismatch,
   knownCodecs,
   listedDevices,
@@ -25,6 +26,9 @@ const dev = (address: string, codecs: string[]): Device => ({
   audio: true,
   rssi: null,
   codecs,
+  sbc: null,
+  codec_caps: [],
+  codecs_on_request: [],
   le_audio: false,
   le_audio_set: false,
 });
@@ -71,6 +75,12 @@ describe("codecs a device offers", () => {
     expect(codecSupport("LDAC", ["ldac"])).toBe("offered");
   });
 
+  it("does not call one it may offer once chosen not offered", () => {
+    expect(codecSupport("ldac", ["sbc", "aac"], ["ldac"])).toBe("unknown");
+    expect(codecSupport("aptx", ["sbc", "aac"], ["ldac"])).toBe("not_offered");
+    expect(codecSupport("ldac", ["sbc", "ldac"], ["ldac"])).toBe("offered");
+  });
+
   it("finds the profile's device by its address as typed", () => {
     const devices = [dev("AC:80:0A:12:34:56", ["sbc", "ldac"]), dev("00:1A:7D:DA:71:13", [])];
     expect(knownCodecs(devices, "ac-80-0a-12-34-56")).toEqual(["sbc", "ldac"]);
@@ -100,6 +110,8 @@ describe("LE Audio entries", () => {
     expect(defaultProfileName("Galaxy Buds2 Pro", "F4:4E:FD:00:11:22", true)).toBe("Galaxy Buds2 Pro LE Audio");
     expect(defaultProfileName("", "F4:4E:FD:00:11:22", true)).toBe("F4:4E:FD:00:11:22 LE Audio");
     expect(defaultProfileName("Galaxy Buds2 Pro", "F4:4E:FD:00:11:22", false)).toBe("Galaxy Buds2 Pro");
+    expect(defaultProfileName("EarFun Air Pro 4+", "F4:4E:FD:00:11:22", false, "Auto")).toBe("EarFun Air Pro 4+ | Auto");
+    expect(defaultProfileName("", "", false, "Auto")).toBe("");
     expect(defaultProfileName("", "", true)).toBe("");
   });
 
@@ -143,6 +155,19 @@ describe("capture device format", () => {
 describe("profile defaults and names", () => {
   it("follows the virtual device by default, as v1 and the core", () => {
     expect(newProfile().auto_switch_device).toBe(true);
+  });
+
+  it("captures a new device by System Loopback, a virtual device installed or not (issue #86)", () => {
+    expect(newProfile()).toMatchObject({ capture_mode: "loopback", audio_device_id: "", audio_device_name: "" });
+    // The other entry's capture source counts first
+    const other = { ...newProfile(), device_address: "AA:BB:CC:DD:EE:FF", capture_mode: "app", app_exe: "x.exe" };
+    expect(entryBase({ address: "aa:bb:cc:dd:ee:ff", name: "X", le_audio: true }, [other])).toMatchObject({
+      capture_mode: "app",
+    });
+    expect(entryBase({ address: "11:22:33:44:55:66", name: "Y", le_audio: false }, [other])).toMatchObject({
+      capture_mode: "loopback",
+      audio_device_id: "",
+    });
   });
 
   it("checks a device name as the core does", () => {

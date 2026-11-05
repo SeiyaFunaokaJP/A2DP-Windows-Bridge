@@ -20,6 +20,10 @@ Layouts (--layout):
   earbuds  two earbuds, Front Left / Front Right, 1 sink ASE each (2 CIS on
            2 LE links)
   mono     one device, no location (mono), 1 sink ASE
+  auracast a broadcast sink (le_audio/broadcast_sink.py): A2DPWB broadcasts
+           (--auracast), the sink scans, syncs to the periodic advertising
+           and the BIG (--broadcast-code for an encrypted one) and receives
+           every BIS; both controllers are le_audio/broadcast.py's
 
 --privacy: the sinks use resolvable private addresses (a new one after each
 link went down); READY then lists their current RPAs, not the public
@@ -39,6 +43,8 @@ import bumble.logging
 from bumble.transport import open_transport
 
 import le_audio
+from le_audio import broadcast_sink
+from le_audio.broadcast import BroadcastController
 from le_audio.controller import LeEmuController, LeLocalLink
 from le_audio.sink import SinkContext, create_device, current_address, power_on_and_advertise
 
@@ -52,6 +58,7 @@ LAYOUTS = {
     'two-ase': [('A2DPWB LE', FL | FR, 2, [1])],
     'earbuds': [('A2DPWB LE L', FL, 1, [1]), ('A2DPWB LE R', FR, 1, [1])],
     'mono': [('A2DPWB LE M', 0, 1, [1])],
+    'auracast': [],   # one broadcast sink, no unicast server
 }
 
 log = logging.getLogger('emu_le_audio')
@@ -67,13 +74,17 @@ def capture_path(base, index):
 async def main(args):
     link = LeLocalLink()
     transport = await open_transport(f'tcp-server:127.0.0.1:{args.port}')
-    LeEmuController(
+    (BroadcastController if args.layout == 'auracast' else LeEmuController)(
         'A2DPWB',
         host_source=transport.source,
         host_sink=transport.sink,
         link=link,
         public_address=A2DPWB_ADDRESS,
     )
+    if args.layout == 'auracast':
+        await broadcast_sink.start(link, SINK_ADDRESSES[0], args.capture, args.broadcast_code)
+        print(f'READY 127.0.0.1:{args.port} sinks={SINK_ADDRESSES[0]}', flush=True)
+        await asyncio.get_running_loop().create_future()
     sinks = []
     for index, (name, locations, ases, counts) in enumerate(LAYOUTS[args.layout]):
         sink = SinkContext(index=index, address=SINK_ADDRESSES[index], name=name, locations=locations,
@@ -112,6 +123,8 @@ if __name__ == '__main__':
     parser.add_argument('--privacy', action='store_true',
                         help='sinks advertise with resolvable private addresses (IRK distributed when paired) '
                              'and take a new one whenever a link went down')
+    parser.add_argument('--broadcast-code', metavar='CODE',
+                        help='auracast: the Broadcast_Code the sink syncs to the BIG with (UTF-8, at most 16 bytes)')
     le_audio.add_arguments(parser)
     bumble.logging.setup_basic_logging(parser.parse_known_args()[0].log_level)
     logging.getLogger('emu_le_audio').setLevel(logging.INFO)

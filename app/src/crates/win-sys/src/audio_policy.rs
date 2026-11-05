@@ -8,6 +8,8 @@
 //!   (IAudioEndpointVolume), the primitives of volume sync.
 //! - [`session_process_ids`]: the processes that have an audio session, for
 //!   the Application capture app picker (IAudioSessionControl2).
+//! - [`output_sessions`], [`set_output_sessions`]: the sessions on the default
+//!   output device, with their volume and mute (the app volume mixer).
 //! - [`ComApartment`]: per-thread COM initialisation (MTA).
 
 use core::ffi::c_void;
@@ -19,8 +21,8 @@ use windows::Win32::Foundation::{RPC_E_CHANGED_MODE, S_OK};
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::PKEY_AudioEndpoint_FormFactor;
 use windows::Win32::Media::Audio::{
-    DEVICE_STATE_ACTIVE, ERole, IAudioSessionControl2, IAudioSessionManager2, IMMDevice, IMMDeviceEnumerator,
-    MMDeviceEnumerator, WAVEFORMATEX, eConsole, eMultimedia, eRender,
+    AudioSessionStateExpired, DEVICE_STATE_ACTIVE, ERole, IAudioSessionControl2, IAudioSessionManager2, IMMDevice,
+    IMMDeviceEnumerator, ISimpleAudioVolume, MMDeviceEnumerator, WAVEFORMATEX, eConsole, eMultimedia, eRender,
 };
 use windows::Win32::System::Com::StructuredStorage::{
     PROPVARIANT, PropVariantClear, PropVariantToGUID, PropVariantToUInt32,
@@ -158,10 +160,23 @@ pub fn set_default_endpoint(device_id: &str) -> windows::core::Result<()> {
     if device_id.is_empty() {
         return Err(windows::Win32::Foundation::E_INVALIDARG.into());
     }
-    let policy = PolicyConfig::new()?;
+    let policy =
+        PolicyConfig::new().inspect_err(|e| tracing::debug!("audio_policy: IPolicyConfig unavailable: {e}"))?;
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        let previous = enumerator()
+            .and_then(|en| render_device(&en, None))
+            .and_then(|d| endpoint_id(&d))
+            .unwrap_or_else(|e| format!("(none: {e})"));
+        tracing::debug!("audio_policy: default output {previous} -> {device_id}");
+    }
     let wid: Vec<u16> = device_id.encode_utf16().chain(Some(0)).collect();
     let hr_console = policy.set_default_endpoint(&wid, eConsole);
     let hr_multimedia = policy.set_default_endpoint(&wid, eMultimedia);
+    tracing::debug!(
+        "audio_policy: SetDefaultEndpoint eConsole 0x{:08x}, eMultimedia 0x{:08x}",
+        hr_console.0 as u32,
+        hr_multimedia.0 as u32
+    );
     if hr_console.is_err() || hr_multimedia.is_err() {
         tracing::warn!(
             "SetDefaultEndpoint failed: eConsole=0x{:08x}, eMultimedia=0x{:08x}",
@@ -230,6 +245,7 @@ impl EndpointVolume {
         let id = endpoint_id(&device)?;
         // SAFETY: activating a documented endpoint service on a live device.
         let volume: IAudioEndpointVolume = unsafe { device.Activate(CLSCTX_ALL, None)? };
+        tracing::trace!("audio_policy: endpoint volume opened on {id} (asked for {device_id:?})");
         Ok(EndpointVolume { volume, id })
     }
 
@@ -248,6 +264,7 @@ impl EndpointVolume {
     /// context, as in v1: listeners see an ordinary volume change.
     pub fn set_volume(&self, level: f32) -> windows::core::Result<()> {
         let level = if level.is_nan() { 0.0 } else { level.clamp(0.0, 1.0) };
+        tracing::trace!("audio_policy: volume of {} set to {level:.3}", self.id);
         // SAFETY: plain call; a null event context GUID is allowed.
         unsafe { self.volume.SetMasterVolumeLevelScalar(level, core::ptr::null()) }
     }
@@ -258,6 +275,7 @@ impl EndpointVolume {
     }
 
     pub fn set_muted(&self, muted: bool) -> windows::core::Result<()> {
+        tracing::trace!("audio_policy: mute of {} set to {muted}", self.id);
         // SAFETY: plain call; a null event context GUID is allowed.
         unsafe { self.volume.SetMute(muted, core::ptr::null()) }
     }
@@ -302,12 +320,95 @@ pub fn endpoint_hints(device_id: &str) -> windows::core::Result<EndpointHints> {
         // SAFETY: clears the value GetValue gave us, once.
         let _ = unsafe { PropVariantClear(&mut v) };
     }
+    tracing::trace!("audio_policy: hints of {device_id}: {hints:?}");
     Ok(hints)
 }
 
 // ---------------------------------------------------------------------------
 // Audio sessions
 // ---------------------------------------------------------------------------
+
+/// A session on the default output device
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OutputSession {
+    pub process_id: u32,
+    pub system_sounds: bool,
+    /// 0.0-1.0
+    pub volume: f32,
+    pub muted: bool,
+}
+
+/// The sessions on the default output device, without expired ones. COM must
+/// be initialised on the calling thread.
+fn default_output_sessions() -> windows::core::Result<Vec<(OutputSession, ISimpleAudioVolume)>> {
+    let enumerator = enumerator()?;
+    // SAFETY: plain call on a live enumerator.
+    let device = unsafe { enumerator.GetDefaultAudioEndpoint(eRender, eConsole)? };
+    // SAFETY: activating a documented endpoint service on a live device.
+    let manager = unsafe { device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None)? };
+    // SAFETY: plain call on a live session manager.
+    let sessions = unsafe { manager.GetSessionEnumerator()? };
+    // SAFETY: plain call on a live session enumerator.
+    let n = unsafe { sessions.GetCount()? };
+    let mut out = Vec::new();
+    for s in 0..n {
+        // SAFETY: `s` is within the enumerator's count.
+        let Ok(control) = (unsafe { sessions.GetSession(s) }) else {
+            continue;
+        };
+        // SAFETY: plain call on a live session control.
+        if unsafe { control.GetState() }.is_ok_and(|state| state == AudioSessionStateExpired) {
+            continue;
+        }
+        let (Ok(control2), Ok(simple)) =
+            (control.cast::<IAudioSessionControl2>(), control.cast::<ISimpleAudioVolume>())
+        else {
+            continue;
+        };
+        // SAFETY: plain calls on live session interfaces.
+        let session = unsafe {
+            OutputSession {
+                process_id: control2.GetProcessId().unwrap_or(0),
+                system_sounds: control2.IsSystemSoundsSession() == S_OK,
+                volume: simple.GetMasterVolume().unwrap_or(1.0),
+                muted: simple.GetMute().is_ok_and(|m| m.as_bool()),
+            }
+        };
+        out.push((session, simple));
+    }
+    Ok(out)
+}
+
+/// The sessions on the default output device. COM must be initialised on the
+/// calling thread.
+pub fn output_sessions() -> windows::core::Result<Vec<OutputSession>> {
+    Ok(default_output_sessions()?.into_iter().map(|(s, _)| s).collect())
+}
+
+/// Sets the volume (0.0-1.0) and / or the mute of the sessions `which` picks;
+/// returns how many. COM must be initialised on the calling thread.
+pub fn set_output_sessions(
+    which: impl Fn(&OutputSession) -> bool,
+    volume: Option<f32>,
+    muted: Option<bool>,
+) -> windows::core::Result<usize> {
+    let mut count = 0;
+    for (session, simple) in default_output_sessions()? {
+        if !which(&session) {
+            continue;
+        }
+        if let Some(v) = volume {
+            // SAFETY: plain call on a live interface; no event context.
+            unsafe { simple.SetMasterVolume(v, core::ptr::null())? };
+        }
+        if let Some(m) = muted {
+            // SAFETY: plain call on a live interface; no event context.
+            unsafe { simple.SetMute(m, core::ptr::null())? };
+        }
+        count += 1;
+    }
+    Ok(count)
+}
 
 /// Process IDs of the app audio sessions on all active output devices, in
 /// enumeration order, with duplicates (one per session). Leaves out the
@@ -357,6 +458,7 @@ pub fn session_process_ids() -> windows::core::Result<Vec<u32>> {
             }
         }
     }
+    tracing::trace!("audio_policy: {count} output device(s), app sessions of {pids:?}");
     Ok(pids)
 }
 

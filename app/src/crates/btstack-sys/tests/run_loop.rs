@@ -66,6 +66,8 @@ fn one_run(shared: &Arc<Shared>) {
             stack.add_hci_event_handler();
             stack.a2dp_source_init();
             stack.avrcp_init();
+            // HFP too: its RFCOMM service is set up and torn down each run
+            stack.hfp_ag_init();
             stack.sdp_register_records(2, 1);
             assert!(stack.create_stream_endpoint(0, 0, &[0x3F, 0x15, 2, 53], &[0x11, 0x15, 2, 53]).is_some());
             stack.power_on().expect("power on");
@@ -98,12 +100,18 @@ fn run_twice() {
     let shared = Arc::new(Shared::default());
     one_run(&shared);
     one_run(&shared);
-    assert_eq!(shared.opened.load(Ordering::SeqCst), 2);
-    assert!(shared.closed.load(Ordering::SeqCst) >= 2);
+    one_run(&shared);
+    assert_eq!(shared.opened.load(Ordering::SeqCst), 3);
+    assert!(shared.closed.load(Ordering::SeqCst) >= 3);
 }
 
 #[test]
 fn realtek_table() {
     let ids = btstack_sys::realtek_usb_ids();
     assert!(ids.contains(&(0x2357, 0x0604)) || ids.iter().any(|(v, _)| *v == 0x0BDA), "{ids:?}");
+    // The firmware names read from the same table
+    let table = btstack_sys::realtek_usb_firmware();
+    assert_eq!(table.len(), ids.len());
+    assert!(table.contains(&(0x0BDA, 0x4853, "rtl8852bu_fw")), "{table:?}");
+    assert!(table.iter().all(|(_, _, fw)| fw.ends_with("_fw")), "{table:?}");
 }

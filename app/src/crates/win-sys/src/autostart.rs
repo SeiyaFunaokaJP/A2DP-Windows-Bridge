@@ -23,17 +23,23 @@ pub const VALUE_NAME: &str = "A2DPWB";
 
 /// The command line registered under `value_name`, or None if there is none
 pub fn get(value_name: &str) -> windows::core::Result<Option<String>> {
-    get_in(RUN_KEY, value_name)
+    let r = get_in(RUN_KEY, value_name);
+    tracing::debug!("autostart: read HKCU\\{RUN_KEY}\\{value_name}: {r:?}");
+    r
 }
 
 /// Registers `command` (see `command_line`) under `value_name`
 pub fn set(value_name: &str, command: &str) -> windows::core::Result<()> {
-    set_in(RUN_KEY, value_name, command)
+    let r = set_in(RUN_KEY, value_name, command);
+    tracing::debug!("autostart: write HKCU\\{RUN_KEY}\\{value_name} = {command}: {r:?}");
+    r
 }
 
 /// Removes the entry; Ok(false) if there was none
 pub fn remove(value_name: &str) -> windows::core::Result<bool> {
-    remove_in(RUN_KEY, value_name)
+    let r = remove_in(RUN_KEY, value_name);
+    tracing::debug!("autostart: remove HKCU\\{RUN_KEY}\\{value_name}: {r:?} (true: it was there)");
+    r
 }
 
 /// `"C:\path\a2dpwb.exe" --minimized`: the program path quoted (it may
@@ -54,7 +60,8 @@ pub fn program_of(command: &str) -> Option<PathBuf> {
     (!program.trim().is_empty()).then(|| PathBuf::from(program))
 }
 
-fn get_in(subkey: &str, value_name: &str) -> windows::core::Result<Option<String>> {
+/// The REG_SZ value `value_name` of HKCU\`subkey`, or None if there is none
+pub(crate) fn get_in(subkey: &str, value_name: &str) -> windows::core::Result<Option<String>> {
     let Some(key) = RegKey::open_hkcu(subkey, KEY_QUERY_VALUE)? else {
         return Ok(None);
     };

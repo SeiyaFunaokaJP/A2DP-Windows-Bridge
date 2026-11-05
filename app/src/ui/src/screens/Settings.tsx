@@ -1,6 +1,7 @@
-// Settings: language, theme, startup, updates, headphone buttons, volume,
-// developer mode, the settings folder, about. (LE Audio and its GMAP low
-// latency are chosen per profile.)
+// Settings: the general ones only: language, theme, startup, notifications,
+// updates, developer mode, the settings folder. (A device's buttons and
+// remembered volume are on Audio Devices; LE Audio and its GMAP low latency
+// are chosen per profile.)
 
 import { createSignal, Match, onMount, Show, Switch } from "solid-js";
 import { errorText, useApp } from "../app/context";
@@ -9,7 +10,54 @@ import { Banner, Button, Dialog, Field, Section, Segmented, Select, Toggle } fro
 import { LANGUAGES, t, tm } from "../i18n";
 import type { UpdatePhase } from "../ipc/transport";
 import { IpcError, type Msg } from "../ipc/types";
-import { LINKS, thirdPartyUrl } from "../lib/links";
+import { LINKS } from "../lib/links";
+
+/** The theme, here and on the setup's last step */
+export function ThemeChoice() {
+  const app = useApp();
+  return (
+    <div class="row">
+      <span class="row-text">
+        <span class="row-label">{t("settings.theme")}</span>
+      </span>
+      <Segmented
+        label={t("settings.theme")}
+        value={app.core.state.snap!.settings.theme}
+        options={[
+          { value: "system", label: t("settings.theme_system") },
+          { value: "light", label: t("settings.theme_light") },
+          { value: "dark", label: t("settings.theme_dark") },
+        ]}
+        onChange={(v) => void saveSettings(app, { theme: v })}
+      />
+    </div>
+  );
+}
+
+/** When the low battery notice comes, here and on the setup's last step */
+export function BatteryLowChoice() {
+  const app = useApp();
+  return (
+    <div class="row">
+      <span class="row-text">
+        <span class="row-label">{t("ui.settings.battery_low")}</span>
+        <span id="battery-low-help" class="hint">
+          {t("ui.settings.battery_low_hint")}
+        </span>
+      </span>
+      <Select<number>
+        value={app.core.state.snap!.settings.battery_low_percent}
+        label={t("ui.settings.battery_low")}
+        describedBy="battery-low-help"
+        options={[
+          ...[20, 10, 5].map((p) => ({ value: p, label: t("ui.settings.battery_low_below", p) })),
+          { value: 0, label: t("ui.settings.battery_low_never") },
+        ]}
+        onChange={(v) => void saveSettings(app, { battery_low_percent: v })}
+      />
+    </div>
+  );
+}
 
 export function Settings() {
   const app = useApp();
@@ -17,14 +65,13 @@ export function Settings() {
   const snap = () => core.state.snap!;
   const s = () => snap().settings;
   const set = (patch: Parameters<typeof saveSettings>[1]) => void saveSettings(app, patch);
+  const flyoutFrom = () => (s().flyout_with_quick_settings ? "quick" : s().tray_click_opens_window ? "none" : "tray");
+  const flyoutHint = () =>
+    [flyoutFrom() !== "tray" && t("ui.settings.flyout_from_hint"), !core.transport.mica && t("ui.settings.flyout_from_win11")]
+      .filter(Boolean)
+      .join(" ") || undefined;
   const [quitting, setQuitting] = createSignal(false);
   const update = () => snap().update;
-  // The licence texts shipped next to the programs; a development build
-  // has none, so the release's copy online
-  const openLicenses = () => {
-    const dir = core.transport.licensesDir;
-    void (dir ? core.transport.openFolder(dir) : core.transport.openUrl(thirdPartyUrl(core.transport.version)));
-  };
   // The in-app update (installed copies); otherwise the release page
   const [phase, setPhase] = createSignal<UpdatePhase>({ state: "unavailable", reason: "portable" });
   onMount(() => {
@@ -63,21 +110,7 @@ export function Settings() {
             />
           )}
         </Field>
-        <div class="field">
-          <span class="field-label" id="theme-label">
-            {t("settings.theme")}
-          </span>
-          <Segmented
-            label={t("settings.theme")}
-            value={s().theme}
-            options={[
-              { value: "system", label: t("settings.theme_system") },
-              { value: "light", label: t("settings.theme_light") },
-              { value: "dark", label: t("settings.theme_dark") },
-            ]}
-            onChange={(v) => set({ theme: v })}
-          />
-        </div>
+        <ThemeChoice />
       </Section>
 
       <Section title={t("ui.settings.startup")}>
@@ -92,11 +125,32 @@ export function Settings() {
           onChange={(v) => set({ start_minimized: v })}
         />
         <Toggle label={t("settings.minimize_to_tray")} checked={s().minimize_to_tray} onChange={(v) => set({ minimize_to_tray: v })} />
+        {/* Off the tray icon, the icon's click opens the main window.
+            Quick Settings are Windows 11's, as Mica is */}
+        <Field label={t("ui.settings.flyout_from")} hint={flyoutHint()}>
+          {(id, describedBy) => (
+            <Select
+              id={id}
+              describedBy={describedBy}
+              value={flyoutFrom()}
+              options={[
+                { value: "none", label: t("ui.settings.flyout_from_none") },
+                { value: "tray", label: t("ui.settings.flyout_from_tray") },
+                { value: "quick", label: t("ui.settings.flyout_from_quick"), disabled: !core.transport.mica },
+              ]}
+              onChange={(v) => set({ tray_click_opens_window: v !== "tray", flyout_with_quick_settings: v === "quick" })}
+            />
+          )}
+        </Field>
       </Section>
 
-      <Section title={t("ui.settings.headphones")}>
-        <Toggle label={t("settings.media_keys")} checked={s().media_keys} onChange={(v) => set({ media_keys: v })} />
-        <Toggle label={t("settings.remember_volume")} checked={s().remember_volume} onChange={(v) => set({ remember_volume: v })} />
+      <Section title={t("ui.settings.notifications")}>
+        <Toggle
+          label={t("ui.settings.notify_connected")}
+          checked={s().notify_connected}
+          onChange={(v) => set({ notify_connected: v })}
+        />
+        <BatteryLowChoice />
       </Section>
 
       <Section
@@ -185,47 +239,15 @@ export function Settings() {
             <span class="hint mono">{snap().config_dir}</span>
           </span>
           <Button icon="folder_open" onClick={() => core.transport.openFolder(snap().config_dir)}>
-            {t("firmware.open_folder")}
+            {t("ui.settings.open_config_folder")}
           </Button>
         </div>
         <div class="row">
           <span class="row-text">
             <span class="row-label">{t("ui.setup.title")}</span>
-            <span class="hint">{t("ui.settings.run_setup_hint")}</span>
           </span>
           <Button icon="play" onClick={() => app.setSetupActive(true)}>
             {t("ui.settings.run_setup")}
-          </Button>
-        </div>
-      </Section>
-
-      <Section title={t("help.about_title")}>
-        <div class="about">
-          <img src="/app-icon.png" alt="" width="48" height="48" />
-          <div>
-            <strong>{t("help.full_name")}</strong>
-            <p class="muted num">
-              {t("help.version")} {core.transport.version} · {t("ui.settings.core_version", update().current_version)}
-            </p>
-            <p class="muted">{t("help.author")}</p>
-          </div>
-        </div>
-        <p class="hint">{t("help.license")}</p>
-        <p class="hint">{t("help.binary_license")}</p>
-        <p class="hint">{t("ui.settings.icons_license")}</p>
-        <p class="hint">{t("help.third_party")}</p>
-        <div class="inline wrap">
-          <Button icon="open" kind="subtle" onClick={() => core.transport.openUrl(LINKS.repo)}>
-            {t("help.github")}
-          </Button>
-          <Button icon="open" kind="subtle" onClick={() => openLicenses()}>
-            {t("help.third_party_link")}
-          </Button>
-          <Button icon="open" kind="subtle" onClick={() => core.transport.openUrl(LINKS.issues)}>
-            {t("menu.help.report_issue")}
-          </Button>
-          <Button icon="open" kind="subtle" onClick={() => core.transport.openUrl(LINKS.sponsor)}>
-            {t("help.sponsor")}
           </Button>
         </div>
       </Section>
@@ -234,7 +256,6 @@ export function Settings() {
         <Button kind="danger" icon="power" onClick={() => setQuitting(true)}>
           {t("ui.settings.quit")}
         </Button>
-        <span class="hint">{t("ui.settings.quit_hint")}</span>
       </div>
       <Dialog
         open={quitting()}

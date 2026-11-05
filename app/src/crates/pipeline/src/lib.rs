@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread::{JoinHandle, Thread};
 use std::time::{Duration, Instant};
 
-use bt_host::{LinkStats, MediaSink};
+use bt_host::{LinkStats, LiveCodec, MediaSink};
 use codec::{CodecKind, Encoder, Pcm, PcmFormat};
 
 pub use convert::SampleType;
@@ -73,6 +73,9 @@ pub struct PipelineConfig {
     /// Adaptive bit rate: the encoder's own [`Encoder::abr_active`]
     pub abr: bool,
     pub buffer: BufferPreset,
+    /// True while the audio is to be sent as silence (the headphones'
+    /// volume is 0, [`bt_host::BtHost::volume_is_zero`]); None: never
+    pub mute: Option<Box<dyn Fn() -> bool + Send>>,
 }
 
 /// The capture thread's end: copies captured audio into the ring
@@ -94,6 +97,13 @@ impl CaptureInput {
             self.stats.capture_dropped_frames.fetch_add(frames, Ordering::Relaxed);
             self.control.overflows.fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    /// Windows reported a gap in the captured audio, `lost_frames` long
+    /// when known
+    pub fn discontinuity(&mut self, lost_frames: Option<u64>) {
+        self.stats.capture_discontinuities.fetch_add(1, Ordering::Relaxed);
+        self.stats.capture_lost_frames.fetch_add(lost_frames.unwrap_or(0), Ordering::Relaxed);
     }
 
     /// Silence the capture inserted while nothing played: encoded like
@@ -177,6 +187,19 @@ impl Pipeline {
         let kind = config.encoder.kind();
         let bitrate_kbps = config.encoder.bitrate_kbps();
         let frame_bytes = config.input.frame_bytes();
+        // Before the stream info goes out: core never shows the last
+        // stream's values for this one
+        stats.set_live_codec(config.abr.then(|| live_codec(config.encoder.as_ref())));
+        tracing::debug!(
+            "pipeline: start {kind} at {bitrate_kbps} kbps, input {:?}, sending {} ch, mtu {}, abr {}, buffer {:?}: \
+             capture ring {ring} bytes ({} ms)",
+            config.input,
+            config.channels,
+            config.mtu,
+            config.abr,
+            config.buffer,
+            (ring / frame_bytes.max(1)) as u64 * 1000 / u64::from(config.input.sample_rate.max(1))
+        );
         let thread = {
             let control = control.clone();
             std::thread::Builder::new()
@@ -205,6 +228,7 @@ impl Pipeline {
     /// Drops audio buffered for the old stream, restarts the timestamps and
     /// puts ABR back to where a new stream starts
     pub fn reset(&self) {
+        tracing::debug!("pipeline: reset requested");
         self.control.reset.store(true, Ordering::Release);
         if let Some(t) = &self.thread {
             t.thread().unpark();
@@ -220,7 +244,11 @@ impl Pipeline {
         let t = self.thread.take()?;
         self.control.stop.store(true, Ordering::Release);
         t.thread().unpark();
-        t.join().ok()
+        let sink = t.join().ok();
+        if sink.is_none() {
+            tracing::debug!("pipeline: the encode thread panicked");
+        }
+        sink
     }
 }
 
@@ -237,6 +265,16 @@ fn abr_per_packet(kind: CodecKind) -> bool {
 }
 
 const ABR_INTERVAL: Duration = Duration::from_millis(100);
+
+/// What an ABR encoder runs at now, for [`LinkStats::live_codec`]
+fn live_codec(encoder: &dyn Encoder) -> LiveCodec {
+    let d = encoder.details();
+    LiveCodec {
+        bitrate_kbps: encoder.bitrate_kbps(),
+        bitpool: d.sbc.map_or(0, |c| c.bitpool),
+        frame_bytes: d.frame_bytes.map_or(0, |b| b.min(u32::from(u16::MAX)) as u16),
+    }
+}
 
 /// How often the encode thread reports capture ring overflows (v1)
 const OVERFLOW_REPORT_INTERVAL: Duration = Duration::from_secs(5);
@@ -271,7 +309,7 @@ fn encode_thread(
     mut sink: MediaSink,
     control: &Control,
 ) -> MediaSink {
-    let PipelineConfig { mut encoder, input, channels, mtu, abr, .. } = config;
+    let PipelineConfig { mut encoder, input, channels, mtu, abr, mute, .. } = config;
     let _priority = thread_priority();
     let kind = encoder.kind();
     let fmt = encoder.pcm_format();
@@ -294,9 +332,33 @@ fn encode_thread(
     let mut abr_last = Instant::now();
     let mut encode_errors = 0u64;
     let mut overflow_report = Instant::now();
+    // The last round that had audio, for the gap between rounds (core's
+    // stream health log)
+    let mut last_round: Option<Instant> = None;
+    let mut window = RoundStats::new();
+    let mut live = abr.then(|| live_codec(encoder.as_ref()));
+    let mut clock = EncodeClock::default();
+    // Playback time of one encoder call
+    let audio_per_encode = per_encode as u64 * 1_000_000_000 / u64::from(input.sample_rate.max(1));
+    let mut muted = false;
+    tracing::debug!(
+        "encode thread: {kind}, {:?} {} ch -> {fmt:?} {out_ch} ch at {} Hz, {per_encode} frames per encode, \
+         {per_codec_frame} per codec frame (rtp timestamp step), rounds of {round_frames} frames, output buffer {} \
+         bytes, priority hook {}",
+        input.sample,
+        in_ch,
+        input.sample_rate,
+        encoded.len(),
+        _priority.is_some()
+    );
 
     while !control.stop.load(Ordering::Acquire) {
         if control.reset.swap(false, Ordering::AcqRel) {
+            tracing::debug!(
+                "encode thread: reset, dropping {} buffered bytes, timestamp {timestamp} -> 0",
+                ring.slots()
+            );
+            last_round = None;
             let n = ring.slots();
             if let Ok(chunk) = ring.read_chunk(n) {
                 chunk.commit_all();
@@ -307,14 +369,29 @@ fn encode_thread(
             packetizer.reset();
             if abr {
                 encoder.abr_reset();
+                publish_live(encoder.as_ref(), &sink, &mut live);
             }
             abr_last = Instant::now();
         }
         control.report_overflows("encode thread", &mut overflow_report);
+        if window.since.elapsed() >= SUMMARY_INTERVAL {
+            window.report(encoder.as_ref(), &sink, encode_errors, timestamp);
+        }
         let available = ring.slots() / frame_bytes;
         if available == 0 {
+            if sink.is_streaming() {
+                window.empty_waits += 1;
+            }
             std::thread::park_timeout(Duration::from_millis(10));
             continue;
+        }
+        if sink.is_streaming() {
+            let now = Instant::now();
+            if let Some(last) = last_round.replace(now) {
+                sink.stats().timing.encode_gap_us.record_duration(now - last);
+            }
+        } else {
+            last_round = None;
         }
         let frames = available.min(round_frames);
         let bytes = frames * frame_bytes;
@@ -324,6 +401,15 @@ fn encode_thread(
             read_buf[a.len()..bytes].copy_from_slice(b);
             chunk.commit_all();
         }
+        let now_muted = mute.as_ref().is_some_and(|m| m());
+        if now_muted != muted {
+            muted = now_muted;
+            tracing::info!("encode thread: {}", if muted { "volume 0, sending silence" } else { "audio again" });
+        }
+        if muted {
+            // Zero is silence in every input sample format
+            read_buf[..bytes].fill(0);
+        }
         let raw = &read_buf[..bytes];
         match fmt {
             PcmFormat::I16 => convert::append_i16(raw, input.sample, in_ch, out_ch, &mut pcm16),
@@ -331,6 +417,8 @@ fn encode_thread(
         }
 
         let queue_before = sink.depth();
+        let timed = tracing::enabled!(tracing::Level::DEBUG);
+        let encode_start = timed.then(Instant::now);
         let mut sent = 0u32;
         let block = per_encode * out_ch;
         let total = if fmt == PcmFormat::I16 { pcm16.len() } else { pcm32.len() };
@@ -340,7 +428,10 @@ fn encode_thread(
                 PcmFormat::I16 => Pcm::I16(&pcm16[offset..offset + block]),
                 PcmFormat::I32 => Pcm::I32(&pcm32[offset..offset + block]),
             };
-            match encoder.encode(pcm, &mut encoded) {
+            let started = Instant::now();
+            let result = encoder.encode(pcm, &mut encoded);
+            clock.add(started.elapsed(), audio_per_encode);
+            match result {
                 Ok(e) if e.bytes > 0 => {
                     sent += packetizer.push(&encoded[..e.bytes], e.frames, timestamp, &mut |p| {
                         sink.send(p);
@@ -353,6 +444,7 @@ fn encode_thread(
                     if encode_errors == 1 || encode_errors.is_multiple_of(1000) {
                         tracing::error!("encode thread: {e} ({encode_errors} errors)");
                     }
+                    tracing::trace!("encode thread: error at timestamp {timestamp}, block {offset}/{total}: {e}");
                 }
             }
             offset += block;
@@ -360,6 +452,11 @@ fn encode_thread(
         sent += packetizer.end_round(&mut |p| {
             sink.send(p);
         });
+        clock.flush(sink.stats());
+        sink.stats().timing.queue_depth_max.record(sink.depth().into());
+        if let Some(t) = encode_start {
+            window.round(frames, available, sent, sink.depth(), t.elapsed());
+        }
         // Keep the rest (less than one encoder block) for the next round
         match fmt {
             PcmFormat::I16 => {
@@ -374,9 +471,130 @@ fn encode_thread(
 
         if abr {
             abr_round(encoder.as_mut(), &sink, abr_per_packet(kind), queue_before, sent, &mut abr_last);
+            publish_live(encoder.as_ref(), &sink, &mut live);
         }
     }
+    tracing::debug!("encode thread: stopped at timestamp {timestamp}, {encode_errors} encode errors");
+    sink.stats().set_live_codec(None);
     sink
+}
+
+/// Publishes what the ABR encoder runs at when it changed
+fn publish_live(encoder: &dyn Encoder, sink: &MediaSink, last: &mut Option<LiveCodec>) {
+    let now = live_codec(encoder);
+    if *last != Some(now) {
+        *last = Some(now);
+        sink.stats().set_live_codec(Some(now));
+    }
+}
+
+/// How often the encode thread logs its debug summary
+const SUMMARY_INTERVAL: Duration = Duration::from_secs(10);
+
+/// What the encoder calls of one round took, handed to
+/// [`LinkStats::encode`] once per round (Diagnostics, developer mode)
+#[derive(Debug, Default)]
+pub(crate) struct EncodeClock {
+    calls: u64,
+    busy_ns: u64,
+    audio_ns: u64,
+    peak_ns: u64,
+}
+
+impl EncodeClock {
+    /// One encoder call took `took` for `audio_ns` of audio
+    #[inline]
+    pub(crate) fn add(&mut self, took: Duration, audio_ns: u64) {
+        let ns = took.as_nanos() as u64;
+        self.calls += 1;
+        self.busy_ns += ns;
+        self.audio_ns += audio_ns;
+        self.peak_ns = self.peak_ns.max(ns);
+    }
+
+    pub(crate) fn flush(&mut self, stats: &LinkStats) {
+        stats.encode.add(self.calls, self.busy_ns, self.audio_ns, self.peak_ns);
+        *self = EncodeClock::default();
+    }
+}
+
+/// Encode thread counters for the periodic debug summary (collected only
+/// while debug logging is on), reset each window
+struct RoundStats {
+    since: Instant,
+    rounds: u64,
+    frames: u64,
+    packets: u64,
+    /// Rounds that found more than one round of audio waiting (the thread
+    /// fell behind)
+    backlog_rounds: u64,
+    max_backlog: usize,
+    /// Wakeups that found no audio while the stream was started
+    empty_waits: u64,
+    queue_min: u32,
+    queue_max: u32,
+    encode_total: Duration,
+    encode_max: Duration,
+}
+
+impl RoundStats {
+    fn new() -> RoundStats {
+        RoundStats {
+            since: Instant::now(),
+            rounds: 0,
+            frames: 0,
+            packets: 0,
+            backlog_rounds: 0,
+            max_backlog: 0,
+            empty_waits: 0,
+            queue_min: u32::MAX,
+            queue_max: 0,
+            encode_total: Duration::ZERO,
+            encode_max: Duration::ZERO,
+        }
+    }
+
+    fn round(&mut self, frames: usize, available: usize, packets: u32, queue: u32, took: Duration) {
+        self.rounds += 1;
+        self.frames += frames as u64;
+        self.packets += u64::from(packets);
+        if available > frames {
+            self.backlog_rounds += 1;
+        }
+        self.max_backlog = self.max_backlog.max(available);
+        self.queue_min = self.queue_min.min(queue);
+        self.queue_max = self.queue_max.max(queue);
+        self.encode_total += took;
+        self.encode_max = self.encode_max.max(took);
+    }
+
+    fn report(&mut self, encoder: &dyn Encoder, sink: &MediaSink, encode_errors: u64, timestamp: u32) {
+        let stats = sink.stats();
+        tracing::debug!(
+            "encode thread: last {:.1} s: {} rounds, {} frames, {} packets, encode avg {} us max {} us, \
+             queue {}..{} (now {}), {} behind rounds (max {} frames waiting), {} empty waits while streaming, \
+             streaming {}, {} kbps; totals \
+             {} queue drops, {} capture frames dropped, {} encode errors, timestamp {timestamp}",
+            self.since.elapsed().as_secs_f64(),
+            self.rounds,
+            self.frames,
+            self.packets,
+            self.encode_total.as_micros().checked_div(u128::from(self.rounds)).unwrap_or(0),
+            self.encode_max.as_micros(),
+            if self.rounds > 0 { self.queue_min } else { 0 },
+            self.queue_max,
+            sink.depth(),
+            self.backlog_rounds,
+            self.max_backlog,
+            self.empty_waits,
+            sink.is_streaming(),
+            encoder.bitrate_kbps(),
+            stats.queue_drops.load(Ordering::Relaxed),
+            stats.capture_dropped_frames.load(Ordering::Relaxed),
+            encode_errors
+        );
+        *self = RoundStats::new();
+    }
 }
 
 /// The encode thread raises its priority (MMCSS "Pro Audio" on Windows, as
@@ -406,6 +624,8 @@ mod tests {
     struct Calls {
         adjust: AtomicU32,
         reset: AtomicU32,
+        /// Blocks encoded with a sample other than 0
+        loud: AtomicU32,
     }
 
     struct Mock(Arc<Calls>);
@@ -423,7 +643,12 @@ mod tests {
         fn max_output_bytes(&self) -> usize {
             16
         }
-        fn encode(&mut self, _pcm: Pcm<'_>, out: &mut [u8]) -> Result<Encoded, EncoderError> {
+        fn encode(&mut self, pcm: Pcm<'_>, out: &mut [u8]) -> Result<Encoded, EncoderError> {
+            if let Pcm::I16(s) = pcm
+                && s.iter().any(|&v| v != 0)
+            {
+                self.0.loud.fetch_add(1, Ordering::Relaxed);
+            }
             out[0] = 0;
             Ok(Encoded { bytes: 1, frames: 1 })
         }
@@ -463,6 +688,94 @@ mod tests {
     }
 
     #[test]
+    fn sbc_abr_publishes_the_bitpool_as_the_queue_backs_up() {
+        let stats = Arc::new(LinkStats::default());
+        let (sink, mut consumer, streaming) = bt_host::media::detached_queue(stats.clone());
+        let config = codec::EncoderConfig {
+            sample_rate: 48000,
+            channels: 2,
+            quality: codec::Quality::High,
+            mtu: 1011,
+            bits_per_sample: 16,
+            abr: true,
+            peer: codec::PeerParams::default(),
+        };
+        let encoder = codec::create(CodecKind::Sbc, &config).unwrap();
+        assert!(encoder.abr_active());
+        let config = PipelineConfig {
+            encoder,
+            input: InputFormat { sample_rate: 48000, channels: 2, sample: SampleType::I16 },
+            channels: 2,
+            mtu: 1011,
+            abr: true,
+            buffer: BufferPreset::Standard,
+            mute: None,
+        };
+        let (pipeline, mut input) = Pipeline::start(config, sink, stats.clone());
+        // Published before the stream info goes out
+        assert_eq!(stats.live_codec(), Some(LiveCodec { bitrate_kbps: 357, bitpool: 53, frame_bytes: 119 }));
+        streaming.store(true, Ordering::Release);
+        // Nothing drains the queue: it fills, and ABR lowers the bitpool
+        let audio: Vec<u8> = (0..480 * 2).flat_map(|i| ((i * 7919 % 20000) as i16 - 10000).to_le_bytes()).collect();
+        let until = Instant::now() + Duration::from_secs(10);
+        while stats.live_codec().is_some_and(|c| c.bitpool > 49) && Instant::now() < until {
+            input.push(&audio);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let live = stats.live_codec().unwrap();
+        assert!(live.bitpool <= 49, "{live:?}");
+        // Every SBC frame (128 samples at 48 kHz) timed against its audio
+        let enc = stats.encode.totals();
+        assert!(enc.calls > 0 && enc.busy_ns > 0);
+        assert_eq!(enc.audio_ns, enc.calls * (128 * 1_000_000_000 / 48000));
+        let want = codec::sbc::SbcConfig {
+            sample_rate: 48000,
+            channel_mode: codec::sbc::ChannelMode::JointStereo,
+            blocks: 16,
+            subbands: 8,
+            allocation: codec::sbc::Allocation::Loudness,
+            bitpool: live.bitpool,
+        }
+        .frame_len();
+        assert_eq!(usize::from(live.frame_bytes), want);
+        assert_eq!(live.bitrate_kbps, codec::sbc::bitrate_kbps(want, 48000, 128));
+        // The queued packets start at 53 (their first frame's header)
+        let mut bitpools = Vec::new();
+        while let Ok(p) = consumer.pop() {
+            bitpools.push(p.payload()[1 + 2]);
+        }
+        assert_eq!(bitpools.first(), Some(&53));
+        // A reset goes back to the ceiling
+        pipeline.reset();
+        let until = Instant::now() + Duration::from_secs(5);
+        while stats.live_codec().is_some_and(|c| c.bitpool != 53) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(stats.live_codec().map(|c| c.bitpool), Some(53));
+        assert!(pipeline.stop().is_some());
+        assert_eq!(stats.live_codec(), None);
+    }
+
+    #[test]
+    fn no_live_codec_without_abr() {
+        let stats = Arc::new(LinkStats::default());
+        stats.set_live_codec(Some(LiveCodec { bitrate_kbps: 1, bitpool: 2, frame_bytes: 3 }));
+        let (sink, _consumer, _streaming) = bt_host::media::detached_queue(stats.clone());
+        let config = PipelineConfig {
+            encoder: Box::new(Mock(Arc::new(Calls::default()))),
+            input: InputFormat { sample_rate: 48000, channels: 2, sample: SampleType::I16 },
+            channels: 2,
+            mtu: 600,
+            abr: false,
+            buffer: BufferPreset::Standard,
+            mute: None,
+        };
+        let (pipeline, _input) = Pipeline::start(config, sink, stats.clone());
+        assert_eq!(stats.live_codec(), None);
+        assert!(pipeline.stop().is_some());
+    }
+
+    #[test]
     fn a_reset_resets_abr_and_nothing_queues_while_not_streaming() {
         let calls = Arc::new(Calls::default());
         let stats = Arc::new(LinkStats::default());
@@ -474,6 +787,7 @@ mod tests {
             mtu: 600,
             abr: true,
             buffer: BufferPreset::Standard,
+            mute: None,
         };
         let (pipeline, mut input) = Pipeline::start(config, sink, stats.clone());
         let audio = vec![0u8; 480 * 4];
@@ -500,6 +814,42 @@ mod tests {
 
         pipeline.reset();
         assert!(wait(&|| calls.reset.load(Ordering::Relaxed) == 1));
+        assert!(pipeline.stop().is_some());
+    }
+
+    #[test]
+    fn volume_0_sends_silence() {
+        let calls = Arc::new(Calls::default());
+        let stats = Arc::new(LinkStats::default());
+        let (sink, _consumer, _streaming) = bt_host::media::detached_queue(stats.clone());
+        let zero = Arc::new(AtomicBool::new(true));
+        let config = PipelineConfig {
+            encoder: Box::new(Mock(calls.clone())),
+            input: InputFormat { sample_rate: 48000, channels: 2, sample: SampleType::I16 },
+            channels: 2,
+            mtu: 600,
+            abr: false,
+            buffer: BufferPreset::Standard,
+            mute: Some(Box::new({
+                let zero = zero.clone();
+                move || zero.load(Ordering::Acquire)
+            })),
+        };
+        let (pipeline, mut input) = Pipeline::start(config, sink, stats.clone());
+        let audio: Vec<u8> = (0..480 * 2).flat_map(|i| (i as i16 + 1).to_le_bytes()).collect();
+        let pushed = |input: &mut CaptureInput| {
+            let before = stats.capture_frames.load(Ordering::Relaxed);
+            for _ in 0..10 {
+                input.push(&audio);
+            }
+            std::thread::sleep(Duration::from_millis(200));
+            stats.capture_frames.load(Ordering::Relaxed) > before
+        };
+        assert!(pushed(&mut input));
+        assert_eq!(calls.loud.load(Ordering::Relaxed), 0);
+        zero.store(false, Ordering::Release);
+        assert!(pushed(&mut input));
+        assert!(calls.loud.load(Ordering::Relaxed) > 0);
         assert!(pipeline.stop().is_some());
     }
 }

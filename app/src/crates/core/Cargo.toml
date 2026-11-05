@@ -22,7 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
-# update.rs: GitHub Releases API (rustls, the system proxy as v1's WinHTTP),
+# update.rs (and firmware.rs): GitHub Releases API (rustls, the system proxy as v1's WinHTTP),
 # version precedence, and the local date of the daily check
 ureq = { version = "3.3", default-features = false, features = ["rustls", "win-system-proxy"] }
 semver = "1"
@@ -31,6 +31,8 @@ time = { version = "0.3", features = ["local-offset"] }
 if-addrs = "0.15"
 # le_media.rs: LE Audio MCP, the Windows media session (WinRT, safe API)
 windows = { version = "0.62", features = ["Foundation", "ApplicationModel", "Media_Control"] }
+# firmware.rs: checks the Realtek files fetched from linux-firmware
+sha2 = "0.10"
 
 [lints]
 workspace = true

@@ -17,6 +17,11 @@
 //!   accepting them does not block the stack
 //! - close sends HCI Reset (bounded) and cancels everything, leaving the
 //!   controller idle for the next session
+//! - close waits for that reset's Command Complete (CLOSE_RESET_WAIT), so
+//!   the next session's first command does not reach a controller that is
+//!   still resetting: an AX211 that got HCI Reset while one from close was
+//!   in progress answered one of the two and then nothing at all, until
+//!   Windows restarted
 //! - a failed ACL read is retried the same way (ACL_IN_MAX_ERRORS)
 //! - ACL / ISO writes have no timeout, and a failed one only drops the packet
 //!   (a stalled pipe also drops the writes behind it and is cleared)
@@ -25,6 +30,13 @@
 //!   cannot recover, it waits for the answer to a command that was lost
 //! - an adapter that cannot be opened (another program holds it) is skipped
 //!   for the next one the selector takes
+//!
+//! An Intel controller in its bootloader takes Secure Send (0xFC09) on the
+//! bulk OUT pipe (the firmware loader sends it through the ACL slot) and
+//! answers on the bulk IN pipe, as Linux btusb handles it: while
+//! [`HciBackend::set_bootloader`] is on, the ACL reader delivers what it
+//! reads as events, and close sends no HCI Reset: an AX211 bootloader
+//! answered one with Unknown HCI Command and no command after it.
 //!
 //! BTstack treats this transport as asynchronous: `send` hands the packet to
 //! a writer thread (one for commands, one for ACL / ISO) and returns. The
@@ -38,17 +50,18 @@
 //! pipe sat idle in between. The controller's ACL / ISO buffer count, which
 //! BTstack keeps to, bounds how many packets are queued.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Wake, Waker};
 use std::thread::{JoinHandle, Thread};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use btstack_sys::consts::{HCI_ACL_DATA_PACKET, HCI_COMMAND_DATA_PACKET, HCI_EVENT_PACKET, HCI_ISO_DATA_PACKET};
-use btstack_sys::{HciBackend, Upstream};
+use btstack_sys::{ControlData, ControlKind, ControlRecipient, ControlRequest, HciBackend, Upstream, UsbDescriptors};
 use nusb::descriptors::TransferType;
-use nusb::transfer::{Buffer, Bulk, ControlOut, ControlType, In, Interrupt, Out, Recipient, TransferError};
+use nusb::transfer::{Buffer, Bulk, ControlIn, ControlOut, ControlType, In, Interrupt, Out, Recipient, TransferError};
 use nusb::{Device, DeviceInfo, Endpoint, Interface, MaybeFuture};
 
 use crate::reassembly::Reassembler;
@@ -58,6 +71,9 @@ use crate::reassembly::Reassembler;
 const COMMAND_TIMEOUT: Duration = Duration::from_millis(2000);
 /// HCI Reset sent on close
 const CLOSE_RESET_TIMEOUT: Duration = Duration::from_millis(500);
+/// Waiting for the Command Complete of the HCI Reset sent on close (an
+/// AX211 took 40 to 110 ms)
+const CLOSE_RESET_WAIT: Duration = Duration::from_millis(1000);
 /// Consecutive failed event reads before event delivery is given up
 const EVENT_IN_MAX_ERRORS: u32 = 10;
 /// Consecutive failed ACL reads before ACL delivery is given up
@@ -82,6 +98,102 @@ fn out_slot(packet_type: u8) -> Option<usize> {
     }
 }
 
+/// VID and PID of the adapter opened last (what a stack runs on)
+static LAST_OPENED: Mutex<Option<(u16, u16)>> = Mutex::new(None);
+
+/// ACL / ISO OUT writes since [`take_acl_out_timing`] last ran: the
+/// longest from submit to completion (µs) and the most in flight at once
+static ACL_OUT_LATENCY_US: AtomicU64 = AtomicU64::new(0);
+static ACL_OUT_PENDING_MAX: AtomicU64 = AtomicU64::new(0);
+
+/// How often the event reader logs the transfer counters (debug)
+const STATS_EVERY: Duration = Duration::from_secs(10);
+
+/// Transfer counters since the last debug summary
+struct Stats {
+    events_in: AtomicU64,
+    events_in_bytes: AtomicU64,
+    acl_in: AtomicU64,
+    acl_in_bytes: AtomicU64,
+    commands_out: AtomicU64,
+    acl_out: AtomicU64,
+    acl_out_bytes: AtomicU64,
+    in_errors: AtomicU64,
+    out_errors: AtomicU64,
+    acl_out_pending_max: AtomicU64,
+}
+
+static STATS: Stats = Stats {
+    events_in: AtomicU64::new(0),
+    events_in_bytes: AtomicU64::new(0),
+    acl_in: AtomicU64::new(0),
+    acl_in_bytes: AtomicU64::new(0),
+    commands_out: AtomicU64::new(0),
+    acl_out: AtomicU64::new(0),
+    acl_out_bytes: AtomicU64::new(0),
+    in_errors: AtomicU64::new(0),
+    out_errors: AtomicU64::new(0),
+    acl_out_pending_max: AtomicU64::new(0),
+};
+
+impl Stats {
+    fn add(counter: &AtomicU64, n: usize) {
+        counter.fetch_add(n as u64, Ordering::Relaxed);
+    }
+
+    /// The counters, starting them again
+    fn take(&self) -> [u64; 10] {
+        [
+            &self.events_in,
+            &self.events_in_bytes,
+            &self.acl_in,
+            &self.acl_in_bytes,
+            &self.commands_out,
+            &self.acl_out,
+            &self.acl_out_bytes,
+            &self.in_errors,
+            &self.out_errors,
+            &self.acl_out_pending_max,
+        ]
+        .map(|c| c.swap(0, Ordering::Relaxed))
+    }
+
+    /// Logs the counters (debug) and starts them again
+    fn log(&self, period: Duration) {
+        let s = self.take();
+        tracing::debug!(
+            "USB: last {:.1} s: events in {} ({} B), ACL in {} ({} B), commands out {}, ACL/ISO out {} ({} B), \
+             errors in {} out {}, ACL out max pending {}",
+            period.as_secs_f32(),
+            s[0],
+            s[1],
+            s[2],
+            s[3],
+            s[4],
+            s[5],
+            s[6],
+            s[7],
+            s[8],
+            s[9]
+        );
+    }
+}
+
+/// The longest ACL / ISO OUT write (submit to completion) and the most
+/// writes in flight since the last call (core's stream health log): how
+/// long the controller held data back over USB
+pub fn take_acl_out_timing() -> (Duration, usize) {
+    let latency = ACL_OUT_LATENCY_US.swap(0, Ordering::Relaxed);
+    let pending = ACL_OUT_PENDING_MAX.swap(0, Ordering::Relaxed);
+    (Duration::from_micros(latency), pending as usize)
+}
+
+/// VID and PID of the adapter a [`UsbTransport`] opened last; None before
+/// the first open
+pub fn last_opened() -> Option<(u16, u16)> {
+    *LAST_OPENED.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Which adapter to open
 #[derive(Debug, Clone, Default)]
 pub struct UsbSelector {
@@ -92,6 +204,9 @@ pub struct UsbSelector {
     /// VID:PID of controllers that are Bluetooth adapters even without the
     /// Bluetooth class code (vendor class FF/01/01, e.g. Realtek tables)
     pub known: Vec<(u16, u16)>,
+    /// Instance ID of the adapter tried first when several are on WinUSB:
+    /// the one the chipset setup (Realtek firmware) was made for
+    pub preferred: Option<String>,
 }
 
 impl UsbSelector {
@@ -210,14 +325,29 @@ fn candidate(info: &DeviceInfo, known: &[(u16, u16)]) -> UsbCandidate {
 
 /// Bluetooth controllers on USB (any driver), Bluetooth class or known VID:PID
 pub fn list_candidates(known: &[(u16, u16)]) -> Vec<UsbCandidate> {
-    let Ok(devices) = nusb::list_devices().wait() else { return Vec::new() };
-    devices.filter(|d| !is_vmware(d)).map(|d| candidate(&d, known)).filter(|c| c.bluetooth_class || c.known).collect()
+    let devices = match nusb::list_devices().wait() {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::debug!("USB: listing devices failed: {e}");
+            return Vec::new();
+        }
+    };
+    let list: Vec<UsbCandidate> = devices
+        .filter(|d| !is_vmware(d))
+        .map(|d| candidate(&d, known))
+        .filter(|c| c.bluetooth_class || c.known)
+        .collect();
+    tracing::debug!("USB: {} candidate controller(s)", list.len());
+    list
 }
 
 struct Opened {
     /// Kept for the control pipe (commands) and the endpoints' lifetime
     interface: Interface,
-    _device: Device,
+    /// The event pipe, read again on close for the reset's answer
+    event_addr: u8,
+    /// Its descriptors for a chip report
+    device: Device,
     stop: Arc<AtomicBool>,
     /// The command writer; buffers of sent commands come back for reuse
     command_tx: mpsc::Sender<(u8, Vec<u8>)>,
@@ -229,6 +359,9 @@ struct Opened {
     acl_recycle_rx: mpsc::Receiver<Buffer>,
     acl_writer: Thread,
     upstream: Upstream,
+    /// The controller runs its bootloader: events on the bulk IN pipe, no
+    /// HCI Reset on close
+    bootloader: Arc<AtomicBool>,
     threads: Vec<JoinHandle<()>>,
 }
 
@@ -253,7 +386,23 @@ impl UsbTransport {
         let mut wrong_driver = None;
         for info in devices {
             let c = candidate(&info, &self.selector.known);
-            if !self.selector.takes(&c) {
+            let takes = self.selector.takes(&c);
+            tracing::debug!(
+                "USB: {:04X}:{:04X} {} driver {} bluetooth class {} known {} product {:?}: {}",
+                c.vid,
+                c.pid,
+                c.instance_id,
+                c.driver.as_deref().unwrap_or("(none)"),
+                c.bluetooth_class,
+                c.known,
+                c.product,
+                match (takes, c.winusb()) {
+                    (false, _) => "not selected",
+                    (true, true) => "selected",
+                    (true, false) => "selected, not on WinUSB",
+                }
+            );
+            if !takes {
                 continue;
             }
             if c.winusb() {
@@ -263,6 +412,10 @@ impl UsbTransport {
             }
         }
         if !found.is_empty() {
+            if let Some(p) = &self.selector.preferred {
+                // Stable: the others keep their enumeration order
+                found.sort_by_key(|info| !info.instance_id().to_string_lossy().eq_ignore_ascii_case(p));
+            }
             return Ok(found);
         }
         Err(match wrong_driver {
@@ -293,6 +446,63 @@ fn hci_endpoints(interface: &Interface) -> Option<(u8, u8, u8)> {
     Some((event_in?, acl_in?, acl_out?))
 }
 
+/// The device's descriptors as the debug log shows them: speed, class and
+/// each interface's alternate settings with their endpoints (interface 1,
+/// SCO, has its isochronous alternate settings there)
+fn log_layout(device: &Device) {
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        return;
+    }
+    let d = device.device_descriptor();
+    tracing::debug!(
+        "USB: device USB {:04X}, class {:02X}/{:02X}/{:02X}, ep0 max packet {}, version {:04X}, speed {:?}, {} configuration(s)",
+        d.usb_version(),
+        d.class(),
+        d.subclass(),
+        d.protocol(),
+        d.max_packet_size_0(),
+        d.device_version(),
+        device.speed(),
+        d.num_configurations()
+    );
+    let config = match device.active_configuration() {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::debug!("USB: no active configuration: {e}");
+            return;
+        }
+    };
+    tracing::debug!(
+        "USB: configuration {}, {} interface(s), attributes 0x{:02X}, max power {}",
+        config.configuration_value(),
+        config.num_interfaces(),
+        config.attributes(),
+        config.max_power()
+    );
+    for alt in config.interface_alt_settings() {
+        tracing::debug!(
+            "USB: interface {} alt {}: class {:02X}/{:02X}/{:02X}, {} endpoint(s)",
+            alt.interface_number(),
+            alt.alternate_setting(),
+            alt.class(),
+            alt.subclass(),
+            alt.protocol(),
+            alt.num_endpoints()
+        );
+        for ep in alt.endpoints() {
+            tracing::debug!(
+                "USB:   endpoint 0x{:02x} {:?} {:?}, max packet {} ({} per microframe), interval {}",
+                ep.address(),
+                ep.transfer_type(),
+                ep.direction(),
+                ep.max_packet_size(),
+                ep.packets_per_microframe(),
+                ep.interval()
+            );
+        }
+    }
+}
+
 fn send_command(interface: &Interface, command: &[u8], timeout: Duration) -> Result<(), TransferError> {
     interface
         .control_out(
@@ -317,6 +527,42 @@ fn device_gone(e: &TransferError) -> bool {
     matches!(e, TransferError::Disconnected | TransferError::Unknown(22) | TransferError::Unknown(6))
 }
 
+/// The descriptors Windows keeps for the device (no I/O), with one line per
+/// interface setting
+fn descriptors(device: &Device) -> UsbDescriptors {
+    let mut summary = Vec::new();
+    let configurations = device
+        .configurations()
+        .map(|c| {
+            for alt in c.interface_alt_settings() {
+                let endpoints: Vec<String> = alt
+                    .endpoints()
+                    .map(|e| {
+                        let kind = match e.transfer_type() {
+                            TransferType::Control => "control",
+                            TransferType::Isochronous => "isochronous",
+                            TransferType::Bulk => "bulk",
+                            TransferType::Interrupt => "interrupt",
+                        };
+                        format!("0x{:02X} {kind} {}", e.address(), e.max_packet_size())
+                    })
+                    .collect();
+                summary.push(format!(
+                    "interface {} alt {} class {:02X}/{:02X}/{:02X}: {}",
+                    alt.interface_number(),
+                    alt.alternate_setting(),
+                    alt.class(),
+                    alt.subclass(),
+                    alt.protocol(),
+                    if endpoints.is_empty() { "no endpoints".to_owned() } else { endpoints.join(", ") }
+                ));
+            }
+            c.as_bytes().to_vec()
+        })
+        .collect();
+    UsbDescriptors { device: device.device_descriptor().as_bytes().to_vec(), configurations, summary }
+}
+
 impl HciBackend for UsbTransport {
     fn is_async(&self) -> bool {
         true
@@ -328,14 +574,30 @@ impl HciBackend for UsbTransport {
         // skipped, as v1's usb_open tried every device
         let mut last_error = String::new();
         let mut opened = None;
+        tracing::debug!("USB: opening an adapter ({:?})", self.selector);
         for info in self.find()? {
             let (vid, pid) = (info.vendor_id(), info.product_id());
+            tracing::debug!(
+                "USB: trying {vid:04X}:{pid:04X} {} (bus {:?}, port chain {:?}, driver {:?})",
+                info.instance_id().to_string_lossy(),
+                info.bus_id(),
+                info.port_chain(),
+                info.driver()
+            );
             let attempt =
                 info.open().wait().map_err(|e| format!("cannot open {vid:04X}:{pid:04X}: {e}")).and_then(|device| {
+                    log_layout(&device);
                     let interface = device
                         .claim_interface(0)
                         .wait()
-                        .map_err(|e| format!("cannot claim interface 0 of {vid:04X}:{pid:04X}: {e}"))?;
+                        .map_err(|e| {
+                            // Seen right after WinUSB was assigned while
+                            // Windows still had the old driver loaded (issue
+                            // #81: "failed to initialize WinUSB (error 50)")
+                            format!(
+                                "cannot claim interface 0 of {vid:04X}:{pid:04X}: {e} (if WinUSB was just assigned: replug the adapter or restart Windows)"
+                            )
+                        })?;
                     let endpoints = hci_endpoints(&interface)
                         .ok_or_else(|| format!("{vid:04X}:{pid:04X} lacks the HCI event / ACL endpoints"))?;
                     Ok((device, interface, endpoints))
@@ -355,9 +617,18 @@ impl HciBackend for UsbTransport {
             return Err(last_error);
         };
         let (vid, pid) = (info.vendor_id(), info.product_id());
+        *LAST_OPENED.lock().unwrap_or_else(|e| e.into_inner()) = Some((vid, pid));
         let mut event_in = interface.endpoint::<Interrupt, In>(event_addr).map_err(|e| e.to_string())?;
         let mut acl_in = interface.endpoint::<Bulk, In>(acl_in_addr).map_err(|e| e.to_string())?;
         let mut acl_out = interface.endpoint::<Bulk, Out>(acl_out_addr).map_err(|e| e.to_string())?;
+        tracing::debug!(
+            "USB: interface 0 alt {}: event in 0x{event_addr:02x} (max packet {}), ACL in 0x{acl_in_addr:02x} (max packet {}), \
+             ACL out 0x{acl_out_addr:02x} (max packet {}); pipe policies: nusb's (RAW_IO on IN pipes, no control pipe timeout)",
+            interface.get_alt_setting(),
+            event_in.max_packet_size(),
+            acl_in.max_packet_size(),
+            acl_out.max_packet_size()
+        );
         // A halted endpoint or a data toggle left from an earlier session
         // keeps the controller from answering HCI Reset
         for (name, r) in [
@@ -367,8 +638,12 @@ impl HciBackend for UsbTransport {
         ] {
             if let Err(e) = r {
                 tracing::warn!(target: "hci", "USB: clearing the {name} pipe failed: {e}");
+                tracing::debug!("USB: clear halt on the {name} pipe: {e:?}");
+            } else {
+                tracing::debug!("USB: {name} pipe cleared");
             }
         }
+        STATS.take();
         tracing::info!(
             target: "hci",
             "USB: opened {vid:04X}:{pid:04X} {} (event 0x{event_addr:02x}, ACL 0x{acl_in_addr:02x}/0x{acl_out_addr:02x})",
@@ -376,6 +651,7 @@ impl HciBackend for UsbTransport {
         );
 
         let stop = Arc::new(AtomicBool::new(false));
+        let bootloader = Arc::new(AtomicBool::new(false));
         let command_in_flight = Arc::new(AtomicBool::new(false));
         let (command_tx, command_rx) = mpsc::channel::<(u8, Vec<u8>)>();
         let (command_recycle_tx, command_recycle_rx) = mpsc::channel::<Vec<u8>>();
@@ -390,8 +666,9 @@ impl HciBackend for UsbTransport {
             threads.push(spawn("usb-event-in", Box::new(move || event_loop(&mut event_in, &stop, &upstream)))?);
         }
         {
-            let (stop, upstream) = (stop.clone(), upstream.clone());
-            threads.push(spawn("usb-acl-in", Box::new(move || acl_in_loop(&mut acl_in, &stop, &upstream)))?);
+            let (stop, upstream, bootloader) = (stop.clone(), upstream.clone(), bootloader.clone());
+            threads
+                .push(spawn("usb-acl-in", Box::new(move || acl_in_loop(&mut acl_in, &stop, &bootloader, &upstream)))?);
         }
         {
             let (stop, interface, in_flight) = (stop.clone(), interface.clone(), command_in_flight.clone());
@@ -421,7 +698,8 @@ impl HciBackend for UsbTransport {
         };
         self.opened = Some(Opened {
             interface,
-            _device: device,
+            event_addr,
+            device,
             stop,
             command_tx,
             command_recycle_rx,
@@ -430,6 +708,7 @@ impl HciBackend for UsbTransport {
             acl_recycle_rx,
             acl_writer,
             upstream,
+            bootloader,
             threads,
         });
         Ok(())
@@ -437,6 +716,8 @@ impl HciBackend for UsbTransport {
 
     fn close(&mut self) {
         let Some(opened) = self.opened.take() else { return };
+        tracing::debug!("USB: closing; stopping {} I/O thread(s)", opened.threads.len());
+        let started = Instant::now();
         opened.stop.store(true, Ordering::Release);
         // The command writer finishes the command it has (bounded by its
         // timeout); the ACL writer cancels its transfers
@@ -444,15 +725,96 @@ impl HciBackend for UsbTransport {
         drop(opened.acl_tx);
         opened.acl_writer.unpark();
         for t in opened.threads {
-            let _ = t.join();
+            let name = t.thread().name().unwrap_or("?").to_owned();
+            if t.join().is_err() {
+                tracing::debug!("USB: thread {name} panicked");
+            }
         }
+        tracing::debug!("USB: I/O threads stopped in {:?}", started.elapsed());
         // Leave the controller idle (no links, no scans, no queued events)
-        // for the next session, as Linux does with HCI_QUIRK_RESET_ON_CLOSE
-        match send_command(&opened.interface, &[0x03, 0x0C, 0x00], CLOSE_RESET_TIMEOUT) {
-            Ok(()) => tracing::info!(target: "hci", "USB: HCI Reset sent on close"),
-            Err(e) => tracing::warn!(target: "hci", "USB: HCI Reset on close failed: {e}"),
+        // for the next session, as Linux does with HCI_QUIRK_RESET_ON_CLOSE;
+        // not a bootloader (module docs)
+        if opened.bootloader.load(Ordering::Acquire) {
+            tracing::info!(target: "hci", "USB: controller in its bootloader, no HCI Reset on close");
+        } else {
+            match send_command(&opened.interface, &[0x03, 0x0C, 0x00], CLOSE_RESET_TIMEOUT) {
+                Ok(()) => {
+                    let at = Instant::now();
+                    match reset_completed(&opened.interface, opened.event_addr, CLOSE_RESET_WAIT) {
+                        Ok(()) => tracing::info!(
+                            target: "hci",
+                            "USB: HCI Reset on close done in {} ms",
+                            at.elapsed().as_millis()
+                        ),
+                        Err(e) => tracing::warn!(target: "hci", "USB: HCI Reset sent on close, but {e}"),
+                    }
+                }
+                Err(e) => tracing::warn!(target: "hci", "USB: HCI Reset on close failed: {e}"),
+            }
         }
         tracing::info!(target: "hci", "USB: closed");
+    }
+
+    fn set_bootloader(&mut self, on: bool) {
+        if let Some(o) = &self.opened {
+            tracing::debug!(
+                "USB: bootloader {on}: the bulk IN pipe carries {}",
+                if on { "events" } else { "ACL data" }
+            );
+            o.bootloader.store(on, Ordering::Release);
+        }
+    }
+
+    fn control(&mut self, request: &ControlRequest) -> Result<Vec<u8>, String> {
+        let Some(o) = &self.opened else { return Err("the adapter is not open".into()) };
+        let control_type = match request.kind {
+            ControlKind::Standard => ControlType::Standard,
+            ControlKind::Class => ControlType::Class,
+            ControlKind::Vendor => ControlType::Vendor,
+        };
+        let recipient = match request.recipient {
+            ControlRecipient::Device => Recipient::Device,
+            ControlRecipient::Interface => Recipient::Interface,
+            ControlRecipient::Endpoint => Recipient::Endpoint,
+            ControlRecipient::Other => Recipient::Other,
+        };
+        let result = match &request.data {
+            ControlData::In(length) => o
+                .interface
+                .control_in(
+                    ControlIn {
+                        control_type,
+                        recipient,
+                        request: request.request,
+                        value: request.value,
+                        index: request.index,
+                        length: *length,
+                    },
+                    COMMAND_TIMEOUT,
+                )
+                .wait(),
+            ControlData::Out(data) => o
+                .interface
+                .control_out(
+                    ControlOut {
+                        control_type,
+                        recipient,
+                        request: request.request,
+                        value: request.value,
+                        index: request.index,
+                        data,
+                    },
+                    COMMAND_TIMEOUT,
+                )
+                .wait()
+                .map(|()| Vec::new()),
+        };
+        result.map_err(|e| format!("{e:?}"))
+    }
+
+    fn usb_descriptors(&mut self) -> Option<UsbDescriptors> {
+        let o = self.opened.as_ref()?;
+        Some(descriptors(&o.device))
     }
 
     fn can_send(&mut self, packet_type: u8) -> bool {
@@ -468,6 +830,7 @@ impl HciBackend for UsbTransport {
         let Some(o) = &self.opened else { return false };
         match out_slot(packet_type) {
             Some(0) => {
+                tracing::trace!("USB: command 0x{:04X} out, {} bytes", le16(packet), packet.len());
                 let mut buf = o.command_recycle_rx.try_recv().unwrap_or_default();
                 buf.clear();
                 buf.extend_from_slice(packet);
@@ -479,6 +842,12 @@ impl HciBackend for UsbTransport {
                 true
             }
             Some(_) => {
+                tracing::trace!(
+                    "USB: {} out, handle 0x{:03X}, {} bytes",
+                    if packet_type == HCI_ISO_DATA_PACKET { "ISO" } else { "ACL" },
+                    le16(packet) & 0x0FFF,
+                    packet.len()
+                );
                 let mut buf = o
                     .acl_recycle_rx
                     .try_recv()
@@ -506,6 +875,49 @@ impl Drop for UsbTransport {
     }
 }
 
+/// The first two bytes little-endian (a command's opcode, an ACL / ISO
+/// packet's handle and flags); 0 if shorter
+fn le16(p: &[u8]) -> u16 {
+    match p {
+        [a, b, ..] => u16::from_le_bytes([*a, *b]),
+        _ => 0,
+    }
+}
+
+/// Reads the event pipe (the event reader has stopped) until the Command
+/// Complete of HCI Reset; other events are dropped, the session is over.
+/// Err: why it was not seen
+fn reset_completed(interface: &Interface, event_addr: u8, wait: Duration) -> Result<(), String> {
+    let mut ep = interface
+        .endpoint::<Interrupt, In>(event_addr)
+        .map_err(|e| format!("the event pipe 0x{event_addr:02x} is not available: {e}"))?;
+    let deadline = Instant::now() + wait;
+    let mut events = Reassembler::new(HCI_EVENT_PACKET);
+    let mut result = Err(format!("no Command Complete within {} ms", wait.as_millis()));
+    submit_in(&mut ep, EVENT_TRANSFER_SIZE);
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let Some(c) = ep.wait_next_complete(left) else { break };
+        if let Err(e) = c.status {
+            result = Err(format!("the event pipe failed: {e:?}"));
+            break;
+        }
+        // Command Complete: 0x0E, length, command credits, opcode 0x0C03
+        let mut done = false;
+        events.push(&c.buffer[..c.actual_len], |p| done |= p.len() >= 5 && p[0] == 0x0E && p[3..5] == [0x03, 0x0C]);
+        if done {
+            result = Ok(());
+            break;
+        }
+        submit_in(&mut ep, EVENT_TRANSFER_SIZE);
+    }
+    drain(&mut ep);
+    result
+}
+
 fn submit_in<T: nusb::transfer::BulkOrInterrupt>(ep: &mut Endpoint<T, In>, size: usize) {
     // IN transfers must be a multiple of the max packet size
     let mps = ep.max_packet_size().max(1);
@@ -514,6 +926,7 @@ fn submit_in<T: nusb::transfer::BulkOrInterrupt>(ep: &mut Endpoint<T, In>, size:
 }
 
 fn drain<T: nusb::transfer::BulkOrInterrupt>(ep: &mut Endpoint<T, In>) {
+    tracing::debug!("USB: cancelling {} IN transfer(s) on 0x{:02x}", ep.pending(), ep.endpoint_address());
     ep.cancel_all();
     while ep.pending() > 0 {
         if ep.wait_next_complete(Duration::from_secs(1)).is_none() {
@@ -526,24 +939,43 @@ fn drain<T: nusb::transfer::BulkOrInterrupt>(ep: &mut Endpoint<T, In>) {
 fn event_loop(ep: &mut Endpoint<Interrupt, In>, stop: &AtomicBool, upstream: &Upstream) {
     let mut events = Reassembler::new(HCI_EVENT_PACKET);
     let mut errors = 0u32;
+    let addr = ep.endpoint_address();
+    tracing::debug!("USB: event reader started (0x{addr:02x}, {IN_TRANSFERS} x {EVENT_TRANSFER_SIZE} B)");
+    let mut stats_at = Instant::now();
     for _ in 0..IN_TRANSFERS {
         submit_in(ep, EVENT_TRANSFER_SIZE);
     }
     while !stop.load(Ordering::Acquire) {
+        if stats_at.elapsed() >= STATS_EVERY {
+            STATS.log(stats_at.elapsed());
+            stats_at = Instant::now();
+        }
         let Some(c) = ep.wait_next_complete(POLL) else { continue };
         match c.status {
             Ok(()) => {
                 errors = 0;
-                events.push(&c.buffer[..c.actual_len], |p| upstream.deliver(HCI_EVENT_PACKET, p));
+                events.push(&c.buffer[..c.actual_len], |p| {
+                    tracing::trace!(
+                        "USB: event 0x{:02X} in on 0x{addr:02x}, {} bytes",
+                        p.first().copied().unwrap_or(0),
+                        p.len()
+                    );
+                    Stats::add(&STATS.events_in, 1);
+                    Stats::add(&STATS.events_in_bytes, p.len());
+                    upstream.deliver(HCI_EVENT_PACKET, p)
+                });
             }
             Err(TransferError::Cancelled) if stop.load(Ordering::Acquire) => break,
             Err(e) if device_gone(&e) => {
+                tracing::debug!("USB: event read on 0x{addr:02x}: {e:?}, the adapter is gone");
                 upstream.fail(&format!("HCI event read: {e}"));
                 break;
             }
             Err(e) => {
                 // One bad read must not end event delivery for the session
                 errors += 1;
+                Stats::add(&STATS.in_errors, 1);
+                tracing::debug!("USB: event read on 0x{addr:02x} failed: {e:?} ({} bytes)", c.actual_len);
                 events.reset();
                 if errors > EVENT_IN_MAX_ERRORS {
                     upstream.fail(&format!("HCI event read failed {errors} times in a row: {e}"));
@@ -553,6 +985,8 @@ fn event_loop(ep: &mut Endpoint<Interrupt, In>, stop: &AtomicBool, upstream: &Up
                 drain(ep);
                 if let Err(e) = ep.clear_halt().wait() {
                     tracing::warn!(target: "hci", "USB: clearing the event pipe failed: {e}");
+                } else {
+                    tracing::debug!("USB: event pipe 0x{addr:02x} cleared, reading again");
                 }
                 for _ in 0..IN_TRANSFERS {
                     submit_in(ep, EVENT_TRANSFER_SIZE);
@@ -563,23 +997,55 @@ fn event_loop(ep: &mut Endpoint<Interrupt, In>, stop: &AtomicBool, upstream: &Up
         submit_in(ep, EVENT_TRANSFER_SIZE);
     }
     drain(ep);
+    STATS.log(stats_at.elapsed());
+    tracing::debug!("USB: event reader stopped (stop flag {})", stop.load(Ordering::Acquire));
 }
 
-fn acl_in_loop(ep: &mut Endpoint<Bulk, In>, stop: &AtomicBool, upstream: &Upstream) {
+/// `bootloader`: what comes in is HCI events ([`HciBackend::set_bootloader`])
+fn acl_in_loop(ep: &mut Endpoint<Bulk, In>, stop: &AtomicBool, bootloader: &AtomicBool, upstream: &Upstream) {
     let mut acl = Reassembler::new(HCI_ACL_DATA_PACKET);
+    let mut events = Reassembler::new(HCI_EVENT_PACKET);
+    let mut events_before = false;
     let mut errors = 0u32;
+    let addr = ep.endpoint_address();
+    tracing::debug!("USB: ACL reader started (0x{addr:02x}, {IN_TRANSFERS} x {ACL_TRANSFER_SIZE} B)");
     for _ in 0..IN_TRANSFERS {
         submit_in(ep, ACL_TRANSFER_SIZE);
     }
     while !stop.load(Ordering::Acquire) {
         let Some(c) = ep.wait_next_complete(POLL) else { continue };
         match c.status {
+            Ok(()) if bootloader.load(Ordering::Acquire) => {
+                errors = 0;
+                if !events_before {
+                    acl.reset();
+                    events_before = true;
+                }
+                events.push(&c.buffer[..c.actual_len], |p| {
+                    tracing::trace!("USB: event 0x{:02X} on the bulk IN pipe 0x{addr:02x}, {} bytes", p[0], p.len());
+                    upstream.deliver(HCI_EVENT_PACKET, p)
+                });
+            }
             Ok(()) => {
                 errors = 0;
-                acl.push(&c.buffer[..c.actual_len], |p| upstream.deliver(HCI_ACL_DATA_PACKET, p));
+                if events_before {
+                    events.reset();
+                    events_before = false;
+                }
+                acl.push(&c.buffer[..c.actual_len], |p| {
+                    tracing::trace!(
+                        "USB: ACL in on 0x{addr:02x}, handle 0x{:03X}, {} bytes",
+                        le16(p) & 0x0FFF,
+                        p.len()
+                    );
+                    Stats::add(&STATS.acl_in, 1);
+                    Stats::add(&STATS.acl_in_bytes, p.len());
+                    upstream.deliver(HCI_ACL_DATA_PACKET, p)
+                });
             }
             Err(TransferError::Cancelled) if stop.load(Ordering::Acquire) => break,
             Err(e) if device_gone(&e) => {
+                tracing::debug!("USB: ACL read on 0x{addr:02x}: {e:?}, the adapter is gone");
                 upstream.fail(&format!("ACL read: {e}"));
                 break;
             }
@@ -587,7 +1053,10 @@ fn acl_in_loop(ep: &mut Endpoint<Bulk, In>, stop: &AtomicBool, upstream: &Upstre
                 // As v1: reset the pipe and read on (a stall, a bad
                 // transfer); only a run of failures gives up
                 errors += 1;
+                Stats::add(&STATS.in_errors, 1);
+                tracing::debug!("USB: ACL read on 0x{addr:02x} failed: {e:?} ({} bytes)", c.actual_len);
                 acl.reset();
+                events.reset();
                 if errors > ACL_IN_MAX_ERRORS {
                     upstream.fail(&format!("ACL read failed {errors} times in a row: {e}"));
                     break;
@@ -596,6 +1065,8 @@ fn acl_in_loop(ep: &mut Endpoint<Bulk, In>, stop: &AtomicBool, upstream: &Upstre
                 drain(ep);
                 if let Err(e) = ep.clear_halt().wait() {
                     tracing::warn!(target: "hci", "USB: clearing the ACL in pipe failed: {e}");
+                } else {
+                    tracing::debug!("USB: ACL in pipe 0x{addr:02x} cleared, reading again");
                 }
                 for _ in 0..IN_TRANSFERS {
                     submit_in(ep, ACL_TRANSFER_SIZE);
@@ -606,6 +1077,7 @@ fn acl_in_loop(ep: &mut Endpoint<Bulk, In>, stop: &AtomicBool, upstream: &Upstre
         submit_in(ep, ACL_TRANSFER_SIZE);
     }
     drain(ep);
+    tracing::debug!("USB: ACL reader stopped (stop flag {})", stop.load(Ordering::Acquire));
 }
 
 /// What becomes of a failed write
@@ -653,10 +1125,19 @@ fn acl_writer_loop(
     let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
     let mut cx = Context::from_waker(&waker);
     let mut open = true;
+    // Submit times of the transfers in flight (they complete in order)
+    let mut submitted: VecDeque<Instant> = VecDeque::with_capacity(ACL_OUT_TRANSFERS);
+    let addr = ep.endpoint_address();
+    tracing::debug!("USB: ACL writer started (0x{addr:02x}, up to {ACL_OUT_TRANSFERS} in flight)");
     while !stop.load(Ordering::Acquire) {
         while open && ep.pending() < ACL_OUT_TRANSFERS {
             match rx.try_recv() {
-                Ok(buf) => ep.submit(buf),
+                Ok(buf) => {
+                    ep.submit(buf);
+                    submitted.push_back(Instant::now());
+                    ACL_OUT_PENDING_MAX.fetch_max(ep.pending() as u64, Ordering::Relaxed);
+                    STATS.acl_out_pending_max.fetch_max(ep.pending() as u64, Ordering::Relaxed);
+                }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => open = false,
             }
@@ -672,11 +1153,22 @@ fn acl_writer_loop(
             std::thread::park_timeout(POLL);
             continue;
         };
+        let len = c.actual_len;
         let _ = recycle.send(c.buffer);
-        let Err(e) = c.status else { continue };
+        if let Some(at) = submitted.pop_front() {
+            ACL_OUT_LATENCY_US.fetch_max(at.elapsed().as_micros() as u64, Ordering::Relaxed);
+            tracing::trace!("USB: ACL out on 0x{addr:02x} done, {len} bytes, {:?}, {:?}", at.elapsed(), c.status);
+        }
+        let Err(e) = c.status else {
+            Stats::add(&STATS.acl_out, 1);
+            Stats::add(&STATS.acl_out_bytes, len);
+            continue;
+        };
+        Stats::add(&STATS.out_errors, 1);
         if stop.load(Ordering::Acquire) {
             break;
         }
+        tracing::debug!("USB: ACL write on 0x{addr:02x} failed: {e:?} ({len} bytes, {} more pending)", ep.pending());
         if write_failure(HCI_ACL_DATA_PACKET, &e) == WriteFailure::Fatal {
             upstream.fail(&format!("ACL write: {e}"));
             break;
@@ -685,15 +1177,19 @@ fn acl_writer_loop(
             // The writes behind it fail as well, and every later one until
             // the pipe is cleared
             let behind = cancel_out(ep, &recycle);
+            submitted.clear();
             tracing::warn!(target: "hci", "USB: ACL write failed ({e}), {} packet(s) dropped", 1 + behind);
             if let Err(e) = ep.clear_halt().wait() {
                 tracing::warn!(target: "hci", "USB: clearing the ACL out pipe failed: {e}");
+            } else {
+                tracing::debug!("USB: ACL out pipe 0x{addr:02x} cleared after a stall");
             }
         } else {
             tracing::warn!(target: "hci", "USB: ACL write failed ({e}), packet dropped");
         }
     }
-    cancel_out(ep, &recycle);
+    let cancelled = cancel_out(ep, &recycle);
+    tracing::debug!("USB: ACL writer stopped ({cancelled} write(s) cancelled)");
 }
 
 /// Cancels the pending OUT transfers and waits for them; returns how many
@@ -727,23 +1223,35 @@ fn writer_loop(
     stop: &AtomicBool,
     upstream: &Upstream,
 ) {
+    tracing::debug!("USB: command writer started");
     loop {
         let (packet_type, packet) = match rx.recv_timeout(POLL) {
             Ok(p) => p,
             Err(mpsc::RecvTimeoutError::Timeout) if !stop.load(Ordering::Acquire) => continue,
             Err(_) => break,
         };
+        let (head, len, started) = (le16(&packet), packet.len(), Instant::now());
         let result = write(packet_type, &packet);
         in_flight.store(false, Ordering::Release);
         let _ = recycle.send(packet);
         match result {
-            Ok(()) => upstream.packet_sent(),
+            Ok(()) => {
+                tracing::trace!("USB: command 0x{head:04X} written, {len} bytes, {:?}", started.elapsed());
+                Stats::add(&STATS.commands_out, 1);
+                upstream.packet_sent()
+            }
             Err(e) => {
                 let what = match packet_type {
                     HCI_COMMAND_DATA_PACKET => "HCI command",
                     HCI_ISO_DATA_PACKET => "ISO write",
                     _ => "ACL write",
                 };
+                Stats::add(&STATS.out_errors, 1);
+                tracing::debug!(
+                    "USB: {what} 0x{head:04X} ({len} bytes) on the control pipe failed after {:?}: {e:?}{}",
+                    started.elapsed(),
+                    if stop.load(Ordering::Acquire) { " (closing)" } else { "" }
+                );
                 if stop.load(Ordering::Acquire) {
                     break;
                 }
@@ -763,6 +1271,7 @@ fn writer_loop(
             }
         }
     }
+    tracing::debug!("USB: command writer stopped");
 }
 
 #[cfg(test)]

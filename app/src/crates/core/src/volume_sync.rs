@@ -9,7 +9,8 @@
 //!
 //! Only the level is synced, not mute: muting the output device is how the PC
 //! is kept silent while the headphones play (loopback capture is not affected
-//! by the endpoint's mute), so mute is never read nor written here.
+//! by the endpoint's mute), so mute is never read nor written here
+//! (mute_output.rs mutes it for the session).
 //!
 //! The Windows side is [`EndpointVolume`](audio_capture::EndpointVolume),
 //! which is `!Send` and bound to one device: a [`VolumeSyncer`] lives on the
@@ -82,6 +83,14 @@ pub trait Endpoint {
     fn restores(&self) -> bool {
         true
     }
+    /// Whether the device is muted; None if it cannot be read
+    fn muted(&self) -> Option<bool> {
+        None
+    }
+    /// Sets the device's mute; false if it failed
+    fn set_muted(&self, _muted: bool) -> bool {
+        false
+    }
 }
 
 /// Opens [`Endpoint`]s and tells which device is the default output
@@ -108,6 +117,14 @@ impl Endpoint for audio_capture::EndpointVolume {
 
     fn set_volume(&self, scalar: f32) -> bool {
         audio_capture::EndpointVolume::set_volume(self, scalar).is_ok()
+    }
+
+    fn muted(&self) -> Option<bool> {
+        audio_capture::EndpointVolume::muted(self).ok()
+    }
+
+    fn set_muted(&self, muted: bool) -> bool {
+        audio_capture::EndpointVolume::set_muted(self, muted).is_ok()
     }
 }
 
@@ -200,6 +217,7 @@ impl VolumeSyncer<WindowsEndpoints> {
 
 impl<P: EndpointProvider> VolumeSyncer<P> {
     pub fn with_provider(provider: P, choice: EndpointChoice) -> Self {
+        tracing::debug!("volume sync: on, device {choice:?}");
         VolumeSyncer {
             provider,
             choice,
@@ -229,6 +247,9 @@ impl<P: EndpointProvider> VolumeSyncer<P> {
             return;
         }
         let Some(hp) = headphones.remote_volume() else {
+            if self.last_headphones.is_some() {
+                tracing::debug!("volume sync: headphone volume unknown now (no absolute volume), waiting for it");
+            }
             // No AVRCP volume (yet, or the link dropped): when it comes
             // back, Windows takes over the headphones' volume again
             self.last_windows = None;
@@ -248,6 +269,10 @@ impl<P: EndpointProvider> VolumeSyncer<P> {
             return;
         };
         if windows != last_windows {
+            tracing::debug!(
+                "volume sync: Windows -> headphones {windows} ({}%), was {last_windows}, headphones at {hp}",
+                percent(windows)
+            );
             // Volume keys, the flyout or the mixer: the headphones follow
             headphones.request_volume(windows);
             self.last_windows = Some(windows);
@@ -256,9 +281,16 @@ impl<P: EndpointProvider> VolumeSyncer<P> {
             return;
         }
         if self.hold_until.is_some_and(|until| now < until) {
+            if hp != last_headphones {
+                tracing::trace!("volume sync: headphones report {hp} while settling, ignored (echo)");
+            }
             return;
         }
         if hp != last_headphones {
+            tracing::debug!(
+                "volume sync: headphones -> Windows {hp} ({}%), was {last_headphones}, Windows at {windows}",
+                percent(hp)
+            );
             // The headphones' buttons or gestures, or the app's slider
             self.set_windows(hp);
         }
@@ -276,12 +308,16 @@ impl<P: EndpointProvider> VolumeSyncer<P> {
             EndpointChoice::Device(id) => id.clone(),
             EndpointChoice::Default => match self.provider.default_device() {
                 Some(id) => id,
-                None => return false,
+                None => {
+                    tracing::trace!("volume sync: no default output device");
+                    return false;
+                }
             },
         };
         if self.attached.as_ref().is_some_and(|a| a.endpoint.device_id() == id) {
             return true;
         }
+        tracing::debug!("volume sync: opening {id} (was {:?})", self.attached.as_ref().map(|a| a.endpoint.device_id()));
         self.detach();
         match self.provider.open(&id) {
             Ok(endpoint) => {
@@ -316,6 +352,8 @@ impl<P: EndpointProvider> VolumeSyncer<P> {
             // its previous volume back
             if a.endpoint.set_volume(original) {
                 tracing::info!("volume sync: Windows volume restored to {}%", percent(scalar_to_level(original)));
+            } else {
+                tracing::debug!("volume sync: restoring the Windows volume failed");
             }
         }
         self.last_windows = None;
@@ -331,10 +369,12 @@ impl<P: EndpointProvider> VolumeSyncer<P> {
         let Some(a) = self.attached.as_mut() else { return };
         if a.original.is_none() {
             a.original = a.endpoint.volume();
+            tracing::debug!("volume sync: Windows volume before syncing {:?}", a.original);
         }
-        a.endpoint.set_volume(level_to_scalar(level));
+        let ok = a.endpoint.set_volume(level_to_scalar(level));
         // What the device actually took (it may have volume steps)
         let taken = a.endpoint.volume().map(scalar_to_level);
+        tracing::debug!("volume sync: Windows set to {level}: ok {ok}, took {taken:?}");
         self.last_windows = Some(taken.unwrap_or(level));
         self.last_headphones = Some(level);
     }

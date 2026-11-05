@@ -107,6 +107,14 @@ pub struct UsbDevice {
 }
 
 impl UsbDevice {
+    /// The name to show: the product string the device reports, else
+    /// FriendlyName / description. FriendlyName can be stale: a vendor
+    /// driver's INF writes it and switching to WinUSB leaves it behind
+    /// (a UB500 showed "TP-TP+ UB500 Adapter").
+    pub fn display_name(&self) -> &str {
+        self.bus_reported_name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or(&self.name)
+    }
+
     /// The compatible IDs name the Bluetooth class (E0/01/01), whatever
     /// driver owns the device
     pub fn has_bluetooth_compat_id(&self) -> bool {
@@ -187,6 +195,11 @@ pub fn enumerate(probe_winusb: bool) -> windows::core::Result<Vec<UsbDevice>> {
         Ok(extra) => result.extend(extra),
         Err(e) => tracing::debug!("usb_adapters: listing USB device nodes failed: {e}"),
     }
+    tracing::debug!(
+        "usb_adapters: {} USB device(s), {} look like Bluetooth (probe {probe_winusb})",
+        result.len(),
+        result.iter().filter(|d| d.looks_like_bluetooth()).count()
+    );
     Ok(result)
 }
 
@@ -270,6 +283,7 @@ pub(crate) fn problem_code(devinst: u32) -> Option<u32> {
 /// Interface 0 of a WinUSB device: its class and whether it has the HCI
 /// endpoints (v1 is_bluetooth_class / has_hci_endpoints)
 fn probe_interface(path: &str) -> Result<InterfaceProbe, String> {
+    tracing::debug!("usb_adapters: probing {path}");
     // SAFETY: NUL-terminated path; the handle is closed below.
     let file = unsafe {
         CreateFileW(
@@ -298,9 +312,17 @@ fn probe_interface(path: &str) -> Result<InterfaceProbe, String> {
             for i in 0..desc.bNumEndpoints {
                 let mut pipe = WINUSB_PIPE_INFORMATION::default();
                 // SAFETY: initialised WinUSB handle; index below the count.
-                if unsafe { WinUsb_QueryPipe(usb, 0, i, &mut pipe) }.is_err() {
+                if let Err(e) = unsafe { WinUsb_QueryPipe(usb, 0, i, &mut pipe) } {
+                    tracing::debug!("usb_adapters: probe: WinUsb_QueryPipe({i}) failed (error {})", win32_code(&e));
                     continue;
                 }
+                tracing::debug!(
+                    "usb_adapters: probe: pipe 0x{:02x} type {}, max packet {}, interval {}",
+                    pipe.PipeId,
+                    pipe.PipeType.0,
+                    pipe.MaximumPacketSize,
+                    pipe.Interval
+                );
                 let input = pipe.PipeId & 0x80 != 0;
                 match pipe.PipeType {
                     t if t == UsbdPipeTypeInterrupt && input => intr_in = true,
@@ -327,6 +349,11 @@ fn probe_interface(path: &str) -> Result<InterfaceProbe, String> {
     };
     // SAFETY: initialised above and freed only here (before the file).
     let _ = unsafe { WinUsb_Free(usb) };
+    tracing::debug!(
+        "usb_adapters: probe: interface 0 alt {}, {} endpoint(s): {result:?}",
+        desc.bAlternateSetting,
+        desc.bNumEndpoints
+    );
     result
 }
 
@@ -359,7 +386,7 @@ pub(crate) fn parse_multi_sz(data: &[u16]) -> Vec<String> {
     data.split(|&c| c == 0).take_while(|s| !s.is_empty()).map(String::from_utf16_lossy).collect()
 }
 
-struct OwnedHandle(HANDLE);
+pub(crate) struct OwnedHandle(pub(crate) HANDLE);
 
 impl Drop for OwnedHandle {
     fn drop(&mut self) {
@@ -391,7 +418,7 @@ impl DevInfoSet {
         Ok((set, data))
     }
 
-    fn interface_detail(&self, intf: &SP_DEVICE_INTERFACE_DATA) -> Option<(String, SP_DEVINFO_DATA)> {
+    pub(crate) fn interface_detail(&self, intf: &SP_DEVICE_INTERFACE_DATA) -> Option<(String, SP_DEVINFO_DATA)> {
         let mut size = 0u32;
         // SAFETY: size query (no buffer); fails with INSUFFICIENT_BUFFER.
         let _ = unsafe { SetupDiGetDeviceInterfaceDetailW(self.0, intf, None, 0, Some(&mut size), None) };
@@ -430,6 +457,7 @@ impl DevInfoSet {
     ) -> Option<UsbDevice> {
         let (vid, pid) = parse_vid_pid(&instance_id).or_else(|| parse_vid_pid(&path))?;
         if vid == 0x0E0F {
+            tracing::debug!("usb_adapters: {instance_id}: VMware virtual device, skipped");
             return None;
         }
         let driver = self.driver_info(data);
@@ -438,7 +466,7 @@ impl DevInfoSet {
         let usb_class = compatible_ids.iter().find_map(|id| parse_usb_class_id(id));
         let probe =
             (probe_winusb && driver_kind == DriverKind::WinUsb && !path.is_empty()).then(|| probe_interface(&path));
-        Some(UsbDevice {
+        let device = UsbDevice {
             name: self
                 .registry_string(data, SPDRP_FRIENDLYNAME)
                 .or_else(|| self.registry_string(data, SPDRP_DEVICEDESC))
@@ -456,7 +484,25 @@ impl DevInfoSet {
             driver,
             driver_kind,
             probe,
-        })
+        };
+        tracing::debug!(
+            "usb_adapters: {} {:04X}:{:04X} {:?}: service {:?} ({:?}, {} {}), class {:?}, problem {:?}, \
+             compatible Bluetooth ID {}, probe {:?} -> {}",
+            device.instance_id,
+            device.vid,
+            device.pid,
+            device.display_name(),
+            device.driver.service,
+            device.driver_kind,
+            device.driver.inf_name,
+            device.driver.version,
+            device.usb_class.map(|c| c.to_string()),
+            device.problem_code,
+            device.has_bluetooth_compat_id(),
+            device.probe,
+            if device.looks_like_bluetooth() { "looks like Bluetooth" } else { "not Bluetooth by itself" }
+        );
+        Some(device)
     }
 
     pub(crate) fn instance_id(&self, data: &SP_DEVINFO_DATA) -> Option<String> {
@@ -517,6 +563,15 @@ impl DevInfoSet {
         let units: Vec<u16> = buf.as_chunks::<2>().0.iter().map(|b| u16::from_le_bytes(*b)).collect();
         let s = crate::autostart::utf16_string(&units);
         (!s.is_empty()).then_some(s)
+    }
+
+    /// A UINT32 device property, None if absent or of another type
+    pub(crate) fn property_u32(&self, data: &SP_DEVINFO_DATA, key: &DEVPROPKEY) -> Option<u32> {
+        let mut ty = DEVPROPTYPE::default();
+        let mut buf = [0u8; 4];
+        // SAFETY: valid set, element and key; the buffer length is passed.
+        unsafe { SetupDiGetDevicePropertyW(self.0, data, key, &mut ty, Some(&mut buf), None, 0) }.ok()?;
+        (ty == windows::Win32::Devices::Properties::DEVPROP_TYPE_UINT32).then(|| u32::from_le_bytes(buf))
     }
 
     /// The driver that owns the device now (all fields empty if none)

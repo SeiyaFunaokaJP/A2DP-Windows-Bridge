@@ -221,6 +221,13 @@ impl Group {
     /// Volume State read (`from_notification` false) or notified
     fn on_state(&mut self, id: LeDeviceId, con: u16, value: &[u8], from_notification: bool, out: &mut Vec<GattOp>) {
         let Some(v) = self.devices.get_mut(&id).filter(|v| v.con == con) else { return };
+        tracing::debug!(
+            "VCP: {}: Volume State {value:02X?} ({}), busy {}, want {:?}",
+            v.addr,
+            if from_notification { "notified" } else { "read" },
+            v.busy(),
+            v.want
+        );
         let [setting, mute, counter, ..] = *value else {
             warn!("VCP: {}: malformed Volume State ({} bytes)", v.addr, value.len());
             return;
@@ -305,6 +312,7 @@ impl Group {
     /// request_volume(): the Windows volume changed
     fn set_group_volume(&mut self, setting: u8, out: &mut Vec<GattOp>) {
         if self.target.is_some_and(|t| to_level(t) == to_level(setting)) {
+            tracing::debug!("VCP: volume {}/127 is the group level already", to_level(setting));
             self.publish();
             return; // the same level: keep the devices' exact setting
         }
@@ -325,6 +333,7 @@ impl Group {
     fn sync(&mut self, id: LeDeviceId, out: &mut Vec<GattOp>) {
         let Some(v) = self.devices.get_mut(&id) else { return };
         if v.busy() || !v.known {
+            tracing::debug!("VCP: {}: sync deferred (busy {}, state known {})", v.addr, v.busy(), v.known);
             return;
         }
         let sent = match v.want {
@@ -352,6 +361,7 @@ impl Group {
             Sent::Unmute => v.setting,
         };
         v.device_changed = false;
+        tracing::debug!("VCP: {}: {} -> control point 0x{:04X} {value:02X?}", v.addr, sent.name(), v.cp_handle);
         out.push(GattOp::Write { id, con: v.con, handle: v.cp_handle, value });
     }
 
@@ -359,6 +369,7 @@ impl Group {
     /// Change Counter)
     fn write_done(&mut self, id: LeDeviceId, con: u16, status: u8, out: &mut Vec<GattOp>) {
         let Some(v) = self.find(id, con) else { return };
+        tracing::debug!("VCP: {}: control point write done (ATT 0x{status:02X})", v.addr);
         if status == ATT_ERROR_HCI_DISCONNECT_RECEIVED {
             v.sent = None; // the link is going away; on_disconnected drops it
             return;
@@ -382,6 +393,9 @@ impl Group {
     ) {
         if self.find(id, con).is_none() {
             return;
+        }
+        if read_status != 0 {
+            tracing::debug!("VCP: device {}: Volume State read after the write failed (ATT 0x{read_status:02X})", id.0);
         }
         if read_status == 0 {
             self.on_state(id, con, value, false, out);
@@ -592,6 +606,7 @@ impl LeModule for VcpModule {
     }
 
     fn on_disconnected(&mut self, _ctx: &mut LeCtx<'_>, dev: LeDeviceId, _reason: u8) {
+        tracing::debug!("VCP: device {} gone from the group", dev.0);
         self.group.remove(dev);
     }
 }

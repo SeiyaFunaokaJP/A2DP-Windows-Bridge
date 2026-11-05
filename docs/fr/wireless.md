@@ -71,9 +71,9 @@ Plusieurs saccades qui ressemblaient à de la radio venaient de l'application. L
 
 | Ce que vous voyez | Ce que cela signifie | Cause probable |
 |:--|:--|:--|
-| **Signal** bien en dessous de 0 (environ -25 dB ou moins) | Le signal du casque atteint l'adaptateur bien en dessous de sa plage idéale. Ce n'est pas un niveau absolu : 0 est l'idéal, -30 est 30 dB en dessous, donc -30 peut encore jouer mais n'a aucune marge | Radio : distance, votre tête et votre corps, emplacement de l'adaptateur |
+| **Signal par rapport à l'idéal** bien en dessous de 0 (environ -25 dB ou moins) | Le signal du casque atteint l'adaptateur bien en dessous de sa plage idéale. Ce n'est pas un niveau absolu : 0 est l'idéal, -30 est 30 dB en dessous, donc -30 peut encore jouer mais n'a aucune marge | Radio : distance, votre tête et votre corps, emplacement de l'adaptateur |
 | **File d'envoi** pleine, **paquets abandonnés avant envoi** en hausse, débit inférieur à celui du codec | Les paquets ont attendu la radio trop longtemps ; la liaison ne peut pas porter ce débit en ce moment | Radio ou interférences, ou un débit trop élevé |
-| **Canaux AFH utilisés** qui sautent, ou bloqués à 79 alors que des paquets sont perdus | L'adaptateur marque des canaux comme mauvais à cause des erreurs qu'il y voit ; à 79, il a renoncé à les distinguer | Interférences : Wi-Fi, autres récepteurs, un second adaptateur Bluetooth |
+| **Saut de fréquence (AFH)** qui saute, ou bloqués à 79 alors que des paquets sont perdus | L'adaptateur marque des canaux comme mauvais à cause des erreurs qu'il y voit ; à 79, il a renoncé à les distinguer | Interférences : Wi-Fi, autres récepteurs, un second adaptateur Bluetooth |
 | **Audio perdu à la capture** en hausse, l'Accueil indique **PC occupé** | Le PC n'a pas livré l'audio à temps | Le PC : charge, le périphérique de capture, un câble virtuel |
 | Tout est plat et vide, mais silence ou saccades | La liaison va bien et rien n'est perdu sur le PC | L'application ou le décodeur du casque : signalez-le avec le paquet de diagnostic |
 
@@ -84,7 +84,7 @@ Le côté récepteur n'est pas visible depuis le PC. Pour mesurer ce qui arrive 
 Certains rapports « il ne me donne que 400 kbps » ou « LDAC manque » ne concernent pas du tout la liaison : le casque indique à A2DPWB quels codecs et débits il accepte, et A2DPWB s'y conforme, comme Android. La ligne de journal `remote supports ...` montre ce qu'il a proposé.
 
 - Les **Huawei FreeBuds** ne proposent LDAC à un PC qu'une fois que leur application AI Life a réglé « privilégier la qualité sonore » avec la multiconnexion désactivée ; sinon ils ne listent que SBC et AAC. Depuis la 2.0.2, A2DPWB demande lui-même ce mode quand LDAC est choisi avec la sélection automatique désactivée.
-- Les **casques LHDC V5** annoncent un débit maximal. En mode 96 kHz de leur application, une paire listait 400 kbps ; en mode 192 kHz, 1000 kbps. Les OPPO Enco Free4 listent 400 kbps et 48 kHz à un PC quoi que dise l'application ; la 2.0.2 leur demande le Hi-Res par leur propre protocole, pas encore confirmé sur de vrais écouteurs.
+- Les **casques LHDC V5** annoncent un débit maximal. En mode 96 kHz de leur application, une paire listait 400 kbps ; en mode 192 kHz, 1000 kbps. Les OPPO Enco Free4 et Enco X4 listent 400 kbps et 48 kHz à un PC quoi que dise l'application ; la 2.0.2 demande le Hi-Res aux écouteurs OPPO par leur propre protocole quand LHDC V5 diffuse avec l'ABR désactivé, et se reconnecte une fois pour cela ; pas encore confirmé sur de vrais écouteurs.
 - L'**ABR** maintient LHDC V5 à 400 kbps ou moins, comme sur Android.
 - Un codec que le casque **réserve à un autre appareil** manque tant que cet appareil est connecté ([Codec absent quand le casque est connecté à un autre appareil](usage#sep-in-use)).
 
@@ -121,7 +121,7 @@ Ce qui ressort :
 Si les vérifications ci-dessus n'ont rien trouvé, ouvrez un [rapport de bogue](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) et cochez ce que vous avez essayé. Ce qui règle vite un rapport sans fil :
 
 1. **Diagnostic > Signaler un problème**, **Journalisation détaillée** sur **Détaillée (debug)**, puis reproduisez le problème.
-2. Le **paquet de diagnostic** (**Paquet de diagnostic > Enregistrer…**, puis **Signaler sur GitHub**). Il contient les lignes de santé du flux (file d'envoi, paquets abandonnés, signal, canaux AFH au fil du temps) et la capture HCI d'une connexion échouée, qui montrent où les paquets se sont arrêtés.
+2. Le **paquet de diagnostic** (**Paquet de diagnostic > Enregistrer…** avec **Inclure les captures HCI** activé, puis **Signaler sur GitHub**). Il contient les lignes de santé du flux (file d'envoi, paquets abandonnés, signal, canaux AFH au fil du temps) et la capture HCI d'une connexion échouée, qui montrent où les paquets se sont arrêtés.
 3. Une **capture d'écran de Qualité de liaison** pendant que cela se produit.
 4. Si cela se produit aussi en **SBC ou AAC**, et à un **débit plus bas**.
 5. Vos réponses aux questions du formulaire sur la double connexion, un autre adaptateur Bluetooth et le Wi-Fi.
