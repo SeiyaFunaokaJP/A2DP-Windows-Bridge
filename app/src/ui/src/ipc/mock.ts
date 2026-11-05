@@ -182,6 +182,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
       auto_codec_settings: false,
       match_source: false,
       ignore_sink_max: false,
+      queue_max_wait_ms: 0,
     },
     dev_vendors: {},
     dev_log: { keep_days: 7, day_cap_mb: 100, always_verbose: null, health_every_interval: false },
@@ -1664,6 +1665,7 @@ export class MockCore implements Transport {
       bandwidth_share: streaming ? (pps * ((avg ?? 0) + 4) * 8) / 1000 / 2178.13 : null,
       queue_capacity: 64,
       queue_ms: streaming ? Math.max(0, Math.round(10 + 10 * Math.sin(t))) : 0,
+      sink_delay_ms: streaming ? 187.5 : null,
       source_rate: streaming ? (this.snap.stream.info?.source_sample_rate ?? 0) : 0,
       counters: { total: { ...this.totals }, stream_start: { ...this.streamStart }, stream_starts: this.streamStarts },
     };

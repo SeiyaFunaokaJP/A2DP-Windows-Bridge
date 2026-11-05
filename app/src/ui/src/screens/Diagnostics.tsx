@@ -500,6 +500,11 @@ function LinkPanel() {
       ? t("quality.packets_value", s.packets_per_second, s.avg_packet_bytes)
       : `${s.packets_per_second.toFixed(1)} /s`;
   };
+  /** The playout delay the device reported (not every device does) */
+  const sinkDelayText = () => {
+    const s = live();
+    return !s || s.sink_delay_ms == null ? DASH : t("quality.sink_delay_value", s.sink_delay_ms);
+  };
   const rssiText = () => {
     const s = live();
     return !s || s.rssi === null ? DASH : rssiValue(s.rssi);
@@ -583,6 +588,7 @@ function LinkPanel() {
             <Row label={t("quality.bitrate")} value={sending() ? t("quality.bitrate_value", kbps(sending()!.bytes_per_second)) : DASH} />
             <Row label={t("quality.packets")} value={packetsText()} />
             <Row label={t("quality.queue")} class={queueClass()} value={queueText()} />
+            <Row label={t("quality.sink_delay")} value={sinkDelayText()} />
             <Row label={t("ui.diag.rssi")} value={rssiText()} />
             <Row label={t("ui.diag.afh")} value={afhText()} />
           </dl>

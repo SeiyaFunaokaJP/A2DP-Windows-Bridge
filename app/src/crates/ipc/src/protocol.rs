@@ -618,6 +618,10 @@ pub struct DevOverrides {
     pub match_source: bool,
     /// Every codec ignores the maximum bit rate the device lists
     pub ignore_sink_max: bool,
+    /// Longest a media packet waits in the send queue before it is dropped
+    /// (ms, 50..=2000); 0 = the default (350). Applies to the next stream
+    #[ts(type = "number")]
+    pub queue_max_wait_ms: u32,
 }
 
 /// Developer mode's override of one vendor's protocol
@@ -996,6 +1000,12 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub queue_ms: Option<u32>,
+    /// The playout delay the device reported (AVDTP Delay Reporting), in
+    /// ms: from a packet's arrival until it is heard. None while the
+    /// device has not reported one (not every device does)
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub sink_delay_ms: Option<f64>,
     /// Capture rate of the stream (frames per second; 0 while not
     /// streaming): capture drops in ms = frames * 1000 / this
     #[ts(optional = nullable)]

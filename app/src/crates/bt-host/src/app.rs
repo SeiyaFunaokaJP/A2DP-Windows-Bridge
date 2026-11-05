@@ -1702,11 +1702,24 @@ impl HostApp {
                     self.local_seid,
                     self.remote_seid
                 );
+                // A sink's delay report, if any, follows the configuration
+                self.stats.set_sink_delay(None);
                 self.shared.update(|s| {
                     s.media_mtu = mtu;
                     s.stream_done = Some(true);
                 });
                 self.connect_hfp(stack);
+            }
+            Some(A2DP_SUBEVENT_SIGNALING_DELAY_REPORTING_CAPABILITY) => {
+                tracing::debug!("remote SEID {} supports delay reporting", u8_at(p, 5).unwrap_or(0));
+            }
+            Some(A2DP_SUBEVENT_SIGNALING_DELAY_REPORT) => {
+                // The sink's playout delay, from when a packet arrives until
+                // it is heard, in 100 us units (AVDTP 8.19); sent after the
+                // configuration and again when it changes
+                let delay = le16(p, 6).unwrap_or(0);
+                tracing::info!("device delay report: {:.1} ms", f64::from(delay) / 10.0);
+                self.stats.set_sink_delay(Some(delay));
             }
             Some(A2DP_SUBEVENT_STREAM_STARTED) => {
                 tracing::info!("streaming started");
@@ -1763,6 +1776,7 @@ impl HostApp {
                 self.set_streaming(false);
                 self.can_send_requested = false;
                 self.stats.queue_depth.store(0, Ordering::Relaxed);
+                self.stats.set_sink_delay(None);
                 self.shared.update(|s| {
                     s.connected = false;
                     s.streaming = false;

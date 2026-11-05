@@ -52,6 +52,12 @@ queue_capacity?: number | null,
  */
 queue_ms?: number | null, 
 /**
+ * The playout delay the device reported (AVDTP Delay Reporting), in
+ * ms: from a packet's arrival until it is heard. None while the
+ * device has not reported one (not every device does)
+ */
+sink_delay_ms?: number | null, 
+/**
  * Capture rate of the stream (frames per second; 0 while not
  * streaming): capture drops in ms = frames * 1000 / this
  */

@@ -15,4 +15,9 @@ match_source: boolean,
 /**
  * Every codec ignores the maximum bit rate the device lists
  */
-ignore_sink_max: boolean, };
+ignore_sink_max: boolean, 
+/**
+ * Longest a media packet waits in the send queue before it is dropped
+ * (ms, 50..=2000); 0 = the default (350). Applies to the next stream
+ */
+queue_max_wait_ms: number, };

@@ -33,13 +33,16 @@ from bumble.a2dp import (
 )
 from bumble.avdtp import (
     AVDTP_AUDIO_MEDIA_TYPE,
+    AVDTP_DELAY_REPORTING_SERVICE_CATEGORY,
     AVDTP_MEDIA_CODEC_SERVICE_CATEGORY,
     AVDTP_UNSUPPORTED_CONFIGURATION_ERROR,
+    DelayReport_Command,
     Discover_Response,
     EndPointInfo,
     Listener,
     MediaCodecCapabilities,
     Protocol,
+    ServiceCapabilities,
     Set_Configuration_Reject,
 )
 from bumble.controller import Controller
@@ -570,6 +573,28 @@ async def main(args):
                 continue
             sink = server.add_sink(capabilities)
             sink.on('configuration', lambda sink=sink, name=name: remember_configuration(name, sink))
+            if args.delay_report is not None:
+                # Headphones with Delay Reporting: listed as a service
+                # capability, and the playout delay sent once the stream is
+                # open (AVDTP 8.19; in 1/10 ms)
+                sink.capabilities.append(ServiceCapabilities(AVDTP_DELAY_REPORTING_SERVICE_CATEGORY))
+
+                async def send_delay_report(sink, server=server):
+                    stream = sink.stream
+                    if stream is None:
+                        print('delay report: no stream', flush=True)
+                        return
+                    delay = round(args.delay_report * 10)
+                    print(f'delay report: sending {delay / 10:.1f} ms to SEID {stream.remote_endpoint.seid}', flush=True)
+                    await server.send_command(DelayReport_Command(acp_seid=stream.remote_endpoint.seid, delay=delay))
+                    print(f'delay report sent ({delay / 10:.1f} ms)', flush=True)
+
+                def report_delay(sink=sink):
+                    task = asyncio.ensure_future(send_delay_report(sink))
+                    task.add_done_callback(
+                        lambda t: print(f'delay report failed: {t.exception()!r}', flush=True) if t.exception() else None)
+
+                sink.on('open', report_delay)
             if name == 'sbc' and args.sbc_reject_dual:
                 refuse_dual_channel(sink)
             on_avdtp_connection.sinks[name] = sink
@@ -667,6 +692,8 @@ if __name__ == '__main__':
                         help='report the SEP of these codecs as in use by another device (multipoint)')
     parser.add_argument('--codecs', nargs='+', choices=CODEC_NAMES, metavar='CODEC',
                         help='offer only these codecs (default: all)')
+    parser.add_argument('--delay-report', type=float, metavar='MS',
+                        help='list Delay Reporting on every codec and report this playout delay once a stream opens')
     parser.add_argument('--extra-seps', type=int, default=0, metavar='N',
                         help='list N more sink SEPs (an unknown vendor codec) before the codecs')
     parser.add_argument('--sbc-no-dual', action='store_true',

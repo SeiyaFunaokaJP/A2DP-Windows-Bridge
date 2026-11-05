@@ -794,6 +794,11 @@ LINK_CASES = {
         ('a2dpwb.log', r'Starting again.*HCI disconnection.*state Streaming', True),
         ('a2dpwb.log', r'Bluetooth stack stalled', False),
     ]),
+    # Headphones with Delay Reporting: their playout delay reaches the log
+    'delay-report': (['--delay-report', '187.5'], ['--duration', '3'], [
+        ('a2dpwb.log', r'supports delay reporting.*device delay report: 187\.5 ms', True),
+        ('sink.log', r'delay report sent \(187\.5 ms\)', True),
+    ]),
 }
 LOG_TIME =re.compile(r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3})')
 

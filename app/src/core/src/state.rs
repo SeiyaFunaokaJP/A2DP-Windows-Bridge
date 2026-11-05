@@ -311,6 +311,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
             auto_codec_settings: s.dev_overrides.auto_codec_settings,
             match_source: s.dev_overrides.match_source,
             ignore_sink_max: s.dev_overrides.ignore_sink_max,
+            queue_max_wait_ms: s.dev_overrides.queue_max_wait_ms,
         },
         dev_vendors: s
             .dev_vendors
@@ -385,6 +386,11 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
         auto_codec_settings: s.dev_overrides.auto_codec_settings,
         match_source: s.dev_overrides.match_source,
         ignore_sink_max: s.dev_overrides.ignore_sink_max,
+        // 0 (the default) or a limit the queue can hold
+        queue_max_wait_ms: match s.dev_overrides.queue_max_wait_ms {
+            0 => 0,
+            ms => ms.clamp(codec::dev::QUEUE_WAIT_MIN, codec::dev::QUEUE_WAIT_MAX),
+        },
     };
     // Known vendors and options only, defaults left out
     c.dev_vendors = s
