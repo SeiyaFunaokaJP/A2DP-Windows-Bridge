@@ -1,11 +1,11 @@
 // Diagnostics > Radio, below the link figures: the channels the link hops
 // over (the controller's AFH map) on the 2.4 GHz band, the Wi-Fi channels
 // drawn under it, a few tips, and in developer mode a Wi-Fi scan: its
-// 2.4 GHz access points drawn over the same band, every band in the table.
+// 2.4 GHz access points drawn over the same band, the table filtered by band.
 
 import { createSignal, For, onCleanup, Show } from "solid-js";
 import { errorText, useApp } from "../../app/context";
-import { Banner, Button } from "../../components/controls";
+import { Banner, Button, Segmented } from "../../components/controls";
 import { lang, t } from "../../i18n";
 import type { WifiAccessPoint } from "../../ipc/types";
 import {
@@ -28,8 +28,15 @@ const [scan, setScan] = createSignal<WifiAccessPoint[] | null>(null);
 const [scanError, setScanError] = createSignal<string | null>(null);
 /** The access points the band can draw */
 const near = () => (scan() ?? []).filter((ap) => ap.mhz < 2500);
-/** "2.4", "5" or "6" */
-const bandOf = (mhz: number) => (mhz < 2500 ? "2.4" : mhz < 5925 ? "5" : "6");
+type Band = "2.4" | "5" | "6";
+const bandOf = (mhz: number): Band =>
+  mhz < 2500 ? "2.4" : mhz < 5925 ? "5" : "6";
+/** The table's band: 2.4 GHz first, the only one Bluetooth shares */
+const [bandFilter, setBandFilter] = createSignal<Band | "all">("2.4");
+const shown = () =>
+  (scan() ?? []).filter(
+    (ap) => bandFilter() === "all" || bandOf(ap.mhz) === bandFilter(),
+  );
 
 // The drawing: 10 units per MHz, 2400-2490 MHz
 const X0 = 2400;
@@ -46,7 +53,10 @@ export function ChannelMap() {
   const { core } = useApp();
   onCleanup(core.wantLink());
   /** The last reading while audio is sent */
-  const sample = () => (core.state.snap?.stream.state === "streaming" ? (core.link().at(-1) ?? null) : null);
+  const sample = () =>
+    core.state.snap?.stream.state === "streaming"
+      ? (core.link().at(-1) ?? null)
+      : null;
   const [busy, setBusy] = createSignal(false);
   const developer = () => !!core.state.snap?.settings.developer_mode;
 
@@ -61,7 +71,8 @@ export function ChannelMap() {
   };
   const busiest = () => busiestWifiChannel(inUse());
   /** The strip: no reading draws every channel empty */
-  const cells = (): (boolean | null)[] => inUse() ?? Array<null>(BT_CHANNELS).fill(null);
+  const cells = (): (boolean | null)[] =>
+    inUse() ?? Array<null>(BT_CHANNELS).fill(null);
 
   const runScan = async () => {
     setBusy(true);
@@ -81,9 +92,13 @@ export function ChannelMap() {
     const top = near().length > 0 ? 0 : STRIP_Y - 4;
     return `0 ${top} ${W} ${H - top}`;
   };
-  const docsUrl = () => `${DOCS}${lang() === "en" ? "" : `${lang()}/`}wireless#checklist`;
+  const docsUrl = () =>
+    `${DOCS}${lang() === "en" ? "" : `${lang()}/`}wireless#checklist`;
   const label = () =>
-    inUse() ? t("ui.radio.in_use", used()) + (busiest() ? ` ${t("ui.radio.busy_near", busiest()!)}` : "") : "";
+    inUse()
+      ? t("ui.radio.in_use", used()) +
+        (busiest() ? ` ${t("ui.radio.busy_near", busiest()!)}` : "")
+      : "";
 
   return (
     <div class="radio-panel">
@@ -100,7 +115,12 @@ export function ChannelMap() {
         <Show when={inUse() || near().length > 0}>
           {(_) => (
             <>
-              <svg class="band" viewBox={viewBox()} role="img" aria-label={label()}>
+              <svg
+                class="band"
+                viewBox={viewBox()}
+                role="img"
+                aria-label={label()}
+              >
                 {/* Access points of the last scan, louder ones higher */}
                 <For each={near()}>
                   {(ap) => {
@@ -122,7 +142,9 @@ export function ChannelMap() {
                 <For each={cells()}>
                   {(on, n) => (
                     <rect
-                      class={on === null ? "band-none" : on ? "band-on" : "band-off"}
+                      class={
+                        on === null ? "band-none" : on ? "band-on" : "band-off"
+                      }
                       classList={{ "band-asked": avoided().has(n()) }}
                       x={x(BT_FIRST_MHZ + n()) + 1}
                       y={STRIP_Y}
@@ -182,7 +204,11 @@ export function ChannelMap() {
           <li>{t("ui.radio.tip_one_link")}</li>
         </ul>
         <div>
-          <Button icon="open" kind="subtle" onClick={() => void core.transport.openUrl(docsUrl())}>
+          <Button
+            icon="open"
+            kind="subtle"
+            onClick={() => void core.transport.openUrl(docsUrl())}
+          >
             {t("ui.radio.more")}
           </Button>
         </div>
@@ -196,35 +222,63 @@ export function ChannelMap() {
               {t("ui.radio.scan")}
             </Button>
           </div>
-          <Show when={scanError()}>{(e) => <Banner kind="error">{e()}</Banner>}</Show>
+          <Show when={scanError()}>
+            {(e) => <Banner kind="error">{e()}</Banner>}
+          </Show>
           <Show when={scan()}>
             {(list) => (
-              <Show when={list().length > 0} fallback={<p class="muted">{t("ui.radio.scan_none")}</p>}>
-                <Show when={near().length === 0}>
-                  <p class="muted">{t("ui.radio.scan_empty")}</p>
-                </Show>
-                <table class="table">
-                  <thead>
-                    <tr>
-                      <th scope="col">{t("ui.radio.network")}</th>
-                      <th scope="col">{t("ui.radio.band")}</th>
-                      <th scope="col">{t("ui.radio.channel")}</th>
-                      <th scope="col">{t("ui.radio.signal")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <For each={list()}>
-                      {(ap) => (
-                        <tr>
-                          <td classList={{ muted: !ap.ssid }}>{ap.ssid || t("ui.radio.hidden")}</td>
-                          <td class="num">{bandOf(ap.mhz)} GHz</td>
-                          <td class="num">{ap.channel}</td>
-                          <td class="num">{ap.rssi} dBm</td>
-                        </tr>
+              <Show
+                when={list().length > 0}
+                fallback={<p class="muted">{t("ui.radio.scan_none")}</p>}
+              >
+                <Segmented
+                  label={t("ui.radio.band")}
+                  value={bandFilter()}
+                  options={[
+                    { value: "2.4", label: "2.4 GHz" },
+                    { value: "5", label: "5 GHz" },
+                    { value: "6", label: "6 GHz" },
+                    { value: "all", label: t("ui.radio.band_all") },
+                  ]}
+                  onChange={setBandFilter}
+                />
+                <Show
+                  when={shown().length > 0}
+                  fallback={
+                    <p class="muted">
+                      {t(
+                        bandFilter() === "2.4"
+                          ? "ui.radio.scan_empty"
+                          : "ui.radio.scan_none",
                       )}
-                    </For>
-                  </tbody>
-                </table>
+                    </p>
+                  }
+                >
+                  <table class="table">
+                    <thead>
+                      <tr>
+                        <th scope="col">{t("ui.radio.network")}</th>
+                        <th scope="col">{t("ui.radio.band")}</th>
+                        <th scope="col">{t("ui.radio.channel")}</th>
+                        <th scope="col">{t("ui.radio.signal")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <For each={shown()}>
+                        {(ap) => (
+                          <tr>
+                            <td classList={{ muted: !ap.ssid }}>
+                              {ap.ssid || t("ui.radio.hidden")}
+                            </td>
+                            <td class="num">{bandOf(ap.mhz)} GHz</td>
+                            <td class="num">{ap.channel}</td>
+                            <td class="num">{ap.rssi} dBm</td>
+                          </tr>
+                        )}
+                      </For>
+                    </tbody>
+                  </table>
+                </Show>
               </Show>
             )}
           </Show>
