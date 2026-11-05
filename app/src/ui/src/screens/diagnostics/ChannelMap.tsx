@@ -1,12 +1,13 @@
-// Diagnostics > Radio: the channels the link hops over (the controller's
-// AFH map) on the 2.4 GHz band, the Wi-Fi channels drawn under it, a few
-// tips, and in developer mode a Wi-Fi scan drawn over the same band.
+// Diagnostics > Radio, below the link figures: the channels the link hops
+// over (the controller's AFH map) on the 2.4 GHz band, the Wi-Fi channels
+// drawn under it, a few tips, and in developer mode a Wi-Fi scan drawn over
+// the same band.
 
 import { createSignal, For, onCleanup, Show } from "solid-js";
-import { errorText, useApp } from "../app/context";
-import { Banner, Button } from "../components/controls";
-import { lang, t } from "../i18n";
-import type { WifiAccessPoint } from "../ipc/types";
+import { errorText, useApp } from "../../app/context";
+import { Banner, Button } from "../../components/controls";
+import { lang, t } from "../../i18n";
+import type { WifiAccessPoint } from "../../ipc/types";
 import {
   apLevel,
   BT_CHANNELS,
@@ -18,7 +19,7 @@ import {
   WIFI_HALF_WIDTH_MHZ,
   wifiCenterMhz,
   wifiCovers,
-} from "../lib/radio";
+} from "../../lib/radio";
 
 const DOCS = "https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/";
 
@@ -37,7 +38,7 @@ const AXIS_Y = STRIP_Y + STRIP_H + 16;
 const H = AXIS_Y + 6;
 const x = (mhz: number) => (mhz - X0) * 10;
 
-export function RadioPanel() {
+export function ChannelMap() {
   const { core } = useApp();
   onCleanup(core.wantLink());
   /** The last reading while audio is sent */

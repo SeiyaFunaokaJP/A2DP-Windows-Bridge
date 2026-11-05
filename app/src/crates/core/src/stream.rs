@@ -459,6 +459,12 @@ impl Sink for SharedInput {
             input.push_silence(frames);
         }
     }
+
+    fn discontinuity(&mut self, lost_frames: Option<u64>) {
+        if let Ok(mut input) = self.0.try_lock() {
+            input.discontinuity(lost_frames);
+        }
+    }
 }
 
 pub(crate) fn input_format(f: Format) -> InputFormat {
@@ -601,7 +607,6 @@ impl ActiveSource {
     fn health(&self) -> CaptureReading {
         self.running().map_or_else(CaptureReading::default, |r| CaptureReading {
             filled_frames: r.filled_frames(),
-            discontinuities: r.discontinuities(),
             packet_gap: r.take_packet_gap(),
         })
     }

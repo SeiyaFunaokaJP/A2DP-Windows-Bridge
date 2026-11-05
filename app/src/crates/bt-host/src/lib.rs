@@ -17,6 +17,7 @@ pub mod chips;
 pub mod events;
 pub mod intel;
 mod le;
+pub mod link_details;
 pub mod link_keys;
 pub mod media;
 pub mod probe;
@@ -51,7 +52,9 @@ pub use rfcomm::{
 };
 pub use sdp_services::{SdpRecord, ServicesError};
 use shared::{Shared, Wait};
-pub use stats::{LinkRadio, LinkStats, LiveCodec, MaxGauge, StreamTiming};
+pub use stats::{
+    LinkDetails, LinkMode, LinkRadio, LinkStats, LiveCodec, MaxGauge, RemoteFeatures, RemoteVersion, StreamTiming,
+};
 
 const INIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// No HCI event at all this long after power on: the controller does not

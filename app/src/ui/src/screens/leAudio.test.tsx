@@ -187,7 +187,10 @@ describe("diagnostics", () => {
     await screen.findByRole("heading", { level: 1, name: "Diagnostics" });
     await waitFor(() => expect(core.state.snap).not.toBeNull());
     expect(screen.queryByRole("heading", { name: t("ui.diag.iso_title") })).toBeNull();
-    expect(screen.getByRole("heading", { name: t("quality.section_band") })).toBeInTheDocument();
+    // The BR/EDR band is on the radio tab, the ISO counters on the stream tab
+    fireEvent.click(screen.getByRole("tab", { name: t("ui.diag.tab_radio") }));
+    expect(await screen.findByRole("heading", { name: t("quality.section_band") })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: t("quality.section_stream") }));
 
     await core.request("stream.start", { profile: "Buds (LE Audio)" });
     await waitFor(() => expect(core.state.snap!.stream.state).toBe("streaming"));
@@ -198,9 +201,13 @@ describe("diagnostics", () => {
       expect(within(group).getByText(t(key)).closest(".lq-row")).toHaveTextContent(/\d/);
     }
     expect(within(group).getByText(t("ui.diag.iso_prefill")).closest(".lq-row")).toHaveTextContent(/\d+ frames/);
-    expect(screen.queryByRole("heading", { name: t("quality.section_band") })).toBeNull();
     // The codec row names LC3
     expect(screen.getByText(t("quality.codec")).closest(".lq-row")).toHaveTextContent(t("ui.codec.lc3"));
+    // No BR/EDR figures for LE Audio: neither the band nor the radio charts
+    fireEvent.click(screen.getByRole("tab", { name: t("ui.diag.tab_radio") }));
+    expect(await screen.findByRole("heading", { name: t("quality.title") })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: t("quality.section_band") })).toBeNull();
+    expect(screen.queryByRole("img", { name: new RegExp(`^${t("ui.diag.rssi")}`) })).toBeNull();
   });
 
   it("reports the setting being off when an LE Audio profile starts", async () => {

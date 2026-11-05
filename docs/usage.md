@@ -475,6 +475,8 @@ This shows what A2DPWB sent and that it is valid for the negotiated codec. Since
 
 **Diagnostics > Link Quality** shows what A2DPWB sends while streaming: the actual bitrate, packets sent, packets dropped before sending (they waited too long in the send queue: the radio link could not keep up), audio dropped at capture (the PC fell behind), the send queue, the radio time used, and the **Signal vs. ideal**: the RSSI of the connection, relative to the controller's golden receive range (0 = fine, negative = too weak; not an absolute level; below the range, the most the actual level can be follows in dBm), and how many of the 79 Bluetooth channels the link hops on (AFH). Home and the tray flyout sum it up as Good, Fair or Poor, or PC busy when the link is fine but the PC dropped audio.
 
+Windows itself can also skip audio before A2DPWB gets it, when its audio engine glitches (heavy load, or other audio software holding it up). **Copy Diagnostics** counts these gaps, and the audio they lost, apart from PC busy and from the radio: a dropout counted there is not the link's fault.
+
 Bluetooth avoids busy channels by itself (AFH), but it only learns about Wi-Fi from errors. A2DPWB also tells its controller which channels to avoid (AFH host channel classification), for every connection:
 
 | AFH | |
@@ -528,7 +530,7 @@ a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone
 
 The same test runs in the window: with **Settings > Developer mode** on, open **Developer > Peer Receiver Test**. Leave **Receiver** empty to find it on the local network (or enter its address), **Connect** connects to its statistics; choose the codec, its settings, the source (**Test tone** or **System audio**) and, if needed, the L2CAP MTU and playout buffer the receiver offers, then **Start**. It checks each step and shows what this PC sent beside what the receiver counted. Quit nothing first: the window uses the running A2DPWB.
 
-Both sides count the packets of a stream from its first packet, so the packets sent and received can be compared: they should be equal. Bluetooth retransmits lost radio packets inside the controllers, and A2DPWB does not give up on a packet while the link is up, so a poor radio link shows as gaps, jitter and dropouts at the receiver rather than as lost packets; when the link cannot keep up, packets are dropped before sending on the sending side. The number of retransmissions is not available to either side.
+Both sides count the packets of a stream from its first packet, so the packets sent and received can be compared: they should be equal. Bluetooth retransmits lost radio packets inside the controllers, and A2DPWB does not give up on a packet while the link is up, so a poor radio link shows as gaps, jitter and dropouts at the receiver rather than as lost packets; when the link cannot keep up, packets are dropped before sending on the sending side. Neither side sees how often the controllers retransmit; the adapter's failed contacts count only packets it gave up on, so they normally stay at 0, as A2DPWB does not give up on packets.
 
 The receiver's adapter is not available to its own Bluetooth stack while the tool runs. Discovery uses a UDP broadcast on port 51201, so both PCs must be on the same network segment (otherwise enter the address). See `tools/linux_sink/README.md` for all options and the statistics protocol.
 

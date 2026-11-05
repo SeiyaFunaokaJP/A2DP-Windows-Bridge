@@ -1,7 +1,10 @@
-// Small SVG charts for the link samples. No chart library: a polyline over
-// a fixed number of samples is all these need, and SVG scales with the DPI.
+// Small SVG charts for the link samples. No chart library: polylines over
+// the last minute of samples are all these need, and SVG scales with the DPI.
+// The Diagnostics charts of one tab share a time axis and a hover cursor
+// (ChartGroup).
 
-import { createMemo, Show } from "solid-js";
+import { createContext, createMemo, createSignal, For, Show, useContext, type JSX } from "solid-js";
+import { lastKnownIndex, nearestIndex, scaleOf, timeRuns } from "../lib/series";
 
 function points(values: readonly (number | null)[], min: number, max: number, width: number, height: number): string[] {
   // One polyline per run of known values (gaps where the value is unknown)
@@ -64,56 +67,195 @@ export function Gauge(props: { value: number | null; label: string; status?: "go
   );
 }
 
-/** A labelled live chart (Diagnostics) */
-export function LineChart(props: {
-  title: string;
+// ---- Time charts (Diagnostics) ---------------------------------------------
+
+interface Group {
+  /** The axis: [start, end] in core time (ms) */
+  range: () => [number, number];
+  /** The hovered core time, in every chart of the group */
+  hover: () => number | null;
+  setHover: (t: number | null) => void;
+}
+const GroupContext = createContext<Group>();
+
+/** Charts with one time axis ending at `end` (the latest sample) and one hover cursor */
+export function ChartGroup(props: { end: number | null; span: number; children: JSX.Element }) {
+  const [hover, setHover] = createSignal<number | null>(null);
+  const range = (): [number, number] => {
+    const end = props.end ?? props.span;
+    return [end - props.span, end];
+  };
+  return <GroupContext.Provider value={{ range, hover, setHover }}>{props.children}</GroupContext.Provider>;
+}
+
+export interface ChartSeries {
   values: readonly (number | null)[];
+  /** The legend's name (charts with more than one series) */
+  label?: string;
+}
+
+/** A horizontal line: a limit (warning colour) or a target the line should follow */
+export interface ChartRef {
+  value: number;
+  kind: "limit" | "target";
+}
+
+const W = 300;
+const H = 96;
+
+/** A labelled live chart over time: the latest value (or the hovered one) in the header */
+export function TimeChart(props: {
+  title: string;
+  /** LinkSample.time_ms of each value */
+  times: readonly number[];
+  series: readonly ChartSeries[];
   min?: number;
   max?: number;
+  /** The scale's labels */
   format: (v: number) => string;
-  /** The latest value in the header, when it says more than the scale */
-  formatValue?: (v: number) => string;
-  /** The status colour of the latest value */
+  /** The value in the header and legend, when it says more than the scale
+   *  (`i`: the sample shown, hovered or the latest known) */
+  formatValue?: (v: number, i: number) => string;
+  /** The status colour of the first series' value */
   status?: (v: number) => "good" | "warn" | "bad";
+  refs?: readonly ChartRef[];
 }) {
-  const range = createMemo(() => bounds(props.values, props.min, props.max));
-  const runs = createMemo(() => points(props.values, range()[0], range()[1], 300, 96));
-  const last = createMemo(() => {
-    for (let i = props.values.length - 1; i >= 0; i--) {
-      const v = props.values[i];
-      if (v !== null && Number.isFinite(v)) return v;
-    }
-    return null;
+  const group = useContext(GroupContext);
+  const [ownHover, setOwnHover] = createSignal<number | null>(null);
+  const hover = () => (group ? group.hover() : ownHover());
+  const setHover = (t: number | null) => (group ? group.setHover(t) : setOwnHover(t));
+  const range = (): [number, number] => {
+    if (group) return group.range();
+    const ts = props.times;
+    return ts.length ? [ts[0], Math.max(ts[ts.length - 1], ts[0] + 1)] : [0, 1];
+  };
+  const span = () => {
+    const [a, b] = range();
+    return b - a || 1;
+  };
+  const scale = createMemo(() =>
+    scaleOf([...props.series.map((s) => s.values), (props.refs ?? []).map((r) => r.value)], props.min, props.max),
+  );
+  const runs = createMemo(() => {
+    const [lo, hi] = scale();
+    const [start] = range();
+    return props.series.map((s) => timeRuns(props.times, s.values, start, span(), lo, hi, W, H));
   });
-  const lastText = () => (last() === null ? "–" : (props.formatValue ?? props.format)(last()!));
+  const yOf = (v: number) => {
+    const [lo, hi] = scale();
+    return H - ((Math.min(Math.max(v, lo), hi) - lo) / (hi - lo)) * H;
+  };
+  /** The sample under the cursor */
+  const at = createMemo(() => {
+    const h = hover();
+    return h === null ? null : nearestIndex(props.times, h);
+  });
+  /** The sample of a series shown: the hovered one, else its latest known */
+  const shown = (s: ChartSeries, hovered = true): number | null => {
+    const i = hovered ? at() : null;
+    if (i === null) return lastKnownIndex(s.values);
+    const v = s.values[i];
+    return v !== null && v !== undefined && Number.isFinite(v) ? i : null;
+  };
+  const text = (s: ChartSeries | undefined, hovered = true) => {
+    const i = s ? shown(s, hovered) : null;
+    if (s === undefined || i === null) return "–";
+    const v = s.values[i]!;
+    return props.formatValue ? props.formatValue(v, i) : props.format(v);
+  };
+  const first = () => {
+    const s = props.series[0];
+    const i = s ? shown(s) : null;
+    return s && i !== null ? s.values[i] : null;
+  };
+  const multi = () => props.series.length > 1;
+  const label = () =>
+    multi() ? props.series.map((s) => `${s.label}: ${text(s, false)}`).join(", ") : text(props.series[0], false);
+  /** The cursor's time before the latest sample */
+  const ago = () => {
+    const i = at();
+    if (i === null) return null;
+    const s = (props.times[i] - range()[1]) / 1000;
+    return `${s <= -0.05 ? "−" : ""}${Math.abs(s).toFixed(1)} s`;
+  };
+  const cursorX = () => {
+    const i = at();
+    return i === null ? null : ((props.times[i] - range()[0]) / span()) * W;
+  };
+  const onMove = (e: PointerEvent) => {
+    const r = (e.currentTarget as Element).getBoundingClientRect();
+    if (r.width <= 0) return;
+    const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    setHover(range()[0] + f * span());
+  };
   return (
-    <figure class="chart card">
+    <figure class="chart card" classList={{ multi: multi() }}>
       <figcaption class="chart-head">
         <span class="chart-title">{props.title}</span>
-        <span class={`chart-value num ${last() !== null && props.status ? `st-${props.status(last()!)}` : ""}`}>
-          {lastText()}
+        <span class="chart-readout">
+          <Show when={ago()}>{(a) => <span class="chart-ago num">{a()}</span>}</Show>
+          <Show when={!multi()}>
+            <span class={`chart-value num ${first() !== null && props.status ? `st-${props.status(first()!)}` : ""}`}>
+              {text(props.series[0])}
+            </span>
+          </Show>
         </span>
       </figcaption>
+      <Show when={multi()}>
+        <ul class="chart-legend">
+          <For each={props.series}>
+            {(s, i) => (
+              <li class={`s${i()}`}>
+                <span class="chart-swatch" aria-hidden="true" />
+                <span>{s.label}</span>
+                <span class="chart-value num">{text(s)}</span>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
       <svg
         class="chart-plot"
-        viewBox="0 0 300 100"
+        viewBox={`0 0 ${W} ${H + 4}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label={`${props.title}: ${lastText()}`}
+        aria-label={`${props.title}: ${label()}`}
+        onPointerMove={onMove}
+        onPointerDown={onMove}
+        onPointerLeave={() => setHover(null)}
       >
-        <line class="grid" x1="0" x2="300" y1="2" y2="2" vector-effect="non-scaling-stroke" />
-        <line class="grid" x1="0" x2="300" y1="50" y2="50" vector-effect="non-scaling-stroke" />
-        <line class="grid" x1="0" x2="300" y1="98" y2="98" vector-effect="non-scaling-stroke" />
-        {runs().map((p) => (
-          <polyline points={p} transform="translate(0 2)" vector-effect="non-scaling-stroke" />
-        ))}
+        <g transform="translate(0 2)">
+          <line class="grid" x1="0" x2={W} y1="0" y2="0" vector-effect="non-scaling-stroke" />
+          <line class="grid" x1="0" x2={W} y1={H / 2} y2={H / 2} vector-effect="non-scaling-stroke" />
+          <line class="grid" x1="0" x2={W} y1={H} y2={H} vector-effect="non-scaling-stroke" />
+          <For each={props.refs ?? []}>
+            {(r) => (
+              <line
+                class={`ref ref-${r.kind}`}
+                x1="0"
+                x2={W}
+                y1={yOf(r.value)}
+                y2={yOf(r.value)}
+                vector-effect="non-scaling-stroke"
+              />
+            )}
+          </For>
+          <For each={runs()}>
+            {(rs, i) => <For each={rs}>{(p) => <polyline class={`s${i()}`} points={p} vector-effect="non-scaling-stroke" />}</For>}
+          </For>
+          <Show when={cursorX() !== null}>
+            <line class="cursor" x1={cursorX()!} x2={cursorX()!} y1="0" y2={H} vector-effect="non-scaling-stroke" />
+          </Show>
+        </g>
       </svg>
-      <Show when={props.values.length > 0}>
-        <div class="chart-scale num" aria-hidden="true">
-          <span>{props.format(range()[1])}</span>
-          <span>{props.format(range()[0])}</span>
-        </div>
-      </Show>
+      <div class="chart-scale num" aria-hidden="true">
+        <span>{props.format(scale()[1])}</span>
+        <span>{props.format(scale()[0])}</span>
+      </div>
+      <div class="chart-axis num" aria-hidden="true">
+        <span>−{Math.round(span() / 1000)} s</span>
+        <span>0 s</span>
+      </div>
     </figure>
   );
 }

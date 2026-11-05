@@ -28,6 +28,10 @@ pub struct LinkStats {
     /// those dropped because the encoder fell behind
     pub capture_frames: AtomicU64,
     pub capture_dropped_frames: AtomicU64,
+    /// Gaps Windows reported in the captured audio (its own glitches, not
+    /// ours), and the frames lost in them where the capture could tell
+    pub capture_discontinuities: AtomicU64,
+    pub capture_lost_frames: AtomicU64,
     /// Silence frames inserted while nothing played
     pub silence_frames: AtomicU64,
     /// Instantaneous send queue fill (packets)
@@ -47,6 +51,8 @@ pub struct LinkStats {
     pub start_dropped: AtomicU64,
     pub start_capture_frames: AtomicU64,
     pub start_capture_dropped: AtomicU64,
+    pub start_capture_discontinuities: AtomicU64,
+    pub start_capture_lost: AtomicU64,
     pub stream_starts: AtomicU32,
     /// Radio readings of the link (BTstack thread, every few seconds)
     pub radio: Mutex<LinkRadio>,
@@ -55,6 +61,23 @@ pub struct LinkStats {
     /// What the encoder runs at now, as the encode thread last saw it under
     /// ABR ([`LiveCodec::pack`]; 0 without ABR or an encode thread)
     pub live_codec: AtomicU64,
+    /// ACL packets of the A2DP link the controller holds: handed to it and
+    /// not yet reported sent by Number Of Completed Packets. Audio waits
+    /// there after the send queue, unseen by queue_ms (BTstack thread).
+    pub controller_backlog: AtomicU32,
+    /// The largest controller_backlog since the link sampler last took it
+    pub controller_backlog_peak: MaxGauge,
+    /// The largest controller_backlog since the stream started
+    pub controller_backlog_stream_max: AtomicU32,
+    /// ACL packets the media packets took: one larger than the controller's
+    /// ACL buffer goes out in several. With packets_sent, what one ACL
+    /// packet of backlog holds in time.
+    pub acl_packets_sent: AtomicU64,
+    /// acl_packets_sent when the current stream started
+    pub start_acl_packets: AtomicU64,
+    /// The A2DP link: the remote device's chip, role and mode, readings
+    /// polled with RSSI (BTstack thread)
+    pub link: Mutex<LinkDetails>,
 }
 
 /// What an ABR encoder runs at now: published by the encode thread, put
@@ -122,6 +145,8 @@ pub struct StreamTiming {
     pub completed_gap_us: MaxGauge,
     /// Number Of Completed Packets events while streaming
     pub completed_events: AtomicU64,
+    /// The largest controller backlog (ACL packets)
+    pub controller_backlog_max: MaxGauge,
 }
 
 impl LinkStats {
@@ -132,6 +157,10 @@ impl LinkStats {
         self.start_dropped.store(self.queue_drops.load(r) + self.send_errors.load(r), r);
         self.start_capture_frames.store(self.capture_frames.load(r), r);
         self.start_capture_dropped.store(self.capture_dropped_frames.load(r), r);
+        self.start_acl_packets.store(self.acl_packets_sent.load(r), r);
+        self.controller_backlog_stream_max.store(self.controller_backlog.load(r), r);
+        self.start_capture_discontinuities.store(self.capture_discontinuities.load(r), r);
+        self.start_capture_lost.store(self.capture_lost_frames.load(r), r);
         self.stream_starts.fetch_add(1, Ordering::Release);
     }
 
@@ -174,6 +203,23 @@ impl LinkStats {
     pub(crate) fn with_radio(&self, f: impl FnOnce(&mut LinkRadio)) {
         f(&mut self.radio.lock().unwrap_or_else(|e| e.into_inner()));
     }
+
+    pub fn link(&self) -> LinkDetails {
+        self.link.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    pub(crate) fn set_link(&self, d: LinkDetails) {
+        *self.link.lock().unwrap_or_else(|e| e.into_inner()) = d;
+    }
+
+    /// The BTstack thread: the controller holds `n` ACL packets of the A2DP
+    /// link now
+    pub(crate) fn record_controller_backlog(&self, n: u32) {
+        self.controller_backlog.store(n, Ordering::Relaxed);
+        self.controller_backlog_peak.record(n.into());
+        self.timing.controller_backlog_max.record(n.into());
+        self.controller_backlog_stream_max.fetch_max(n, Ordering::Relaxed);
+    }
 }
 
 /// Radio state of the current link
@@ -190,6 +236,105 @@ pub struct LinkRadio {
     /// Which channels those are: bit n = channel n (all set while AFH is
     /// off)
     pub afh_map: Option<[u8; 10]>,
+}
+
+/// Details of the A2DP link. None: not known yet, or the controller does
+/// not answer that command (the reading is then skipped for the session).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct LinkDetails {
+    /// The remote device's controller (Read Remote Version Information)
+    pub remote_version: Option<RemoteVersion>,
+    /// What the remote device's controller supports (LMP features page 0,
+    /// read by BTstack itself)
+    pub remote_features: Option<RemoteFeatures>,
+    /// true: this adapter is central (BTstack's role, then Role Change)
+    pub central: Option<bool>,
+    /// Role changes since the stream started
+    pub role_changes: u32,
+    pub mode: Option<LinkMode>,
+    /// Sniff interval in slots (0.625 ms) while in sniff mode
+    pub sniff_interval_slots: Option<u16>,
+    /// Times the link went into sniff mode since the stream started
+    pub sniff_entries: u32,
+    /// Encryption key size in bytes (what BTstack read for the link)
+    pub encryption_key_size: Option<u8>,
+    /// Link supervision timeout in slots: the link counts as lost after
+    /// this long without a packet from the device
+    pub supervision_timeout_slots: Option<u16>,
+    /// Failed Contact Counter as last read: packets the controller gave up
+    /// on in a row (flush timeout), reset when one gets through
+    pub failed_contacts: Option<u16>,
+    /// Rises of the counter since the stream started
+    pub failed_contacts_stream: u64,
+    /// Rises per second between the last two readings
+    pub failed_contacts_per_second: Option<f64>,
+    /// Link Quality, 0..255: chip specific, higher is better
+    pub link_quality: Option<u8>,
+}
+
+/// Read Remote Version Information Complete
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RemoteVersion {
+    /// LMP version: the Bluetooth core version (12 = 5.3)
+    pub lmp_version: u8,
+    /// Bluetooth SIG company identifier of the chip's maker
+    pub company_id: u16,
+    pub lmp_subversion: u16,
+}
+
+/// LMP features page 0 of the remote device
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RemoteFeatures(pub [u8; 8]);
+
+impl RemoteFeatures {
+    fn bit(&self, n: usize) -> bool {
+        self.0[n / 8] & (1 << (n % 8)) != 0
+    }
+
+    pub fn three_slot(&self) -> bool {
+        self.bit(0)
+    }
+
+    pub fn five_slot(&self) -> bool {
+        self.bit(1)
+    }
+
+    pub fn edr_2m(&self) -> bool {
+        self.bit(25)
+    }
+
+    pub fn edr_3m(&self) -> bool {
+        self.bit(26)
+    }
+
+    pub fn edr_three_slot(&self) -> bool {
+        self.bit(39)
+    }
+
+    pub fn edr_five_slot(&self) -> bool {
+        self.bit(40)
+    }
+}
+
+/// HCI Mode Change: the link's mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkMode {
+    Active,
+    Hold,
+    Sniff,
+    Park,
+}
+
+impl LinkMode {
+    pub fn from_hci(mode: u8) -> Option<LinkMode> {
+        Some(match mode {
+            0 => LinkMode::Active,
+            1 => LinkMode::Hold,
+            2 => LinkMode::Sniff,
+            3 => LinkMode::Park,
+            _ => return None,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -209,5 +354,29 @@ mod tests {
         assert_eq!(LiveCodec::unpack(LiveCodec { bitpool: 5, ..Default::default() }.pack()), None);
         s.set_live_codec(None);
         assert_eq!(s.live_codec(), None);
+    }
+
+    #[test]
+    fn remote_feature_bits() {
+        // 3-slot, 5-slot; EDR 2 and 3 Mbps; 3-slot EDR; 5-slot EDR
+        let f = RemoteFeatures([0x03, 0, 0, 0x06, 0x80, 0x01, 0, 0]);
+        assert!(f.three_slot() && f.five_slot() && f.edr_2m() && f.edr_3m());
+        assert!(f.edr_three_slot() && f.edr_five_slot());
+        let none = RemoteFeatures([0; 8]);
+        assert!(!none.five_slot() && !none.edr_2m() && !none.edr_five_slot());
+    }
+
+    #[test]
+    fn controller_backlog_peaks() {
+        let s = LinkStats::default();
+        s.record_controller_backlog(5);
+        s.record_controller_backlog(2);
+        assert_eq!(s.controller_backlog.load(Ordering::Relaxed), 2);
+        assert_eq!(s.controller_backlog_peak.take(), 5);
+        assert_eq!(s.controller_backlog_peak.take(), 0);
+        assert_eq!(s.timing.controller_backlog_max.take(), 5);
+        // A new stream starts its peak from what the controller holds now
+        s.mark_stream_start();
+        assert_eq!(s.controller_backlog_stream_max.load(Ordering::Relaxed), 2);
     }
 }

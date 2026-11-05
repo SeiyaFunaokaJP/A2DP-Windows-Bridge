@@ -1374,6 +1374,53 @@ fn on_off(b: bool) -> &'static str {
     if b { "on" } else { "off" }
 }
 
+/// The A2DP link's details: the remote chip, the link's state, the polled
+/// readings and the controller's backlog (each line only when known)
+fn link_lines(out: &mut String, ls: &LinkStats, rates: Option<AudioRates>) {
+    use std::sync::atomic::Ordering::Relaxed;
+    let link = ls.link();
+    if let Some(chip) = crate::link::remote_chip_text(&link) {
+        let _ = writeln!(out, "  Remote chip: {chip}");
+    }
+    if let Some(state) = crate::link::link_state_text(&link) {
+        let _ = writeln!(
+            out,
+            "  Link: {state}; this stream: {} role change(s), {} sniff entr{}",
+            link.role_changes,
+            link.sniff_entries,
+            if link.sniff_entries == 1 { "y" } else { "ies" }
+        );
+    }
+    let mut readings = Vec::new();
+    if let Some(q) = link.link_quality {
+        readings.push(format!("link quality {q}/255"));
+    }
+    if let Some(n) = link.failed_contacts {
+        let rate = link.failed_contacts_per_second.map(|r| format!(", {r:.2}/s lately")).unwrap_or_default();
+        readings.push(format!("failed contacts {n} now, {} this stream{rate}", link.failed_contacts_stream));
+    }
+    if !readings.is_empty() {
+        let _ = writeln!(out, "  Link readings: {}", readings.join(", "));
+    }
+    let packets = ls.packets_sent.load(Relaxed).saturating_sub(ls.start_packets.load(Relaxed));
+    let acl = ls.acl_packets_sent.load(Relaxed).saturating_sub(ls.start_acl_packets.load(Relaxed));
+    if acl > 0 {
+        let peak = ls.controller_backlog_stream_max.load(Relaxed);
+        // ACL packets a second: the media packet rate in the ACL packets
+        // this stream's media packets took
+        let acl_per_second = rates.map(|r| r.packets_per_second * acl as f64 / packets.max(1) as f64);
+        let ms = acl_per_second
+            .and_then(|a| crate::link::backlog_ms(u64::from(peak), a))
+            .map(|ms| format!(" (~{ms:.0} ms at the current rate)"))
+            .unwrap_or_default();
+        let _ = writeln!(
+            out,
+            "  Controller backlog: {} ACL packet(s) now, peak {peak} this stream{ms}; {acl} ACL packets for {packets} media packets",
+            ls.controller_backlog.load(Relaxed)
+        );
+    }
+}
+
 /// The "copy diagnostic info" text (a fenced block for a bug report)
 pub fn diag_text(d: &DiagInput<'_>) -> String {
     let mut out = String::with_capacity(16 * 1024);
@@ -1526,9 +1573,11 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
         );
         let _ = writeln!(
             out,
-            "  Capture frames {}, dropped {}",
+            "  Capture frames {}, dropped {}, Windows audio gaps {} ({} frames lost)",
             ls.capture_frames.load(Relaxed),
-            ls.capture_dropped_frames.load(Relaxed)
+            ls.capture_dropped_frames.load(Relaxed),
+            ls.capture_discontinuities.load(Relaxed),
+            ls.capture_lost_frames.load(Relaxed)
         );
         if let Some(d) = ls.sink_delay() {
             let _ = writeln!(out, "  Device delay report {:.1} ms", d.as_secs_f64() * 1000.0);
@@ -1557,6 +1606,7 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
         if !parts.is_empty() {
             let _ = writeln!(out, "  Radio: {}", parts.join(", "));
         }
+        link_lines(&mut out, ls, d.rates);
     }
     if let Some((path, bytes)) = d.hci_capture {
         let _ = writeln!(out, "  HCI capture running: {} ({:.1} MB)", path.display(), bytes as f64 / (1024.0 * 1024.0));
@@ -2204,6 +2254,28 @@ mod tests {
         };
         let stats = LinkStats::default();
         stats.packets_sent.store(1500, std::sync::atomic::Ordering::Relaxed);
+        stats.acl_packets_sent.store(3000, std::sync::atomic::Ordering::Relaxed);
+        stats.controller_backlog.store(3, std::sync::atomic::Ordering::Relaxed);
+        stats.controller_backlog_stream_max.store(8, std::sync::atomic::Ordering::Relaxed);
+        stats.link.lock().unwrap().clone_from(&bt_host::LinkDetails {
+            remote_version: Some(bt_host::RemoteVersion {
+                lmp_version: 11,
+                company_id: 0x000A,
+                lmp_subversion: 0x22BB,
+            }),
+            remote_features: Some(bt_host::RemoteFeatures([0x03, 0, 0, 0x06, 0x80, 0x01, 0, 0])),
+            central: Some(true),
+            role_changes: 1,
+            mode: Some(bt_host::LinkMode::Active),
+            encryption_key_size: Some(16),
+            supervision_timeout_slots: Some(8000),
+            failed_contacts: Some(0),
+            failed_contacts_stream: 2,
+            link_quality: Some(255),
+            ..Default::default()
+        });
+        stats.capture_discontinuities.store(2, std::sync::atomic::Ordering::Relaxed);
+        stats.capture_lost_frames.store(960, std::sync::atomic::Ordering::Relaxed);
         stats.set_sink_delay(Some(1875));
         let adapters = vec!["Realtek RTL8761B [0BDA:8771], driver WinUsb".to_string()];
         let mut input = DiagInput {
@@ -2223,7 +2295,7 @@ mod tests {
             stats: Some(&stats),
             hci_capture: Some((Path::new("C:\\a2dpwb\\hci.pklg"), 3 * 1024 * 1024)),
             flow: &f,
-            rates: None,
+            rates: Some(AudioRates { packets_per_second: 100.0, kbps: 400.0, capture_frames_per_second: 48000.0 }),
             log: &log,
             clock: None,
             mask: true,
@@ -2242,6 +2314,27 @@ mod tests {
         assert!(with_clients.contains("Clients      : a2dpwb-ui/2.0.2, encodeck/1.14.0\n"), "{with_clients}");
         input.clients = &[];
         assert!(text.contains("OS           : Windows build 26200 (x86_64)\n"));
+        assert!(
+            text.contains(
+                "  Remote chip: Qualcomm (CSR) (0x000A), Bluetooth 5.2, LMP subversion 0x22BB; EDR 2/3 Mbps, up to 3-DH5\n"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "  Link: central, active, key 16 bytes, supervision timeout 5000 ms; this stream: 1 role change(s), 0 sniff entries\n"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("  Link readings: link quality 255/255, failed contacts 0 now, 2 this stream\n"),
+            "{text}"
+        );
+        // 2 ACL packets per media packet at 100 a second: 8 hold 40 ms
+        assert!(
+            text.contains("  Controller backlog: 3 ACL packet(s) now, peak 8 this stream (~40 ms at the current rate); 3000 ACL packets for 1500 media packets\n"),
+            "{text}"
+        );
         assert!(text.contains("State        : Streaming (Connected)\n"));
         assert!(text.contains("  Setting: chip PID 0x0000 (auto)\n"), "{text}");
         assert!(text.contains("  Realtek RTL8761B [0BDA:8771], driver WinUsb\n"));
@@ -2261,6 +2354,7 @@ mod tests {
             "  Device SBC: 44.1/48 kHz; mono/joint_stereo; blocks 4/8/12/16; subbands 4/8; snr/loudness; bitpool 2-53\n"
         ));
         assert!(text.contains("  Media packets sent 1500 (0 bytes), queue drops 0, send errors 0\n"));
+        assert!(text.contains("  Capture frames 0, dropped 0, Windows audio gaps 2 (960 frames lost)\n"), "{text}");
         assert!(text.contains("  Device delay report 187.5 ms\n"), "{text}");
         // Masked: the path from the app's folder on
         assert!(text.contains("  HCI capture running: <path>\\a2dpwb\\hci.pklg (3.0 MB)\n"), "{text}");
