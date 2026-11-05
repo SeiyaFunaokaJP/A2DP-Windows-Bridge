@@ -1,7 +1,7 @@
 // Diagnostics > Radio, below the link figures: the channels the link hops
 // over (the controller's AFH map) on the 2.4 GHz band, the Wi-Fi channels
-// drawn under it, a few tips, and in developer mode a Wi-Fi scan drawn over
-// the same band.
+// drawn under it, a few tips, and in developer mode a Wi-Fi scan: its
+// 2.4 GHz access points drawn over the same band, every band in the table.
 
 import { createSignal, For, onCleanup, Show } from "solid-js";
 import { errorText, useApp } from "../../app/context";
@@ -26,6 +26,10 @@ const DOCS = "https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/";
 /** The last scan, kept while the window lives */
 const [scan, setScan] = createSignal<WifiAccessPoint[] | null>(null);
 const [scanError, setScanError] = createSignal<string | null>(null);
+/** The access points the band can draw */
+const near = () => (scan() ?? []).filter((ap) => ap.mhz < 2500);
+/** "2.4", "5" or "6" */
+const bandOf = (mhz: number) => (mhz < 2500 ? "2.4" : mhz < 5925 ? "5" : "6");
 
 // The drawing: 10 units per MHz, 2400-2490 MHz
 const X0 = 2400;
@@ -74,7 +78,7 @@ export function ChannelMap() {
 
   /** Room above the strip only for access points to draw */
   const viewBox = () => {
-    const top = (scan()?.length ?? 0) > 0 ? 0 : STRIP_Y - 4;
+    const top = near().length > 0 ? 0 : STRIP_Y - 4;
     return `0 ${top} ${W} ${H - top}`;
   };
   const docsUrl = () => `${DOCS}${lang() === "en" ? "" : `${lang()}/`}wireless#checklist`;
@@ -93,12 +97,12 @@ export function ChannelMap() {
         <Show when={!inUse()}>
           <p class="muted">{t("quality.not_streaming")}</p>
         </Show>
-        <Show when={inUse() || (scan()?.length ?? 0) > 0}>
+        <Show when={inUse() || near().length > 0}>
           {(_) => (
             <>
               <svg class="band" viewBox={viewBox()} role="img" aria-label={label()}>
                 {/* Access points of the last scan, louder ones higher */}
-                <For each={scan() ?? []}>
+                <For each={near()}>
                   {(ap) => {
                     const c = wifiCenterMhz(ap.channel);
                     const top = AP_TOP + AP_H * (1 - apLevel(ap.rssi));
@@ -153,7 +157,7 @@ export function ChannelMap() {
                     {t("ui.radio.legend_off")}
                   </span>
                 </Show>
-                <Show when={(scan()?.length ?? 0) > 0}>
+                <Show when={near().length > 0}>
                   <span>
                     <i class="swatch band-ap" />
                     {t("ui.radio.scan_title")}
@@ -195,11 +199,15 @@ export function ChannelMap() {
           <Show when={scanError()}>{(e) => <Banner kind="error">{e()}</Banner>}</Show>
           <Show when={scan()}>
             {(list) => (
-              <Show when={list().length > 0} fallback={<p class="muted">{t("ui.radio.scan_empty")}</p>}>
+              <Show when={list().length > 0} fallback={<p class="muted">{t("ui.radio.scan_none")}</p>}>
+                <Show when={near().length === 0}>
+                  <p class="muted">{t("ui.radio.scan_empty")}</p>
+                </Show>
                 <table class="table">
                   <thead>
                     <tr>
                       <th scope="col">{t("ui.radio.network")}</th>
+                      <th scope="col">{t("ui.radio.band")}</th>
                       <th scope="col">{t("ui.radio.channel")}</th>
                       <th scope="col">{t("ui.radio.signal")}</th>
                     </tr>
@@ -209,6 +217,7 @@ export function ChannelMap() {
                       {(ap) => (
                         <tr>
                           <td classList={{ muted: !ap.ssid }}>{ap.ssid || t("ui.radio.hidden")}</td>
+                          <td class="num">{bandOf(ap.mhz)} GHz</td>
                           <td class="num">{ap.channel}</td>
                           <td class="num">{ap.rssi} dBm</td>
                         </tr>

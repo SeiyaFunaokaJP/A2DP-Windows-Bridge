@@ -55,7 +55,7 @@ describe("developer screen", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Developer" })).toBeInTheDocument();
   });
 
-  it("saves the overrides and turns them all off", async () => {
+  it("saves the overrides and resets them from the app settings", async () => {
     const { core, calls } = await open();
     await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
     fireEvent.click(await screen.findByRole("tab", { name: t("ui.dev.codec_settings") }));
@@ -78,8 +78,13 @@ describe("developer screen", () => {
     fireEvent.change(queueWait, { target: { value: "" } });
     await waitFor(() => expect(core.state.snap!.settings.dev_overrides.queue_max_wait_ms).toBe(0));
 
-    fireEvent.click(screen.getByRole("button", { name: t("ui.dev.reset") }));
-    await screen.findByText(t("ui.dev.intro"));
+    // One reset for the whole screen, in the app settings
+    expect(screen.queryByRole("button", { name: t("ui.dev.reset") })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: t("ui.dev.app_settings") }));
+    const reset = await screen.findByRole("button", { name: t("ui.dev.reset_all") });
+    expect(reset).toBeEnabled();
+    fireEvent.click(reset);
+    await waitFor(() => expect(reset).toBeDisabled());
     expect(core.state.snap!.settings.dev_overrides.rtp_marker).toBe(false);
   });
 

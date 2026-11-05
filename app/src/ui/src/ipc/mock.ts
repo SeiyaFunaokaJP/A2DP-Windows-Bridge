@@ -916,9 +916,10 @@ export class MockCore implements Transport {
         return this.stopCapture();
       case "diag.wifi_scan":
         return [
-          { ssid: "home-2g", channel: 6, rssi: -48 },
-          { ssid: "neighbour", channel: 11, rssi: -71 },
-          { ssid: "", channel: 1, rssi: -83 },
+          { ssid: "home-2g", channel: 6, mhz: 2437, rssi: -48 },
+          { ssid: "home-5g", channel: 36, mhz: 5180, rssi: -55 },
+          { ssid: "neighbour", channel: 11, mhz: 2462, rssi: -71 },
+          { ssid: "", channel: 1, mhz: 2412, rssi: -83 },
         ];
       case "diag.info":
         return { text: this.diagText(p.mask !== false) };

@@ -12,8 +12,7 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { unwrap } from "solid-js/store";
 import { useApp } from "../app/context";
 import { saveSettings } from "../app/settings";
-import { Banner, Button, Field, Section, Select, Toggle } from "../components/controls";
-import { Icon } from "../components/Icon";
+import { Banner, Button, Field, Section, Select, TabBar, Toggle } from "../components/controls";
 import type { IconName } from "../components/icons";
 import { t } from "../i18n";
 import type { DevLog, DevOverrides, LogLevel, VendorInfo, VendorMode, VendorOverride } from "../ipc/types";
@@ -46,6 +45,23 @@ export function Developer() {
   const { core } = app;
   const [tab, setTab] = createSignal<Tab>("app");
   const settings = () => core.state.snap!.settings;
+  /** Every setting of this screen at its default (developer mode stays on) */
+  const allDefault = () => {
+    const s = settings();
+    return (
+      !s.volume_mixer &&
+      JSON.stringify(s.dev_overrides) === JSON.stringify(NO_OVERRIDES) &&
+      !vendorsActive(s.dev_vendors) &&
+      JSON.stringify(s.dev_log) === JSON.stringify(DEFAULT_LOG)
+    );
+  };
+  const resetAll = () =>
+    void saveSettings(app, {
+      volume_mixer: false,
+      dev_overrides: { ...NO_OVERRIDES },
+      dev_vendors: {},
+      dev_log: { ...DEFAULT_LOG },
+    });
   const tabs = (): { id: Tab; label: string; icon: IconName }[] => [
     { id: "app", label: t("ui.dev.app_settings"), icon: "settings" },
     { id: "overrides", label: t("ui.dev.codec_settings"), icon: "wrench" },
@@ -56,44 +72,12 @@ export function Developer() {
     { id: "chip", label: t("ui.dev.chip"), icon: "usb_stick" },
   ];
 
-  const onTabKey = (e: KeyboardEvent) => {
-    const list = tabs();
-    const i = list.findIndex((x) => x.id === tab());
-    let n = -1;
-    if (e.key === "ArrowRight") n = (i + 1) % list.length;
-    else if (e.key === "ArrowLeft") n = (i - 1 + list.length) % list.length;
-    else if (e.key === "Home") n = 0;
-    else if (e.key === "End") n = list.length - 1;
-    if (n < 0) return;
-    e.preventDefault();
-    setTab(list[n].id);
-    document.getElementById(`tab-${list[n].id}`)?.focus();
-  };
-
   return (
     <div class="page developer">
       <header class="page-head">
         <h1>{t("ui.nav.developer")}</h1>
       </header>
-      <div class="tabs" role="tablist" aria-label={t("ui.nav.developer")} onKeyDown={onTabKey}>
-        <For each={tabs()}>
-          {(x) => (
-            <button
-              type="button"
-              role="tab"
-              id={`tab-${x.id}`}
-              class="tab"
-              aria-selected={tab() === x.id}
-              aria-controls={`panel-${x.id}`}
-              tabindex={tab() === x.id ? 0 : -1}
-              onClick={() => setTab(x.id)}
-            >
-              <Icon name={x.icon} />
-              {x.label}
-            </button>
-          )}
-        </For>
-      </div>
+      <TabBar label={t("ui.nav.developer")} tabs={tabs()} current={tab()} onSelect={setTab} />
       <div class="tab-panel" role="tabpanel" id={`panel-${tab()}`} aria-labelledby={`tab-${tab()}`}>
         <Show when={tab() === "app"}>
           <Section title={t("ui.nav.mixer")}>
@@ -104,6 +88,11 @@ export function Developer() {
               onChange={(v) => void saveSettings(app, { volume_mixer: v })}
             />
           </Section>
+          <div>
+            <Button icon="arrow_reset" disabled={allDefault()} onClick={resetAll}>
+              {t("ui.dev.reset_all")}
+            </Button>
+          </div>
         </Show>
         <Show when={tab() === "overrides"}>
           <Overrides value={settings().dev_overrides} save={(dev_overrides) => saveSettings(app, { dev_overrides })} />
@@ -235,14 +224,7 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
           onChange={(v) => set({ ignore_sink_max: v })}
         />
       </Section>
-      <Section
-        title={t("ui.dev.section_media")}
-        actions={
-          <Button icon="arrow_reset" disabled={!active()} onClick={() => void props.save({ ...NO_OVERRIDES })}>
-            {t("ui.dev.reset")}
-          </Button>
-        }
-      >
+      <Section title={t("ui.dev.section_media")}>
         <Toggle
           label={t("ui.dev.rtp_marker")}
           checked={props.value.rtp_marker}

@@ -1543,8 +1543,8 @@ pub enum Method {
     /// masked unless `mask` is false. Without parameters as before.
     #[serde(rename = "diag.info")]
     DiagInfo(Option<DiagInfoParams>),
-    /// -> WifiAccessPoint[]: a fresh Wi-Fi scan, 2.4 GHz access points,
-    /// loudest first (a few seconds). Errors "wifi.none" (no Wi-Fi) and
+    /// -> WifiAccessPoint[]: a fresh Wi-Fi scan, access points on every
+    /// band, loudest first (a few seconds). Errors "wifi.none" (no Wi-Fi) and
     /// "wifi.location" (Windows' location setting keeps the list), "wifi.off".
     #[serde(rename = "diag.wifi_scan")]
     DiagWifiScan,
@@ -1695,14 +1695,17 @@ pub struct DiagInfo {
     pub text: String,
 }
 
-/// A 2.4 GHz access point a Wi-Fi scan heard
+/// An access point a Wi-Fi scan heard
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 
 pub struct WifiAccessPoint {
     /// Empty for a hidden network
     pub ssid: String,
-    /// Wi-Fi channel 1-14
+    /// The channel number on its band (1-14 on 2.4 GHz)
     pub channel: u8,
+    /// Center frequency: below 2500 is 2.4 GHz, below 5925 is 5 GHz, else
+    /// 6 GHz
+    pub mhz: u32,
     /// dBm
     pub rssi: i32,
 }
