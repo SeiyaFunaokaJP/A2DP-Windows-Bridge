@@ -2024,6 +2024,14 @@ impl CoreState {
             if let Err(e) = win_sys::autostart::remove(OLD_VALUE_NAME) {
                 tracing::warn!("cannot remove the old start with Windows entry {OLD_VALUE_NAME}: {e}");
             }
+            // Disabled in Task Manager's Startup tab stays disabled
+            match win_sys::autostart::carry_startup_approved(OLD_VALUE_NAME, VALUE_NAME) {
+                Ok(true) => {
+                    tracing::info!("Task Manager's startup state of {OLD_VALUE_NAME} carried over to {VALUE_NAME}")
+                }
+                Ok(false) => {}
+                Err(e) => tracing::warn!("cannot carry over Task Manager's startup state of {OLD_VALUE_NAME}: {e}"),
+            }
         }
     }
 
