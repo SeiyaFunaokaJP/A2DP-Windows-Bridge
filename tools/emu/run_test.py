@@ -61,6 +61,7 @@ import os
 import queue
 import re
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -439,6 +440,21 @@ def tone_check_stream(path, tones):
     return not problems, '; '.join(problems + [desc])
 
 
+def free_port(port):
+    """`port`, or the next one nobody listens on (another program or test run
+    may hold it)."""
+    for p in range(port, port + 50):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('127.0.0.1', p))
+            except OSError:
+                continue
+        if p != port:
+            print(f'    port {port} is in use, the sink takes {p}')
+        return p
+    raise RuntimeError(f'no free TCP port from {port} to {port + 49}')
+
+
 def start_sink(port, capture, log_path, script='emu_sink.py', extra=()):
     """Starts a virtual sink; its READY line is in proc.ready_line."""
     log = open(log_path, 'w', encoding='utf-8')
@@ -482,6 +498,7 @@ def run_codec(args, codec, port):
     failures = []
 
     cli_codec, sink_args, expected, a2dpwb_args = NEGOTIATION.get(codec, (codec, [], codec, []))
+    port = free_port(port)
     sink = start_sink(port, sink_capture, os.path.join(out, 'sink.log'), extra=sink_args)
     try:
         env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'))  # isolated link keys
@@ -575,6 +592,7 @@ def run_le_case(args, case, port):
     sink_capture = os.path.join(out, 'sink.pklg')
     failures = []
 
+    port = free_port(port)
     sink = start_sink(port, sink_capture, os.path.join(out, 'sink.log'), 'emu_le_audio_sink.py',
                       ['--layout', case.layout] + case.sink_args)
     addresses = sink.ready_line.split('sinks=')[1].split(',')
@@ -839,6 +857,7 @@ def run_scan_case(args, case, port):
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
     failures = []
+    port = free_port(port)
     sink = start_sink(port, os.path.join(out, 'sink.pklg'), os.path.join(out, 'sink.log'), extra=sink_args)
     try:
         env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'), A2DPWB_LOG='debug')
@@ -908,6 +927,7 @@ def run_link_case(args, case, port):
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
     failures = []
+    port = free_port(port)
     sink = start_sink(port, os.path.join(out, 'sink.pklg'), os.path.join(out, 'sink.log'), extra=sink_args)
     try:
         env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'), A2DPWB_LOG='debug')
