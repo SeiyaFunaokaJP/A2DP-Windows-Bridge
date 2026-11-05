@@ -2,6 +2,7 @@
 title: Chip bring-up and probing (developer note)
 layout: default
 nav_exclude: true
+english_only: true
 ---
 
 # Chip bring-up and probing - developer note

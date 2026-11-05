@@ -85,7 +85,7 @@ Diffuse l'audio du système en **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, ap
 | Composant | Windows 10 (x64 / ARM64) | Windows 11 (x64 / ARM64) | Linux (Ubuntu) |
 |:----------|:----------------:|:----------------:|:--------------:|
 | **BlueCaster** (fenêtre, zone de notification, CLI) | ✅ (pas encore essayé sur du vrai matériel) | ✅ | ❌ |
-| [Compilation depuis les sources](../building) (Rust, Visual Studio 2022+, Node.js) | ✅ | ✅ | ❌ |
+| [Compilation depuis les sources](building) (Rust, Visual Studio 2022+, Node.js) | ✅ | ✅ | ❌ |
 | `bluecaster_decode` (vérificateur de flux) | ✅ | ✅ | ❌ |
 | Test de bout en bout `tools/emu/run_test.py` | ✅ | ✅ | ❌ |
 | Adaptateur virtuel `tools/emu/emu_vhci.py` | ❌ | ❌ | ✅ |
@@ -95,7 +95,7 @@ BlueCaster lui-même ne fonctionne que sous Windows (Windows 10 22H2 ou Windows 
 
 ## Matériel vérifié {#verified-hardware}
 
-Testé avec les Sony WH-1000XM4 et WH-1000XM6, les EarFun Air Pro 4+, le Grado GW100x et d'autres, sur les adaptateurs TP-Link UB500, RTL8761B générique, RTL8852BE intégré d'un portable, ASUS BT400 et CSR8510. La liste complète avec les codecs, les versions et les rapports d'origine : **[Matériel vérifié](../hardware)** (en anglais).
+Testé avec les Sony WH-1000XM4 et WH-1000XM6, les EarFun Air Pro 4+, le Grado GW100x et d'autres, sur les adaptateurs TP-Link UB500, RTL8761B générique, RTL8852BE intégré d'un portable, ASUS BT400 et CSR8510. La liste complète avec les codecs, les versions et les rapports d'origine : **[Matériel vérifié](hardware)**.
 
 ## Coupures et problèmes de connexion
 
@@ -103,7 +103,7 @@ Ce que les rapports de coupures et de connexion se sont avérés être, les vér
 
 ## Fonctionne avec
 
-Applications tierces qui fonctionnent avec BlueCaster, comme des applications de contrôle d'écouteurs, signalées dans les issues (ni créées ni prises en charge par BlueCaster) : **[Works With](../works-with)** (en anglais).
+Applications tierces qui fonctionnent avec BlueCaster, comme des applications de contrôle d'écouteurs, signalées dans les issues (ni créées ni prises en charge par BlueCaster) : **[Compatible avec](works-with)**.
 
 ## Modes de capture audio
 
@@ -139,7 +139,7 @@ flowchart TD
     usb -.-> hp["Casque"]
 ```
 
-BlueCaster contourne entièrement la pile Bluetooth de Windows. Il communique directement avec un adaptateur Bluetooth USB via WinUSB et utilise [BTstack](https://github.com/bluekitchen/btstack) pour implémenter toute la pile de protocoles Bluetooth en mode utilisateur. Un petit programme résident (`bluecaster-core.exe`, avec l'icône de la zone de notification) diffuse l'audio ; la fenêtre ne fait qu'afficher son état, si bien que la fermer n'interrompt pas l'audio (voir [Architecture](../architecture)).
+BlueCaster contourne entièrement la pile Bluetooth de Windows. Il communique directement avec un adaptateur Bluetooth USB via WinUSB et utilise [BTstack](https://github.com/bluekitchen/btstack) pour implémenter toute la pile de protocoles Bluetooth en mode utilisateur. Un petit programme résident (`bluecaster-core.exe`, avec l'icône de la zone de notification) diffuse l'audio ; la fenêtre ne fait qu'afficher son état, si bien que la fermer n'interrompt pas l'audio (voir [Architecture](architecture)).
 
 ## Fonctionnalités
 

@@ -2,7 +2,7 @@
 title: Cortes y problemas de conexión
 layout: default
 parent: Inicio
-nav_order: 3
+nav_order: 2.4
 ---
 
 # Cortes y problemas de conexión

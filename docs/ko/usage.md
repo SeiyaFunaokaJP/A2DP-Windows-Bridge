@@ -228,7 +228,7 @@ bluecaster-core.exe --cli --scan
 | `--script <file>`, `--allow-writes` | 어댑터에서 칩 스크립트를 실행하고 보고서를 저장한 뒤 종료. `--allow-writes`를 지정하면 칩을 변경할 수 있는 줄도 실행 ([칩 지원 추가](chip-support#chip-scripts) 참조) |
 | `-h` | 도움말 표시 |
 
-개발 및 테스트용으로 `--hci-tcp <host:port>`(WinUSB 어댑터 대신 TCP를 통한 가상 컨트롤러), `--test-tone`(캡처한 오디오 대신 왼쪽 1 kHz / 오른쪽 1.5 kHz), `--duration <s>`(지정한 초가 지나면 중지), `--sessions <n>`(앱의 연결 끊기 / 연결처럼 n번 연속 스트리밍), `--restart`(`--sessions`와 함께 사용: 그 사이마다 Bluetooth 다시 시작), `--restart-on-link`(링크가 연결되자마자 세션을 다시 시작. 연결 중에 설정을 바꿨을 때와 같음), `--wait-off`(헤드폰을 꺼도 실행이 끝나지 않음), `--hci-capture <file.pklg>`(실행 전체의 HCI 캡처)도 있습니다. [빌드](../building#emu)를 참조하십시오. LE 오디오 옵션은 `-h`로 표시됩니다([LE 오디오](#le-audio) 참조). `--services`는 스트리밍이 시작되면 장치가 SDP로 알리는 서비스를 표시합니다.
+개발 및 테스트용으로 `--hci-tcp <host:port>`(WinUSB 어댑터 대신 TCP를 통한 가상 컨트롤러), `--test-tone`(캡처한 오디오 대신 왼쪽 1 kHz / 오른쪽 1.5 kHz), `--duration <s>`(지정한 초가 지나면 중지), `--sessions <n>`(앱의 연결 끊기 / 연결처럼 n번 연속 스트리밍), `--restart`(`--sessions`와 함께 사용: 그 사이마다 Bluetooth 다시 시작), `--restart-on-link`(링크가 연결되자마자 세션을 다시 시작. 연결 중에 설정을 바꿨을 때와 같음), `--wait-off`(헤드폰을 꺼도 실행이 끝나지 않음), `--hci-capture <file.pklg>`(실행 전체의 HCI 캡처)도 있습니다. [빌드](building#emu)를 참조하십시오. LE 오디오 옵션은 `-h`로 표시됩니다([LE 오디오](#le-audio) 참조). `--services`는 스트리밍이 시작되면 장치가 SDP로 알리는 서비스를 표시합니다.
 
 `--cli` 없이 실행하면 `bluecaster-core.exe`는 상주 프로그램으로 작동하며 창도 함께 시작합니다. 단, `--background`를 지정하면 트레이 아이콘만 표시됩니다(**트레이에서 시작**이 켜져 있을 때 **Windows 시작 시 실행**에서 사용). `bluecaster-core.exe --quit`는 실행 중인 BlueCaster에 스트리밍을 중지하고 종료하도록 요청합니다(설치 프로그램이 사용).
 
@@ -364,7 +364,7 @@ BlueCaster는 [libopenaptx](https://github.com/pali/libopenaptx)로 인코딩하
 {: .note }
 **aptX Adaptive는 48 kHz에서 실제 헤드폰으로 확인되었습니다.** 한 사용자가 2.0.2-beta.6에서 EarFun Air Pro 4+로 스트리밍하여, 끊김이나 버벅임 없이 기본 aptX만큼 안정적으로 동작함을 확인했습니다([#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)). 또한 단위 테스트, 업스트림의 비트 단위 일치 테스트 모음, 가상 Bluetooth 싱크를 상대로 한 엔드투엔드 테스트(`tools/emu`: RTP 헤더, 패킷 크기, 프레임 종류를 확인하며, 공개된 디코더가 없으므로 오디오는 디코딩하지 않음)를 통과했습니다. 업스트림은 Linux / PipeWire에서 Bose QuietComfort Ultra(1세대)와 B&W Px7 S2e로 48 kHz 높음과 저지연에서 동작한다고 보고합니다. 96 kHz(높음, 646 kbps)도 실제 헤드폰으로 확인되었습니다([#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)). 코덱 설정에서 선택하고(CLI `--rate 96000`) 헤드폰이 이를 알리는 R2 싱크일 때 사용하며(설정에서도 그때만 선택할 수 있음), 저지연에서는 사용하지 않습니다. 자동(자동 선택 포함)은 48 kHz로 스트리밍합니다. [보고를 환영합니다](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/11).
 
-인코더는 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux)의 순수 Rust aptX Adaptive 인코더(MIT)입니다. 업스트림은 이를 클린룸 재구현으로 설명하며, 숫자 테이블은 합법적으로 입수한 출시된 Qualcomm 바이너리와 무선 캡처로부터 재구성했습니다. Qualcomm의 코드, SDK, 바이너리는 포함되어 있지 않습니다([라이선스](../licenses) 참조).
+인코더는 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux)의 순수 Rust aptX Adaptive 인코더(MIT)입니다. 업스트림은 이를 클린룸 재구현으로 설명하며, 숫자 테이블은 합법적으로 입수한 출시된 Qualcomm 바이너리와 무선 캡처로부터 재구성했습니다. Qualcomm의 코드, SDK, 바이너리는 포함되어 있지 않습니다([라이선스](licenses) 참조).
 
 - **선택 방법**: 헤드폰이 LHDC V5도 LDAC도 제공하지 않으면 자동이 이를 선택합니다. **코덱** 화면에서 **aptX Adaptive**를 선택하거나 `-c aptxad`를 사용할 수도 있습니다.
 - **형식**: 48 kHz 스테레오, 24비트. 96 kHz를 선택하면 이를 알리는 장치(aptX Adaptive R2)에는 높음에서 96 kHz. 44.1 kHz를 요청하면 48 kHz로 캡처합니다.
@@ -413,7 +413,7 @@ capability discovery complete (LDAC=false ... , 1 of 6 audio sink SEP(s) in use)
 
 WH-1000XM4 같은 Sony 헤드폰은 **2대의 기기와 동시 연결**(멀티포인트)이 켜져 있으면 LDAC을 제공하지 않습니다. Sony Sound Connect 앱에서 끈 후 다시 연결하십시오. WH-1000XM6 등 일부 모델은 멀티포인트와 LDAC을 함께 지원합니다.
 
-헤드폰 전용 앱(배터리, 노이즈 컨트롤, EQ)은 휴대폰이나 이 PC의 내장 Bluetooth에서 헤드폰으로 가는 별도의 링크가 필요합니다. 앱이 연결된 동안 헤드폰은 2대 동시 연결 상태가 되어, BlueCaster의 코덱 변경이 오래 걸리거나 실패할 수 있습니다. 코덱을 바꾸기 전에 휴대폰 연결을 끊거나 앱을 닫으세요. [EncoDeck](../works-with)는 BlueCaster 자체 링크로 헤드폰을 제어하므로 두 번째 연결을 추가하지 않습니다.
+헤드폰 전용 앱(배터리, 노이즈 컨트롤, EQ)은 휴대폰이나 이 PC의 내장 Bluetooth에서 헤드폰으로 가는 별도의 링크가 필요합니다. 앱이 연결된 동안 헤드폰은 2대 동시 연결 상태가 되어, BlueCaster의 코덱 변경이 오래 걸리거나 실패할 수 있습니다. 코덱을 바꾸기 전에 휴대폰 연결을 끊거나 앱을 닫으세요. [EncoDeck](works-with)는 BlueCaster 자체 링크로 헤드폰을 제어하므로 두 번째 연결을 추가하지 않습니다.
 
 ### 샘플링 속도
 
@@ -450,7 +450,7 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 캡처는 연결 전이나 이미 스트리밍 중일 때 시작할 수 있습니다. 연결 중에 시작하면 BlueCaster가 기억해 둔 연결 설정 패킷(코덱 협상을 포함한 L2CAP 채널 설정과 AVDTP 시그널링)을 먼저 기록하므로, 파일을 분석할 수 있습니다. 진단 화면에는 기록 중과 중지 후에 파일 경로가 표시됩니다.
 
-캡처는 Wireshark에서 열거나, 개발자 도구 `bluecaster_decode`(소스에서 빌드, [빌드](../building) 참조)로 확인할 수 있습니다.
+캡처는 Wireshark에서 열거나, 개발자 도구 `bluecaster_decode`(소스에서 빌드, [빌드](building) 참조)로 확인할 수 있습니다.
 
 ```
 bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check

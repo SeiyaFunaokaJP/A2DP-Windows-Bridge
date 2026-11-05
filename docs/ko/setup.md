@@ -42,7 +42,7 @@ v2는 처음 시작할 때 v1 설정을 읽기 전에 `%APPDATA%\BlueCaster\back
 
 BlueCaster 3.0.0은 A2DP Windows Bridge의 새 이름입니다. 설치된 2.0.x 위에 3.0.0 설치 프로그램을 실행하십시오. 설치 프로그램이 이전 버전을 자동으로 제거하며 설정은 그대로 유지됩니다. 시작 메뉴 항목과 **Windows 시작 시 실행** 항목은 "BlueCaster"로 바뀝니다.
 
-3.0.0은 처음 시작할 때 폴더 `%APPDATA%\A2DPWB`의 이름을 `%APPDATA%\BlueCaster`로 바꾸고 그 안의 파일을 하위 폴더로 정리합니다([설정과 파일](../architecture#settings-and-files) 참조). `backup\v2\`에 2.0.x 설정과 페어링의 사본이 있으므로, 2.0.2를 다시 설치하려면 그 파일들을 `%APPDATA%\A2DPWB`로 다시 복사하십시오.
+3.0.0은 처음 시작할 때 폴더 `%APPDATA%\A2DPWB`의 이름을 `%APPDATA%\BlueCaster`로 바꾸고 그 안의 파일을 하위 폴더로 정리합니다([설정과 파일](architecture#settings-and-files) 참조). `backup\v2\`에 2.0.x 설정과 페어링의 사본이 있으므로, 2.0.2를 다시 설치하려면 그 파일들을 `%APPDATA%\A2DPWB`로 다시 복사하십시오.
 
 헤드폰에는 다시 페어링할 때까지 이전 Bluetooth 이름 "A2DPWB"가 계속 표시될 수 있습니다.
 
@@ -160,7 +160,7 @@ Realtek이 아닌 어댑터에는 Realtek 칩이나 Custom을 선택하지 마�
 
 ## 권장 어댑터 {#adapters}
 
-BlueCaster에서 실제로 사용된 어댑터와 헤드폰, 그 코덱과 보고는 [검증된 하드웨어](../hardware)(영어)에 있습니다.
+BlueCaster에서 실제로 사용된 어댑터와 헤드폰, 그 코덱과 보고는 [검증된 하드웨어](hardware)에 있습니다.
 
 | 칩셋 | 제품 예 | 참고 |
 |:-----|:--------|:-----|
