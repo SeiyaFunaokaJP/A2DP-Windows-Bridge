@@ -577,6 +577,8 @@
   "ui.diag.backlog": "Adapter backlog",
   "ui.diag.backlog_value": "%s (%u packets)",
   "ui.diag.backlog_packets": "%u packets",
+  "ui.diag.encode_load": "Encoder load",
+  "ui.diag.encode_load_value": "%s (per frame: avg %s, max %s)",
   "ui.diag.chip_maker": "Bluetooth chip maker",
   "ui.diag.chip_version": "Bluetooth version",
   "ui.diag.chip_packet": "Fastest packet type",

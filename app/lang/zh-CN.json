@@ -577,6 +577,8 @@
   "ui.diag.backlog": "适配器内积压",
   "ui.diag.backlog_value": "%s（%u 个数据包）",
   "ui.diag.backlog_packets": "%u 个数据包",
+  "ui.diag.encode_load": "编码器负载",
+  "ui.diag.encode_load_value": "%s（每帧：平均 %s，最大 %s）",
   "ui.diag.chip_maker": "蓝牙芯片制造商",
   "ui.diag.chip_version": "蓝牙版本",
   "ui.diag.chip_packet": "最快的数据包类型",

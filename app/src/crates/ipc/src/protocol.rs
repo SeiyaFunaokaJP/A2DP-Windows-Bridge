@@ -1008,6 +1008,11 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub sink_delay_ms: Option<f64>,
+    /// The encoder's own time over the last interval (A2DP or LE Audio).
+    /// None while nothing was encoded.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub encode: Option<Box<EncodeLoad>>,
     /// Capture rate of the stream (frames per second; 0 while not
     /// streaming): capture drops in ms = frames * 1000 / this
     #[ts(optional = nullable)]
@@ -1161,6 +1166,18 @@ pub struct LinkDetails {
     /// Link quality, 0..255: chip specific, higher is better
     #[ts(optional = nullable)]
     pub link_quality: Option<u8>,
+}
+
+/// The encoder's time over one link sample's interval
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS, Default)]
+
+pub struct EncodeLoad {
+    /// Time in the encoder per time of audio encoded (0.01 = 1 %)
+    pub load: f64,
+    /// Average and longest encoder call (one codec frame; LE Audio: one
+    /// SDU set), in microseconds
+    pub avg_us: f64,
+    pub max_us: f64,
 }
 
 /// An LE Audio stream's send counters (since the stream was set up; a

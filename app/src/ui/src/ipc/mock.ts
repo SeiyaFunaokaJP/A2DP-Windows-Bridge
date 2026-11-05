@@ -1766,6 +1766,7 @@ export class MockCore implements Transport {
       queue_capacity: 64,
       queue_ms: streaming ? Math.max(0, Math.round(10 + 10 * Math.sin(t))) : 0,
       sink_delay_ms: streaming ? 187.5 : null,
+      encode: streaming ? { load: 0.004 + 0.001 * Math.sin(t), avg_us: 11 + Math.random() * 2, max_us: 30 + Math.random() * 20 } : null,
       source_rate: streaming ? (this.snap.stream.info?.source_sample_rate ?? 0) : 0,
       counters: { total: { ...this.totals }, stream_start: { ...this.streamStart }, stream_starts: this.streamStarts },
       controller_backlog: backlog,

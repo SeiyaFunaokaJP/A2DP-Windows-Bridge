@@ -577,6 +577,8 @@
   "ui.diag.backlog": "アダプタ内の滞留",
   "ui.diag.backlog_value": "%s（%u パケット）",
   "ui.diag.backlog_packets": "%u パケット",
+  "ui.diag.encode_load": "エンコーダー負荷",
+  "ui.diag.encode_load_value": "%s（1フレーム: 平均 %s、最大 %s）",
   "ui.diag.chip_maker": "Bluetooth チップのメーカー",
   "ui.diag.chip_version": "Bluetooth バージョン",
   "ui.diag.chip_packet": "最速のパケット形式",

@@ -2,9 +2,11 @@
 // send queue (depth and the oldest packet's wait), packets dropped before
 // the radio; the codec and its details, an LE Audio stream's ISO counters,
 // the losses, and the backlog the Bluetooth adapter holds after the send
-// queue, and the playout delay the device reports.
+// queue, and the playout delay the device reports. In developer mode the
+// encoder's load: its time per time of audio, and per frame.
 
 import { createMemo, Show } from "solid-js";
+import { useApp } from "../../app/context";
 import { TimeChart } from "../../components/charts";
 import { CodecDetailsCard } from "../../components/CodecDetails";
 import { QUALITY_QUEUE_BACKLOG_MS } from "../../components/stream";
@@ -17,8 +19,12 @@ import { DASH, LinkCharts, LossCard, NotStreaming, Row, useLink } from "./shared
 
 const ms = (v: number) => `${Math.round(v)} ms`;
 const count = (v: number) => `${Math.round(v)}`;
+const pct = (v: number) => `${v < 10 ? v.toFixed(1) : Math.round(v)} %`;
+const us = (v: number) => `${v < 10 ? v.toFixed(1) : Math.round(v)} µs`;
 
 export function StreamPanel() {
+  const { core } = useApp();
+  const developer = () => !!core.state.snap?.settings.developer_mode;
   const link = useLink();
   const { samples, times, stream, streaming, live, sending, le, last } = link;
   const drops = createMemo(() => dropsPerSample(samples()));
@@ -56,6 +62,11 @@ export function StreamPanel() {
   const sinkDelayText = () => {
     const s = live();
     return !s || s.sink_delay_ms == null ? DASH : t("quality.sink_delay_value", s.sink_delay_ms);
+  };
+  /** The encoder's time per time of audio, and per frame */
+  const encodeText = () => {
+    const e = live()?.encode;
+    return e ? t("ui.diag.encode_load_value", pct(e.load * 100), us(e.avg_us), us(e.max_us)) : DASH;
   };
   const packetsText = () => {
     const s = sending();
@@ -127,6 +138,15 @@ export function StreamPanel() {
           format={count}
           status={(v) => (v === 0 ? "good" : v < 3 ? "warn" : "bad")}
         />
+        <Show when={developer()}>
+          <TimeChart
+            title={t("ui.diag.encode_load")}
+            times={times()}
+            series={[{ values: samples().map((s) => (s.encode ? s.encode.load * 100 : null)) }]}
+            min={0}
+            format={pct}
+          />
+        </Show>
       </LinkCharts>
 
       <div class="lq-groups">
@@ -142,6 +162,9 @@ export function StreamPanel() {
             <Row label={t("ui.diag.queue_wait")} class={queueClass()} value={waitText()} />
             <Row label={t("ui.diag.backlog")} value={backlogText(live())} />
             <Row label={t("quality.sink_delay")} value={sinkDelayText()} />
+            <Show when={developer()}>
+              <Row label={t("ui.diag.encode_load")} value={encodeText()} />
+            </Show>
           </dl>
         </section>
 

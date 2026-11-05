@@ -577,6 +577,8 @@
   "ui.diag.backlog": "어댑터 내 대기",
   "ui.diag.backlog_value": "%s(%u 패킷)",
   "ui.diag.backlog_packets": "%u 패킷",
+  "ui.diag.encode_load": "인코더 부하",
+  "ui.diag.encode_load_value": "%s (프레임당: 평균 %s, 최대 %s)",
   "ui.diag.chip_maker": "블루투스 칩 제조사",
   "ui.diag.chip_version": "블루투스 버전",
   "ui.diag.chip_packet": "가장 빠른 패킷 유형",
