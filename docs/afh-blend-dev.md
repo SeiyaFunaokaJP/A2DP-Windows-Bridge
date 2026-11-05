@@ -2,6 +2,7 @@
 title: AFH Blend (developer note)
 layout: default
 nav_exclude: true
+english_only: true
 ---
 
 # AFH Blend (experimental) - developer note

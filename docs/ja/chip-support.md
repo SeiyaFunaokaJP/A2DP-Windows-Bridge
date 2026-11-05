@@ -2,7 +2,7 @@
 title: チップ対応の追加
 layout: default
 parent: ホーム
-nav_order: 3
+nav_order: 3.5
 ---
 
 # チップ対応の追加
@@ -26,7 +26,7 @@ A2DP Windows Bridge は Bluetooth アダプターを自分で（WinUSB を通し
 
 - そのアダプターと、それを挿した Windows 10 / 11 の PC
 - A2DP Windows Bridge 2.0.2 以降（下の手順 1 と 2 はアプリだけで行えます）
-- ローダーを書くには: [ビルド](../building)のとおりのビルド環境と、Windows 自身のドライバーの動きを記録するための [USBPcap](https://desowin.org/usbpcap/) と [Wireshark](https://www.wireshark.org/)
+- ローダーを書くには: [ビルド](building)のとおりのビルド環境と、Windows 自身のドライバーの動きを記録するための [USBPcap](https://desowin.org/usbpcap/) と [Wireshark](https://www.wireshark.org/)
 
 ## 手順 1: アダプターを A2DP Windows Bridge に渡す
 
@@ -235,7 +235,7 @@ cargo test -p bt-host
 **ドキュメント**:
 
 13. `docs/setup.md` と `docs/*/setup.md`（全言語）のチップの表: Intel と同じような行に、対応するチップ、ファームウェアのファイルとその置き場所（ファームウェアのフォルダー `%APPDATA%\A2DPWB\firmware`、またはその `<vendor>` サブフォルダー。古い行にはまだ "config folder" とあります）と *Experimental.*（日本語のページでは *試験的。*）を書きます。ウィンドウのボタンは、各言語の `app/lang/*.json` にあるとおりの名前で書きます（アダプタ画面は `ui.nav.adapter`、そのフォルダーを開くボタンは `firmware.open_folder`）。ベンダー全体: "Not supported" の行から外します。一部のチップ: ベンダーはそこに残し、まだ対応していないチップを書きます。Firmware の節の最初の文（"Intel and Broadcom adapters (experimental) may need firmware files of their own"）にそのベンダーを加えます
-14. 誰かが使ったら [動作確認済みハードウェア](../hardware)（`docs/hardware.md`）に載せます。またこのページの冒頭（`docs/chip-support.md`、全言語）も直します。ここではローダーのないベンダーを挙げています（一部のチップなら "the other <vendor> chips"）
+14. 誰かが使ったら [動作確認済みハードウェア](hardware)（`docs/hardware.md`）に載せます。またこのページの冒頭（`docs/chip-support.md`、全言語）も直します。ここではローダーのないベンダーを挙げています（一部のチップなら "the other <vendor> chips"）
 
 ## 手順 7: アダプターで試す
 
@@ -254,7 +254,7 @@ WinUSB のアダプターが複数あると、`-u` を指定しても Realtek �
 
 ## 手順 8: プルリクエストを出す
 
-出す前に、次を順に実行します（環境は[ビルド](../building)を参照）。まず `app\src\ui` で UI のチェックです。手順 6 の変更（項目 12）を確かめるもので、Rust のワークスペースにはウィンドウのクレートが入っていて、そのビルドには UI のビルドが必要です。
+出す前に、次を順に実行します（環境は[ビルド](building)を参照）。まず `app\src\ui` で UI のチェックです。手順 6 の変更（項目 12）を確かめるもので、Rust のワークスペースにはウィンドウのクレートが入っていて、そのビルドには UI のビルドが必要です。
 
 ```bat
 pnpm install

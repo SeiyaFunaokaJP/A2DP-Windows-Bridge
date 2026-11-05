@@ -2,7 +2,7 @@
 title: 끊김과 연결 문제
 layout: default
 parent: 홈
-nav_order: 3
+nav_order: 2.4
 ---
 
 # 끊김과 연결 문제

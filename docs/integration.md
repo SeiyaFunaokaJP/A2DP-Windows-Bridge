@@ -2,7 +2,6 @@
 title: Integration (IPC)
 layout: default
 nav_order: 3.7
-english_only: true
 ---
 
 # Integration (IPC)

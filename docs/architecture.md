@@ -2,7 +2,6 @@
 title: Architecture
 layout: default
 nav_order: 5
-english_only: true
 ---
 
 # Architecture
