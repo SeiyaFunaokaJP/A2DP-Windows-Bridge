@@ -38,7 +38,7 @@ mod timer_resolution;
 mod transport;
 
 pub use att::AttWriteRequest;
-pub use le::{CigParams, CisParams, ConnectionType, LeDbEntry, LeEncryption};
+pub use le::{BigParams, CigParams, CisParams, ConnectionType, LeDbEntry, LeEncryption};
 pub use stack::{AclState, AvdtpState, HciState, Stack};
 pub use timer_resolution::HighTimerResolution;
 pub use transport::{

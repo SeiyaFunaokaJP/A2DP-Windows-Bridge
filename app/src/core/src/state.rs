@@ -843,6 +843,51 @@ pub struct CustomStream {
     pub codec_fallback: Option<bool>,
 }
 
+/// stream.start_broadcast's parameters
+#[derive(Debug, Clone, Default)]
+pub struct BroadcastStream {
+    pub name: String,
+    pub code: Option<String>,
+    /// "hq" or "sq"
+    pub quality: String,
+    pub mono: Option<bool>,
+    pub source: String,
+    pub source_id: Option<String>,
+    pub source_name: Option<String>,
+}
+
+/// What to broadcast for stream.start_broadcast: the source as for
+/// stream.start_custom, no device, LE Audio with the broadcast
+pub fn broadcast_request(b: &BroadcastStream, legacy_max_media_payload: u16) -> Result<StreamRequest, ErrorInfo> {
+    const METHOD: &str = "stream.start_broadcast";
+    let preset = match b.quality.trim().to_ascii_lowercase().as_str() {
+        "" | "hq" => a2dpwb_core::BROADCAST_PRESET_HQ,
+        "sq" => a2dpwb_core::BROADCAST_PRESET_SQ,
+        other => return Err(bad_request("stream.bad_quality", METHOD, format!("unknown quality \"{other}\""))),
+    };
+    let c = CustomStream {
+        device: "00:00:00:00:00:00".into(),
+        device_name: Some(b.name.clone()),
+        codec: "auto".into(),
+        quality: "hq".into(),
+        source: b.source.clone(),
+        source_id: b.source_id.clone(),
+        source_name: b.source_name.clone(),
+        ..CustomStream::default()
+    };
+    let mut req = custom_request(&c, legacy_max_media_payload)?;
+    req.le = Some(bt_host::LeRequest {
+        preset: Some(preset.into()),
+        broadcast: Some(bt_host::LeBroadcast {
+            name: b.name.clone(),
+            code: b.code.clone(),
+            mono: b.mono.unwrap_or(false),
+        }),
+        ..bt_host::LeRequest::default()
+    });
+    Ok(req)
+}
+
 /// What to stream for stream.start_custom: built as a profile is (same
 /// checks and defaults), with the test tone as a source of its own
 pub fn custom_request(c: &CustomStream, legacy_max_media_payload: u16) -> Result<StreamRequest, ErrorInfo> {
@@ -1720,6 +1765,19 @@ impl CoreState {
         Ok(())
     }
 
+    /// stream.start_broadcast (developer mode)
+    pub fn start_broadcast(&self, b: &BroadcastStream) -> Result<(), ErrorInfo> {
+        let settings = self.service.settings();
+        if !settings.debug_mode {
+            return Err(err("developer.off", "ipc.error.developer_only"));
+        }
+        let mut req = broadcast_request(b, settings.legacy_max_media_payload())?;
+        req.mute_output = settings.mutes_output();
+        tracing::info!("broadcast \"{}\": quality {}, source {}", b.name, b.quality, req.source);
+        self.begin_stream(req, None);
+        Ok(())
+    }
+
     fn begin_stream(&self, req: StreamRequest, profile: Option<String>) {
         *self.starting_profile.lock().unwrap_or_else(|e| e.into_inner()) = profile.clone();
         self.publish(Event::Stream(StreamStatus {
@@ -2111,6 +2169,10 @@ impl CoreState {
                     codec_fallback,
                 };
                 self.start_custom(&c).map(|()| Value::Null)
+            }
+            Method::StreamStartBroadcast { name, code, quality, mono, source, source_id, source_name } => {
+                let b = BroadcastStream { name, code, quality, mono, source, source_id, source_name };
+                self.start_broadcast(&b).map(|()| Value::Null)
             }
             Method::StreamStop => {
                 self.stop();

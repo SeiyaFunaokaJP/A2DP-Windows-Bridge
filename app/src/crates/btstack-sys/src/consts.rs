@@ -191,6 +191,7 @@ pub const HCI_EVENT_ENCRYPTION_CHANGE_V2: u8 = 0x59;
 /// To the ISO handler ([`crate::Source::Iso`]): group id, stream id, CIS
 /// handle (2), stream index, group complete
 pub const HCI_EVENT_CIS_CAN_SEND_NOW: u8 = 0x6C;
+pub const HCI_EVENT_BIS_CAN_SEND_NOW: u8 = 0x6B;
 
 pub const GATT_EVENT_QUERY_COMPLETE: u8 = 0xA0;
 pub const GATT_EVENT_SERVICE_QUERY_RESULT: u8 = 0xA1;
@@ -223,6 +224,8 @@ pub const SM_EVENT_REENCRYPTION_COMPLETE: u8 = 0xD7;
 pub const GAP_EVENT_ADVERTISING_REPORT: u8 = 0xDA;
 pub const GAP_EVENT_EXTENDED_ADVERTISING_REPORT: u8 = 0xDB;
 pub const HCI_EVENT_META_GAP: u8 = 0xE7;
+pub const GAP_SUBEVENT_BIG_CREATED: u8 = 0x02;
+pub const GAP_SUBEVENT_BIG_TERMINATED: u8 = 0x03;
 pub const GAP_SUBEVENT_CIG_CREATED: u8 = 0x06;
 pub const GAP_SUBEVENT_CIS_CREATED: u8 = 0x07;
 pub const GAP_SUBEVENT_LE_CONNECTION_COMPLETE: u8 = 0x08;

@@ -808,7 +808,7 @@ mod tests {
         let r = p.to_request(1023).unwrap();
         assert_eq!(r.device, [0x00, 0xA2, 0xD0, 0x00, 0x00, 0x12]);
         // GMAP low latency: on unless the profile says otherwise
-        assert_eq!(r.le, Some(bt_host::LeRequest { extra_devices: Vec::new(), preset: None, low_latency: true }));
+        assert_eq!(r.le, Some(bt_host::LeRequest { low_latency: true, ..bt_host::LeRequest::default() }));
         assert_eq!(r.source, SourceRequest::SystemLoopback);
         // Written back as v1 wrote it; a classic profile has no key
         let out = serde_json::to_value(p).unwrap();

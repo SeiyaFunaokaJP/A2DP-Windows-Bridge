@@ -291,6 +291,81 @@ impl BtHost {
         );
     }
 
+    /// Starts a broadcast (Auracast source, developer mode): advertising with
+    /// the announcements and the BASE, a BIG with one BIS per channel of
+    /// `le_audio::broadcast::plan(&config)`, ISO sending. Returns once audio
+    /// may flow ("Auracast: broadcasting ..."); push the SDU sets into the
+    /// returned sink. Nothing needs to be connected. Err: why (no ISO
+    /// buffers, the adapter cannot advertise or create the BIG, timeout).
+    pub fn le_start_broadcast(
+        &self,
+        config: le_audio::broadcast::BroadcastConfig,
+        silence: &dyn Fn(&StreamPlan) -> SduSet,
+    ) -> Result<LeStreamStarted, String> {
+        if !self.le_ready() {
+            return Err("LE Audio is not running".into());
+        }
+        let (iso_len, iso_count) = self.le_iso_buffers();
+        if iso_len == 0 || iso_count == 0 {
+            let why = "adapter does not support LE Audio (no ISO buffers)";
+            tracing::error!("Auracast: cannot broadcast: {why}");
+            return Err(why.into());
+        }
+        let plan = le_audio::broadcast::plan(&config);
+        if usize::from(plan.preset.octets) + 4 > usize::from(iso_len) {
+            let why = format!("SDUs of {} octets do not fit the adapter's ISO packets", plan.preset.octets);
+            tracing::error!("Auracast: cannot broadcast: {why}");
+            return Err(why);
+        }
+        self.le.stream_lost.store(false, Ordering::Release);
+        let summary = le_audio::broadcast::describe(&plan);
+        let depth = queue_depth(iso_count, plan.cis.len()).max(1);
+        let queue = Arc::new(Mutex::new(SduQueue::new()));
+        queue.lock().unwrap_or_else(|e| e.into_inner()).configure(depth, silence(&plan));
+        let status =
+            LeStreamStatus { active: false, plan: plan.clone(), devices: Vec::new(), summary: summary.clone() };
+        let why = Arc::new(Mutex::new(String::new()));
+        let (q, st, w, cfg, pl) = (queue.clone(), status, why.clone(), config.clone(), plan.clone());
+        let ok = self.le_wait(START_TIMEOUT, true, move |ctx, done| ctx.start_broadcast(cfg, pl, q, st, w, done));
+        if !ok {
+            let why = why.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            let reason = if !why.is_empty() {
+                why
+            } else if self.le_cancelled() {
+                "cancelled".into()
+            } else {
+                "timeout".into()
+            };
+            tracing::error!("Auracast: setup failed: {reason}");
+            self.le_stop_broadcast();
+            return Err(reason);
+        }
+        let plan = self.le_run(RUN_TIMEOUT, |ctx| ctx.broadcast_plan()).flatten().unwrap_or(plan);
+        tracing::info!(
+            "Auracast: broadcasting \"{}\", Broadcast ID 0x{:06X}, {}: {summary}",
+            config.name,
+            config.broadcast_id,
+            if config.code.is_some() { "encrypted" } else { "open" }
+        );
+        let status = LeStreamStatus { active: true, plan, devices: Vec::new(), summary };
+        Ok(LeStreamStarted { status, sink: LeSduSink::new(queue) })
+    }
+
+    /// Ends the broadcast: LE Terminate BIG, advertising off (waits up to
+    /// 8 s)
+    pub fn le_stop_broadcast(&self) {
+        if !self.le_on || !self.le.initialized.load(Ordering::Acquire) {
+            return;
+        }
+        let started = Instant::now();
+        let ok = self.le_wait(STOP_TIMEOUT, false, |ctx, done| ctx.stop_broadcast(done));
+        tracing::debug!(
+            "Auracast: stop {} after {} ms",
+            if ok { "done" } else { "timed out" },
+            started.elapsed().as_millis()
+        );
+    }
+
     /// True once after a device or CIS of the running stream was lost (the
     /// session stops and sets the stream up again)
     pub fn le_stream_lost(&self) -> bool {

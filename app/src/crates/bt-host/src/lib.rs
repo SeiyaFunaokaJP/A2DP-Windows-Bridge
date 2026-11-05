@@ -41,8 +41,8 @@ pub use btstack_sys::expect_transport_loss;
 pub use capture::HciCapture;
 pub use events::{addr_str, parse_addr};
 pub use le::{
-    LeAddr, LeConfig, LeDeviceId, LeDeviceInfo, LeRequest, LeScanResult, LeSduSink, LeStreamRequest, LeStreamStarted,
-    LeStreamStats, LeStreamStatus,
+    LeAddr, LeBroadcast, LeConfig, LeDeviceId, LeDeviceInfo, LeRequest, LeScanResult, LeSduSink, LeStreamRequest,
+    LeStreamStarted, LeStreamStats, LeStreamStatus,
 };
 pub use media::{MediaPacket, MediaSink};
 pub use rfcomm::{

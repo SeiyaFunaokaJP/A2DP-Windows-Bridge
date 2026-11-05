@@ -559,6 +559,27 @@ function lc3Info(lowLatency: boolean, set: boolean): StreamInfo {
   };
 }
 
+/** A broadcast's stream info (the core's broadcast presets 48_4_2 and 24_2_2) */
+function broadcastInfo(sq: boolean, mono: boolean, source: SourceInfo): StreamInfo {
+  const [preset, rate, octets, kbps] = sq ? ["24_2_2", 24000, 60, 48] : ["48_4_2", 48000, 120, 96];
+  const ch = mono ? 1 : 2;
+  const base = lc3Info(false, false);
+  return {
+    ...base,
+    bitrate_kbps: kbps * ch,
+    sample_rate: rate,
+    channels: ch,
+    source,
+    le: {
+      ...base.le!,
+      preset,
+      octets,
+      cis: ch,
+      summary: `LC3 ${rate / 1000} kHz 10 ms ${octets} octets (${kbps} kbps/ch), ${ch} ch over ${ch} BIS, ${preset}`,
+    },
+  };
+}
+
 /** What a connection to the mock's devices learns: the codecs they offer */
 const DEVICE_CODECS = ["sbc", "aac", "ldac"];
 
@@ -579,6 +600,8 @@ interface StreamTarget {
   sampleRate: number | null;
   /** The profile's ABR (SBC / SBC XQ: the adaptive bitpool) */
   abr?: boolean;
+  /** stream.start_broadcast's; `why` the error it ends with */
+  broadcast?: { name: string; encrypted: boolean; sq: boolean; mono: boolean; why: string | null };
 }
 
 function sourceOf(mode: string, id: string, name: string): SourceInfo {
@@ -688,6 +711,8 @@ export class MockCore implements Transport {
         return this.startStream(String(p.profile));
       case "stream.start_custom":
         return this.startCustom(p);
+      case "stream.start_broadcast":
+        return this.startBroadcast(p);
       case "stream.stop":
         this.stopStream();
         return null;
@@ -1223,6 +1248,36 @@ export class MockCore implements Transport {
     return null;
   }
 
+  /** stream.start_broadcast: developer mode only; the core checks the name
+   *  and code when the stream starts (error.auracast) */
+  private startBroadcast(p: Record<string, unknown>): null {
+    if (!this.snap.settings.developer_mode) throw errorInfo("developer.off", "ipc.error.developer_only");
+    const quality = String(p.quality || "hq");
+    if (quality !== "hq" && quality !== "sq") {
+      throw errorInfo("stream.bad_quality", "ipc.error.bad_request", ["stream.start_broadcast", `unknown quality "${quality}"`]);
+    }
+    const mode = String(p.source || "loopback");
+    const name = String(p.name ?? "").trim();
+    const code = typeof p.code === "string" ? p.code : null;
+    const len = (s: string) => new TextEncoder().encode(s).length;
+    const why =
+      len(name) < 4
+        ? "the broadcast name needs 4 to 32 bytes"
+        : code !== null && (len(code) < 4 || len(code) > 16)
+          ? "the broadcast code needs 4 to 16 bytes"
+          : null;
+    this.connect({
+      address: "00:00:00:00:00:00",
+      le: true,
+      broadcast: { name, encrypted: code !== null, sq: quality === "sq", mono: p.mono === true, why },
+      codec: "lc3",
+      profile: null,
+      source: sourceOf(mode, String(p.source_id ?? ""), String(p.source_name ?? "")),
+      sampleRate: null,
+    });
+    return null;
+  }
+
   private connect(t: StreamTarget) {
     const name = t.profile;
     // The core streams through the first adapter on WinUSB
@@ -1261,6 +1316,21 @@ export class MockCore implements Transport {
       this.log("info", "bt_host::app", "controller: company 0x005D (Realtek), HCI version 10, LMP subversion 0x8761");
       this.log("info", "bt_host", "HCI ready after 412 ms");
       if (this.snap.adapter.status !== "ready") this.setAdapter("ready");
+      const b = t.broadcast;
+      if (b) {
+        if (b.why) {
+          this.setStream("error", "error.auracast", [b.why]);
+          return;
+        }
+        const i = broadcastInfo(b.sq, b.mono, t.source);
+        this.log("info", "bt_host::le", `Auracast: broadcasting "${b.name}", Broadcast ID 0x3A51C7, ${b.encrypted ? "encrypted" : "open"}: ${i.le!.summary}`);
+        this.streamStart = { ...this.totals };
+        this.streamStarts += 1;
+        this.snap.stream = { state: "streaming", message: { key: "status.broadcasting", args: [] }, profile: null, info: i, volume: null, battery: null, battery_refused: false };
+        this.log("info", "a2dpwb_core::service", "state Streaming: Broadcasting");
+        this.emit({ kind: "stream", value: this.snap.stream });
+        return;
+      }
       this.setStream("connecting", "status.connecting_device");
       this.log("info", "bt_host", t.le ? `LE Audio: connecting with ${t.address}` : `connecting to ${t.address}`);
     });

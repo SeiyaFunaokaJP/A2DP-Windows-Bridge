@@ -159,3 +159,57 @@ describe("chip tools", () => {
     expect(run).toBeDisabled();
   });
 });
+
+describe("Auracast tab", () => {
+  it("starts and stops a broadcast", async () => {
+    const { core, calls } = await open();
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    fireEvent.click(await screen.findByRole("tab", { name: t("ui.dev.auracast") }));
+    const start = await screen.findByRole("button", { name: t("receiver.start") });
+
+    // Name and password are checked in bytes
+    const name = screen.getByLabelText(t("ui.dev.auracast_name"));
+    fireEvent.input(name, { target: { value: "abc" } });
+    expect(await screen.findByText(t("ui.dev.auracast_err_length", 4, 32))).toBeInTheDocument();
+    expect(start).toBeDisabled();
+    fireEvent.input(name, { target: { value: "Living room" } });
+    const code = screen.getByLabelText(t("ui.dev.auracast_code"));
+    fireEvent.input(code, { target: { value: "ああああああ" } });
+    expect(await screen.findByText(t("ui.dev.auracast_err_length", 4, 16))).toBeInTheDocument();
+    fireEvent.input(code, { target: { value: "secret" } });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(screen.getByRole("radio", { name: t("ui.dev.auracast_sq") }));
+    fireEvent.click(screen.getByRole("radio", { name: t("ui.dev.auracast_mono") }));
+
+    fireEvent.click(start);
+    expect(await screen.findByText(t("status.broadcasting"))).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "stream.start_broadcast")!.params).toEqual({
+      name: "Living room",
+      code: "secret",
+      quality: "sq",
+      mono: true,
+      source: "tone",
+    });
+    expect(screen.getByText(/1 ch over 1 BIS, 24_2_2/)).toBeInTheDocument();
+    expect(name).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: t("receiver.stop") }));
+    expect(await screen.findByRole("button", { name: t("receiver.start") })).toBeEnabled();
+    expect(calls.some((c) => c.method === "stream.stop")).toBe(true);
+    expect(screen.queryByText(t("status.broadcasting"))).toBeNull();
+  });
+
+  it("shows why a broadcast did not start", async () => {
+    const { core } = await open();
+    // The core refuses a broadcast while developer mode is off
+    await expect(core.request("stream.start_broadcast", { name: "A2DPWB", quality: "hq", source: "tone" })).rejects.toMatchObject({
+      code: "developer.off",
+    });
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    fireEvent.click(await screen.findByRole("tab", { name: t("ui.dev.auracast") }));
+    mock!.failNextConnect("error.btstack_init");
+    fireEvent.click(await screen.findByRole("button", { name: t("receiver.start") }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(t("error.btstack_init")));
+    expect(screen.getByRole("button", { name: t("receiver.start") })).toBeEnabled();
+  });
+});

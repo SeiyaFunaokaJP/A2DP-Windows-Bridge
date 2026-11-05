@@ -232,6 +232,35 @@ unsafe extern "C" {
     ) -> u8;
     pub fn a2dpwb_iso_send(cis_handle: u16, sequence_number: u16, sdu: *const u8, len: u16) -> u8;
 
+    // ---- shim.c: broadcast ----
+    #[allow(clippy::too_many_arguments)]
+    pub fn a2dpwb_broadcast_advertise(
+        sid: u8,
+        adv_interval_min: u16,
+        adv_interval_max: u16,
+        pa_interval_min: u16,
+        pa_interval_max: u16,
+        adv: *const u8,
+        adv_len: u16,
+        pa: *const u8,
+        pa_len: u16,
+        out_handle: *mut u8,
+    ) -> u8;
+    pub fn a2dpwb_broadcast_advertise_stop() -> u8;
+    #[allow(clippy::too_many_arguments)]
+    pub fn a2dpwb_big_create(
+        big_handle: u8,
+        num_bis: u8,
+        sdu_interval_us: u32,
+        max_sdu: u16,
+        max_transport_latency_ms: u16,
+        rtn: u8,
+        phy: u8,
+        framing: u8,
+        code: *const u8,
+    ) -> u8;
+    pub fn a2dpwb_big_terminate(big_handle: u8) -> u8;
+
     // ---- BTstack: GAP (LE) ----
     pub fn gap_set_scan_params(scan_type: u8, scan_interval: u16, scan_window: u16, filter_policy: u8) -> u8;
     pub fn gap_start_scan();
@@ -243,6 +272,7 @@ unsafe extern "C" {
     // ---- BTstack: HCI ISO ----
     pub fn hci_set_num_iso_packets_to_queue(num_packets: u8);
     pub fn hci_request_cis_can_send_now_events(cis_con_handle: u16) -> u8;
+    pub fn hci_request_bis_can_send_now_events(big_handle: u8) -> u8;
 
     // ---- BTstack: SM ----
     pub fn sm_request_pairing(con: u16);
