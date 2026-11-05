@@ -47,6 +47,21 @@ describe("Home", () => {
     await waitFor(() => expect(screen.queryByText(t("ui.home.hi_res_set"))).toBeNull());
   });
 
+  it("drops the driver error once the error's own button put the adapter on WinUSB", async () => {
+    start("#/home");
+    const wh = await homeCard("WH-1000XM5");
+    const m = mock as unknown as { snap: Snapshot; emit: (e: unknown) => void };
+    m.snap.adapter = { ...m.snap.adapter, adapters: m.snap.adapter.adapters.map((a) => ({ ...a, driver: "bluetooth" as const })) };
+    m.emit({ kind: "adapter", value: m.snap.adapter });
+    fireEvent.click(within(wh).getByRole("button", { name: "Connect" }));
+    const replace = await screen.findByRole("button", { name: "Replace with WinUSB driver" });
+    fireEvent.click(replace);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Replace with WinUSB driver" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Replace with WinUSB driver" })).toBeNull());
+    expect(document.querySelector(".banner.error, .banner-error")).toBeNull();
+  });
+
   it("connects and disconnects with the device's own button", async () => {
     const { calls } = start("#/home");
     const wh = await homeCard("WH-1000XM5");

@@ -6,7 +6,7 @@
 // button: the flyout hides on Escape and when it loses the focus. Its
 // window is as tall as the page (issue #86: no empty space).
 
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
 import { errorText, useApp } from "../app/context";
 import { mixerShown } from "../app/settings";
 import { CaptureSign } from "../app/indicators";
@@ -15,6 +15,7 @@ import { Icon } from "../components/Icon";
 import { NoticeLine } from "../components/Notice";
 import { DeviceSwitcher } from "../components/DeviceSwitcher";
 import {
+  adapterDrivers,
   BatteryLevel,
   CodecBadge,
   ConnectButton,
@@ -46,6 +47,9 @@ export function Flyout() {
   /** Connect is shown, with "Open app" beside it */
   const actionsShown = () => !noDevice() && !!profile();
   const [reqError, setReqError] = createSignal<IpcError | null>(null);
+  // As on Home: until the state moves on or an adapter's driver changes
+  createEffect(on(() => stream().state, () => setReqError(null), { defer: true }));
+  createEffect(on(() => adapterDrivers(snap()), () => setReqError(null), { defer: true }));
   const { fixFor, dialog } = useFixes();
   onCleanup(core.wantLink());
 

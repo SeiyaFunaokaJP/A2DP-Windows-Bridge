@@ -1523,6 +1523,13 @@ export class MockCore implements Transport {
           ),
         };
         this.emit({ kind: "adapter", value: this.snap.adapter });
+        // As the core's driver_changed: the stack's error from before is out of date
+        if (this.snap.adapter.status === "error") this.setAdapter("stopped");
+        const s = this.snap.stream;
+        if (s.state === "error" && s.message.key.startsWith("error.btstack")) {
+          this.snap.stream = { ...s, state: "idle", message: { key: "status.ready", args: [] }, info: null, volume: null, battery: null, battery_refused: false };
+          this.emit({ kind: "stream", value: this.snap.stream });
+        }
         resolve(this.snap.adapter.adapters);
       });
     });

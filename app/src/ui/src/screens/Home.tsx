@@ -15,6 +15,7 @@ import { Icon } from "../components/Icon";
 import {
   BatteryLevel,
   CodecBadge,
+  adapterDrivers,
   ErrorPanel,
   FirmwareDownload,
   LinkSparkline,
@@ -191,6 +192,7 @@ export function Home() {
   // A failed request (Connect) until the state moves on
   const [reqError, setReqError] = createSignal<IpcError | null>(null);
   createEffect(on(() => stream().state, () => setReqError(null), { defer: true }));
+  createEffect(on(() => adapterDrivers(snap()), () => setReqError(null), { defer: true }));
 
   const error = () => {
     const e = reqError();

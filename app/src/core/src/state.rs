@@ -1793,6 +1793,23 @@ impl CoreState {
         }
     }
 
+    /// An adapter's driver changed (and the stack was released for it): the
+    /// stack's error from before ("no adapter on WinUSB") is out of date,
+    /// the next use tries again
+    pub fn driver_changed(&self) {
+        let (_, s) = self.snapshot();
+        if s.adapter.status == AdapterStatus::Error {
+            self.publish(Event::Adapter(AdapterState { status: AdapterStatus::Stopped, error: None, ..s.adapter }));
+        }
+        if s.stream.state == StreamState::Error && s.stream.message.key.starts_with("error.btstack") {
+            self.publish(Event::Stream(StreamStatus {
+                message: Msg::new("status.ready"),
+                profile: s.stream.profile,
+                ..StreamStatus::default()
+            }));
+        }
+    }
+
     /// Starts streaming a profile (tray and UI)
     pub fn start_profile(&self, name: &str) -> Result<(), ErrorInfo> {
         let dir = self.config_dir();

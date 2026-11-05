@@ -503,6 +503,12 @@ export function adapterNeedingDriver(snap: Snapshot): AdapterInfo | null {
   return snap.adapter.adapters.find((a) => a.driver !== "winusb") ?? null;
 }
 
+/** The adapters' drivers, to tell when one changed: a kept request error
+ *  ("no adapter on WinUSB") is out of date then */
+export function adapterDrivers(snap: Snapshot): string {
+  return snap.adapter.adapters.map((a) => `${a.instance_id}=${a.driver}`).join("|");
+}
+
 /** The next step for an error: a code from a request, and/or the message key */
 export function useFixes() {
   const app = useApp();
