@@ -26,9 +26,9 @@
 //! Both need administrator rights (`bluecaster-driver.exe`, started elevated);
 //! `driver_state` is read-only and needs none.
 //!
-//! Not yet verified on hardware (design.md phase 0): whether
-//! SetupDiBuildDriverInfoList offers winusb.inf (class USBDevice) for a
-//! device of another class (Bluetooth). If it does not, the device's class
+//! Whether SetupDiBuildDriverInfoList offers winusb.inf (class USBDevice)
+//! for a device of another class (Bluetooth) varies (docs/v2-design.md
+//! phase 0; both paths have run on real adapters). If it does not, the class
 //! is changed to USBDevice first (what installing a driver of another class
 //! does anyway) and the list is built again; if that fails too, the device
 //! is put back as by `restore`.

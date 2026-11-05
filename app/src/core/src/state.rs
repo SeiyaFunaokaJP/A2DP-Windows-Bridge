@@ -1034,8 +1034,7 @@ enum AutostartFix {
     Remove,
 }
 
-/// The core's program name before 3.0.0 (2.0.x), in an old Run value
-const OLD_CORE_EXE: &str = "a2dpwb-core.exe";
+use bluecaster_core::compat::OLD_CORE_EXE;
 
 /// The Run value's program is named `name` (any folder, any case)
 fn runs(command: Option<&str>, name: &str) -> bool {

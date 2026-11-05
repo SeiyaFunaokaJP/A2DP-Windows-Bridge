@@ -12,6 +12,10 @@
 /// BlueCaster (6–12 months after 3.0.0).
 pub const V1_EXE: &str = "A2DPWB.exe";
 
+/// 2.0.x's core program, named in an old Run value the core takes over.
+/// Can be removed 6–12 months after 3.0.0.
+pub const OLD_CORE_EXE: &str = "a2dpwb-core.exe";
+
 /// The mutex v1 holds while it runs (defined in win-sys, which uses it).
 /// Same lifetime as [`V1_EXE`].
 pub use win_sys::single_instance::V1_MUTEX_NAME;
@@ -60,9 +64,9 @@ pub const OLD_FIRMWARE_CACHE: &str = "A2DPWB_cache";
 /// migration may clean up. Can be removed 6–12 months after 3.0.0.
 pub const OLD_APP_IDENTIFIER: &str = "io.github.seiyafunaokajp.a2dpwb";
 
-/// The install folder's name before 3.0.0 (`%LOCALAPPDATA%\Programs\A2DP
-/// Windows Bridge` or under Program Files), for the installer's upgrade
-/// from 2.0.x. Can be removed 6–12 months after 3.0.0.
+/// The install folder's name before 3.0.0 (`%LOCALAPPDATA%\A2DP Windows
+/// Bridge`; the installer hard-codes it, as [`OLD_APP_IDENTIFIER`], this
+/// is the record). Can be removed 6–12 months after 3.0.0.
 pub const OLD_INSTALL_DIR: &str = "A2DP Windows Bridge";
 
 #[cfg(test)]
@@ -72,6 +76,7 @@ mod tests {
     #[test]
     fn the_old_names() {
         assert_eq!(V1_EXE, "A2DPWB.exe");
+        assert_eq!(OLD_CORE_EXE, "a2dpwb-core.exe");
         assert_eq!(V1_MUTEX_NAME, "A2DPWB_SingleInstance");
         assert_eq!(OLD_CORE_MUTEX, r"Local\A2DPWB_v2_Core");
         assert_eq!(OLD_PIPE_PREFIX, "a2dpwb");
