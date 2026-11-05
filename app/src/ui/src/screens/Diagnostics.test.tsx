@@ -196,7 +196,7 @@ describe("Diagnostics", () => {
     plot.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 100, right: 300, bottom: 100, x: 0, y: 0, toJSON: () => ({}) });
     fireEvent.pointerMove(plot, { clientX: 299, clientY: 50 });
     await waitFor(() => expect(view.container.querySelectorAll(".chart .cursor").length).toBe(6));
-    for (const c of charts()) expect(c.querySelector(".chart-ago")).toHaveTextContent(/^−?\d+\.\d s$/);
+    for (const c of charts()) expect(c.querySelector(".chart-ago")).toBeNull();
     fireEvent.pointerLeave(plot);
     await waitFor(() => expect(view.container.querySelectorAll(".chart .cursor").length).toBe(0));
 
@@ -279,8 +279,11 @@ describe("Diagnostics", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Scan" }));
     await waitFor(() => expect(view.container.querySelectorAll("path.band-ap")).toHaveLength(3));
     const rows = view.container.querySelectorAll(".radio-panel tbody tr");
-    expect(rows).toHaveLength(3);
-    expect(rows[0]).toHaveTextContent(/home-2g\s*6\s*-48 dBm/);
-    expect(rows[2]).toHaveTextContent("(hidden)");
+    // The table lists every band, the drawing 2.4 GHz only
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toHaveTextContent(/home-2g\s*2\.4 GHz\s*6\s*-48 dBm/);
+    expect(rows[1]).toHaveTextContent(/home-5g\s*5 GHz\s*36/);
+    expect(rows[3]).toHaveTextContent("(hidden)");
+    expect(view.container.querySelector(".radio-panel p.muted")).toBeNull();
   });
 });

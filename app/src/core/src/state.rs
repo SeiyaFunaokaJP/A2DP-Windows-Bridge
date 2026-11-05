@@ -2707,12 +2707,12 @@ impl CoreState {
             Method::DiagWifiScan => {
                 // Waits for the scan: off the runtime
                 blocking(Box::new(|_| {
-                    use win_sys::wlan::{ScanError, scan_24ghz};
-                    match scan_24ghz(std::time::Duration::from_secs(4)) {
+                    use win_sys::wlan::{ScanError, scan};
+                    match scan(std::time::Duration::from_secs(4)) {
                         Ok(aps) => {
                             let list: Vec<WifiAccessPoint> = aps
                                 .into_iter()
-                                .map(|a| WifiAccessPoint { ssid: a.ssid, channel: a.channel, rssi: a.rssi })
+                                .map(|a| WifiAccessPoint { ssid: a.ssid, channel: a.channel, mhz: a.mhz, rssi: a.rssi })
                                 .collect();
                             Ok(json(&list))
                         }

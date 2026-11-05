@@ -5,9 +5,9 @@
 // (one .zip of logs, captures and crash reports for a report). The receiver
 // test is on the Developer screen. Each tab is its own file in diagnostics/.
 
-import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import { errorText, useApp } from "../app/context";
-import { Banner, Button, Check, Dialog, IconButton, Section, Select } from "../components/controls";
+import { Banner, Button, Check, Dialog, IconButton, Section, Select, TabBar } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { bugReportFor } from "../components/stream";
 import type { IconName } from "../components/icons";
@@ -174,21 +174,6 @@ export function Diagnostics() {
     { id: "log", label: t("dbgc.section_log"), icon: "people_list" },
   ];
 
-  const onTabKey = (e: KeyboardEvent) => {
-    // Arrow keys move between tabs (WAI-ARIA tabs pattern)
-    const list = tabs();
-    const i = list.findIndex((x) => x.id === tab());
-    let n = -1;
-    if (e.key === "ArrowRight") n = (i + 1) % list.length;
-    else if (e.key === "ArrowLeft") n = (i - 1 + list.length) % list.length;
-    else if (e.key === "Home") n = 0;
-    else if (e.key === "End") n = list.length - 1;
-    if (n < 0) return;
-    e.preventDefault();
-    setTab(list[n].id);
-    document.getElementById(`tab-${list[n].id}`)?.focus();
-  };
-
   return (
     <div class="page diagnostics">
       <header class="page-head">
@@ -305,25 +290,7 @@ export function Diagnostics() {
           </div>
         )}
       </Show>
-      <div class="tabs" role="tablist" aria-label={t("ui.nav.diagnostics")} onKeyDown={onTabKey}>
-        <For each={tabs()}>
-          {(x) => (
-            <button
-              type="button"
-              role="tab"
-              id={`tab-${x.id}`}
-              class="tab"
-              aria-selected={tab() === x.id}
-              aria-controls={`panel-${x.id}`}
-              tabindex={tab() === x.id ? 0 : -1}
-              onClick={() => setTab(x.id)}
-            >
-              <Icon name={x.icon} />
-              {x.label}
-            </button>
-          )}
-        </For>
-      </div>
+      <TabBar label={t("ui.nav.diagnostics")} tabs={tabs()} current={tab()} onSelect={setTab} />
       <div class="tab-panel" role="tabpanel" id={`panel-${tab()}`} aria-labelledby={`tab-${tab()}`}>
         <Show when={tab() === "stream"}>
           <StreamPanel />

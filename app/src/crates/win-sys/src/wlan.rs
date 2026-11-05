@@ -11,9 +11,9 @@
 //! connection (its BSSID) count as location, and asking for them shows
 //! Windows' location prompt. The channel number does not.
 //!
-//! The one exception is `scan_24ghz`, the developer-mode scan of the
-//! diagnostics screen: it runs only when the user asks for it, and may
-//! then meet Windows' location setting.
+//! The exceptions are `scan` and `scan_24ghz`: the developer-mode scan of
+//! the diagnostics screen and AFH "blend". They run only when the user
+//! asks for them, and may then meet Windows' location setting.
 
 use std::ffi::c_void;
 use std::time::Duration;
@@ -75,6 +75,19 @@ pub fn channel_from_mhz(mhz: u32) -> Option<u8> {
     }
 }
 
+/// The channel number of a center frequency on any band: 2.4 GHz as
+/// `channel_from_mhz`, 5 GHz from 5000 MHz and 6 GHz from 5950 MHz in
+/// 5 MHz steps
+pub fn any_channel_from_mhz(mhz: u32) -> Option<u8> {
+    let from = |base: u32| (mhz - base).is_multiple_of(5).then(|| ((mhz - base) / 5) as u8);
+    match mhz {
+        2400..=2500 => channel_from_mhz(mhz),
+        5150..=5895 => from(5000),
+        5955..=7115 => from(5950),
+        _ => None,
+    }
+}
+
 /// This PC's Wi-Fi interfaces and their channels. A PC without Wi-Fi (or
 /// with the WLAN AutoConfig service stopped) gives an empty survey, not an
 /// error, as in v1.
@@ -131,15 +144,23 @@ pub fn survey() -> windows::core::Result<WifiSurvey> {
     Ok(result)
 }
 
-/// An access point a scan heard on 2.4 GHz
+/// An access point a scan heard
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccessPoint {
     /// Empty for a hidden network
     pub ssid: String,
-    /// 1-14
+    /// The channel number on its band (1-14 on 2.4 GHz)
     pub channel: u8,
+    /// Center frequency
+    pub mhz: u32,
     /// dBm
     pub rssi: i32,
+}
+
+impl AccessPoint {
+    pub fn is_24ghz(&self) -> bool {
+        self.mhz < 2500
+    }
 }
 
 /// Why `scan_24ghz` found nothing to list
@@ -158,10 +179,18 @@ pub enum ScanError {
 /// ERROR_NDIS_DOT11_POWER_STATE_INVALID: the radio is off
 const ERROR_RADIO_OFF: u32 = 0x8034_2002;
 
-/// Asks every Wi-Fi interface for a fresh scan, waits `wait` for it and
-/// returns the 2.4 GHz access points heard, loudest first. Needs location
-/// permission on Windows 11 24H2 and later; run it only when the user asks.
+/// `scan`, 2.4 GHz access points only
 pub fn scan_24ghz(wait: Duration) -> Result<Vec<AccessPoint>, ScanError> {
+    let mut aps = scan(wait)?;
+    aps.retain(AccessPoint::is_24ghz);
+    Ok(aps)
+}
+
+/// Asks every Wi-Fi interface for a fresh scan, waits `wait` for it and
+/// returns the access points heard on every band, loudest first. Needs
+/// location permission on Windows 11 24H2 and later; run it only when the
+/// user asks.
+pub fn scan(wait: Duration) -> Result<Vec<AccessPoint>, ScanError> {
     if !api_present() {
         return Err(ScanError::NoWifi);
     }
@@ -227,13 +256,15 @@ pub fn scan_24ghz(wait: Duration) -> Result<Vec<AccessPoint>, ScanError> {
             for i in 0..n {
                 let e = first.add(i);
                 let khz = std::ptr::addr_of!((*e).ulChCenterFrequency).read_unaligned();
-                let Some(channel) = channel_from_mhz(khz / 1000) else { continue };
+                let mhz = khz / 1000;
+                let Some(channel) = any_channel_from_mhz(mhz) else { continue };
                 let bssid = std::ptr::addr_of!((*e).dot11Bssid).read_unaligned();
                 let ssid = std::ptr::addr_of!((*e).dot11Ssid).read_unaligned();
                 let len = (ssid.uSSIDLength as usize).min(ssid.ucSSID.len());
                 let ap = AccessPoint {
                     ssid: String::from_utf8_lossy(&ssid.ucSSID[..len]).into_owned(),
                     channel,
+                    mhz,
                     rssi: std::ptr::addr_of!((*e).lRssi).read_unaligned(),
                 };
                 // Two interfaces can hear the same access point: keep the louder
@@ -257,7 +288,11 @@ pub fn scan_24ghz(wait: Duration) -> Result<Vec<AccessPoint>, ScanError> {
     }
     let mut aps: Vec<AccessPoint> = heard.into_iter().map(|(_, ap)| ap).collect();
     aps.sort_by(|a, b| b.rssi.cmp(&a.rssi).then(a.channel.cmp(&b.channel)));
-    tracing::debug!("wlan: scan heard {} access point(s) on 2.4 GHz", aps.len());
+    tracing::debug!(
+        "wlan: scan heard {} access point(s), {} on 2.4 GHz",
+        aps.len(),
+        aps.iter().filter(|a| a.is_24ghz()).count()
+    );
     Ok(aps)
 }
 
@@ -341,6 +376,21 @@ mod tests {
     }
 
     #[test]
+    fn channels_on_every_band() {
+        assert_eq!(any_channel_from_mhz(2437), Some(6));
+        assert_eq!(any_channel_from_mhz(2484), Some(14));
+        assert_eq!(any_channel_from_mhz(5180), Some(36));
+        assert_eq!(any_channel_from_mhz(5260), Some(52));
+        assert_eq!(any_channel_from_mhz(5500), Some(100));
+        assert_eq!(any_channel_from_mhz(5825), Some(165));
+        assert_eq!(any_channel_from_mhz(5955), Some(1));
+        assert_eq!(any_channel_from_mhz(6415), Some(93));
+        assert_eq!(any_channel_from_mhz(7115), Some(233));
+        assert_eq!(any_channel_from_mhz(5182), None);
+        assert_eq!(any_channel_from_mhz(900), None);
+    }
+
+    #[test]
     fn connected_channel_is_a_2_4_ghz_number() {
         assert_eq!(connected_channel_24ghz(Some(6)), Some(6));
         assert_eq!(connected_channel_24ghz(Some(1)), Some(1));
@@ -370,10 +420,10 @@ mod tests {
     #[test]
     #[ignore = "asks Windows for a scan and may meet the location setting"]
     fn scan_runs() {
-        match scan_24ghz(Duration::from_secs(4)) {
+        match scan(Duration::from_secs(4)) {
             Ok(aps) => {
                 for ap in &aps {
-                    eprintln!("ch {:2} {:4} dBm {:?}", ap.channel, ap.rssi, ap.ssid);
+                    eprintln!("{} MHz ch {:3} {:4} dBm {:?}", ap.mhz, ap.channel, ap.rssi, ap.ssid);
                 }
             }
             Err(e) => eprintln!("scan: {e:?}"),

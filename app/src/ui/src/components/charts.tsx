@@ -171,13 +171,6 @@ export function TimeChart(props: {
   const multi = () => props.series.length > 1;
   const label = () =>
     multi() ? props.series.map((s) => `${s.label}: ${text(s, false)}`).join(", ") : text(props.series[0], false);
-  /** The cursor's time before the latest sample */
-  const ago = () => {
-    const i = at();
-    if (i === null) return null;
-    const s = (props.times[i] - range()[1]) / 1000;
-    return `${s <= -0.05 ? "−" : ""}${Math.abs(s).toFixed(1)} s`;
-  };
   const cursorX = () => {
     const i = at();
     return i === null ? null : ((props.times[i] - range()[0]) / span()) * W;
@@ -193,7 +186,6 @@ export function TimeChart(props: {
       <figcaption class="chart-head">
         <span class="chart-title">{props.title}</span>
         <span class="chart-readout">
-          <Show when={ago()}>{(a) => <span class="chart-ago num">{a()}</span>}</Show>
           <Show when={!multi()}>
             <span class={`chart-value num ${first() !== null && props.status ? `st-${props.status(first()!)}` : ""}`}>
               {text(props.series[0])}
