@@ -2,7 +2,7 @@
 title: 音切れと接続の問題
 layout: default
 parent: ホーム
-nav_order: 3
+nav_order: 2.4
 ---
 
 # 音切れと接続の問題

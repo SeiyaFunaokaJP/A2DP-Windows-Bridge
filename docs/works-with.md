@@ -2,7 +2,6 @@
 title: Works With
 layout: default
 nav_order: 3.6
-english_only: true
 ---
 
 # Works With

@@ -42,7 +42,7 @@ En su primer inicio, la v2 copia la configuración de la v1 en `%APPDATA%\BlueCa
 
 BlueCaster 3.0.0 es el nuevo nombre de A2DP Windows Bridge. Ejecute el instalador de la 3.0.0 sobre la 2.0.x instalada: el instalador desinstala solo la versión anterior y conserva la configuración. La entrada del menú Inicio y la de **Iniciar con Windows** pasan a «BlueCaster».
 
-En el primer inicio, la 3.0.0 cambia el nombre de la carpeta `%APPDATA%\A2DPWB` a `%APPDATA%\BlueCaster` y ordena los archivos en subcarpetas (véase [Configuración y archivos](../architecture#settings-and-files)). `backup\v2\` contiene una copia de la configuración y los emparejamientos de la 2.0.x, para poder volver a instalar la 2.0.2: copie esos archivos de nuevo en `%APPDATA%\A2DPWB`.
+En el primer inicio, la 3.0.0 cambia el nombre de la carpeta `%APPDATA%\A2DPWB` a `%APPDATA%\BlueCaster` y ordena los archivos en subcarpetas (véase [Configuración y archivos](architecture#settings-and-files)). `backup\v2\` contiene una copia de la configuración y los emparejamientos de la 2.0.x, para poder volver a instalar la 2.0.2: copie esos archivos de nuevo en `%APPDATA%\A2DPWB`.
 
 Los auriculares pueden seguir mostrando el antiguo nombre Bluetooth «A2DPWB» hasta que se vuelvan a emparejar.
 
@@ -160,7 +160,7 @@ Estos archivos de firmware son binarios propietarios de Realtek distribuidos a t
 
 ## Adaptadores recomendados {#adapters}
 
-Qué adaptadores y auriculares se han usado realmente con BlueCaster, con los códecs y los informes: [Hardware verificado](../hardware).
+Qué adaptadores y auriculares se han usado realmente con BlueCaster, con los códecs y los informes: [Hardware verificado](hardware).
 
 | Chipset | Productos de ejemplo | Notas |
 |:--------|:-----------------|:------|

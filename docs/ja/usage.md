@@ -228,7 +228,7 @@ bluecaster-core.exe --cli --scan
 | `--script <file>`, `--allow-writes` | アダプターでチップスクリプトを実行し、その結果を保存して終了。`--allow-writes` で、チップを変更するおそれのある行も実行します（[チップ対応の追加](chip-support#chip-scripts)を参照） |
 | `-h` | ヘルプを表示 |
 
-開発・テスト用に `--hci-tcp <host:port>`（WinUSB アダプターの代わりに TCP 経由の仮想コントローラー）、`--test-tone`（キャプチャ音声の代わりに左 1 kHz / 右 1.5 kHz）、`--duration <秒>`（指定秒数で停止）、`--sessions <n>`（アプリでの切断 / 接続のように、n 回続けて配信）、`--restart`（`--sessions` と一緒に使い、その合間に Bluetooth を再起動）、`--restart-on-link`（接続中に設定を変えたときのように、リンクがつながるとすぐセッションを始め直す）、`--wait-off`（ヘッドホンの電源を切っても実行を終えない）、`--hci-capture <file.pklg>`（実行全体の HCI キャプチャ）もあります。[ビルド](../building#emu)を参照してください。LE Audio のオプションは `-h` で表示されます（[LE Audio](#le-audio)を参照）。`--services` は、ストリーミング開始後にデバイスが SDP で公開しているサービスを表示します。
+開発・テスト用に `--hci-tcp <host:port>`（WinUSB アダプターの代わりに TCP 経由の仮想コントローラー）、`--test-tone`（キャプチャ音声の代わりに左 1 kHz / 右 1.5 kHz）、`--duration <秒>`（指定秒数で停止）、`--sessions <n>`（アプリでの切断 / 接続のように、n 回続けて配信）、`--restart`（`--sessions` と一緒に使い、その合間に Bluetooth を再起動）、`--restart-on-link`（接続中に設定を変えたときのように、リンクがつながるとすぐセッションを始め直す）、`--wait-off`（ヘッドホンの電源を切っても実行を終えない）、`--hci-capture <file.pklg>`（実行全体の HCI キャプチャ）もあります。[ビルド](building#emu)を参照してください。LE Audio のオプションは `-h` で表示されます（[LE Audio](#le-audio)を参照）。`--services` は、ストリーミング開始後にデバイスが SDP で公開しているサービスを表示します。
 
 `--cli` を付けない `bluecaster-core.exe` は常駐のプログラムで、ウィンドウも起動します。`--background` を付けるとトレイのアイコンだけで起動します（**トレイに入れた状態で起動** がオンのとき **Windows 起動時に開始** が使います）。`bluecaster-core.exe --quit` は、動いている BlueCaster に配信を止めて終了するよう頼みます（インストーラーが使います）。
 
@@ -364,7 +364,7 @@ BlueCaster は [libopenaptx](https://github.com/pali/libopenaptx) でエンコ�
 {: .note }
 **aptX Adaptive は 48 kHz で実際のヘッドホンでの動作を確認済みです。** 2.0.2-beta.6 で EarFun Air Pro 4+ に送り、途切れも音飛びもなく、クラシック aptX と同じくらい安定していたと報告がありました（[#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)）。また、単体テスト、上流のビット単位で一致するテスト一式、仮想 Bluetooth シンク（`tools/emu`。RTP ヘッダー、パケットの大きさ、フレームの種類を確かめます。公開されたデコーダーがないため音声は復号しません）とのエンドツーエンドテストには合格しています。上流は Linux / PipeWire で Bose QuietComfort Ultra（第 1 世代）と B&W Px7 S2e での 48 kHz・高音質と低遅延の動作を報告しています。96 kHz（高音質 646 kbps）も実際のヘッドホンで動作を確認しました（[#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)）。コーデックの設定で 96 kHz を選んだとき（CLI は `--rate 96000`）、ヘッドホンがそれを通知する R2 のシンクなら使います（設定で選べるのもそのときだけです）。低遅延では使いません。自動（自動選択も）は 48 kHz です。[報告を歓迎します](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/11)。
 
-エンコーダーは [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) の Rust だけで書かれた aptX Adaptive エンコーダー（MIT）です。上流はこれをクリーンルームでの再実装とし、数値テーブルは合法に入手した Qualcomm の出荷済みバイナリと無線のキャプチャから再構成したと説明しています。Qualcomm のコード、SDK、バイナリは含みません（[ライセンス](../licenses)を参照）。
+エンコーダーは [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) の Rust だけで書かれた aptX Adaptive エンコーダー（MIT）です。上流はこれをクリーンルームでの再実装とし、数値テーブルは合法に入手した Qualcomm の出荷済みバイナリと無線のキャプチャから再構成したと説明しています。Qualcomm のコード、SDK、バイナリは含みません（[ライセンス](licenses)を参照）。
 
 - **選び方**: ヘッドホンが LHDC V5 も LDAC も提供していなければ、自動選択で選ばれます。**コーデック** 画面で **aptX Adaptive** を選ぶか、`-c aptxad` を指定することもできます。
 - **形式**: 48 kHz ステレオ、24 bit。96 kHz を選べば、96 kHz を通知するデバイス（aptX Adaptive R2）には高音質で 96 kHz。44.1 kHz を指定しても 48 kHz で取り込みます。
@@ -412,7 +412,7 @@ capability discovery complete (LDAC=false ... , 1 of 6 audio sink SEP(s) in use)
 
 Sony の WH-1000XM4 などのヘッドホンは、**2台の機器と同時接続**（マルチポイント）がオンの間は LDAC を提供しません。Sony Sound Connect アプリでオフにしてから、もう一度接続してください。WH-1000XM6 など、マルチポイントと LDAC を同時に使える機種もあります。
 
-ヘッドホン純正アプリ（バッテリー、ノイズコントロール、EQ）は、スマートフォンかこの PC の内蔵 Bluetooth から、ヘッドホンへの独自のリンクを必要とします。アプリが接続している間、ヘッドホンは2台接続の状態になり、BlueCaster でのコーデック変更に時間がかかったり失敗したりします。コーデックを変える前に、スマートフォンを切断するか、アプリを終了してください。[EncoDeck](../works-with) は BlueCaster 自身のリンク経由でヘッドホンを制御するので、2台目の接続を増やしません。
+ヘッドホン純正アプリ（バッテリー、ノイズコントロール、EQ）は、スマートフォンかこの PC の内蔵 Bluetooth から、ヘッドホンへの独自のリンクを必要とします。アプリが接続している間、ヘッドホンは2台接続の状態になり、BlueCaster でのコーデック変更に時間がかかったり失敗したりします。コーデックを変える前に、スマートフォンを切断するか、アプリを終了してください。[EncoDeck](works-with) は BlueCaster 自身のリンク経由でヘッドホンを制御するので、2台目の接続を増やしません。
 
 ### サンプルレート
 
@@ -449,7 +449,7 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 キャプチャは接続前でもストリーミング中でも開始できます。接続中に開始した場合は、BlueCaster が記憶していた接続確立時のパケット（L2CAP チャネルの確立と、コーデック交渉を含む AVDTP シグナリング）を先に書き込むので、途中からでも解析できます。記録中と停止後は、診断にファイルのパスが表示されます。
 
-キャプチャは Wireshark で開けるほか、開発者向けツール `bluecaster_decode`（ソースからビルド。[ビルド](../building)を参照）で検証できます。
+キャプチャは Wireshark で開けるほか、開発者向けツール `bluecaster_decode`（ソースからビルド。[ビルド](building)を参照）で検証できます。
 
 ```
 bluecaster_decode "%APPDATA%\BlueCaster\logs\hci\hci_20260925_120000.pklg" -o C:\temp\check

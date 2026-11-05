@@ -2,6 +2,7 @@
 title: v2 設計書（Rust / Tauri）
 layout: default
 nav_exclude: true
+english_only: true
 ---
 
 # BlueCaster 次期版 設計書（Rust / Tauri）

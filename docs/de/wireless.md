@@ -2,7 +2,7 @@
 title: Aussetzer und Verbindungsprobleme
 layout: default
 parent: Startseite
-nav_order: 3
+nav_order: 2.4
 ---
 
 # Aussetzer und Verbindungsprobleme

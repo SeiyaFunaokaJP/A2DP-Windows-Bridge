@@ -2,7 +2,7 @@
 title: 断音与连接问题
 layout: default
 parent: 首页
-nav_order: 3
+nav_order: 2.4
 ---
 
 # 断音与连接问题

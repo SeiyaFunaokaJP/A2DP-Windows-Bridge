@@ -42,7 +42,7 @@ v2 首次启动时，会先将 v1 的设置复制到 `%APPDATA%\BlueCaster\backu
 
 BlueCaster 3.0.0 是 A2DP Windows Bridge 的新名称。直接在已安装的 2.0.x 上运行 3.0.0 的安装程序即可：安装程序会自动卸载旧版本，并保留设置。“开始”菜单项和**随 Windows 启动**项会改为“BlueCaster”。
 
-3.0.0 首次启动时，会将文件夹 `%APPDATA%\A2DPWB` 重命名为 `%APPDATA%\BlueCaster`，并把其中的文件整理到子文件夹中（见[设置与文件](../architecture#settings-and-files)）。`backup\v2\` 保存了 2.0.x 设置和配对的副本，以便重新安装 2.0.2：把这些文件复制回 `%APPDATA%\A2DPWB` 即可。
+3.0.0 首次启动时，会将文件夹 `%APPDATA%\A2DPWB` 重命名为 `%APPDATA%\BlueCaster`，并把其中的文件整理到子文件夹中（见[设置与文件](architecture#settings-and-files)）。`backup\v2\` 保存了 2.0.x 设置和配对的副本，以便重新安装 2.0.2：把这些文件复制回 `%APPDATA%\A2DPWB` 即可。
 
 耳机在重新配对之前，可能仍显示旧的蓝牙名称“A2DPWB”。
 
@@ -160,7 +160,7 @@ BlueCaster 会检测适配器的芯片组，并显示需要哪些固件文件。
 
 ## 推荐适配器 {#adapters}
 
-实际与 BlueCaster 配合使用过的适配器和耳机，以及相应的编解码器和报告：[已验证的硬件](../hardware)（英文）。
+实际与 BlueCaster 配合使用过的适配器和耳机，以及相应的编解码器和报告：[已验证的硬件](hardware)。
 
 | 芯片组 | 产品示例 | 说明 |
 |:--------|:-----------------|:------|

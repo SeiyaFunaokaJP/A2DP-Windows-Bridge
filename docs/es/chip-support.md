@@ -2,7 +2,7 @@
 title: Añadir compatibilidad con chips
 layout: default
 parent: Inicio
-nav_order: 3
+nav_order: 3.5
 ---
 
 # Añadir compatibilidad con chips
@@ -26,7 +26,7 @@ El diseño que hay detrás y lo que sigue pendiente están en la [nota para desa
 
 - El adaptador, conectado a un PC con Windows 10 / 11
 - BlueCaster 2.0.2 o posterior (los pasos siguientes solo necesitan la aplicación)
-- Para escribir el cargador: un entorno de compilación como en [Compilación](../building), y [USBPcap](https://desowin.org/usbpcap/) con [Wireshark](https://www.wireshark.org/) para grabar lo que hace el propio controlador de Windows
+- Para escribir el cargador: un entorno de compilación como en [Compilación](building), y [USBPcap](https://desowin.org/usbpcap/) con [Wireshark](https://www.wireshark.org/) para grabar lo que hace el propio controlador de Windows
 
 ## Paso 1: Ceder el adaptador a BlueCaster
 
@@ -235,7 +235,7 @@ Mantenga los finales de línea de cada archivo: algunos archivos fuente usan CRL
 **Documentación**:
 
 13. La tabla de chips de `docs/setup.md` y `docs/*/setup.md` (todos los idiomas): una fila como la de Intel, con los chips que cubre, los archivos de firmware y dónde van (la carpeta de firmware: `%APPDATA%\BlueCaster\firmware`, o su subcarpeta `<vendor>`; las filas más antiguas todavía dicen "config folder") y *Experimental.* Nombre los botones de la ventana como los tiene el `app/lang/*.json` de cada idioma (`ui.nav.adapter` para la pantalla Adaptador, `firmware.open_folder` para el botón que abre esa carpeta). Todo el fabricante: quítelo de la fila "Not supported". Algunos chips: deje ahí el fabricante y nombre los chips que siguen sin ser compatibles. Añada el fabricante a la frase al principio de la sección Firmware ("Intel and Broadcom adapters (experimental) may need firmware files of their own")
-14. [Hardware verificado](../hardware) (`docs/hardware.md`) cuando alguien lo haya usado, y la introducción de esta página (`docs/chip-support.md`, todos los idiomas), que nombra los fabricantes sin cargador (algunos chips: "the other <vendor> chips")
+14. [Hardware verificado](hardware) (`docs/hardware.md`) cuando alguien lo haya usado, y la introducción de esta página (`docs/chip-support.md`, todos los idiomas), que nombra los fabricantes sin cargador (algunos chips: "the other <vendor> chips")
 
 ## Paso 7: Probarlo en el adaptador
 
@@ -254,7 +254,7 @@ Después, transmita un rato a unos auriculares desde la ventana y compruebe que 
 
 ## Paso 8: Abrir el pull request
 
-Antes de abrirlo, ejecute lo siguiente en este orden (consulte [Compilación](../building) para el entorno). Primero la interfaz, en `app\src\ui`: comprueba el cambio del paso 6 (punto 12), y el workspace de Rust incluye el crate de la ventana, que necesita la interfaz compilada:
+Antes de abrirlo, ejecute lo siguiente en este orden (consulte [Compilación](building) para el entorno). Primero la interfaz, en `app\src\ui`: comprueba el cambio del paso 6 (punto 12), y el workspace de Rust incluye el crate de la ventana, que necesita la interfaz compilada:
 
 ```bat
 pnpm install
