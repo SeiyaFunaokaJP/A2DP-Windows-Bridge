@@ -990,8 +990,7 @@ fn le_broadcast(a: &Args, service: &Service, rx: &mpsc::Receiver<ServiceEvent>, 
     if let (Some(p), Some(l)) = (&le.preset, request.le.as_mut()) {
         l.preset = Some(p.clone());
     }
-    println!("
-Starting the broadcast \"{}\"...", b.name.trim());
+    println!("Starting the broadcast \"{}\"...", b.name.trim());
     service.start_streaming(request);
     let mut code = 0;
     let receiver = a2dpwb_core::receiver::ReceiverClient::new();
