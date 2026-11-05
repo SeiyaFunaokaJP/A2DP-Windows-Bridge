@@ -79,6 +79,9 @@ pub fn channel_from_mhz(mhz: u32) -> Option<u8> {
 /// with the WLAN AutoConfig service stopped) gives an empty survey, not an
 /// error, as in v1.
 pub fn survey() -> windows::core::Result<WifiSurvey> {
+    if !api_present() {
+        return Ok(WifiSurvey::default());
+    }
     let mut negotiated = 0u32;
     let mut client = HANDLE::default();
     // SAFETY: client version 2 (Vista and later), valid out pointers.
@@ -159,6 +162,9 @@ const ERROR_RADIO_OFF: u32 = 0x8034_2002;
 /// returns the 2.4 GHz access points heard, loudest first. Needs location
 /// permission on Windows 11 24H2 and later; run it only when the user asks.
 pub fn scan_24ghz(wait: Duration) -> Result<Vec<AccessPoint>, ScanError> {
+    if !api_present() {
+        return Err(ScanError::NoWifi);
+    }
     let mut negotiated = 0u32;
     let mut client = HANDLE::default();
     // SAFETY: client version 2 (Vista and later), valid out pointers.
@@ -274,6 +280,28 @@ fn channel_number(client: &Client, interface: &windows::core::GUID) -> Option<u3
     }
     // SAFETY: the opcode returns a ULONG of `size` bytes, checked above.
     Some(unsafe { data.0.cast::<u32>().read_unaligned() })
+}
+
+/// Whether wlanapi.dll exists. Windows Server without the Wireless LAN
+/// Service and trimmed Windows images lack it; a2dpwb-core.exe delay-loads
+/// it (core/build.rs), so a missing DLL must be caught here, before the
+/// first Wlan* call would raise the delay-load exception. Such a PC is
+/// treated like one without Wi-Fi.
+fn api_present() -> bool {
+    use std::sync::OnceLock;
+    use windows::Win32::System::LibraryLoader::{LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW};
+    use windows::core::w;
+
+    static PRESENT: OnceLock<bool> = OnceLock::new();
+    *PRESENT.get_or_init(|| {
+        // SAFETY: a constant System32 DLL name. The module stays loaded for
+        // the process's lifetime, as the delay-load helper would keep it.
+        let present = unsafe { LoadLibraryExW(w!("wlanapi.dll"), None, LOAD_LIBRARY_SEARCH_SYSTEM32) }.is_ok();
+        if !present {
+            tracing::info!("wlan: wlanapi.dll is missing: no Wi-Fi");
+        }
+        present
+    })
 }
 
 /// A WLAN client handle, closed on drop
