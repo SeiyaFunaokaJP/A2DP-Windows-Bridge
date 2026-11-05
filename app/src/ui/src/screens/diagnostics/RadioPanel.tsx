@@ -4,7 +4,8 @@
 // contacts) in the charts and the link card. The device card: the device's
 // Bluetooth chip for everyone; the link's role, mode, key size and
 // supervision timeout in developer mode. (The adapter's backlog is on the
-// Stream tab, next to the send queue it follows.)
+// Stream tab, next to the send queue it follows.) Below them the channel
+// map (ChannelMap).
 
 import { createMemo, Show } from "solid-js";
 import { useApp } from "../../app/context";
@@ -13,6 +14,7 @@ import { linkQuality, QUALITY_AIRTIME_MAX, qualityLabel, type QualityCause } fro
 import { t } from "../../i18n";
 import { EDR3_MAX_KBPS, gaugeValue } from "../../lib/linkstats";
 import type { LinkSample } from "../../ipc/types";
+import { ChannelMap } from "./ChannelMap";
 import { DASH, LinkCharts, NotStreaming, Row, useLink } from "./shared";
 
 /** The highest the golden receive range's lower edge may sit (Core spec):
@@ -262,6 +264,7 @@ export function RadioPanel() {
           </section>
         </Show>
       </div>
+      <ChannelMap />
     </div>
   );
 }

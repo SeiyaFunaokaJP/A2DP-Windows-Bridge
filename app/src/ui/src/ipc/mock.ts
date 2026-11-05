@@ -182,6 +182,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
       auto_codec_settings: false,
       match_source: false,
       ignore_sink_max: false,
+      queue_max_wait_ms: 0,
     },
     dev_vendors: {},
     dev_log: { keep_days: 7, day_cap_mb: 100, always_verbose: null, health_every_interval: false },
@@ -888,6 +889,12 @@ export class MockCore implements Transport {
         return this.startCapture();
       case "diag.capture_stop":
         return this.stopCapture();
+      case "diag.wifi_scan":
+        return [
+          { ssid: "home-2g", channel: 6, rssi: -48 },
+          { ssid: "neighbour", channel: 11, rssi: -71 },
+          { ssid: "", channel: 1, rssi: -83 },
+        ];
       case "diag.info":
         return { text: this.diagText(p.mask !== false) };
       case "diag.crashes_seen":
@@ -1668,9 +1675,11 @@ export class MockCore implements Transport {
     const sample: LinkSample = {
       time_ms: this.now(),
       rssi: streaming ? Math.round(-4 + 5 * Math.sin(t / 3) + Math.random() * 2) : null,
-      afh_in_use: streaming ? 58 : null,
+      afh_in_use: streaming ? 52 : null,
       afh_usable: streaming ? 79 : null,
       afh_avoided: streaming ? "6" : "",
+      // Channels 22-48 left out (around Wi-Fi channel 6), 52 in use
+      afh_map: streaming ? [0xff, 0xff, 0x3f, 0, 0, 0, 0xfe, 0xff, 0xff, 0x7f] : null,
       bytes_per_second: bps,
       packets_per_second: pps,
       queue_depth: streaming ? Math.max(0, Math.round(2 + 3 * Math.sin(t) + Math.random() * 2)) : 0,
@@ -1685,6 +1694,7 @@ export class MockCore implements Transport {
       bandwidth_share: streaming ? (pps * ((avg ?? 0) + 4) * 8) / 1000 / 2178.13 : null,
       queue_capacity: 64,
       queue_ms: streaming ? Math.max(0, Math.round(10 + 10 * Math.sin(t))) : 0,
+      sink_delay_ms: streaming ? 187.5 : null,
       source_rate: streaming ? (this.snap.stream.info?.source_sample_rate ?? 0) : 0,
       counters: { total: { ...this.totals }, stream_start: { ...this.streamStart }, stream_starts: this.streamStarts },
       controller_backlog: backlog,

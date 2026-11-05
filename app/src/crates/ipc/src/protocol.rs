@@ -618,6 +618,10 @@ pub struct DevOverrides {
     pub match_source: bool,
     /// Every codec ignores the maximum bit rate the device lists
     pub ignore_sink_max: bool,
+    /// Longest a media packet waits in the send queue before it is dropped
+    /// (ms, 50..=2000); 0 = the default (350). Applies to the next stream
+    #[ts(type = "number")]
+    pub queue_max_wait_ms: u32,
 }
 
 /// Developer mode's override of one vendor's protocol
@@ -998,6 +1002,12 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub queue_ms: Option<u32>,
+    /// The playout delay the device reported (AVDTP Delay Reporting), in
+    /// ms: from a packet's arrival until it is heard. None while the
+    /// device has not reported one (not every device does)
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub sink_delay_ms: Option<f64>,
     /// Capture rate of the stream (frames per second; 0 while not
     /// streaming): capture drops in ms = frames * 1000 / this
     #[ts(optional = nullable)]
@@ -1048,6 +1058,11 @@ pub struct LinkSample {
     #[ts(optional = nullable, type = "number | null")]
     #[serde(default)]
     pub capture_lost: Option<u64>,
+    /// The channels the link hops over: 10 bytes, bit n = Bluetooth
+    /// channel n (2402 + n MHz). Null while there is no reading.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub afh_map: Option<Vec<u8>>,
 }
 
 /// The connected device's Bluetooth chip, as its controller reports it
@@ -1501,6 +1516,11 @@ pub enum Method {
     /// masked unless `mask` is false. Without parameters as before.
     #[serde(rename = "diag.info")]
     DiagInfo(Option<DiagInfoParams>),
+    /// -> WifiAccessPoint[]: a fresh Wi-Fi scan, 2.4 GHz access points,
+    /// loudest first (a few seconds). Errors "wifi.none" (no Wi-Fi) and
+    /// "wifi.location" (Windows' location setting keeps the list), "wifi.off".
+    #[serde(rename = "diag.wifi_scan")]
+    DiagWifiScan,
     /// -> FlowView: the connection flow as the core followed it (every log
     /// line, also while no window was open)
     #[serde(rename = "diag.flow")]
@@ -1646,6 +1666,18 @@ pub struct SettingsApplied {
 
 pub struct DiagInfo {
     pub text: String,
+}
+
+/// A 2.4 GHz access point a Wi-Fi scan heard
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct WifiAccessPoint {
+    /// Empty for a hidden network
+    pub ssid: String,
+    /// Wi-Fi channel 1-14
+    pub channel: u8,
+    /// dBm
+    pub rssi: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, Default)]

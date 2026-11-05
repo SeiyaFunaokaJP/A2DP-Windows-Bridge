@@ -3404,3 +3404,64 @@ html.win-flyout body {
 .import-pairings .hint {
   margin: 0;
 }
+
+/* Diagnostics > Radio: the 2.4 GHz band */
+.band {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.band-on {
+  fill: var(--chart-1);
+  background: var(--chart-1);
+}
+.band-off {
+  fill: var(--bad);
+  background: var(--bad);
+  opacity: 0.55;
+}
+.band-none {
+  fill: var(--surface-3);
+}
+.band-asked {
+  stroke: var(--text-2);
+  stroke-width: 1.5;
+}
+.band-ap {
+  fill: var(--chart-2);
+  background: var(--chart-2);
+  fill-opacity: 0.18;
+  stroke: var(--chart-2);
+  stroke-width: 1.5;
+}
+.band-axis {
+  font-size: 14px;
+  fill: var(--text-3);
+}
+.band-axis.strong {
+  fill: var(--text);
+  font-weight: 600;
+}
+.band-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  font-size: var(--fs-12);
+}
+.band-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+}
+.band-legend .swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 2px;
+}
+.radio-tips {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}

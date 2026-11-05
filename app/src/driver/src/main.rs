@@ -303,6 +303,7 @@ fn assign(instance_id: &str) -> (u8, Value) {
                     "class_changed": outcome.class_changed,
                     "reboot_required": outcome.reboot_required,
                     "state": StateJson::from(&outcome.state),
+                    "disconnected": outcome.disconnected,
                 }),
             )
         }

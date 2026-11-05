@@ -11,6 +11,7 @@ pub const MEDIA_QUEUE_PACKETS: usize = 64;
 /// Longest a media packet waits in the send queue: what the 64 packets hold
 /// at LDAC's 187 packets a second, so a stall the headphones' own buffer
 /// rides out stays one. Audio older than this comes too late to play.
+/// Developer mode may set another ([`LinkStats::queue_max_wait_ms`]).
 pub const MEDIA_QUEUE_MAX_WAIT: Duration = Duration::from_millis(350);
 
 #[derive(Debug, Default)]
@@ -37,6 +38,12 @@ pub struct LinkStats {
     pub queue_depth: AtomicU32,
     /// How long the oldest packet in the send queue has waited (ms)
     pub queue_wait_ms: AtomicU32,
+    /// Longest a packet may wait in the send queue (ms; 0 =
+    /// [`MEDIA_QUEUE_MAX_WAIT`]): core sets it when a stream starts
+    pub queue_max_wait_ms: AtomicU32,
+    /// The playout delay the sink last reported (AVDTP Delay Report), in
+    /// 100 us units plus one; 0 = none reported for this stream
+    pub sink_delay: AtomicU32,
     /// The counters above when the current stream started; stream_starts
     /// changes with every stream (written after them)
     pub start_packets: AtomicU64,
@@ -157,6 +164,27 @@ impl LinkStats {
         self.stream_starts.fetch_add(1, Ordering::Release);
     }
 
+    /// Longest a packet may wait in the send queue
+    pub fn queue_max_wait(&self) -> Duration {
+        match self.queue_max_wait_ms.load(Ordering::Relaxed) {
+            0 => MEDIA_QUEUE_MAX_WAIT,
+            ms => Duration::from_millis(u64::from(ms)),
+        }
+    }
+
+    /// The playout delay the sink reported for this stream (None: no
+    /// report; the sink does not support Delay Reporting, or not yet)
+    pub fn sink_delay(&self) -> Option<Duration> {
+        match self.sink_delay.load(Ordering::Relaxed) {
+            0 => None,
+            v => Some(Duration::from_micros(u64::from(v - 1) * 100)),
+        }
+    }
+
+    pub fn set_sink_delay(&self, delay_100us: Option<u16>) {
+        self.sink_delay.store(delay_100us.map_or(0, |d| u32::from(d) + 1), Ordering::Relaxed);
+    }
+
     pub fn radio(&self) -> LinkRadio {
         self.radio.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
@@ -205,6 +233,9 @@ pub struct LinkRadio {
     pub afh_avoided: String,
     /// Channels the link hops over (Read AFH Channel Map)
     pub afh_in_use: Option<u32>,
+    /// Which channels those are: bit n = channel n (all set while AFH is
+    /// off)
+    pub afh_map: Option<[u8; 10]>,
 }
 
 /// Details of the A2DP link. None: not known yet, or the controller does

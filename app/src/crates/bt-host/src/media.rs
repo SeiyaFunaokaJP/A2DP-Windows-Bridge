@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use btstack_sys::Remote;
 
-use crate::stats::{LinkStats, MEDIA_QUEUE_MAX_WAIT, MEDIA_QUEUE_PACKETS};
+use crate::stats::{LinkStats, MEDIA_QUEUE_PACKETS};
 
 /// RTP media header size (BTstack AVDTP_MEDIA_PAYLOAD_HEADER_SIZE)
 pub const RTP_HEADER_SIZE: usize = 12;
@@ -71,16 +71,18 @@ pub(crate) fn queue(stats: Arc<LinkStats>, remote: Remote) -> (MediaSink, rtrb::
 }
 
 /// The BTstack thread's side of the time limit: drops the packets that
-/// waited [`MEDIA_QUEUE_MAX_WAIT`], and the oldest of a full queue so the
+/// waited [`LinkStats::queue_max_wait`] ([`crate::stats::MEDIA_QUEUE_MAX_WAIT`] unless
+/// developer mode set another), and the oldest of a full queue so the
 /// newest audio finds room, and records how long the next packet has waited.
 /// Runs on every packet queued, so also while the radio stands still.
 /// Returns the packets dropped.
 pub(crate) fn drop_stale(media: &mut rtrb::Consumer<MediaPacket>, stats: &LinkStats, now: Instant) -> u32 {
     let mut dropped = 0;
     let mut waited = Duration::ZERO;
+    let max_wait = stats.queue_max_wait();
     while let Ok(packet) = media.peek() {
         waited = packet.queued_at.map_or(Duration::ZERO, |t| now.saturating_duration_since(t));
-        if waited < MEDIA_QUEUE_MAX_WAIT && media.slots() < MEDIA_QUEUE_PACKETS {
+        if waited < max_wait && media.slots() < MEDIA_QUEUE_PACKETS {
             break;
         }
         let _ = media.pop();
@@ -221,5 +223,32 @@ mod tests {
         // The newest audio finds room
         assert!(sink.send(&packet(64)));
         assert_eq!(stats.queue_drops.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn developer_mode_sets_the_wait_limit() {
+        let (stats, mut sink, mut consumer) = streaming_queue();
+        assert_eq!(stats.queue_max_wait(), crate::stats::MEDIA_QUEUE_MAX_WAIT);
+        stats.queue_max_wait_ms.store(100, Ordering::Relaxed);
+        assert_eq!(stats.queue_max_wait(), Duration::from_millis(100));
+        assert!(sink.send(&packet(1)));
+        let queued = consumer.peek().unwrap().queued_at.unwrap();
+        // Within the limit set, past the limit set (and within the default)
+        assert_eq!(drop_stale(&mut consumer, &stats, queued + Duration::from_millis(99)), 0);
+        assert_eq!(drop_stale(&mut consumer, &stats, queued + Duration::from_millis(200)), 1);
+        assert!(consumer.is_empty());
+    }
+
+    #[test]
+    fn the_sink_delay_is_kept_in_100us_units() {
+        let stats = LinkStats::default();
+        assert_eq!(stats.sink_delay(), None);
+        stats.set_sink_delay(Some(1875));
+        assert_eq!(stats.sink_delay(), Some(Duration::from_micros(187_500)));
+        // A device may report 0, which is a report all the same
+        stats.set_sink_delay(Some(0));
+        assert_eq!(stats.sink_delay(), Some(Duration::ZERO));
+        stats.set_sink_delay(None);
+        assert_eq!(stats.sink_delay(), None);
     }
 }

@@ -23,7 +23,7 @@ use ipc::{
     AdapterInfo, AdapterState, AdapterStatus, AudioApp, AudioDevice, CaptureState, DevLog, DevOverrides, Device,
     DiagInfo, DriverKind, ErrorInfo, Event, FirmwareFile, LeStreamInfo, LinkTotals, LoaderStatus, Method, MixerApp,
     Msg, OtherRadio, ProbeResult, Profile, ReceiverConnection, ReceiverState, ScriptCheck, ScriptResult, Settings,
-    SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus, UpdateState,
+    SettingsApplied, Snapshot, SourceInfo, StreamState, StreamStatus, UpdateState, WifiAccessPoint,
 };
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -311,6 +311,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
             auto_codec_settings: s.dev_overrides.auto_codec_settings,
             match_source: s.dev_overrides.match_source,
             ignore_sink_max: s.dev_overrides.ignore_sink_max,
+            queue_max_wait_ms: s.dev_overrides.queue_max_wait_ms,
         },
         dev_vendors: s
             .dev_vendors
@@ -385,6 +386,11 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
         auto_codec_settings: s.dev_overrides.auto_codec_settings,
         match_source: s.dev_overrides.match_source,
         ignore_sink_max: s.dev_overrides.ignore_sink_max,
+        // 0 (the default) or a limit the queue can hold
+        queue_max_wait_ms: match s.dev_overrides.queue_max_wait_ms {
+            0 => 0,
+            ms => ms.clamp(codec::dev::QUEUE_WAIT_MIN, codec::dev::QUEUE_WAIT_MAX),
+        },
     };
     // Known vendors and options only, defaults left out
     c.dev_vendors = s
@@ -1682,6 +1688,16 @@ impl CoreState {
         self.publish(Event::Profiles { profiles: snap.profiles, active_profile: name });
     }
 
+    /// The USB device of the adapter with this address
+    pub(crate) fn adapter_instance(&self, address: &str) -> Option<String> {
+        let (_, s) = self.snapshot();
+        s.adapter
+            .adapters
+            .iter()
+            .find(|a| a.address.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(address)))
+            .map(|a| a.instance_id.clone())
+    }
+
     pub fn refresh_adapters(&self) -> Vec<AdapterInfo> {
         let (list, fixed) = self.list_adapters();
         if fixed {
@@ -2214,18 +2230,16 @@ impl CoreState {
             }
             Method::DeviceWindowsPaired => blocking(Box::new(|_| Ok(json(&windows_paired())))).await,
             Method::DeviceWindowsPairedThrough { adapter } => {
-                // The USB device of the adapter with that address
-                let (_, s) = self.snapshot();
-                let instance_id = s
-                    .adapter
-                    .adapters
-                    .iter()
-                    .find(|a| a.address.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(&adapter)))
-                    .map(|a| a.instance_id.clone());
-                let Some(instance_id) = instance_id else { return Ok(json(&Vec::<String>::new())) };
+                let Some(instance_id) = self.adapter_instance(&adapter) else {
+                    return Ok(json(&Vec::<String>::new()));
+                };
+                // The audio devices: only those are saved by an import
                 blocking(Box::new(move |_| {
-                    let list: Vec<String> =
-                        win_sys::bt_paired::paired_through(&instance_id).iter().map(bt_host::addr_str).collect();
+                    let list: Vec<String> = win_sys::bt_paired::paired_through(&instance_id)
+                        .iter()
+                        .filter(|d| d.is_a2dp_sink())
+                        .map(|d| bt_host::addr_str(&d.address))
+                        .collect();
                     Ok(json(&list))
                 }))
                 .await
@@ -2627,6 +2641,29 @@ impl CoreState {
                 let mask = params.and_then(|p| p.mask).unwrap_or(true);
                 // Lists the USB adapters: off the runtime
                 blocking(Box::new(move |me| Ok(json(&DiagInfo { text: crate::diag_text(me, mask) })))).await
+            }
+            Method::DiagWifiScan => {
+                // Waits for the scan: off the runtime
+                blocking(Box::new(|_| {
+                    use win_sys::wlan::{ScanError, scan_24ghz};
+                    match scan_24ghz(std::time::Duration::from_secs(4)) {
+                        Ok(aps) => {
+                            let list: Vec<WifiAccessPoint> = aps
+                                .into_iter()
+                                .map(|a| WifiAccessPoint { ssid: a.ssid, channel: a.channel, rssi: a.rssi })
+                                .collect();
+                            Ok(json(&list))
+                        }
+                        Err(ScanError::NoWifi) => Err(err("wifi.none", "error.wifi_none")),
+                        Err(ScanError::LocationDenied) => Err(err("wifi.location", "error.wifi_location")),
+                        Err(ScanError::RadioOff) => Err(err("wifi.off", "error.wifi_off")),
+                        Err(ScanError::Failed(code)) => {
+                            tracing::warn!("Wi-Fi scan failed (0x{code:08X})");
+                            Err(err("wifi.failed", "error.wifi_failed"))
+                        }
+                    }
+                }))
+                .await
             }
             Method::DiagFlow => Ok(json(&crate::flow_view(self))),
             Method::DiagRecentLogs { level } => {

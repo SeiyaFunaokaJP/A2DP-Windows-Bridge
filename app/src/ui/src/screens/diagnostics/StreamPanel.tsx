@@ -2,8 +2,7 @@
 // send queue (depth and the oldest packet's wait), packets dropped before
 // the radio; the codec and its details, an LE Audio stream's ISO counters,
 // the losses, and the backlog the Bluetooth adapter holds after the send
-// queue. Latency figures from the device (a sink's reported delay) belong
-// here, as a chart and a row in the sending card.
+// queue, and the playout delay the device reports.
 
 import { createMemo, Show } from "solid-js";
 import { TimeChart } from "../../components/charts";
@@ -52,6 +51,11 @@ export function StreamPanel() {
     return s.controller_backlog_ms != null
       ? t("ui.diag.backlog_value", ms(s.controller_backlog_ms), s.controller_backlog)
       : t("ui.diag.backlog_packets", s.controller_backlog);
+  };
+  /** The playout delay the device reported (not every device does) */
+  const sinkDelayText = () => {
+    const s = live();
+    return !s || s.sink_delay_ms == null ? DASH : t("quality.sink_delay_value", s.sink_delay_ms);
   };
   const packetsText = () => {
     const s = sending();
@@ -137,6 +141,7 @@ export function StreamPanel() {
             <Row label={t("quality.queue")} class={queueClass()} value={queueText()} />
             <Row label={t("ui.diag.queue_wait")} class={queueClass()} value={waitText()} />
             <Row label={t("ui.diag.backlog")} value={backlogText(live())} />
+            <Row label={t("quality.sink_delay")} value={sinkDelayText()} />
           </dl>
         </section>
 

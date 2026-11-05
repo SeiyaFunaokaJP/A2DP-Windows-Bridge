@@ -10,13 +10,19 @@
 //! 11 24H2 the access point list (WlanGetNetworkBssList) and the current
 //! connection (its BSSID) count as location, and asking for them shows
 //! Windows' location prompt. The channel number does not.
+//!
+//! The one exception is `scan_24ghz`, the developer-mode scan of the
+//! diagnostics screen: it runs only when the user asks for it, and may
+//! then meet Windows' location setting.
 
 use std::ffi::c_void;
+use std::time::Duration;
 
-use windows::Win32::Foundation::{ERROR_SUCCESS, HANDLE};
+use windows::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_SUCCESS, HANDLE};
 use windows::Win32::NetworkManagement::WiFi::{
-    WLAN_INTERFACE_INFO, WLAN_INTERFACE_INFO_LIST, WlanCloseHandle, WlanEnumInterfaces, WlanFreeMemory, WlanOpenHandle,
-    WlanQueryInterface, wlan_interface_state_connected, wlan_intf_opcode_channel_number,
+    WLAN_BSS_ENTRY, WLAN_BSS_LIST, WLAN_INTERFACE_INFO, WLAN_INTERFACE_INFO_LIST, WlanCloseHandle, WlanEnumInterfaces,
+    WlanFreeMemory, WlanGetNetworkBssList, WlanOpenHandle, WlanQueryInterface, WlanScan, dot11_BSS_type_any,
+    wlan_interface_state_connected, wlan_intf_opcode_channel_number,
 };
 
 /// One Wi-Fi interface of this PC
@@ -122,6 +128,133 @@ pub fn survey() -> windows::core::Result<WifiSurvey> {
     Ok(result)
 }
 
+/// An access point a scan heard on 2.4 GHz
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccessPoint {
+    /// Empty for a hidden network
+    pub ssid: String,
+    /// 1-14
+    pub channel: u8,
+    /// dBm
+    pub rssi: i32,
+}
+
+/// Why `scan_24ghz` found nothing to list
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanError {
+    /// No Wi-Fi interface (or the WLAN AutoConfig service is stopped)
+    NoWifi,
+    /// Windows' location setting keeps the list from apps
+    LocationDenied,
+    /// Wi-Fi is turned off (airplane mode or the Wi-Fi switch)
+    RadioOff,
+    /// Another WLAN API error
+    Failed(u32),
+}
+
+/// ERROR_NDIS_DOT11_POWER_STATE_INVALID: the radio is off
+const ERROR_RADIO_OFF: u32 = 0x8034_2002;
+
+/// Asks every Wi-Fi interface for a fresh scan, waits `wait` for it and
+/// returns the 2.4 GHz access points heard, loudest first. Needs location
+/// permission on Windows 11 24H2 and later; run it only when the user asks.
+pub fn scan_24ghz(wait: Duration) -> Result<Vec<AccessPoint>, ScanError> {
+    let mut negotiated = 0u32;
+    let mut client = HANDLE::default();
+    // SAFETY: client version 2 (Vista and later), valid out pointers.
+    let err = unsafe { WlanOpenHandle(2, None, &mut negotiated, &mut client) };
+    if err != ERROR_SUCCESS.0 {
+        return Err(ScanError::NoWifi);
+    }
+    let client = Client(client);
+
+    let mut list: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
+    // SAFETY: open client handle, valid out pointer.
+    let err = unsafe { WlanEnumInterfaces(client.0, None, &mut list) };
+    if err != ERROR_SUCCESS.0 {
+        return Err(ScanError::Failed(err));
+    }
+    let list = WlanMemory(list.cast());
+    // SAFETY: as in `survey`.
+    let guids: Vec<windows::core::GUID> = unsafe {
+        let l = list.0.cast::<WLAN_INTERFACE_INFO_LIST>();
+        let items: &[WLAN_INTERFACE_INFO] =
+            std::slice::from_raw_parts(std::ptr::addr_of!((*l).InterfaceInfo).cast(), (*l).dwNumberOfItems as usize);
+        items.iter().map(|i| i.InterfaceGuid).collect()
+    };
+    if guids.is_empty() {
+        return Err(ScanError::NoWifi);
+    }
+
+    for guid in &guids {
+        // SAFETY: open client, valid GUID. A refused scan still leaves the
+        // list Windows keeps from its own scans.
+        let err = unsafe { WlanScan(client.0, guid, None, None, None) };
+        if err != ERROR_SUCCESS.0 {
+            tracing::debug!("wlan: WlanScan failed ({err})");
+        }
+    }
+    std::thread::sleep(wait);
+
+    let mut heard: Vec<([u8; 6], AccessPoint)> = Vec::new();
+    let (mut failures, mut denied, mut last_err) = (0, false, 0);
+    for guid in &guids {
+        let mut bss: *mut WLAN_BSS_LIST = std::ptr::null_mut();
+        // SAFETY: open client, valid GUID and out pointer.
+        let err = unsafe { WlanGetNetworkBssList(client.0, guid, None, dot11_BSS_type_any, false, None, &mut bss) };
+        if err != ERROR_SUCCESS.0 || bss.is_null() {
+            tracing::debug!("wlan: WlanGetNetworkBssList failed ({err})");
+            failures += 1;
+            denied |= err == ERROR_ACCESS_DENIED.0;
+            last_err = err;
+            continue;
+        }
+        let bss = WlanMemory(bss.cast());
+        // SAFETY: the call succeeded, so `bss` holds dwNumberOfItems entries
+        // in one allocation. Fields are read through raw pointers: the
+        // entry has a BOOLEAN field that a Rust reference would require to
+        // be exactly 0 or 1.
+        unsafe {
+            let l = bss.0.cast::<WLAN_BSS_LIST>();
+            let n = (*l).dwNumberOfItems as usize;
+            let first = std::ptr::addr_of!((*l).wlanBssEntries).cast::<WLAN_BSS_ENTRY>();
+            for i in 0..n {
+                let e = first.add(i);
+                let khz = std::ptr::addr_of!((*e).ulChCenterFrequency).read_unaligned();
+                let Some(channel) = channel_from_mhz(khz / 1000) else { continue };
+                let bssid = std::ptr::addr_of!((*e).dot11Bssid).read_unaligned();
+                let ssid = std::ptr::addr_of!((*e).dot11Ssid).read_unaligned();
+                let len = (ssid.uSSIDLength as usize).min(ssid.ucSSID.len());
+                let ap = AccessPoint {
+                    ssid: String::from_utf8_lossy(&ssid.ucSSID[..len]).into_owned(),
+                    channel,
+                    rssi: std::ptr::addr_of!((*e).lRssi).read_unaligned(),
+                };
+                // Two interfaces can hear the same access point: keep the louder
+                match heard.iter_mut().find(|(b, _)| *b == bssid) {
+                    Some((_, old)) if old.rssi >= ap.rssi => {}
+                    Some((_, old)) => *old = ap,
+                    None => heard.push((bssid, ap)),
+                }
+            }
+        }
+    }
+    // Every interface refused: say why
+    if failures == guids.len() {
+        return Err(if denied {
+            ScanError::LocationDenied
+        } else if last_err == ERROR_RADIO_OFF {
+            ScanError::RadioOff
+        } else {
+            ScanError::Failed(last_err)
+        });
+    }
+    let mut aps: Vec<AccessPoint> = heard.into_iter().map(|(_, ap)| ap).collect();
+    aps.sort_by(|a, b| b.rssi.cmp(&a.rssi).then(a.channel.cmp(&b.channel)));
+    tracing::debug!("wlan: scan heard {} access point(s) on 2.4 GHz", aps.len());
+    Ok(aps)
+}
+
 /// The channel number a connected interface is on (no band: see
 /// `connected_channel_24ghz`)
 fn channel_number(client: &Client, interface: &windows::core::GUID) -> Option<u32> {
@@ -204,6 +337,19 @@ mod tests {
             interfaces: vec![interface(true, Some(6)), interface(true, Some(6)), interface(false, Some(1))],
         };
         assert_eq!(s.connected_channels_24ghz(), [6]);
+    }
+
+    #[test]
+    #[ignore = "asks Windows for a scan and may meet the location setting"]
+    fn scan_runs() {
+        match scan_24ghz(Duration::from_secs(4)) {
+            Ok(aps) => {
+                for ap in &aps {
+                    eprintln!("ch {:2} {:4} dBm {:?}", ap.channel, ap.rssi, ap.ssid);
+                }
+            }
+            Err(e) => eprintln!("scan: {e:?}"),
+        }
     }
 
     #[test]

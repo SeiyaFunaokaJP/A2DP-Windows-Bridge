@@ -24,10 +24,10 @@ A2DPWB assigns the WinUSB driver to the adapter itself. [Zadig](https://zadig.ak
 
 ## Installing A2DPWB
 
-Each [release](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/latest) comes in two forms with the same files:
+Each [release](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases) comes in two forms with the same files:
 
-- **Installer** (`A2DPWB-<version>-win64-setup.exe`): installs for the current user without administrator rights, adds a Start menu entry (**A2DP Windows Bridge**) and an uninstaller, and installs the Microsoft Edge WebView2 Runtime if it is missing (Windows 11 includes it). Updates install themselves from the app (**Settings > Updates > Update now**)
-- **Portable** (`A2DPWB-<version>-win64-portable.zip`): extract anywhere and run `a2dpwb.exe`. Keep the three programs (`a2dpwb.exe`, `a2dpwb-core.exe`, `a2dpwb-driver.exe`) together. The portable copy only tells you about updates; it needs the WebView2 Runtime installed
+- **Installer** (`A2DPWB-<version>-win64-setup.exe`, on ARM64 `-arm64-setup.exe`): installs for the current user without administrator rights, adds a Start menu entry (**A2DP Windows Bridge**) and an uninstaller, and installs the Microsoft Edge WebView2 Runtime if it is missing (Windows 11 includes it). Updates install themselves from the app (**Settings > Updates > Update now**)
+- **Portable** (`A2DPWB-<version>-win64-portable.zip`, on ARM64 `-arm64-portable.zip`): extract anywhere and run `a2dpwb.exe`. Keep the three programs (`a2dpwb.exe`, `a2dpwb-core.exe`, `a2dpwb-driver.exe`) together. The portable copy only tells you about updates; it needs the WebView2 Runtime installed
 
 Both keep settings, profiles, link keys and firmware in `%APPDATA%\A2DPWB`, so you can switch between them. Uninstalling deletes that folder unless you turn **Delete user data** off (a silent uninstall keeps it).
 
@@ -39,12 +39,12 @@ At its first start v2 copies the v1 settings to `%APPDATA%\A2DPWB\backup-v1\` be
 
 ## Step 1: First-Run Setup {#first-run}
 
-Plug in the USB Bluetooth adapter and start A2DPWB. When there is no audio device yet, or no adapter has WinUSB, A2DPWB opens **Set up A2DP Windows Bridge**, four steps:
+Plug in the USB Bluetooth adapter and start A2DPWB. When there is no audio device yet, or no adapter has WinUSB, A2DPWB opens the **Setup Wizard**, four steps:
 
-1. **Choose the adapter**: the USB Bluetooth adapters found. If yours is missing, plug it in and press **Refresh**. A green **Supported** or a red **Unsupported** says whether A2DPWB can use each one; an unsupported one is listed but cannot be chosen
-2. **Driver and firmware**: **Replace with WinUSB driver** (see [Step 2](#winusb)), and for Realtek adapters the firmware files (see [Firmware](#firmware))
-3. **Find your audio devices**: the scan starts by itself. Put the audio device into pairing mode and press **Connect** next to it (or type its address and press **Use**): A2DPWB saves it with the best codec it has (Auto) and connects. It then stands above the list with **Disconnect** (**Cancel** while it connects). **Add a device** disconnects it and resumes the scan for another device; it stays saved, and a wrong device can be forgotten there. With VB-Cable installed, new devices capture it; without it the step says why one is wanted, with **Download VB-Cable**, and the first time A2DPWB finds it later, devices on System Loopback switch to it. Its codec can be changed later on **Codecs**
-4. **General Settings**: the theme, **Startup**, **Notifications** and update checks, the same controls as in Settings, saved at once (see [Step 3](#headphones))
+1. **Choose the adapter**: the USB Bluetooth adapters found. If yours is missing, plug it in and press **Refresh**. A green **Supported**, an orange **Experimental** or a red **Unsupported** says whether A2DPWB can use each one; an unsupported one is listed but cannot be chosen
+2. **Driver and firmware**: the step lists what it will do, and **Set up this adapter** does it: it replaces the adapter's driver with WinUSB (Windows asks for administrator permission, see [Step 2](#winusb)) and downloads the Realtek firmware files the adapter needs (see [Firmware](#firmware)). Firmware A2DPWB cannot download is put into the firmware folder by hand
+3. **Find your audio devices**: the scan starts by itself. Put the audio device into pairing mode and press **Connect** next to it (or type its address and press **Use**): A2DPWB saves it with the best codec it has (Auto) and connects. It then stands under **Paired Devices** with a dot for its state, and the scan stops. **Add a device** disconnects it and resumes the scan for another device; it stays saved, and a wrong device can be forgotten there. **Import pairings from Windows** shows when Windows paired devices through this adapter (see [Step 3](#headphones)). With VB-Cable installed, new devices capture it; without it the step says why one is wanted, with **Download VB-Cable**, and the first time A2DPWB finds it later, devices on System Loopback switch to it. Its codec can be changed later on **Codecs**
+4. **General Settings**: the theme, **Startup**, **Notifications** and update checks, the same controls as in Settings, saved at once. A first setup turns **Start with Windows** and **Start in the tray** on
 
 **Set up later** skips the rest; **Settings > Run setup** opens it again.
 
@@ -52,7 +52,7 @@ Plug in the USB Bluetooth adapter and start A2DPWB. When there is no audio devic
 
 A2DPWB communicates directly with a USB Bluetooth adapter via WinUSB, the generic USB driver included in Windows. A **dedicated adapter** is recommended -- your built-in Bluetooth then continues to work normally for regular Windows Bluetooth.
 
-1. Open the **Adapter** screen (or the setup's **Driver and firmware** step)
+1. Open the **Adapters** screen (the setup's **Driver and firmware** step does steps 2 to 4 with **Set up this adapter**)
 2. The adapter's **Driver** reads **Original driver** (or **No driver**): the driver Windows or the manufacturer installed, which WinUSB replaces. Click **Replace with WinUSB driver**
 3. Read the confirmation and continue: Windows asks for administrator permission (UAC)
 4. The driver now reads **WinUSB driver**
@@ -62,7 +62,7 @@ If Windows could not load WinUSB right away (the adapter was in use), A2DPWB say
 {: .warning }
 While WinUSB is assigned, Windows' own Bluetooth no longer sees the adapter: devices paired with Windows through it stop working until the driver is restored. Use your built-in Bluetooth for normal peripherals (keyboard, mouse, etc.). A built-in adapter that is a USB device (a Realtek one on many laptops) can be given to A2DPWB too, but then **the PC has no Windows Bluetooth at all** (Bluetooth settings, mice, keyboards, other audio devices) until you restore its driver.
 
-**Restore original driver** on the same screen gives the adapter back to Windows: Windows picks its own driver again (normally its Bluetooth driver) and the adapter works with Windows' Bluetooth. A2DPWB cannot stream through it until WinUSB is assigned again. The uninstaller offers the same: a page of the uninstall wizard has **Restore the original Bluetooth driver** (when A2DPWB put adapters on WinUSB; one administrator prompt) and **Delete user data** (settings, codecs, pairings and firmware in `%APPDATA%\A2DPWB`, and what the window remembers, such as **Show only supported codecs**), both on by default. Updates keep WinUSB, and so does a silent uninstall (`/S`).
+**Restore original driver** on the same screen gives the adapter back to Windows: Windows picks its own driver again (normally its Bluetooth driver) and the adapter works with Windows' Bluetooth. A2DPWB cannot stream through it until WinUSB is assigned again. Windows runs one Bluetooth adapter at a time: if another one is in use, A2DPWB says so after the restore, and this adapter works in Windows only once you disable that one in Device Manager and replug this one. Headphones that A2DPWB paired again have a new key, so Windows' old pairing may fail: the dialog names the ones Windows has paired too; if one does not connect, remove it in Windows' settings and pair it again. The uninstaller offers the same: a page of the uninstall wizard has **Restore the original Bluetooth driver** (when A2DPWB put adapters on WinUSB; one administrator prompt) and **Delete user data** (settings, codecs, pairings and firmware in `%APPDATA%\A2DPWB`, and what the window remembers, such as **Show only supported codecs**), both on by default. Updates keep WinUSB, and so does a silent uninstall (`/S`).
 
 ### Using Zadig instead {#zadig}
 
@@ -74,14 +74,14 @@ A WinUSB driver installed with [Zadig](https://zadig.akeo.ie/) works just as wel
 
 ### By hand in Device Manager {#device-manager}
 
-If the adapter is missing from A2DPWB's list, a button on the **Adapter** screen fails, or your adapter behaves differently from others of its kind, Windows' Device Manager (right-click **Start** > **Device Manager**) does the same by hand. Both need administrator rights. Menu names may differ slightly between Windows versions.
+If the adapter is missing from A2DPWB's list, a button on the **Adapters** screen fails, or your adapter behaves differently from others of its kind, Windows' Device Manager (right-click **Start** > **Device Manager**) does the same by hand. Both need administrator rights. Menu names may differ slightly between Windows versions.
 
 **Replace with WinUSB driver**
 
 1. Find the adapter: normally under **Bluetooth** with its own name (for example "TP-Link Bluetooth USB Adapter"), or with a yellow mark when its driver failed to start. **View > Devices by connection** helps tell it apart from the PC's built-in Bluetooth, which you leave alone unless you mean to give it to A2DPWB
 2. Right-click it > **Update driver** > **Browse my computer for drivers** > **Let me pick from a list of available drivers on my computer**
 3. If Windows asks for a device type, choose **Universal Serial Bus devices**. Clear **Show compatible hardware**, choose the manufacturer **WinUsb Device** and the model **WinUsb Device**, click **Next** and confirm the warning
-4. The adapter now shows as **WinUsb Device** under **Universal Serial Bus devices**. Restart A2DPWB (or open the **Adapter** screen again): it uses the adapter as with Zadig
+4. The adapter now shows as **WinUsb Device** under **Universal Serial Bus devices**. Restart A2DPWB (or open the **Adapters** screen again): it uses the adapter as with Zadig
 
 **Restore the original driver**
 
@@ -91,9 +91,11 @@ If the adapter is missing from A2DPWB's list, a button on the **Adapter** screen
 
 ## Step 3: Find Your Headphones {#headphones}
 
-**Scan Devices** (on **Audio Devices**) finds nearby devices with the USB adapter for 30 seconds, listing them as they answer. In the setup the scan starts by itself and goes on until a device is connected (it then leaves the list; **Disconnect** on its row puts it back and resumes the scan), **Stop** is pressed or the setup is closed. Put the headphones into pairing mode first. Devices A2DPWB has paired with before are listed as **Paired**.
+**Scan Devices** (on **Audio Devices**) finds nearby devices with the USB adapter for 30 seconds, listing them as they answer. In the setup the scan starts by itself and goes on until a device is connected (**Add a device** disconnects it and resumes the scan), **Stop Scanning** is pressed or the setup is closed. Put the headphones into pairing mode first. Devices A2DPWB has paired with before are listed as **Paired**.
 
 If the scan does not find them, enter the Bluetooth address under **Manual:** and click **Use**. Typed or pasted addresses are formatted as you go: `AA:BB:CC:DD:EE:FF`, `aa-bb-cc-dd-ee-ff`, `AABBCCDDEEFF` and `AA BB CC DD EE FF` all become `AA:BB:CC:DD:EE:FF`.
+
+Headphones that Windows paired through this adapter before it got WinUSB can keep that pairing: **Import pairings from Windows** (on **Audio Devices** and in the setup, shown when there are such devices) takes it over, so they connect without pairing mode. Windows asks for administrator permission.
 
 **From Windows Settings** (if the headphones were paired with the PC's built-in Bluetooth):
 1. Open **Settings > Bluetooth & devices**
@@ -116,7 +118,7 @@ Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) re
 
 ### In the App (Guided Download)
 
-The **Adapter** screen (and the setup's **Driver and firmware** step) shows the firmware of the adapter: **Firmware OK**, **No firmware files needed**, or **Firmware not found** with the required file names. Use the **Open Download Page** button to open the [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) page in your browser, then use **Open Firmware Folder** to open the destination folder. Download the required `.bin` files and place them in the firmware folder.
+The **Adapters** screen (and the setup's **Driver and firmware** step) shows the firmware of the adapter: **Firmware OK**, **No Realtek files needed**, or **Firmware not found** with the required file names. Use the **Open Download Page** button to open the [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) page in your browser, then use **Open Firmware Folder** to open the destination folder. Download the required `.bin` files and place them in the firmware folder.
 
 For the chips in the **Bluetooth Chip** list, **Download Firmware** does this for you: after you confirm, A2DPWB downloads the files from linux-firmware (kernel.org), checks each one against the SHA-256 it expects and saves it in the firmware folder. A chip that linux-firmware has no config file for gets an empty `_config.bin` (the chip then uses its own settings). The files are not part of A2DPWB; they are downloaded only when you ask for them.
 
@@ -126,7 +128,7 @@ Without the firmware, a Realtek adapter still opens and answers on its ROM code,
 
 ### Bluetooth Chip setting
 
-The **Bluetooth Chip** list on the **Adapter** screen decides whether A2DPWB runs Realtek initialization (firmware upload) on the adapter:
+The **Bluetooth Chip** list on the **Adapters** screen decides whether A2DPWB runs Realtek initialization (firmware upload) on the adapter:
 
 | Choice | Meaning |
 |:-------|:--------|

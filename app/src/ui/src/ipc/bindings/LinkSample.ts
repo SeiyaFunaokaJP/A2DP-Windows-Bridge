@@ -56,6 +56,12 @@ queue_capacity?: number | null,
  */
 queue_ms?: number | null, 
 /**
+ * The playout delay the device reported (AVDTP Delay Reporting), in
+ * ms: from a packet's arrival until it is heard. None while the
+ * device has not reported one (not every device does)
+ */
+sink_delay_ms?: number | null, 
+/**
  * Capture rate of the stream (frames per second; 0 while not
  * streaming): capture drops in ms = frames * 1000 / this
  */
@@ -104,4 +110,9 @@ capture_discontinuities?: number | null,
  * Captured frames lost in those gaps, where the capture could tell (at
  * source_rate, like capture_dropped)
  */
-capture_lost?: number | null, };
+capture_lost?: number | null, 
+/**
+ * The channels the link hops over: 10 bytes, bit n = Bluetooth
+ * channel n (2402 + n MHz). Null while there is no reading.
+ */
+afh_map?: Array<number> | null, };

@@ -1800,6 +1800,13 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let mut reopen_ticks = 0u32;
     let mut lost_for_good = false;
     let mut discontinuities = DiscontinuityLog::default();
+    // Developer mode: another limit on how long a packet waits in the send
+    // queue (0 = the default)
+    let queue_wait = codec::dev::overrides().queue_max_wait_ms;
+    host.stats().queue_max_wait_ms.store(queue_wait, std::sync::atomic::Ordering::Relaxed);
+    if queue_wait > 0 {
+        tracing::info!("send queue: packets dropped after {queue_wait} ms (developer mode)");
+    }
     let mut health = StreamHealth::start(host.stats().clone(), format.sample_rate, active.health());
     while !stopped() {
         inner.wait_tick(Duration::from_millis(200));

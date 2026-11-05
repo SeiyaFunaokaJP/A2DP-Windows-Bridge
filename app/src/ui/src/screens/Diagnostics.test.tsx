@@ -210,7 +210,7 @@ describe("Diagnostics", () => {
     expect(view.container.querySelector(".lq-verdict-label")!.textContent).toMatch(/^(Good|Fair|Poor|PC busy)$/);
     const afh = charts()[1];
     expect(afh.querySelectorAll(".chart-legend li")).toHaveLength(2);
-    await waitFor(() => expect(afh.querySelector(".chart-legend")).toHaveTextContent(/In use\s*58\s*Usable\s*79/));
+    await waitFor(() => expect(afh.querySelector(".chart-legend")).toHaveTextContent(/In use\s*52\s*Usable\s*79/));
     expect(screen.getByRole("heading", { name: "Bluetooth bandwidth (estimate)" })).toBeInTheDocument();
     expect(charts()[2].querySelector(".chart-legend")).toHaveTextContent(/Radio time used.*Share of theoretical max/);
 
@@ -258,5 +258,29 @@ describe("Diagnostics", () => {
     await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: false } });
     await waitFor(() => expect(row("Role")).toBeNull());
     expect(titles()).not.toContain("Adapter's link quality");
+  });
+
+  it("draws the channels the link uses, and scans Wi-Fi in developer mode", async () => {
+    const { core, view } = start();
+    await screen.findByRole("heading", { level: 1, name: "Diagnostics" });
+    await waitFor(() => expect(core.state.snap).not.toBeNull());
+    fireEvent.click(screen.getByRole("tab", { name: "Radio" }));
+    // Tips always; no scan outside developer mode
+    expect(await screen.findByRole("heading", { name: "Tips" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Scan" })).toBeNull();
+
+    await core.request("stream.start", { profile: core.state.snap!.profiles[0].name });
+    // The mock leaves out channels 22-48, around Wi-Fi channel 6
+    await waitFor(() => expect(view.container.querySelector(".radio-map")).toHaveTextContent("52 of 79 in use"));
+    expect(view.container.querySelectorAll("rect.band-off")).toHaveLength(27);
+    expect(view.container.querySelector(".radio-map")).toHaveTextContent("around Wi-Fi channel 6");
+
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    fireEvent.click(await screen.findByRole("button", { name: "Scan" }));
+    await waitFor(() => expect(view.container.querySelectorAll("path.band-ap")).toHaveLength(3));
+    const rows = view.container.querySelectorAll(".radio-panel tbody tr");
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent(/home-2g\s*6\s*-48 dBm/);
+    expect(rows[2]).toHaveTextContent("(hidden)");
   });
 });

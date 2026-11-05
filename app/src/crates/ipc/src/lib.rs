@@ -116,6 +116,7 @@ mod tests {
         AudioApp::export_all(&cfg).unwrap();
         MixerApp::export_all(&cfg).unwrap();
         DiagInfo::export_all(&cfg).unwrap();
+        WifiAccessPoint::export_all(&cfg).unwrap();
         FlowView::export_all(&cfg).unwrap();
         AdapterInfo::export_all(&cfg).unwrap();
         Method::export_all(&cfg).unwrap();

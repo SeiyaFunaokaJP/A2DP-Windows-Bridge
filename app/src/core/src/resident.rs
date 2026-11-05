@@ -147,6 +147,7 @@ fn link_sample(
         afh_in_use: radio.afh_in_use,
         afh_usable: radio.afh_usable,
         afh_avoided: radio.afh_avoided,
+        afh_map: radio.afh_map.map(|m| m.to_vec()),
         bytes_per_second: bps,
         packets_per_second: pps,
         queue_depth: if iso.is_some() { 0 } else { stats.queue_depth.load(Ordering::Relaxed) },
@@ -162,6 +163,7 @@ fn link_sample(
         bandwidth_share: air.map(|a| a.bandwidth_share),
         queue_capacity: iso.is_none().then_some(bt_host::stats::MEDIA_QUEUE_PACKETS as u32),
         queue_ms: iso.is_none().then(|| stats.queue_wait_ms.load(Ordering::Relaxed)),
+        sink_delay_ms: if iso.is_some() { None } else { stats.sink_delay().map(|d| d.as_secs_f64() * 1000.0) },
         source_rate: Some(source_rate),
         counters: Some(LinkCounters { total, stream_start: start, stream_starts: starts }),
         iso,
@@ -510,8 +512,10 @@ mod tests {
         assert_eq!(first.queue_capacity, Some(64));
         assert_eq!((first.controller_backlog, first.controller_backlog_ms), (Some(0), None));
         assert!(first.remote_chip.is_none() && first.link_details.is_none());
+        assert_eq!(first.sink_delay_ms, None);
         // One second later: 120 packets of 1005 bytes, 2 dropped, after a
-        // stream that started at 10 packets
+        // stream that started at 10 packets; the device reported its delay
+        stats.set_sink_delay(Some(1875));
         stats.start_packets.store(10, r);
         stats.stream_starts.store(1, r);
         stats.packets_sent.store(120, r);
@@ -537,6 +541,7 @@ mod tests {
         let c = s.counters.unwrap();
         assert_eq!((c.total.packets, c.stream_start.packets, c.stream_starts), (120, 10, 1));
         assert_eq!(s.source_rate, Some(48000));
+        assert_eq!(s.sink_delay_ms, Some(187.5));
         assert!(s.iso.is_none());
         assert_eq!((s.capture_discontinuities, s.capture_lost), (Some(3), Some(960)));
         assert_eq!((c.total.capture_discontinuities, c.total.capture_lost), (5, 1440));
