@@ -7,14 +7,16 @@
 //!
 //! - capture: audio delivered against the clock, silence the fill added
 //!   (no packet for two periods), the longest wait between packets, WASAPI
-//!   discontinuities, frames the encoder fell behind on
+//!   discontinuities and the audio lost in them, frames the encoder fell
+//!   behind on
 //! - encode: the longest wait between rounds, the send queue's fill and
 //!   drops
 //! - send: packets handed to L2CAP and the longest gap between them, the
 //!   longest wait for BTstack to allow one (controller buffers full)
 //! - air: the longest gap between Number Of Completed Packets events (the
-//!   controller got nothing out), and the longest USB write
-//! - radio: RSSI and the AFH channels in use
+//!   controller got nothing out), the most ACL packets the controller held,
+//!   and the longest USB write
+//! - radio: RSSI, the AFH channels in use, link quality and failed contacts
 //! - process: CPU, threads (a thread left from an earlier stream shows as
 //!   more threads and CPU), the system timer resolution
 //!
@@ -55,7 +57,6 @@ static STREAMS: AtomicU32 = AtomicU32::new(0);
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct CaptureReading {
     pub filled_frames: u64,
-    pub discontinuities: u64,
     /// The longest wait between packets since the last reading
     pub packet_gap: Duration,
 }
@@ -72,6 +73,7 @@ struct Counters {
     silence_frames: u64,
     filled_frames: u64,
     discontinuities: u64,
+    lost_frames: u64,
     completed_events: u64,
     cpu: Option<Duration>,
 }
@@ -87,6 +89,7 @@ struct Peaks {
     completed_gap: Duration,
     usb_write: Duration,
     usb_in_flight: usize,
+    controller_backlog: u64,
 }
 
 impl Peaks {
@@ -99,6 +102,7 @@ impl Peaks {
         self.completed_gap = self.completed_gap.max(o.completed_gap);
         self.usb_write = self.usb_write.max(o.usb_write);
         self.usb_in_flight = self.usb_in_flight.max(o.usb_in_flight);
+        self.controller_backlog = self.controller_backlog.max(o.controller_backlog);
     }
 }
 
@@ -225,7 +229,13 @@ impl StreamHealth {
         if let (Some(a), Some(b)) = (self.first_threads, threads) {
             process.push(format!("threads {a} -> {b}"));
         }
-        tracing::info!("stream health {} summary: {line} | process: {}", self.stream, process.join(", "));
+        let link = self.stats.link();
+        let link = crate::link::link_state_text(&link)
+            .map(|t| {
+                format!(" | link: {t}, {} role change(s), {} sniff entries", link.role_changes, link.sniff_entries)
+            })
+            .unwrap_or_default();
+        tracing::info!("stream health {} summary: {line}{link} | process: {}", self.stream, process.join(", "));
     }
 
     fn line(&self, elapsed: Duration, d: &Delta, p: &Peaks, process: Option<&Process>) -> String {
@@ -236,12 +246,14 @@ impl StreamHealth {
         let radio = self.stats.radio();
         let mut s = format!(
             "{secs:.1} s | capture: audio {audio_pct:.1}%, silence {silence_pct:.1}% (filled {} frames), \
-             packet gaps <= {} ms, discontinuities {}, behind {} frames | encode: gaps <= {} ms, queue <= {}/{}, \
+             packet gaps <= {} ms, discontinuities {} ({} ms lost), behind {} frames | encode: gaps <= {} ms, queue <= {}/{}, \
              drops {} | send: {} pkt ({:.1}/s, {:.0} kbps), gaps <= {} ms, can-send waits <= {} ms, errors {} | \
-             air: completed gaps <= {} ms ({} events), USB writes <= {} ms ({} in flight)",
+             air: completed gaps <= {} ms ({} events), controller backlog <= {} ACL packets, USB writes <= {} ms \
+             ({} in flight)",
             d.filled_frames,
             ms(p.capture_gap),
             d.discontinuities,
+            ms(Duration::from_secs_f64(d.lost_frames as f64 / f64::from(self.sample_rate.max(1)))),
             d.capture_dropped,
             ms(p.encode_gap),
             p.queue_depth,
@@ -255,6 +267,7 @@ impl StreamHealth {
             d.send_errors,
             ms(p.completed_gap),
             d.completed_events,
+            p.controller_backlog,
             ms(p.usb_write),
             p.usb_in_flight,
         );
@@ -267,6 +280,13 @@ impl StreamHealth {
         }
         if !radio.afh_avoided.is_empty() {
             radio_parts.push(format!("avoiding Wi-Fi {}", radio.afh_avoided));
+        }
+        let link = self.stats.link();
+        if let Some(q) = link.link_quality {
+            radio_parts.push(format!("link quality {q}"));
+        }
+        if link.failed_contacts.is_some() {
+            radio_parts.push(format!("failed contacts {} this stream", link.failed_contacts_stream));
         }
         if !radio_parts.is_empty() {
             s += &format!(" | radio: {}", radio_parts.join(", "));
@@ -308,7 +328,8 @@ fn counters(s: &LinkStats, capture: CaptureReading) -> Counters {
         capture_dropped: s.capture_dropped_frames.load(r),
         silence_frames: s.silence_frames.load(r),
         filled_frames: capture.filled_frames,
-        discontinuities: capture.discontinuities,
+        discontinuities: s.capture_discontinuities.load(r),
+        lost_frames: s.capture_lost_frames.load(r),
         completed_events: s.timing.completed_events.load(r),
         cpu: win_sys::perf::process_cpu_time(),
     }
@@ -326,6 +347,7 @@ fn take_peaks(s: &LinkStats, capture: CaptureReading) -> Peaks {
         completed_gap: us(t.completed_gap_us.take()),
         usb_write,
         usb_in_flight,
+        controller_backlog: t.controller_backlog_max.take(),
     }
 }
 
@@ -341,6 +363,7 @@ struct Delta {
     silence_frames: u64,
     filled_frames: u64,
     discontinuities: u64,
+    lost_frames: u64,
     completed_events: u64,
 }
 
@@ -357,7 +380,8 @@ impl Delta {
             // A new capture (an application that started again) counts
             // from 0
             filled_frames: b.filled_frames.checked_sub(a.filled_frames).unwrap_or(b.filled_frames),
-            discontinuities: b.discontinuities.checked_sub(a.discontinuities).unwrap_or(b.discontinuities),
+            discontinuities: b.discontinuities.saturating_sub(a.discontinuities),
+            lost_frames: b.lost_frames.saturating_sub(a.lost_frames),
             completed_events: b.completed_events.saturating_sub(a.completed_events),
         }
     }
@@ -381,13 +405,15 @@ mod tests {
 
     #[test]
     fn deltas_between_counters() {
-        let a = Counters { packets: 10, filled_frames: 5, discontinuities: 2, ..Default::default() };
-        let b = Counters { packets: 25, filled_frames: 9, discontinuities: 1, ..Default::default() };
+        let a = Counters { packets: 10, filled_frames: 5, discontinuities: 2, lost_frames: 480, ..Default::default() };
+        let b = Counters { packets: 25, filled_frames: 9, discontinuities: 3, lost_frames: 1440, ..Default::default() };
         let d = Delta::between(&a, &b);
         assert_eq!(d.packets, 15);
         assert_eq!(d.filled_frames, 4);
+        assert_eq!((d.discontinuities, d.lost_frames), (1, 960));
         // The capture started anew
-        assert_eq!(d.discontinuities, 1);
+        let c = Counters { filled_frames: 2, ..b };
+        assert_eq!(Delta::between(&b, &c).filled_frames, 2);
     }
 
     #[test]

@@ -812,6 +812,8 @@ pub fn link_totals(s: &LinkStats) -> (LinkTotals, LinkTotals, u32) {
         dropped: s.start_dropped.load(r),
         capture_frames: s.start_capture_frames.load(r),
         capture_dropped: s.start_capture_dropped.load(r),
+        capture_discontinuities: s.start_capture_discontinuities.load(r),
+        capture_lost: s.start_capture_lost.load(r),
     };
     let total = LinkTotals {
         packets: s.packets_sent.load(r),
@@ -819,8 +821,63 @@ pub fn link_totals(s: &LinkStats) -> (LinkTotals, LinkTotals, u32) {
         dropped: s.queue_drops.load(r) + s.send_errors.load(r),
         capture_frames: s.capture_frames.load(r),
         capture_dropped: s.capture_dropped_frames.load(r),
+        capture_discontinuities: s.capture_discontinuities.load(r),
+        capture_lost: s.capture_lost_frames.load(r),
     };
     (total, start, starts)
+}
+
+/// The remote device's chip of the A2DP link (None before its controller
+/// answered)
+pub fn remote_chip(d: &bt_host::LinkDetails) -> Option<ipc::RemoteChip> {
+    if d.remote_version.is_none() && d.remote_features.is_none() {
+        return None;
+    }
+    let v = d.remote_version;
+    Some(ipc::RemoteChip {
+        company_id: v.map(|v| v.company_id),
+        company: v.map(|v| {
+            chips::company_name(v.company_id).map_or_else(|| format!("0x{:04X}", v.company_id), str::to_owned)
+        }),
+        version: v.and_then(|v| a2dpwb_core::adapter::bt_core_version(v.lmp_version)).map(str::to_owned),
+        lmp_version: v.map(|v| v.lmp_version),
+        lmp_subversion: v.map(|v| v.lmp_subversion),
+        features: d.remote_features.map(|f| ipc::RemoteChipFeatures {
+            edr_2m: f.edr_2m(),
+            edr_3m: f.edr_3m(),
+            three_slot: f.three_slot(),
+            five_slot: f.five_slot(),
+            edr_three_slot: f.edr_three_slot(),
+            edr_five_slot: f.edr_five_slot(),
+            largest_packet: bt_host::link_details::best_packet(&f).to_owned(),
+        }),
+    })
+}
+
+/// The A2DP link's state and readings (None without the link)
+pub fn link_details(d: &bt_host::LinkDetails) -> Option<ipc::LinkDetails> {
+    use a2dpwb_core::link::slots_ms;
+    if d.central.is_none() && d.mode.is_none() {
+        return None;
+    }
+    Some(ipc::LinkDetails {
+        role: d.central.map(|c| if c { ipc::LinkRole::Central } else { ipc::LinkRole::Peripheral }),
+        role_changes: d.role_changes,
+        mode: d.mode.map(|m| match m {
+            bt_host::LinkMode::Active => ipc::LinkMode::Active,
+            bt_host::LinkMode::Hold => ipc::LinkMode::Hold,
+            bt_host::LinkMode::Sniff => ipc::LinkMode::Sniff,
+            bt_host::LinkMode::Park => ipc::LinkMode::Park,
+        }),
+        sniff_interval_ms: d.sniff_interval_slots.map(slots_ms),
+        sniff_entries: d.sniff_entries,
+        encryption_key_size: d.encryption_key_size,
+        supervision_timeout_ms: d.supervision_timeout_slots.map(slots_ms),
+        failed_contacts: d.failed_contacts,
+        failed_contacts_stream: d.failed_contacts.map(|_| d.failed_contacts_stream),
+        failed_contacts_per_second: d.failed_contacts_per_second,
+        link_quality: d.link_quality,
+    })
 }
 
 /// The core's receiver types to the protocol's (the same fields)
@@ -3468,6 +3525,28 @@ mod tests {
         };
         let i: ipc::ReceiverInfo = convert(&info).expect("converts");
         assert_eq!(json(&i), json(&info));
+    }
+
+    #[test]
+    fn link_details_to_the_protocol() {
+        let mut d = bt_host::LinkDetails::default();
+        assert_eq!((remote_chip(&d), link_details(&d)), (None, None));
+        d.remote_version = Some(bt_host::RemoteVersion { lmp_version: 12, company_id: 0x7777, lmp_subversion: 3 });
+        let chip = remote_chip(&d).unwrap();
+        // An unlisted maker shows as its ID
+        assert_eq!((chip.company.as_deref(), chip.version.as_deref()), (Some("0x7777"), Some("5.3")));
+        assert!(chip.features.is_none());
+        d.remote_features = Some(bt_host::RemoteFeatures([0x03, 0, 0, 0x02, 0x80, 0x01, 0, 0]));
+        assert_eq!(remote_chip(&d).unwrap().features.unwrap().largest_packet, "2-DH5");
+        d.central = Some(true);
+        d.mode = Some(bt_host::LinkMode::Sniff);
+        d.sniff_interval_slots = Some(80);
+        d.supervision_timeout_slots = Some(8000);
+        let l = link_details(&d).unwrap();
+        assert_eq!((l.role, l.mode), (Some(ipc::LinkRole::Central), Some(ipc::LinkMode::Sniff)));
+        assert_eq!((l.sniff_interval_ms, l.supervision_timeout_ms), (Some(50.0), Some(5000.0)));
+        // The controller does not answer: no counts either
+        assert_eq!((l.failed_contacts, l.failed_contacts_stream, l.link_quality), (None, None, None));
     }
 
     #[test]

@@ -386,6 +386,8 @@ const QUALITY_DROP_SAMPLES = 40;
 const QUALITY_QUEUE_SAMPLES = 16;
 /** Milliseconds in the send queue that mean the radio fell behind */
 export const QUALITY_QUEUE_BACKLOG_MS = 150;
+/** Share of the radio's time above which dropouts become likely */
+export const QUALITY_AIRTIME_MAX = 0.8;
 
 /** Link quality from the last samples: what reaches the headphones (packet
  *  drops, the send queue backing up, air time) sets the bars. Not RSSI:
@@ -393,37 +395,47 @@ export const QUALITY_QUEUE_BACKLOG_MS = 150;
  *  headphones' power control moves it by 10-20 dB on a link that delivers
  *  everything. Audio the PC itself lost at capture says nothing about the
  *  radio (and counts frames, not packets): on a link that is fine, pcBusy. */
+/** What lowered the quality (Diagnostics names them) */
+export type QualityCause = "drops" | "queue" | "airtime";
+
 export function linkQuality(
   samples: readonly LinkSample[],
-): { level: QualityLevel; status: "good" | "warn" | "bad"; pcBusy: boolean } | null {
+): { level: QualityLevel; status: "good" | "warn" | "bad"; pcBusy: boolean; causes: QualityCause[] } | null {
   if (samples.length === 0) return null;
   const last = samples[samples.length - 1];
   if (last.bytes_per_second === 0 && last.rssi === null) return null;
   const caps: QualityLevel[] = [4];
+  const causes: QualityCause[] = [];
+  const cap = (level: QualityLevel, cause: QualityCause) => {
+    caps.push(level);
+    causes.push(cause);
+  };
   const old = samples[Math.max(0, samples.length - QUALITY_DROP_SAMPLES)];
   const dropped = last.dropped - old.dropped;
-  if (dropped > 5) caps.push(1);
-  else if (dropped > 0) caps.push(2);
+  if (dropped > 5) cap(1, "drops");
+  else if (dropped > 0) cap(2, "drops");
   const backlog = Math.max(...samples.slice(-QUALITY_QUEUE_SAMPLES).map((s) => s.queue_ms ?? 0));
-  if (backlog >= QUALITY_QUEUE_BACKLOG_MS) caps.push(2);
-  else if (backlog >= QUALITY_QUEUE_BACKLOG_MS / 2) caps.push(3);
-  if (last.airtime > 0.8) caps.push(2);
+  if (backlog >= QUALITY_QUEUE_BACKLOG_MS) cap(2, "queue");
+  else if (backlog >= QUALITY_QUEUE_BACKLOG_MS / 2) cap(3, "queue");
+  if (last.airtime > QUALITY_AIRTIME_MAX) cap(2, "airtime");
   const level = Math.min(...caps) as QualityLevel;
   const linkGood = level >= 3;
   const pcBusy = linkGood && last.capture_dropped > old.capture_dropped;
-  return { level, status: pcBusy ? "warn" : linkGood ? "good" : level === 2 ? "warn" : "bad", pcBusy };
+  return { level, status: pcBusy ? "warn" : linkGood ? "good" : level === 2 ? "warn" : "bad", pcBusy, causes };
+}
+
+/** The quality's label (the indicator's) */
+export function qualityLabel(q: ReturnType<typeof linkQuality>): string {
+  if (!q) return t("ui.quality.unknown");
+  if (q.pcBusy) return t("ui.quality.pc_busy");
+  return q.status === "good" ? t("ui.quality.good") : q.status === "warn" ? t("ui.quality.fair") : t("ui.quality.poor");
 }
 
 export function QualityIndicator() {
   const { core } = useApp();
   // No link to rate unless it streams, whatever the last samples said
   const q = createMemo(() => (core.state.snap?.stream.state === "streaming" ? linkQuality(core.link()) : null));
-  const label = () => {
-    const v = q();
-    if (!v) return t("ui.quality.unknown");
-    if (v.pcBusy) return t("ui.quality.pc_busy");
-    return v.status === "good" ? t("ui.quality.good") : v.status === "warn" ? t("ui.quality.fair") : t("ui.quality.poor");
-  };
+  const label = () => qualityLabel(q());
   return (
     <span class={`quality ${q() ? `st-${q()!.status}` : ""}`} title={`${t("quality.title")}: ${label()}`}>
       <span class="bars" aria-hidden="true">

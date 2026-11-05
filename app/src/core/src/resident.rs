@@ -11,6 +11,8 @@ use std::time::{Duration, Instant};
 use a2dpwb_core::{Service, ServiceOptions};
 use bt_host::HciCapture;
 use ipc::{AclPacket, Event, IsoCounters, LinkCounters, LinkSample, LinkTotals};
+
+use crate::state::{link_details, remote_chip};
 use tao::event::{Event as TaoEvent, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -90,29 +92,55 @@ fn iso_counters(cis: u32, s: &bt_host::LeStreamStats) -> IsoCounters {
     }
 }
 
+/// The counters a link sample works with (those of the last one)
+#[derive(Debug, Clone, Copy)]
+struct SampleCounters {
+    at: Instant,
+    totals: LinkTotals,
+    /// LinkStats::acl_packets_sent
+    acl_packets: u64,
+}
+
+impl SampleCounters {
+    fn now(stats: &bt_host::LinkStats, at: Instant) -> SampleCounters {
+        SampleCounters {
+            at,
+            totals: crate::state::link_totals(stats).0,
+            acl_packets: stats.acl_packets_sent.load(Ordering::Relaxed),
+        }
+    }
+}
+
 /// A link sample from the counters now and those of the last sample; `iso`:
 /// an LE Audio stream's counters (the A2DP media figures are then 0 / None)
 fn link_sample(
     time_ms: u64,
     stats: &bt_host::LinkStats,
-    last: Option<(Instant, LinkTotals)>,
+    last: Option<SampleCounters>,
     now: Instant,
     source_rate: u32,
     iso: Option<IsoCounters>,
-) -> (LinkSample, LinkTotals) {
+) -> (LinkSample, SampleCounters) {
     let (total, start, starts) = crate::state::link_totals(stats);
-    let (bps, pps) = match last {
-        Some((t, prev)) => {
-            let dt = now.duration_since(t).as_secs_f64().max(0.001);
-            let d = total.since(&prev);
-            (d.bytes as f64 / dt, d.packets as f64 / dt)
+    let acl_packets = stats.acl_packets_sent.load(Ordering::Relaxed);
+    let (bps, pps, acl_ps) = match last {
+        Some(prev) => {
+            let dt = now.duration_since(prev.at).as_secs_f64().max(0.001);
+            let d = total.since(&prev.totals);
+            let acl = acl_packets.saturating_sub(prev.acl_packets);
+            (d.bytes as f64 / dt, d.packets as f64 / dt, acl as f64 / dt)
         }
-        None => (0.0, 0.0),
+        None => (0.0, 0.0, 0.0),
     };
     let (bps, pps) = if iso.is_some() { (0.0, 0.0) } else { (bps, pps) };
-    let air = a2dpwb_core::link::airtime(pps, bps);
+    let link = stats.link();
+    let air = a2dpwb_core::link::airtime_on(pps, bps, link.remote_features.as_ref());
     let since = total.since(&start);
     let radio = stats.radio();
+    // The most the controller held since the last sample: while an A2DP
+    // stream sends
+    let backlog = stats.controller_backlog_peak.take();
+    let a2dp = iso.is_none() && source_rate > 0;
     let sample = LinkSample {
         time_ms,
         rssi: radio.rssi,
@@ -127,7 +155,11 @@ fn link_sample(
         capture_dropped: since.capture_dropped,
         airtime: air.map_or(0.0, |a| a.airtime),
         avg_packet_bytes: air.map(|a| a.avg_packet_bytes),
-        acl_packet: air.map(|a| AclPacket { name: a.packet.into(), slots: a.slots }),
+        acl_packet: air.map(|a| AclPacket {
+            name: a.packet.into(),
+            slots: a.slots,
+            from_features: Some(a.from_features),
+        }),
         bandwidth_share: air.map(|a| a.bandwidth_share),
         queue_capacity: iso.is_none().then_some(bt_host::stats::MEDIA_QUEUE_PACKETS as u32),
         queue_ms: iso.is_none().then(|| stats.queue_wait_ms.load(Ordering::Relaxed)),
@@ -135,8 +167,14 @@ fn link_sample(
         source_rate: Some(source_rate),
         counters: Some(LinkCounters { total, stream_start: start, stream_starts: starts }),
         iso,
+        controller_backlog: a2dp.then_some(backlog as u32),
+        controller_backlog_ms: a2dp.then(|| a2dpwb_core::link::backlog_ms(backlog, acl_ps)).flatten(),
+        remote_chip: remote_chip(&link).map(Box::new),
+        link_details: link_details(&link).map(Box::new),
+        capture_discontinuities: Some(since.capture_discontinuities),
+        capture_lost: Some(since.capture_lost),
     };
-    (sample, total)
+    (sample, SampleCounters { at: now, totals: total, acl_packets })
 }
 
 /// Link samples while a UI subscribes; every second the stream's rates (the
@@ -145,7 +183,7 @@ fn link_sample(
 async fn sampler(state: Arc<CoreState>) {
     let stats = state.service.stats();
     let mut tick = tokio::time::interval(SAMPLE);
-    let mut last_link: Option<(Instant, LinkTotals)> = None;
+    let mut last_link: Option<SampleCounters> = None;
     let mut last_rates: Option<(Instant, LinkTotals)> = None;
     let mut n: u64 = 0;
     loop {
@@ -175,7 +213,9 @@ async fn sampler(state: Arc<CoreState>) {
         // A new subscription: no rate without the last counters, and a 0 would
         // show as a dip in the charts
         if last_link.is_none() {
-            last_link = Some((now, crate::state::link_totals(&stats).0));
+            last_link = Some(SampleCounters::now(&stats, now));
+            // The backlog peak from before the subscription
+            stats.controller_backlog_peak.take();
             continue;
         }
         let (source_rate, le_cis) = state.with_snapshot(|s| match (&s.stream.state, &s.stream.info) {
@@ -185,8 +225,8 @@ async fn sampler(state: Arc<CoreState>) {
         // LE Audio (experimental): the sender's counters
         let iso = le_cis.and_then(|cis| state.service.host().map(|h| iso_counters(cis, &h.le_stream_stats())));
         let time_ms = state.started.elapsed().as_millis() as u64;
-        let (sample, total) = link_sample(time_ms, &stats, last_link, now, source_rate, iso);
-        last_link = Some((now, total));
+        let (sample, counters) = link_sample(time_ms, &stats, last_link, now, source_rate, iso);
+        last_link = Some(counters);
         state.publish(Event::Link(sample));
     }
 }
@@ -470,6 +510,8 @@ mod tests {
         assert_eq!(first.packets_per_second, 0.0);
         assert!(first.acl_packet.is_none());
         assert_eq!(first.queue_capacity, Some(64));
+        assert_eq!((first.controller_backlog, first.controller_backlog_ms), (Some(0), None));
+        assert!(first.remote_chip.is_none() && first.link_details.is_none());
         assert_eq!(first.sink_delay_ms, None);
         // One second later: 120 packets of 1005 bytes, 2 dropped, after a
         // stream that started at 10 packets; the device reported its delay
@@ -479,9 +521,20 @@ mod tests {
         stats.packets_sent.store(120, r);
         stats.bytes_sent.store(120 * 1005, r);
         stats.queue_drops.store(2, r);
-        let (s, _) = link_sample(1000, &stats, Some((t0, total)), t0 + Duration::from_secs(1), 48000, None);
+        // 240 ACL packets (two per media packet), the controller held 12 at most
+        stats.acl_packets_sent.store(240, r);
+        stats.controller_backlog_peak.record(12);
+        // Two Windows capture gaps, one of them 10 ms long, before the
+        // stream started and three more since
+        stats.start_capture_discontinuities.store(2, r);
+        stats.start_capture_lost.store(480, r);
+        stats.capture_discontinuities.store(5, r);
+        stats.capture_lost_frames.store(480 + 960, r);
+        let (s, _) = link_sample(1000, &stats, Some(total), t0 + Duration::from_secs(1), 48000, None);
         assert!((s.packets_per_second - 120.0).abs() < 1e-6);
-        assert_eq!(s.acl_packet, Some(AclPacket { name: "3-DH5".into(), slots: 6 }));
+        assert_eq!(s.acl_packet, Some(AclPacket { name: "3-DH5".into(), slots: 6, from_features: Some(false) }));
+        assert_eq!(s.controller_backlog, Some(12));
+        assert!((s.controller_backlog_ms.unwrap() - 50.0).abs() < 1e-6);
         assert!((s.avg_packet_bytes.unwrap() - 1005.0).abs() < 1e-6);
         assert!((s.airtime - 120.0 * 6.0 * 625e-6).abs() < 1e-9);
         assert_eq!(s.dropped, 2);
@@ -490,6 +543,8 @@ mod tests {
         assert_eq!(s.source_rate, Some(48000));
         assert_eq!(s.sink_delay_ms, Some(187.5));
         assert!(s.iso.is_none());
+        assert_eq!((s.capture_discontinuities, s.capture_lost), (Some(3), Some(960)));
+        assert_eq!((c.total.capture_discontinuities, c.total.capture_lost), (5, 1440));
     }
 
     #[test]
@@ -512,7 +567,7 @@ mod tests {
             prefill: 6,
         };
         let iso = Some(iso_counters(2, &le));
-        let (s, _) = link_sample(1000, &stats, Some((t0, total)), t0 + Duration::from_secs(1), 48000, iso);
+        let (s, _) = link_sample(1000, &stats, Some(total), t0 + Duration::from_secs(1), 48000, iso);
         assert_eq!(
             s.iso,
             Some(IsoCounters { cis: 2, sdu_sets: 1000, silence: 12, underruns: 1, dropped: 3, prefill: 6 })
@@ -520,6 +575,7 @@ mod tests {
         // No A2DP media figures while LE Audio streams
         assert_eq!((s.bytes_per_second, s.packets_per_second, s.airtime, s.queue_depth), (0.0, 0.0, 0.0, 0));
         assert!(s.acl_packet.is_none() && s.queue_capacity.is_none());
+        assert!(s.controller_backlog.is_none());
         assert_eq!(s.source_rate, Some(48000));
     }
 }

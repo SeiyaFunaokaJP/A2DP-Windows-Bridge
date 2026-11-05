@@ -122,6 +122,10 @@ impl Sink for InputSink {
     fn silence(&mut self, frames: usize, _format: Format) {
         self.0.push_silence(frames);
     }
+
+    fn discontinuity(&mut self, lost_frames: Option<u64>) {
+        self.0.discontinuity(lost_frames);
+    }
 }
 
 /// Audio into a running LE stream: capture (or the test tone) at the LC3
