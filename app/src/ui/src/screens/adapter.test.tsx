@@ -157,7 +157,7 @@ describe("Adapter firmware", () => {
   });
 
   it("names the saved devices Windows has paired too before giving the adapter back", async () => {
-    const { mock } = start();
+    const { calls, mock } = start();
     await screen.findByRole("heading", { level: 1, name: "Adapters" });
     const m = mock as any;
     const saved = m.snap.devices.filter((d: { saved: boolean; le_audio: boolean }) => d.saved && !d.le_audio);
@@ -166,6 +166,10 @@ describe("Adapter firmware", () => {
     fireEvent.click((await screen.findAllByRole("button", { name: "Restore original driver" }))[0]);
     const dialog = await screen.findByRole("dialog", { name: "Give the adapter back to Windows" });
     expect(await within(dialog).findByText(new RegExp(`^${saved[0].name} may not connect in Windows`))).toBeInTheDocument();
+    // Asked per adapter: Windows' own list is empty while the adapter is on WinUSB
+    const winusb = m.snap.adapter.adapters.find((a: { driver: string }) => a.driver === "winusb");
+    expect(calls.find((c) => c.method === "device.windows_paired_through")?.params).toEqual({ adapter: winusb.address });
+    expect(calls.some((c) => c.method === "device.windows_paired")).toBe(false);
     // None of them paired in Windows: nothing to say
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     m.windowsPaired = ["00:11:22:33:44:55"];
