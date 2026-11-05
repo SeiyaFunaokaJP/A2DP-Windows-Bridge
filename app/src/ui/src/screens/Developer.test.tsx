@@ -69,6 +69,15 @@ describe("developer screen", () => {
     fireEvent.change(bitrate, { target: { value: "9999" } });
     await screen.findByDisplayValue("512");
 
+    // The send queue limit is clamped the same way; 0 means the default
+    const queueWait = screen.getByLabelText(t("ui.dev.queue_wait")) as HTMLInputElement;
+    fireEvent.input(queueWait, { target: { value: "5" } });
+    fireEvent.change(queueWait, { target: { value: "5" } });
+    await screen.findByDisplayValue("50");
+    expect(core.state.snap!.settings.dev_overrides.queue_max_wait_ms).toBe(50);
+    fireEvent.change(queueWait, { target: { value: "" } });
+    await waitFor(() => expect(core.state.snap!.settings.dev_overrides.queue_max_wait_ms).toBe(0));
+
     fireEvent.click(screen.getByRole("button", { name: t("ui.dev.reset") }));
     await screen.findByText(t("ui.dev.intro"));
     expect(core.state.snap!.settings.dev_overrides.rtp_marker).toBe(false);

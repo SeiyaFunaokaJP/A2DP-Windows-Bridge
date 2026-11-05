@@ -1,7 +1,7 @@
 // Diagnostics: live link graphs and v1's link quality figures (an LE
-// Audio stream's ISO counters), the eleven-step connection flow, the log
-// with level, text and attempt filters, HCI capture, "copy diagnostic
-// info", verbose logging, the diagnostic bundle (one .zip of logs,
+// Audio stream's ISO counters), the radio band (RadioPanel), the
+// eleven-step connection flow, the log with level, text and attempt
+// filters, HCI capture, "copy diagnostic info", verbose logging, the diagnostic bundle (one .zip of logs,
 // captures and crash reports for a report). The receiver test is on the
 // Developer screen.
 
@@ -11,6 +11,7 @@ import { Gauge, LineChart } from "../components/charts";
 import { CodecDetailsCard } from "../components/CodecDetails";
 import { Banner, Button, Check, Dialog, IconButton, Section, Select } from "../components/controls";
 import { Icon } from "../components/Icon";
+import { RadioPanel } from "./RadioPanel";
 import { bugReportFor, QUALITY_QUEUE_BACKLOG_MS } from "../components/stream";
 import type { IconName } from "../components/icons";
 import { t } from "../i18n";
@@ -40,7 +41,7 @@ import {
   type LevelFilter,
 } from "../lib/logview";
 
-type Tab = "link" | "flow" | "log";
+type Tab = "link" | "radio" | "flow" | "log";
 
 // ---- Window-wide view state (kept while the window lives, so it is still
 // there when the user comes back to the screen) ----------------------------
@@ -247,6 +248,7 @@ export function Diagnostics() {
 
   const tabs = (): { id: Tab; label: string; icon: IconName }[] => [
     { id: "link", label: t("quality.title"), icon: "pulse" },
+    { id: "radio", label: t("ui.radio.tab"), icon: "bluetooth" },
     { id: "flow", label: t("dbgc.section_flow"), icon: "checkmark_circle" },
     { id: "log", label: t("dbgc.section_log"), icon: "people_list" },
   ];
@@ -405,6 +407,9 @@ export function Diagnostics() {
         <Show when={tab() === "link"}>
           <LinkPanel />
         </Show>
+        <Show when={tab() === "radio"}>
+          <RadioPanel />
+        </Show>
         <Show when={tab() === "flow"}>
           <FlowPanel onJump={jumpTo} />
         </Show>
@@ -495,6 +500,11 @@ function LinkPanel() {
       ? t("quality.packets_value", s.packets_per_second, s.avg_packet_bytes)
       : `${s.packets_per_second.toFixed(1)} /s`;
   };
+  /** The playout delay the device reported (not every device does) */
+  const sinkDelayText = () => {
+    const s = live();
+    return !s || s.sink_delay_ms == null ? DASH : t("quality.sink_delay_value", s.sink_delay_ms);
+  };
   const rssiText = () => {
     const s = live();
     return !s || s.rssi === null ? DASH : rssiValue(s.rssi);
@@ -578,6 +588,7 @@ function LinkPanel() {
             <Row label={t("quality.bitrate")} value={sending() ? t("quality.bitrate_value", kbps(sending()!.bytes_per_second)) : DASH} />
             <Row label={t("quality.packets")} value={packetsText()} />
             <Row label={t("quality.queue")} class={queueClass()} value={queueText()} />
+            <Row label={t("quality.sink_delay")} value={sinkDelayText()} />
             <Row label={t("ui.diag.rssi")} value={rssiText()} />
             <Row label={t("ui.diag.afh")} value={afhText()} />
           </dl>

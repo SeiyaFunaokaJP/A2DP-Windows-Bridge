@@ -31,18 +31,18 @@ for reference (`git show b819893:app/src/le_audio/<file>`).
 | `app/src/crates/btstack-sys/` | `btstack_config.h` LE block (`ENABLE_BLE`, LE central / peripheral, LE Secure Connections with micro-ecc, extended advertising, `ENABLE_LE_ISOCHRONOUS_STREAMS`, `MAX_NR_CIS 4`, `HCI_ISO_PAYLOAD_SIZE 400`, `NVN_NUM_GATT_SERVER_CCC 256`); `build.rs` adds `src/ble`, micro-ecc and `btstack_tlv_windows.c`; `src/le.rs` (Stack's LE API: scan, connect, SM, LE device DB, TLV, GATT client, att_db_util, att_server, CIG / CIS, ISO send), `src/att.rs` (ATT read / write callbacks, notification queue), `src/events.rs` (event readers), `src/transport.rs` (LE hidden, below), `src/timer_resolution.rs` (`HighTimerResolution`) |
 | `app/src/crates/hci-transport/src/usb.rs` | HCI ISO data on the ACL bulk endpoints (OUT: the bulk ACL slot; IN: passed up as ACL, `hci.c` reclassifies by CIS handle), as v1 and Linux btusb |
 | `app/src/crates/bt-host/src/le/` | The LE core: `mod.rs` (public types), `api.rs` (`BtHost::le_*`, worker side), `core.rs` (`LeCore`, `LeCtx`, scan / connect / SM / discovery, module dispatch), `gatt_client.rs` (per-connection queue), `gatt_server.rs` (the PC's GATT server), `bap.rs` (PACS / ASCS client, `Unicast` state machine), `iso_send.rs` (`IsoSender`), `module.rs` (hook traits) |
-| `app/src/crates/bt-host/src/le/modules/` | The profiles: `csip.rs`, `vcp.rs`, `mcp.rs`, `ccp.rs`, `tmap_gmap.rs`; `mod.rs` registers them (v1's order: CSIP, VCP, MCP, CCP, TMAP / GMAP) |
+| `app/src/crates/bt-host/src/le/modules/` | The profiles: `csip.rs`, `vcp.rs`, `mcp.rs`, `ccp.rs`, `tmap_gmap.rs`, `bas.rs`; `mod.rs` registers them (v1's order: CSIP, VCP, MCP, CCP, TMAP / GMAP, then BAS) |
 | `app/src/crates/pipeline/src/le.rs` | The LE encode thread: capture -> stereo downmix -> linear resampling to the LC3 rate -> LC3 per channel -> SDU set per frame into the `LeSduSink` |
-| `app/src/crates/core/src/le_stream.rs` | The session of an LE Audio profile (v1 `a2dp_service_le_audio.cpp`): connect, start, VolumeSync, re-setup after a loss (10 times), the `error.le_audio_*` messages |
+| `app/src/crates/core/src/le_stream.rs` | The session of an LE Audio profile (v1 `a2dp_service_le_audio.cpp`): connect, start, VolumeSync, re-setup after a loss (3 times), the `error.le_audio_*` messages |
 | `app/src/crates/core/src/le_media.rs` | MCP's Windows backend (System Media Transport Controls, media keys) |
 | `app/src/crates/core/src/service.rs` | `HostConfig.le_audio` from the setting or the CLI, the deferred toggle, `scan_devices` (classic + LE entries), `le_stream()` |
 | `app/src/crates/core/src/devices.rs` | `le_audio_devices.txt` (`load_le` / `save_le` / `remove_le`) |
 | `app/src/core/src/cli.rs` | `--le-audio`, `--le-device`, `--le-preset`, `--le-low-latency`, `--le-scan`, `--le-sim-volume`, `--mcp-dry-run`, `--ccp-sim`, `--ccp-console` (v1 `le_audio_cli.cpp`'s flow and lines) |
 | `app/src/core/src/state.rs`, `resident.rs` | The UI's state: LE settings, LE devices, `le_scanning`, `StreamInfo.le`, `LinkSample.iso`, `settings.set`'s `le_audio_deferred`; diagnostics section `[LE Audio (experimental)]` (`crates/core/src/diag.rs`) |
-| `app/src/ui/src/` | Settings toggles, ProfileEditor's "LE Audio device" check box, DevicePicker's LE tags, Diagnostics' ISO counters; `?mock=le` mocks LE |
+| `app/src/ui/src/` | The Codecs screen's LC3 card and GMAP low-latency check box (the profile's `le_low_latency`), DevicePicker's LE tags, Diagnostics' ISO counters; `?mock=le` mocks LE |
 | `tools/a2dp_decode/le_audio_decode.cpp` | `a2dpwb_decode --le-audio` |
 | `tools/emu/emu_le_audio_sink.py`, `tools/emu/le_audio/` | Bumble LE Audio sink(s); `le_audio/<profile>.py` = the sink side of each profile |
-| `tools/emu/le_audio_tests/` | `run_test.py --le-audio` cases and checks, one file per profile (`core.py`, `privacy.py`, `csip.py`, `vcp.py`, `mcp.py`, `ccp.py`, `tmap_gmap.py`) |
+| `tools/emu/le_audio_tests/` | `run_test.py --le-audio` cases and checks, one file per profile (`core.py`, `privacy.py`, `csip.py`, `vcp.py`, `mcp.py`, `ccp.py`, `tmap_gmap.py`, `bas.py`) |
 
 Files in the config folder (the same as v1): `le_audio_bonds.tlv` (LE bonds
 and the GATT server's persistent CCC values), `le_audio_csip.txt`
@@ -110,7 +110,7 @@ the GATT client or the GATT server runs on the **BTstack thread**, through an
    remove the CIG -> **`on_stream_state(status, false)`**. Devices stay
    connected (`le_disconnect_all()` drops them).
 7. A link or CIS lost while streaming: `le_stream_lost()` turns true once; the
-   session stops and sets the stream up again (CLI: 3 tries, GUI: 10).
+   session stops and sets the stream up again (3 tries).
    **`on_disconnected(dev, reason)`** for every LE link that goes down.
 8. Stack deinit (run loop stopped): **`on_stack_deinit`**, no BTstack calls.
    Device ids start from 0 again with the next BtHost.
@@ -327,6 +327,7 @@ uses its own port from there). Per case `<out>/le-<case>/` has
 | `mcp.py` | `mcp-read`, `mcp-control`, `mcp-unsupported`, `mcp-ccid`, `mcp-long-read`, `mcp-resume` |
 | `ccp.py` | `ccp-read`, `ccp-incoming-accept`, `ccp-terminate`, `ccp-invalid` |
 | `tmap_gmap.py` | `tmap-role`, `gmap-low-latency`, `gmap-earbuds`, `gmap-off`, `gmap-not-ugt`, `gmap-media-context` |
+| `bas.py` | `bas-level`, `bas-earbuds` |
 
 Each case checks: A2DPWB exits 0; one stream of the expected configuration
 on both sides; no decoder problems (consecutive SDU sequence numbers,
@@ -389,11 +390,17 @@ BTstack session (v1 kept counting).
 
 **TMAP / GMAP (`tmap_gmap.rs`).** The PC serves TMAS (UMS) and GMAS (UGG,
 features 0x03) and reads the headset's roles ("LE Audio: <addr>: TMAP: UMR,
-GMAP: UGT (UGT features 0x3C: ...)"; also in the diagnostics). With "Low
-latency for gaming headsets (GMAP)" (`le_audio_low_latency`, or
-`--le-low-latency`) and a group of UGTs with the Sink feature,
+GMAP: UGT (UGT features 0x3C: ...)"; also in the diagnostics). With the
+profile's "Low latency for gaming audio devices" (`le_low_latency` in
+`profiles.json`, on by default; the Codecs screen; `--le-low-latency` in the
+CLI) and a group of UGTs with the Sink feature,
 `adjust_stream_request` puts `48_3_gr, 48_4_gr, 48_1_gr, 48_2_gr, 32_1_gr,
 32_2_gr` first with the Game context (Media when Game is not available).
+
+**BAS (Battery Service client, `bas.rs`, experimental).** Reads each
+device's Battery Level and follows its notifications; with a set of earbuds
+the lowest level is reported (`HostEvent::Battery`, "BAS: device N: battery
+X% (reported Y%)"). Emulator option `--bas L[,L2]`, `--bas-change S:L`.
 
 ## Broadcast (Auracast source, developer mode)
 

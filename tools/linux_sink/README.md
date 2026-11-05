@@ -28,7 +28,7 @@ BlueZ takes the adapter back.
 | Packets, bytes, bitrate | per second and in total |
 | Lost / late packets | gaps and steps back in the RTP sequence numbers (not for classic aptX, aptX LL and FastStream, which carry no RTP header) |
 | Jitter | RFC 3550 interarrival jitter against the audio carried |
-| Gaps | longest time between two packets |
+| Gaps | longest time between two packets, and how many gaps were longer than 40 ms (`long_gaps`: the count to compare AFH settings by) |
 | Playout buffer model | a sink playing with `--buffer` ms (default 200) of audio: **dropouts** = the buffer would have run dry (audible interruption), **skips** = a burst after a stall would have overfilled it to more than twice its size (audio thrown away). The playout clock follows the sender within +-500 ppm, so clock drift is not counted; lost packets are not concealed and shorten the audio |
 | Pauses | the source sent nothing for more than 3 s (A2DPWB capturing a silent PC): counted separately, not as dropouts; the playout model starts over when media comes back |
 | Stream errors | RTP timestamp steps, SBC / FastStream / LDAC frame headers, Opus packet headers, aptX sync, decode errors |

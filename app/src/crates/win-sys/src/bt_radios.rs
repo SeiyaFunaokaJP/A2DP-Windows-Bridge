@@ -192,6 +192,104 @@ struct BthLocalRadioInfo {
 /// FILE_ANY_ACCESS)
 const IOCTL_BTH_GET_LOCAL_INFO: u32 = 0x0041_0000;
 
+/// CTL_CODE(FILE_DEVICE_BLUETOOTH, BTH_IOCTL_BASE + 3, METHOD_BUFFERED,
+/// FILE_ANY_ACCESS); input: the BTH_ADDR
+const IOCTL_BTH_DISCONNECT_DEVICE: u32 = 0x0041_000C;
+
+/// Disconnects the devices Windows' Bluetooth has connected through the
+/// radio on the USB device `instance_id`, and waits a few seconds for the
+/// links to go down. Windows cannot unload its stack from a radio with a
+/// live audio link: replacing its driver then hangs until Windows restarts.
+/// Returns the names of the devices that were connected. Needs no
+/// administrator rights, but is called from the elevated helper only.
+pub fn disconnect_through(instance_id: &str) -> Vec<String> {
+    let Some(path) = interface_paths()
+        .into_iter()
+        .find(|(_, devinst)| ancestors(*devinst).iter().any(|i| i.eq_ignore_ascii_case(instance_id)))
+    else {
+        return Vec::new();
+    };
+    let path = path.0;
+    let Some(radio) = open(&path) else { return Vec::new() };
+    let connected = |radio: &OwnedHandle| -> Vec<(u64, String)> {
+        crate::bt_paired::devices_of(radio.0)
+            .into_iter()
+            .filter(|d| d.connected)
+            .map(|d| (d.bth_addr(), if d.name.is_empty() { d.address_string() } else { d.name.clone() }))
+            .collect()
+    };
+    let before = connected(&radio);
+    if before.is_empty() {
+        return Vec::new();
+    }
+    for (addr, name) in &before {
+        let mut returned = 0u32;
+        // SAFETY: valid handle; the input is the 8-byte BTH_ADDR.
+        let r = unsafe {
+            DeviceIoControl(
+                radio.0,
+                IOCTL_BTH_DISCONNECT_DEVICE,
+                Some(std::ptr::from_ref(addr).cast()),
+                size_of::<u64>() as u32,
+                None,
+                0,
+                Some(&mut returned),
+                None,
+            )
+        };
+        match r {
+            Ok(()) => tracing::info!("bt_radios: disconnecting {name} from Windows' Bluetooth"),
+            Err(e) => tracing::warn!("bt_radios: cannot disconnect {name}: {e}"),
+        }
+    }
+    let started = std::time::Instant::now();
+    while started.elapsed() < std::time::Duration::from_secs(5) {
+        if connected(&radio).is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let left = connected(&radio);
+    if !left.is_empty() {
+        tracing::warn!("bt_radios: still connected after {:?}: {left:?}", started.elapsed());
+    }
+    before.into_iter().map(|(_, name)| name).collect()
+}
+
+/// The device interface paths of the present radios, with their device nodes
+fn interface_paths() -> Vec<(String, u32)> {
+    // SAFETY: interface class GUID and flags as documented; no window.
+    let set = match unsafe {
+        SetupDiGetClassDevsW(
+            Some(&GUID_BTHPORT_DEVICE_INTERFACE),
+            PCWSTR::null(),
+            None,
+            DIGCF_DEVICEINTERFACE | DIGCF_PRESENT,
+        )
+    } {
+        Ok(s) => DevInfoSet(s),
+        Err(e) => {
+            tracing::debug!("bt_radios: SetupDiGetClassDevs failed: {e}");
+            return Vec::new();
+        }
+    };
+    let mut result = Vec::new();
+    for index in 0.. {
+        let mut intf =
+            SP_DEVICE_INTERFACE_DATA { cbSize: size_of::<SP_DEVICE_INTERFACE_DATA>() as u32, ..Default::default() };
+        // SAFETY: valid set, GUID and out structure with its size set.
+        if unsafe { SetupDiEnumDeviceInterfaces(set.0, None, &GUID_BTHPORT_DEVICE_INTERFACE, index, &mut intf) }
+            .is_err()
+        {
+            break;
+        }
+        if let Some((path, data)) = set.interface_detail(&intf) {
+            result.push((path, data.DevInst));
+        }
+    }
+    result
+}
+
 /// The present radios of Windows' Bluetooth (none if it runs none)
 pub fn radios() -> Vec<WindowsRadio> {
     // SAFETY: interface class GUID and flags as documented; no window.
@@ -260,8 +358,9 @@ pub fn switched_on() -> Option<bool> {
     radios().map_err(|e| tracing::debug!("bt_radios: GetRadiosAsync failed: {e}")).ok()
 }
 
-fn local_info(path: &str) -> Option<BthLocalRadioInfo> {
-    // SAFETY: NUL-terminated path; no access rights asked (the IOCTL is
+/// A radio's handle, as BluetoothFindFirstRadio gives it
+fn open(path: &str) -> Option<OwnedHandle> {
+    // SAFETY: NUL-terminated path; no access rights asked (the IOCTLs are
     // FILE_ANY_ACCESS), shared with Windows' stack.
     let handle = unsafe {
         CreateFileW(
@@ -274,13 +373,17 @@ fn local_info(path: &str) -> Option<BthLocalRadioInfo> {
             None,
         )
     };
-    let handle = match handle {
-        Ok(h) => OwnedHandle(h),
+    match handle {
+        Ok(h) => Some(OwnedHandle(h)),
         Err(e) => {
             tracing::debug!("bt_radios: cannot open {path}: {e}");
-            return None;
+            None
         }
-    };
+    }
+}
+
+fn local_info(path: &str) -> Option<BthLocalRadioInfo> {
+    let handle = open(path)?;
     // SAFETY: plain-old-data structure, all zero is valid.
     let mut info: BthLocalRadioInfo = unsafe { std::mem::zeroed() };
     let mut returned = 0u32;

@@ -37,6 +37,7 @@
 #include "classic/a2dp_source.h"
 #include "classic/avdtp.h"
 #include "classic/avdtp_sink.h"
+#include "classic/avdtp_source.h"
 #include "classic/avdtp_util.h"
 #include "classic/avrcp.h"
 #include "classic/avrcp_controller.h"
@@ -591,7 +592,11 @@ uint8_t a2dpwb_create_stream_endpoint(int slot, uint8_t media_codec_type, const 
     avdtp_stream_endpoint_t *ep = a2dp_source_create_stream_endpoint(
         AVDTP_AUDIO, (avdtp_media_codec_type_t)media_codec_type, endpoint_caps[slot], caps_len,
         endpoint_config[slot], config_len);
-    return ep ? avdtp_local_seid(ep) : 0;
+    if (!ep) return 0;
+    /* Delay Reporting: a sink that lists it sends its playout delay
+       (A2DP_SUBEVENT_SIGNALING_DELAY_REPORT) once the stream is configured */
+    avdtp_source_register_delay_reporting_category(avdtp_local_seid(ep));
+    return avdtp_local_seid(ep);
 }
 
 /* ======================================================================== */

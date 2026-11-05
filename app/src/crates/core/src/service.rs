@@ -460,7 +460,7 @@ impl Inner {
                     let h = Arc::new(h);
                     let s = self.settings.lock().unwrap_or_else(|e| e.into_inner()).clone();
                     h.set_media_keys(s.media_keys);
-                    h.set_afh_policy(self.opts.afh.as_deref().unwrap_or(&s.afh));
+                    h.set_afh_policy(self.opts.afh.as_deref().unwrap_or(afh_policy(&s)));
                     self.le_active.store(le_on, Ordering::Release);
                     self.streamed.store(false, Ordering::Release);
                     self.note_le_capable(&h);
@@ -843,6 +843,12 @@ pub struct Service {
     _power: Option<win_sys::power::PowerNotifier>,
 }
 
+/// The saved AFH policy, as a stack runs it: the experimental "blend-*"
+/// only in developer mode (the CLI's --afh is taken as given)
+fn afh_policy(settings: &Settings) -> &str {
+    bt_host::afh::effective_policy(&settings.afh, settings.debug_mode)
+}
+
 /// The developer overrides (and the health log's interval) count only while
 /// developer mode is on
 fn apply_dev_overrides(settings: &Settings) {
@@ -971,7 +977,7 @@ impl Service {
         let host = self.host();
         if let Some(h) = &host {
             h.set_media_keys(settings.media_keys);
-            h.set_afh_policy(self.inner.opts.afh.as_deref().unwrap_or(&settings.afh));
+            h.set_afh_policy(self.inner.opts.afh.as_deref().unwrap_or(afh_policy(&settings)));
         }
         let old = std::mem::replace(&mut *self.inner.settings.lock().unwrap_or_else(|e| e.into_inner()), settings);
         let new_le = self.inner.settings.lock().unwrap_or_else(|e| e.into_inner()).le_audio_experimental;
@@ -1538,6 +1544,15 @@ fn link_is_fresh(age: Option<Duration>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn afh_blend_runs_only_in_developer_mode() {
+        let s = |afh: &str, debug_mode| Settings { afh: afh.into(), debug_mode, ..Default::default() };
+        assert_eq!(afh_policy(&s("blend-medium", true)), "blend-medium");
+        assert_eq!(afh_policy(&s("blend-medium", false)), "auto");
+        assert_eq!(afh_policy(&s("6,11", false)), "6,11");
+        assert_eq!(afh_policy(&s("off", false)), "off");
+    }
 
     #[test]
     fn only_a_link_that_just_came_up_keeps_the_stack() {

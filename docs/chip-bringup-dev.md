@@ -106,7 +106,8 @@ and the Windows build (`chipReportUrl` in `ui/src/lib/links.ts`), with the
 report file in Explorer to attach.
 
 **Chip scripts** (`bt-host/src/script.rs`): text, one request per line
-(`hci`, `bulk`, `usb in/out`, `wait`, `expect`, `bootloader`, `upload`),
+(`hci`, `bulk`, `usb in/out`, `wait`, `expect`, `bootloader`, `upload`,
+`upload-bulk`),
 parsed with line numbers and run by `ScriptLoader`, a `ChipLoader`, through
 `BtHost::run_script` (the probe and scripts share `BtHost::run_tool`). The
 one way to send writes from outside the code, so:

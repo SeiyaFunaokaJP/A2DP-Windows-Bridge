@@ -46,7 +46,7 @@ A gaming-mouse receiver next to the adapter, on a PC with no Wi-Fi adapter to st
 
 ### 4. Keep 2.4 GHz Wi-Fi away from the link
 
-Put this PC, and if you can the phone and the other devices near it, on 5 or 6 GHz Wi-Fi. If 2.4 GHz has to stay on, A2DPWB tells the adapter to avoid the channel this PC is connected on (AFH, Auto). It cannot see the Wi-Fi when the PC has no Wi-Fi adapter, is wired, or is on another band than the router's 2.4 GHz network: then find the router's channel (its admin page, or a Wi-Fi analyzer app on the phone), fix it there if it hops, and enter it under **Adapter > Avoid Wi-Fi channels > Manual**, for example `6` or `11`. See [Link Quality and AFH](usage#link-quality).
+Put this PC, and if you can the phone and the other devices near it, on 5 or 6 GHz Wi-Fi. If 2.4 GHz has to stay on, A2DPWB tells the adapter to avoid the channel this PC is connected on (AFH, Auto). It cannot see the Wi-Fi when the PC has no Wi-Fi adapter, is wired, or is on another band than the router's 2.4 GHz network: then find the router's channel (its admin page, or a Wi-Fi analyzer app on the phone), fix it there if it hops, and enter it under **Adapters > Avoid Wi-Fi channels > Manual**, for example `6` or `11`. See [Link Quality and AFH](usage#link-quality).
 
 LDAC 990 kbps lost about 1,700 packets in 5 minutes on a busy 2.4 GHz network, and 33 in 15 minutes once the router was fixed on one channel and AFH set to Manual on it.
 
@@ -70,9 +70,9 @@ Several stutters that sounded like radio were the app. 2.0.1 sent audio faster t
 
 | What you see | What it means | Points to |
 |:--|:--|:--|
-| **Signal** well below 0 (about -25 dB or less) | The headphones' signal reaches the adapter far below the adapter's ideal range. It is not an absolute level: 0 is ideal, -30 is 30 dB below it, so -30 can still play but has no margin | Radio: distance, your head and body, placement of the adapter |
+| **Signal vs. ideal** well below 0 (about -25 dB or less) | The headphones' signal reaches the adapter far below the adapter's ideal range. It is not an absolute level: 0 is ideal, -30 is 30 dB below it, so -30 can still play but has no margin | Radio: distance, your head and body, placement of the adapter |
 | **Send queue** full, **packets dropped before sending** growing, bitrate below the codec's | Packets waited too long for the radio; the link cannot carry this bit rate right now | Radio or interference, or too high a bit rate |
-| **AFH channels in use** jumping, or stuck at 79 while packets are lost | The adapter marks channels as bad because of errors on them; at 79 it has given up telling them apart | Interference: Wi-Fi, other receivers, a second Bluetooth adapter |
+| **Channel hopping (AFH)** jumping, or stuck at 79 while packets are lost | The adapter marks channels as bad because of errors on them; at 79 it has given up telling them apart | Interference: Wi-Fi, other receivers, a second Bluetooth adapter |
 | **Audio dropped at capture** growing, Home says **PC busy** | The PC did not deliver the audio in time | The PC: load, the capture device, a virtual cable |
 | Everything flat and empty, but silence or stutter | The link is fine and nothing is dropped on the PC | The app or the headphones' decoder: report it with the diagnostic bundle |
 
@@ -83,7 +83,7 @@ The receiving side cannot be seen from the PC. To measure what actually arrives,
 Some "it only gives me 400 kbps" or "LDAC is missing" reports are not the link at all: the headphones tell A2DPWB which codecs and bit rates they accept, and A2DPWB follows that, as Android does. The log line `remote supports ...` shows what they offered.
 
 - **Huawei FreeBuds** offer LDAC to a PC only after their AI Life app has set "prioritize sound quality" with multi-connect off; otherwise they list SBC and AAC only. Since 2.0.2 A2DPWB asks for that mode itself when LDAC is chosen with Auto-select off.
-- **LHDC V5 headphones** advertise a maximum bit rate. In their app's 96 kHz mode one pair listed 400 kbps; in its 192 kHz mode, 1000 kbps. OPPO Enco Free4 and Enco X4 list 400 kbps and 48 kHz to a PC whatever the app says; 2.0.2 asks OPPO earbuds for Hi-Res over their own protocol, which shows from the next connection, not yet confirmed on real earbuds.
+- **LHDC V5 headphones** advertise a maximum bit rate. In their app's 96 kHz mode one pair listed 400 kbps; in its 192 kHz mode, 1000 kbps. OPPO Enco Free4 and Enco X4 list 400 kbps and 48 kHz to a PC whatever the app says; 2.0.2 asks OPPO earbuds for Hi-Res over their own protocol when LHDC V5 streams with ABR off, and connects again once for it; not yet confirmed on real earbuds.
 - **ABR** keeps LHDC V5 at 400 kbps or below, as on Android.
 - A codec the headphones **hold for another device** is missing while that device is connected ([Codec missing while connected to another device](usage#sep-in-use)).
 
@@ -93,7 +93,7 @@ How to see what they offer: [Checking What Your Headphones Offer](usage#codec-fa
 
 The error on Home says what happened; the table in [Connection Timeouts](usage#connection-timeouts) explains each message. The radio cases:
 
-- **The device did not answer** (Page Timeout): off, out of range, not in pairing mode for a first connection, or the adapter is still on its ROM firmware. A Realtek adapter without its firmware finds nothing in a scan and times out on every connection, or opens fine and then never streams; one firmware file turned out to be a saved web page. The Adapter screen shows whether the firmware is loaded.
+- **The device did not answer** (Page Timeout): off, out of range, not in pairing mode for a first connection, or the adapter is still on its ROM firmware. A Realtek adapter without its firmware finds nothing in a scan and times out on every connection, or opens fine and then never streams; one firmware file turned out to be a saved web page. The Adapters screen shows whether the firmware is loaded.
 - **The connection came up but then carried nothing**: radio conditions, or the headphones are busy with another device. Try again, move the adapter.
 - **Authentication failed**, or the log says `signaling connection failed (0x66)`: the headphones kept a key from an earlier pairing, usually this PC's own Windows Bluetooth. `(0x67)`: they are busy with another device, for example a phone with LE Audio on. Disconnect the other devices, turn LE Audio off in the headphones' app, put them into pairing mode and connect once; later connections use the saved key.
 - The headphones **cannot connect to the phone** after Disconnect: 2.0.2 lets the link go on Disconnect; turn off **Reconnect automatically** if you move them between the PC and a phone by turning them off and on.
@@ -120,7 +120,7 @@ What stands out:
 If the checks above did not find it, open a [bug report](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) and tick what you tried. What settles a wireless report quickly:
 
 1. **Diagnostics > Report a problem**, **Verbose logging** on **Detailed (debug)**, then reproduce the problem.
-2. The **diagnostic bundle** (**Diagnostic bundle > Save…**, then **Report on GitHub**). It holds the stream health lines (send queue, dropped packets, signal, AFH channels over time) and the HCI capture of a failed connection, which show where the packets stopped.
+2. The **diagnostic bundle** (**Diagnostic bundle > Save…** with **Include HCI captures** on, then **Report on GitHub**). It holds the stream health lines (send queue, dropped packets, signal, AFH channels over time) and the HCI capture of a failed connection, which show where the packets stopped.
 3. A **screenshot of Link Quality** while it happens.
 4. Whether it also happens with **SBC or AAC**, and at a **lower bit rate**.
 5. Your answers to the form's Dual connection, Another Bluetooth adapter and Wi-Fi questions.

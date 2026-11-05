@@ -71,9 +71,9 @@ Varios tirones que parecían de radio eran la aplicación. 2.0.1 enviaba el audi
 
 | Qué ve | Qué significa | Apunta a |
 |:--|:--|:--|
-| **Señal** muy por debajo de 0 (unos -25 dB o menos) | La señal de los auriculares llega al adaptador muy por debajo de su rango ideal. No es un nivel absoluto: 0 es el ideal, -30 son 30 dB por debajo, así que -30 aún puede reproducir pero sin margen | Radio: distancia, su cabeza y su cuerpo, colocación del adaptador |
+| **Señal respecto al ideal** muy por debajo de 0 (unos -25 dB o menos) | La señal de los auriculares llega al adaptador muy por debajo de su rango ideal. No es un nivel absoluto: 0 es el ideal, -30 son 30 dB por debajo, así que -30 aún puede reproducir pero sin margen | Radio: distancia, su cabeza y su cuerpo, colocación del adaptador |
 | **Cola de envío** llena, **paquetes descartados antes del envío** en aumento, tasa de bits por debajo de la del códec | Los paquetes esperaron demasiado a la radio; el enlace no puede transportar esta tasa de bits ahora mismo | Radio o interferencias, o una tasa de bits demasiado alta |
-| **Canales AFH en uso** dando saltos, o fijos en 79 mientras se pierden paquetes | El adaptador marca canales como malos por los errores que ve en ellos; en 79 ha dejado de distinguirlos | Interferencias: Wi-Fi, otros receptores, un segundo adaptador Bluetooth |
+| **Salto de frecuencia (AFH)** dando saltos, o fijos en 79 mientras se pierden paquetes | El adaptador marca canales como malos por los errores que ve en ellos; en 79 ha dejado de distinguirlos | Interferencias: Wi-Fi, otros receptores, un segundo adaptador Bluetooth |
 | **Audio descartado en la captura** en aumento, Inicio indica **PC ocupado** | El PC no entregó el audio a tiempo | El PC: la carga, el dispositivo de captura, un cable virtual |
 | Todo plano y vacío, pero silencio o tirones | El enlace está bien y en el PC no se descarta nada | La aplicación o el decodificador de los auriculares: infórmelo con el paquete de diagnóstico |
 
@@ -84,7 +84,7 @@ El lado receptor no se puede ver desde el PC. Para medir lo que llega de verdad,
 Algunos informes de «solo me da 400 kbps» o «falta LDAC» no tienen nada que ver con el enlace: los auriculares indican a A2DPWB qué códecs y tasas de bits aceptan, y A2DPWB lo respeta, como hace Android. La línea de registro `remote supports ...` muestra lo que ofrecieron.
 
 - Los **Huawei FreeBuds** ofrecen LDAC a un PC solo después de que su app AI Life haya activado «priorizar la calidad de sonido» con la multiconexión desactivada; si no, solo ofrecen SBC y AAC. Desde 2.0.2, A2DPWB les pide ese modo por sí mismo cuando se elige LDAC con la selección automática desactivada.
-- Los **auriculares LHDC V5** anuncian una tasa de bits máxima. En el modo de 96 kHz de su app, un modelo anunciaba 400 kbps; en su modo de 192 kHz, 1000 kbps. Los OPPO Enco Free4 anuncian 400 kbps y 48 kHz a un PC diga lo que diga la app; 2.0.2 les pide Hi-Res por su propio protocolo, aún sin confirmar con auriculares reales.
+- Los **auriculares LHDC V5** anuncian una tasa de bits máxima. En el modo de 96 kHz de su app, un modelo anunciaba 400 kbps; en su modo de 192 kHz, 1000 kbps. Los OPPO Enco Free4 y Enco X4 anuncian 400 kbps y 48 kHz a un PC diga lo que diga la app; 2.0.2 pide Hi-Res a los auriculares OPPO por su propio protocolo cuando LHDC V5 transmite con ABR desactivado, y vuelve a conectar una vez para ello; aún sin confirmar con auriculares reales.
 - **ABR** mantiene LHDC V5 en 400 kbps o menos, como en Android.
 - Un códec que los auriculares **reservan para otro dispositivo** falta mientras ese dispositivo está conectado ([Falta un códec mientras los auriculares están conectados a otro dispositivo](usage#sep-in-use)).
 
@@ -121,7 +121,7 @@ Lo que destaca:
 Si las comprobaciones anteriores no lo han encontrado, abra un [informe de error](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) y marque lo que haya probado. Lo que resuelve rápido un informe sobre el lado inalámbrico:
 
 1. **Diagnóstico > Informar de un problema**, **Registro detallado** en **Detallado (debug)**, y después reproduzca el problema.
-2. El **paquete de diagnóstico** (**Paquete de diagnóstico > Guardar…**, después **Informar en GitHub**). Contiene las líneas de estado de la transmisión (cola de envío, paquetes descartados, señal, canales AFH a lo largo del tiempo) y la captura HCI de una conexión fallida, que muestran dónde se detuvieron los paquetes.
+2. El **paquete de diagnóstico** (**Paquete de diagnóstico > Guardar…** con **Incluir capturas HCI** activado, después **Informar en GitHub**). Contiene las líneas de estado de la transmisión (cola de envío, paquetes descartados, señal, canales AFH a lo largo del tiempo) y la captura HCI de una conexión fallida, que muestran dónde se detuvieron los paquetes.
 3. Una **captura de pantalla de Calidad del enlace** mientras ocurre.
 4. Si también ocurre con **SBC o AAC**, y con una **tasa de bits menor**.
 5. Sus respuestas a las preguntas del formulario sobre Conexión doble, Otro adaptador Bluetooth y Wi-Fi.

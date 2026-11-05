@@ -38,6 +38,7 @@ const NO_OVERRIDES: DevOverrides = {
   auto_codec_settings: false,
   match_source: false,
   ignore_sink_max: false,
+  queue_max_wait_ms: 0,
 };
 
 export function Developer() {
@@ -201,6 +202,11 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
     const n = Math.round(Number(text));
     set({ aac_bitrate_kbps: Number.isFinite(n) && n > 0 ? Math.min(Math.max(n, 32), 512) : 0 });
   };
+  // The send queue limit too; empty = the default
+  const commitQueueWait = (text: string) => {
+    const n = Math.round(Number(text));
+    set({ queue_max_wait_ms: Number.isFinite(n) && n > 0 ? Math.min(Math.max(n, 50), 2000) : 0 });
+  };
   return (
     <div>
       <Banner kind={active() ? "warn" : "info"} title={active() ? t("ui.dev.active") : t("ui.dev.intro")} />
@@ -248,6 +254,22 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
           checked={props.value.packet_dump}
           onChange={(v) => set({ packet_dump: v })}
         />
+        <Field label={t("ui.dev.queue_wait")} hint={t("ui.dev.queue_wait_hint")}>
+          {(id, describedBy) => (
+            <input
+              id={id}
+              class="input"
+              type="number"
+              min="0"
+              max="2000"
+              step="10"
+              aria-describedby={describedBy}
+              value={props.value.queue_max_wait_ms || ""}
+              placeholder={t("ui.dev.queue_wait_auto")}
+              onChange={(e) => commitQueueWait(e.currentTarget.value)}
+            />
+          )}
+        </Field>
       </Section>
       <PacketSizes />
       <Section title="AAC">
