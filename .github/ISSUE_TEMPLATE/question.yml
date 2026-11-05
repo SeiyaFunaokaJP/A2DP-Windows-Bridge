@@ -1,0 +1,28 @@
+name: Question
+description: Not a bug, just wondering how something works or why it works that way
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions of any size are welcome 🙂 Something broken? Use **Bug report** instead.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: What would you like to know?
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: A2DPWB version
+      description: Shown in Settings → About A2DPWB.
+      placeholder: e.g. 2.0.0
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Your adapter, headphones, settings or screenshots, if they matter.

@@ -1,0 +1,9 @@
+name: Other
+description: Anything that doesn't fit the other forms
+body:
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+    validations:
+      required: true
