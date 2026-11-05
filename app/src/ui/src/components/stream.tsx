@@ -742,10 +742,12 @@ export function WinusbDialog(props: { adapter: AdapterInfo | null; mode: "assign
   const [busy, setBusy] = createSignal(false);
   // Restore: saved devices Windows has paired too. A pairing in A2DPWB
   // gave the device a new key, so Windows' old one fails (BTHUSB event 16)
-  // until the device is paired in Windows again.
+  // until the device is paired in Windows again. Read per adapter: Windows'
+  // own list needs a radio of its own running, which an adapter on WinUSB
+  // is not (BluetoothFindFirstDevice fails, the list came back empty).
   const [windowsPaired] = createResource(
-    () => (props.adapter && props.mode === "restore" ? props.adapter.instance_id : null),
-    () => app.core.request("device.windows_paired").catch(() => [] as string[]),
+    () => (props.adapter && props.mode === "restore" ? props.adapter.address : null),
+    (adapter) => app.core.request("device.windows_paired_through", { adapter }).catch(() => [] as string[]),
   );
   const repair = () => {
     const paired = new Set((windowsPaired() ?? []).map((a) => a.toUpperCase()));
