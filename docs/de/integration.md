@@ -133,7 +133,7 @@ Verfügbar, wenn `welcome.features` `"rfcomm"` enthält (2.0.2-beta.10 und neuer
 - **Features.** Prüfen Sie `welcome.features`, bevor Sie eine Ergänzung verwenden. Kerne vor 2.0.2-beta.10 lassen das Feld weg.
 - **Unbekannte Anfragen.** Eine Anfrage, die der Kern nicht lesen kann (eine unbekannte Methode, fehlerhafte Parameter), wird mit dem Fehler `ipc.bad_request` beantwortet; die Verbindung bleibt offen. Kerne vor 2.0.2-beta.10 schließen stattdessen die Verbindung. Jeder andere unlesbare Frame schließt sie.
 - **Neue Felder.** Der Kern ergänzt mit der Zeit Felder im Zustand und in Events. Ignorieren Sie Felder, die Sie nicht kennen; weisen Sie eine Nachricht nicht ihretwegen zurück.
-- **Umbenennung in 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)): Die Pipe wird zu `\\.\pipe\bcfw-<SID>`. Der Kern wartet mindestens 6 Monate nach 3.0.0 weiterhin auch auf `\\.\pipe\a2dpwb-<SID>`, mit demselben Protokoll; ihre Entfernung wird zuerst in den Release Notes angekündigt. Versuchen Sie zuerst `bcfw-<SID>` und weichen Sie auf `a2dpwb-<SID>` aus. Der Mutex des Kerns ändert seinen Namen ohne eine solche Übergangszeit.
+- **Umbenennung in 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)): Die Pipe wird zu `\\.\pipe\bluecaster-<SID>`. Der Kern wartet mindestens 6 Monate nach 3.0.0 weiterhin auch auf `\\.\pipe\a2dpwb-<SID>`, mit demselben Protokoll; ihre Entfernung wird zuerst in den Release Notes angekündigt. Versuchen Sie zuerst `bluecaster-<SID>` und weichen Sie auf `a2dpwb-<SID>` aus. Der Mutex des Kerns heißt dann `Local\BlueCaster_Core`; `Local\A2DPWB_v2_Core` wird für denselben Zeitraum weiter gehalten, und beide Entfernungen werden zusammen angekündigt.
 
 ## Beispiel {#example}
 

@@ -132,7 +132,7 @@ Available when `welcome.features` contains `"rfcomm"` (2.0.2-beta.10 and later).
 - **Features.** Check `welcome.features` before using an addition. Cores before 2.0.2-beta.10 leave the field out.
 - **Unknown requests.** A request the core cannot read (an unknown method, bad parameters) is answered with the error `ipc.bad_request`; the connection stays open. Cores before 2.0.2-beta.10 close the connection instead. Any other unreadable frame closes it.
 - **New fields.** The core adds fields to the state and to events over time. Ignore fields you do not know; do not reject a message for them.
-- **Rename in 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)): the pipe becomes `\\.\pipe\bcfw-<SID>`. The core keeps listening on `\\.\pipe\a2dpwb-<SID>` as well, with the same protocol, for at least 6 months after 3.0.0; its removal is announced in the release notes first. Try `bcfw-<SID>` first and fall back to `a2dpwb-<SID>`. The core's mutex changes its name without such a transition.
+- **Rename in 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)): the pipe becomes `\\.\pipe\bluecaster-<SID>`. The core keeps listening on `\\.\pipe\a2dpwb-<SID>` as well, with the same protocol, for at least 6 months after 3.0.0; its removal is announced in the release notes first. Try `bluecaster-<SID>` first and fall back to `a2dpwb-<SID>`. The core's mutex becomes `Local\BlueCaster_Core`; it keeps holding `Local\A2DPWB_v2_Core` as well for the same period, and both removals are announced together.
 
 ## Example
 
