@@ -2,4 +2,4 @@ blank_issues_enabled: false
 contact_links:
   - name: Documentation
     url: https://seiyafunaokajp.github.io/BlueCaster/
-    about: Setup (adapter, WinUSB driver, firmware), usage, and codec details. Just have a question? Feel free to open an issue anyway!
+    about: Setup (adapter, WinUSB driver, firmware), usage, and codec details.
