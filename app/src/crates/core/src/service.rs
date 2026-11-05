@@ -1684,7 +1684,7 @@ mod tests {
         assert!(!s.change_source(tone()));
         // LE Audio
         s.inner.notify(StreamState::Streaming, Msg::new("status.connected"));
-        let le = bt_host::LeRequest { extra_devices: Vec::new(), preset: None, low_latency: true };
+        let le = bt_host::LeRequest { low_latency: true, ..bt_host::LeRequest::default() };
         *s.last_request.lock().unwrap() = Some(StreamRequest { le: Some(le), ..request() });
         assert!(!s.change_source(tone()));
         assert_eq!(s.inner.take_source_change(), None);

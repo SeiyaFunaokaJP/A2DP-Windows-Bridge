@@ -1,5 +1,5 @@
 // Developer (shown while developer mode is on): the chip tools (ChipTools),
-// the peer receiver test,
+// the peer receiver test, an Auracast broadcast (Auracast),
 // overrides of the codec and the media path for finding out why a sink stays
 // silent (issue #87; read when the next stream is set up), each saved
 // device's max media packet size (issue #86), when vendors' own protocols
@@ -19,11 +19,12 @@ import { t } from "../i18n";
 import type { DevLog, DevOverrides, LogLevel, VendorInfo, VendorMode, VendorOverride } from "../ipc/types";
 import { PACKET_DEFAULT, PACKET_MAX, PACKET_MIN } from "../lib/codecs";
 import { audioEntries, entryByKey, normalizeProfile, profilesOf } from "../lib/profile";
+import { Auracast } from "./Auracast";
 import { ChipTools } from "./ChipTools";
 import { ReceiverTest } from "./ReceiverTest";
 
 // The app's own settings apart from the codec and media path (issue #86)
-type Tab = "app" | "receiver" | "overrides" | "vendors" | "logging" | "chip";
+type Tab = "app" | "receiver" | "auracast" | "overrides" | "vendors" | "logging" | "chip";
 
 const NO_OVERRIDES: DevOverrides = {
   rtp_marker: false,
@@ -51,6 +52,7 @@ export function Developer() {
     { id: "vendors", label: t("ui.dev.vendors"), icon: "headphones" },
     { id: "logging", label: t("ui.dev.logging"), icon: "record" },
     { id: "receiver", label: t("receiver.title"), icon: "beaker" },
+    { id: "auracast", label: t("ui.dev.auracast"), icon: "pulse" },
     { id: "chip", label: t("ui.dev.chip"), icon: "usb_stick" },
   ];
 
@@ -118,6 +120,9 @@ export function Developer() {
         </Show>
         <Show when={tab() === "receiver"}>
           <ReceiverTest />
+        </Show>
+        <Show when={tab() === "auracast"}>
+          <Auracast />
         </Show>
         <Show when={tab() === "chip"}>
           <ChipTools />

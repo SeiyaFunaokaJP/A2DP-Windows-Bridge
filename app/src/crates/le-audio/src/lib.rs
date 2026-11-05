@@ -19,12 +19,15 @@
 //! - [`db_hash`]: the GATT Database Hash (v1 GattServer::compute_db_hash)
 //! - [`sdu_queue`]: the jitter buffer of SDU sets and the send guard
 //!   (v1 le_audio_stream.cpp)
+//! - [`broadcast`]: the broadcast source (Auracast): announcements, BASE,
+//!   presets, the plan of the BIS
 //!
 //! The BTstack side (scan, connect, GATT, BAP state machine, ISO sending,
 //! the profile modules) is in bt-host's `le` module; LC3 is in lc3-sys.
 
 #![forbid(unsafe_code)]
 
+pub mod broadcast;
 pub mod ccp_model;
 pub mod csip_crypto;
 pub mod db_hash;

@@ -20,7 +20,10 @@ pub mod settings;
 pub mod stream;
 pub mod vendor;
 
-pub use le_stream::{LeAudioPath, LeStreamDetails, le_silence_set, le_stats_line};
+pub use le_stream::{
+    BROADCAST_PRESET_HQ, BROADCAST_PRESET_SQ, LeAudioPath, LeStreamDetails, broadcast_config, le_silence_set,
+    le_stats_line,
+};
 pub use messages::Msg;
 pub use service::{LeCliOptions, ScannedDevice, Service, ServiceEvent, ServiceOptions};
 pub use stream::{

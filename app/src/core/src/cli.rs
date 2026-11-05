@@ -75,6 +75,12 @@ LE Audio (experimental, LC3 over LE isochronous channels):
   --le-preset <name>    use only this BAP configuration (e.g. 48_2_2, 16_2_1)
   --le-low-latency      GMAP low latency (7.5 / 10 ms frames) for a gaming headset
   --le-scan [seconds]   list the LE Audio devices nearby and exit
+  --auracast <name>     broadcast under this name instead (Auracast source, no
+                        device; --le-preset picks 16_2_2 ... 48_6_2, default
+                        48_4_2)
+  --auracast-code <code>
+                        encrypt the broadcast with this code (4-16 bytes)
+  --auracast-mono       one mono channel instead of left and right
 
 Development / testing:
   --hci-tcp <host:port> H4 over TCP to a virtual controller (tools/emu)
@@ -164,6 +170,12 @@ struct LeArgs {
     mcp_dry_run: bool,
     ccp_sim: Option<String>,
     ccp_console: bool,
+    /// --auracast <name>: broadcast instead of a unicast stream
+    broadcast: Option<String>,
+    /// --auracast-code
+    broadcast_code: Option<String>,
+    /// --auracast-mono
+    broadcast_mono: bool,
 }
 
 /// --le-scan without a time (v1 scan_seconds)
@@ -339,6 +351,12 @@ fn parse(args: &[String]) -> Result<Args, String> {
             "--mcp-dry-run" => a.le.mcp_dry_run = true,
             "--ccp-sim" => a.le.ccp_sim = Some(value(&mut it, "--ccp-sim")?),
             "--ccp-console" => a.le.ccp_console = true,
+            "--auracast" => {
+                a.le.on = true;
+                a.le.broadcast = Some(value(&mut it, "--auracast")?);
+            }
+            "--auracast-code" => a.le.broadcast_code = Some(value(&mut it, "--auracast-code")?),
+            "--auracast-mono" => a.le.broadcast_mono = true,
             "-h" | "--help" => return Err(String::new()),
             other => return Err(format!("unknown option {other}")),
         }
@@ -405,6 +423,13 @@ pub fn run(args: &[String]) -> i32 {
         },
         tx,
     );
+
+    if a.le.broadcast.is_some() {
+        let code = le_broadcast(&a, &service, &rx, &running);
+        service.shutdown();
+        capture.stop();
+        return code;
+    }
 
     if a.le.on {
         // LE Audio (experimental): its own flow (v1 le_audio_cli.cpp)
@@ -930,6 +955,52 @@ fn le_setup(
     host.le_start_stream(ids, request.clone(), &a2dpwb_core::le_silence_set)
 }
 
+/// The LE Audio source of the command line: the test tone, a virtual
+/// device, or system audio
+fn le_source(a: &Args) -> SourceRequest {
+    if a.test_tone {
+        SourceRequest::TestTone
+    } else if a.mode == "virtual" && !a.audio_device.is_empty() {
+        SourceRequest::VirtualDevice { id: a.audio_device.clone(), name: a.audio_device.clone(), auto_switch: false }
+    } else {
+        SourceRequest::SystemLoopback
+    }
+}
+
+/// --auracast: broadcast until --duration or Ctrl+C, through the service as
+/// the app's stream.start_broadcast does; the exit code
+fn le_broadcast(a: &Args, service: &Service, rx: &mpsc::Receiver<ServiceEvent>, running: &AtomicBool) -> i32 {
+    let le = &a.le;
+    let b = crate::state::BroadcastStream {
+        name: le.broadcast.clone().unwrap_or_default(),
+        code: le.broadcast_code.clone(),
+        quality: "hq".into(),
+        mono: Some(le.broadcast_mono),
+        source: "tone".into(),
+        ..Default::default()
+    };
+    let mut request = match crate::state::broadcast_request(&b, bt_host::media::MEDIA_PAYLOAD_LIMIT_DEFAULT) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Auracast: {} {:?}", e.code, e.message.args);
+            return 2;
+        }
+    };
+    request.source = le_source(a);
+    if let (Some(p), Some(l)) = (&le.preset, request.le.as_mut()) {
+        l.preset = Some(p.clone());
+    }
+    println!("Starting the broadcast \"{}\"...", b.name.trim());
+    service.start_streaming(request);
+    let mut code = 0;
+    let receiver = a2dpwb_core::receiver::ReceiverClient::new();
+    stream_session(a, service, rx, running, &receiver, &mut code);
+    if let Some(host) = service.host() {
+        le_print_stats(&host);
+    }
+    code
+}
+
 /// The LE Audio flow (v1 le_audio_cli_run); the process exit code
 fn le_run(a: &Args, service: &Service, running: &Arc<AtomicBool>) -> i32 {
     let le = &a.le;
@@ -1014,13 +1085,7 @@ fn le_run(a: &Args, service: &Service, running: &Arc<AtomicBool>) -> i32 {
     println!("\nStreaming LE Audio: {}", started.status.summary);
 
     // Audio at the LC3 rate (WASAPI converts to it)
-    let source = if a.test_tone {
-        SourceRequest::TestTone
-    } else if a.mode == "virtual" && !a.audio_device.is_empty() {
-        SourceRequest::VirtualDevice { id: a.audio_device.clone(), name: a.audio_device.clone(), auto_switch: false }
-    } else {
-        SourceRequest::SystemLoopback
-    };
+    let source = le_source(a);
     let mut rc = 0;
     let start_audio = |started: &bt_host::LeStreamStarted| match a2dpwb_core::LeAudioPath::start(
         &source,
@@ -1286,6 +1351,30 @@ mod tests {
         // The classic --scan is another option
         let a = parse(&args("--cli --scan 4")).unwrap();
         assert_eq!((a.scan, a.le.on), (Some(4), false));
+    }
+
+    #[test]
+    fn auracast_options() {
+        let a = parse(&args("--cli --hci-tcp 127.0.0.1:9900 --auracast A2DPWB-test --test-tone --duration 5")).unwrap();
+        assert!(a.le.on && a.test_tone && a.device.is_none());
+        assert_eq!(a.le.broadcast.as_deref(), Some("A2DPWB-test"));
+        assert!(a.le.broadcast_code.is_none() && !a.le.broadcast_mono);
+        let a = parse(&[
+            "--cli".into(),
+            "--auracast".into(),
+            "Living room".into(),
+            "--auracast-code".into(),
+            "1234abcd".into(),
+            "--auracast-mono".into(),
+            "--le-preset".into(),
+            "24_2_2".into(),
+        ])
+        .unwrap();
+        assert_eq!(a.le.broadcast.as_deref(), Some("Living room"));
+        assert_eq!(a.le.broadcast_code.as_deref(), Some("1234abcd"));
+        assert!(a.le.broadcast_mono);
+        assert_eq!(a.le.preset.as_deref(), Some("24_2_2"));
+        assert_eq!(parse(&args("--cli --auracast")).err().as_deref(), Some("--auracast needs a value"));
     }
 
     #[test]

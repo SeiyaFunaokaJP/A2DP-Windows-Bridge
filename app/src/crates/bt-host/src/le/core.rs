@@ -32,6 +32,7 @@ use le_audio::presets::PresetTable;
 use le_audio::sdu_queue::SduQueue;
 
 use super::bap::{self, Unicast, UnicastEnv, UnicastTimer};
+use super::broadcast::Broadcast;
 use super::gatt_client::{GattChar, GattClient, GattService};
 use super::gatt_server::{AttRead, AttWrite, GattServer, WriteAction};
 use super::iso_send::IsoSender;
@@ -268,9 +269,11 @@ pub struct LeCore {
     /// None while one of its calls runs, and after stack deinit
     unicast: Option<Unicast>,
     unicast_timers: [Option<LeTimerId>; UnicastTimer::ALL],
-    iso: IsoSender,
-    queue: Option<SharedSduQueue>,
-    status: Option<LeStreamStatus>,
+    pub(crate) iso: IsoSender,
+    pub(crate) queue: Option<SharedSduQueue>,
+    pub(crate) status: Option<LeStreamStatus>,
+    /// The broadcast (Auracast source) while it runs or stops
+    pub(crate) broadcast: Option<Broadcast>,
     timers: Vec<Timer>,
     next_timer: u32,
     timers_changed: bool,
@@ -644,6 +647,8 @@ impl<'a> LeCtx<'a> {
                 if let Some(c) = events::le_connection_complete(p) {
                     let addr = LeAddr { addr: c.peer_addr, addr_type: c.peer_addr_type };
                     self.on_le_connected(c.status, c.handle, addr, c.role);
+                } else if events::big_created(p).is_some() || events::big_terminated(p).is_some() {
+                    self.on_big_event(p);
                 } else if events::cig_created(p).is_some() {
                     self.with_unicast(|u, env| u.on_cig_created(env, p));
                 } else if events::cis_created(p).is_some() {
@@ -1270,6 +1275,11 @@ impl<'a> LeCtx<'a> {
             done(false);
             return;
         };
+        if self.core.broadcast.is_some() {
+            set_why(&why, "a broadcast is running");
+            done(false);
+            return;
+        }
         if u.busy() {
             tracing::debug!("LE Audio: stream start refused, unicast busy");
             set_why(&why, "a stream is still being stopped");
@@ -1669,6 +1679,7 @@ impl LeCore {
             unicast_timers: [None; UnicastTimer::ALL],
             queue: None,
             status: None,
+            broadcast: None,
             timers: Vec::new(),
             next_timer: 1,
             timers_changed: false,
@@ -1736,6 +1747,7 @@ impl LeCore {
         self.shared.iso_count.store(0, Ordering::Release);
         self.unicast = Some(Unicast::default());
         self.status = None;
+        self.broadcast = None;
         self.initialized = true;
 
         self.run(stack, |ctx| ctx.each_module(|m, ctx| m.on_stack_init(ctx)));
@@ -1774,6 +1786,9 @@ impl LeCore {
         if let Some(c) = self.connect.take() {
             c.result.lock().unwrap_or_else(|e| e.into_inner()).error = "Bluetooth stopped".into();
             (c.done)(false);
+        }
+        if let Some(b) = self.broadcast.take() {
+            b.abandon();
         }
         self.initialized = false;
         self.unicast = None;
@@ -1826,11 +1841,12 @@ impl LeCore {
         }
     }
 
-    /// The ISO handler: HCI_EVENT_CIS_CAN_SEND_NOW (incoming ISO data of
-    /// source ASEs is not used)
+    /// The ISO handler: HCI_EVENT_CIS_CAN_SEND_NOW / _BIS_CAN_SEND_NOW
+    /// (incoming ISO data of source ASEs is not used)
     pub(crate) fn on_iso(&mut self, stack: &Stack, packet: &[u8]) {
         if self.initialized {
             self.iso.on_cis_can_send_now(stack, packet);
+            self.iso.on_bis_can_send_now(stack, packet);
         }
     }
 

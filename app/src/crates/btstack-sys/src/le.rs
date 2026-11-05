@@ -69,6 +69,23 @@ pub struct CigParams {
     pub cis: Vec<CisParams>,
 }
 
+/// LE Create BIG (le_audio_big_params_t; packing sequential)
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BigParams {
+    pub big_handle: u8,
+    /// 1..=2 (MAX_NR_BIS)
+    pub num_bis: u8,
+    pub sdu_interval_us: u32,
+    pub max_sdu: u16,
+    pub max_transport_latency_ms: u16,
+    pub rtn: u8,
+    /// PHY bit field (2 = LE 2M)
+    pub phy: u8,
+    pub framing: u8,
+    /// Broadcast_Code (encrypted BIG)
+    pub code: Option<[u8; 16]>,
+}
+
 thread_local! {
     /// att_db_util has a database (att_db_init was called) that may be
     /// changed (not lent out by att_db_with_mut)
@@ -791,6 +808,126 @@ impl Stack {
         // packet buffer and copies the SDU.
         let status = unsafe { ffi::a2dpwb_iso_send(cis_handle, sequence_number, sdu.as_ptr(), sdu.len() as u16) };
         tracing::trace!(target: "le", "ISO send 0x{cis_handle:04X} seq {sequence_number}, {} bytes: 0x{status:02X}", sdu.len());
+        status
+    }
+
+    // ---- Broadcast: advertising and BIG (after le_init) ----
+
+    /// Starts extended advertising (non-connectable, non-scannable, `adv`)
+    /// with periodic advertising (`pa`, the BASE) on one advertising set;
+    /// intervals in 0.625 ms (extended) / 1.25 ms (periodic) units. One set
+    /// at a time. Ok: the advertising handle.
+    pub fn broadcast_advertise(
+        &self,
+        sid: u8,
+        adv_interval: (u16, u16),
+        pa_interval: (u16, u16),
+        adv: &[u8],
+        pa: &[u8],
+    ) -> Result<u8, u8> {
+        if !self.le_initialized() {
+            return Err(ERROR_CODE_COMMAND_DISALLOWED);
+        }
+        let (Some(adv_len), Some(pa_len)) = (len16(adv), len16(pa)) else {
+            return Err(ERROR_CODE_INVALID_HCI_COMMAND_PARAMETERS);
+        };
+        let mut handle = 0u8;
+        // SAFETY: on the BTstack thread after le_init; the shim copies both
+        // data into its static buffers.
+        let status = unsafe {
+            ffi::a2dpwb_broadcast_advertise(
+                sid,
+                adv_interval.0,
+                adv_interval.1,
+                pa_interval.0,
+                pa_interval.1,
+                adv.as_ptr(),
+                adv_len,
+                pa.as_ptr(),
+                pa_len,
+                &mut handle,
+            )
+        };
+        tracing::debug!(target: "le", "broadcast advertising (SID {sid}, adv {adv:02X?}, periodic {pa:02X?}): 0x{status:02X}, handle {handle}");
+        if status == ERROR_CODE_SUCCESS { Ok(handle) } else { Err(status) }
+    }
+
+    /// Stops the advertising of [`Stack::broadcast_advertise`] and removes
+    /// its set
+    pub fn broadcast_advertise_stop(&self) -> u8 {
+        if !self.le_initialized() {
+            return ERROR_CODE_COMMAND_DISALLOWED;
+        }
+        // SAFETY: on the BTstack thread after le_init.
+        let status = unsafe { ffi::a2dpwb_broadcast_advertise_stop() };
+        tracing::debug!(target: "le", "broadcast advertising stop: 0x{status:02X}");
+        status
+    }
+
+    /// LE Create BIG on the broadcast's advertising set
+    /// (GAP_SUBEVENT_BIG_CREATED follows); `code`: the Broadcast_Code of an
+    /// encrypted BIG
+    pub fn big_create(&self, params: &BigParams) -> u8 {
+        if !self.le_initialized() {
+            return ERROR_CODE_COMMAND_DISALLOWED;
+        }
+        // BTstack writes the Broadcast_Code reversed into LE Create BIG (its
+        // 'K' format: big endian in memory); the code's first octet must be
+        // the first on the wire (as Android and Bumble send it), so hand it
+        // over reversed
+        let reversed = params.code.map(|mut c| {
+            c.reverse();
+            c
+        });
+        let code = reversed.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
+        // SAFETY: on the BTstack thread after le_init; code is NULL or 16
+        // bytes, copied by the shim.
+        let status = unsafe {
+            ffi::a2dpwb_big_create(
+                params.big_handle,
+                params.num_bis,
+                params.sdu_interval_us,
+                params.max_sdu,
+                params.max_transport_latency_ms,
+                params.rtn,
+                params.phy,
+                params.framing,
+                code,
+            )
+        };
+        tracing::debug!(target: "le", "BIG create {} BIS, SDU {} us / {} bytes, latency {} ms, RTN {}, PHY {}, framing {}, encrypted {}: 0x{status:02X}",
+            params.num_bis,
+            params.sdu_interval_us,
+            params.max_sdu,
+            params.max_transport_latency_ms,
+            params.rtn,
+            params.phy,
+            params.framing,
+            params.code.is_some()
+        );
+        status
+    }
+
+    /// LE Terminate BIG (GAP_SUBEVENT_BIG_TERMINATED follows)
+    pub fn big_terminate(&self, big_handle: u8) -> u8 {
+        if !self.le_initialized() {
+            return ERROR_CODE_COMMAND_DISALLOWED;
+        }
+        // SAFETY: on the BTstack thread after le_init.
+        let status = unsafe { ffi::a2dpwb_big_terminate(big_handle) };
+        tracing::debug!(target: "le", "BIG terminate {big_handle}: 0x{status:02X}");
+        status
+    }
+
+    /// HCI_EVENT_BIS_CAN_SEND_NOW for every BIS of the BIG, once all have
+    /// room ([`crate::Source::Iso`])
+    pub fn request_bis_can_send_now(&self, big_handle: u8) -> u8 {
+        if !self.le_initialized() {
+            return ERROR_CODE_COMMAND_DISALLOWED;
+        }
+        // SAFETY: on the BTstack thread after le_init.
+        let status = unsafe { ffi::hci_request_bis_can_send_now_events(big_handle) };
+        tracing::trace!(target: "le", "BIS can send now request BIG {big_handle}: 0x{status:02X}");
         status
     }
 

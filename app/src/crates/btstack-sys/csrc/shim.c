@@ -863,6 +863,26 @@ static void cig_slots_reset(void) {
     memset(cig_slots, 0, sizeof(cig_slots));
 }
 
+/* ---- Broadcast storage (Auracast source): one extended + periodic
+ * advertising set and one BIG. BTstack keeps pointers to the advertising
+ * data, the set and the BIG parameters until the set is removed / the BIG
+ * terminated. ---- */
+
+#define A2DPWB_ADV_DATA_MAX 251
+static le_advertising_set_t bc_adv_set;
+static uint8_t bc_adv_data[A2DPWB_ADV_DATA_MAX];
+static uint8_t bc_pa_data[A2DPWB_ADV_DATA_MAX];
+static int bc_adv_in_use;
+static uint8_t bc_adv_handle;
+static le_audio_big_t bc_big;
+static le_audio_big_params_t bc_big_params;
+static int bc_big_in_use;
+
+static void broadcast_reset(void) {
+    bc_adv_in_use = 0;
+    bc_big_in_use = 0;
+}
+
 /* ---- Housekeeping on HCI events (registered by a2dpwb_le_init) ---- */
 
 static btstack_packet_callback_registration_t le_hci_registration;
@@ -882,10 +902,18 @@ static void le_hci_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
         /* A CIG that could not be created is not kept by hci.c */
         if (size >= 5 && packet[2] == GAP_SUBEVENT_CIG_CREATED && packet[3] != ERROR_CODE_SUCCESS)
             cig_slot_release(packet[4]);
+        /* Nor a BIG that failed or ended */
+        if (size >= 5 && packet[2] == GAP_SUBEVENT_BIG_CREATED && packet[3] != ERROR_CODE_SUCCESS)
+            bc_big_in_use = 0;
+        if (size >= 4 && packet[2] == GAP_SUBEVENT_BIG_TERMINATED) bc_big_in_use = 0;
         break;
     case BTSTACK_EVENT_STATE:
-        /* HCI reset its state (power off): no CIG is kept */
-        if (size >= 3 && packet[2] == HCI_STATE_OFF) cig_slots_reset();
+        /* HCI reset its state (power off): no CIG, BIG or advertising set is
+         * kept */
+        if (size >= 3 && packet[2] == HCI_STATE_OFF) {
+            cig_slots_reset();
+            broadcast_reset();
+        }
         break;
     default:
         break;
@@ -933,6 +961,7 @@ static int utf8_to_ansi_path(const char *in, char *out, int out_size) {
 int a2dpwb_le_init(const char *tlv_path) {
     le_slots_reset();
     cig_slots_reset();
+    broadcast_reset();
     int path_ok = utf8_to_ansi_path(tlv_path, le_tlv_path, (int)sizeof(le_tlv_path));
     if (!path_ok) strcpy(le_tlv_path, "NUL");
     memset(&le_tlv_context, 0, sizeof(le_tlv_context));
@@ -977,6 +1006,7 @@ void a2dpwb_le_deinit(int att_server_started) {
         le_tlv_open = 0;
     }
     cig_slots_reset();
+    broadcast_reset();
 }
 
 /* ---- GAP ---- */
@@ -1212,4 +1242,95 @@ uint8_t a2dpwb_iso_send(uint16_t cis_handle, uint16_t sequence_number, const uin
     little_endian_store_16(buffer, 6, len);
     if (len > 0) memcpy(buffer + 8, sdu, len);
     return hci_send_iso_packet_buffer((uint16_t)(8u + len));
+}
+
+/* ---- Broadcast (Auracast source) ---- */
+
+/* Extended advertising (non-connectable, non-scannable) with `adv` and
+ * periodic advertising with `pa` (the BASE), both started. Intervals in
+ * 0.625 ms (extended) and 1.25 ms (periodic) units. */
+uint8_t a2dpwb_broadcast_advertise(uint8_t sid, uint16_t adv_interval_min, uint16_t adv_interval_max,
+                                   uint16_t pa_interval_min, uint16_t pa_interval_max, const uint8_t *adv,
+                                   uint16_t adv_len, const uint8_t *pa, uint16_t pa_len, uint8_t *out_handle) {
+    if (bc_adv_in_use) return ERROR_CODE_COMMAND_DISALLOWED;
+    if (adv_len > A2DPWB_ADV_DATA_MAX || pa_len > A2DPWB_ADV_DATA_MAX)
+        return ERROR_CODE_INVALID_HCI_COMMAND_PARAMETERS;
+    memcpy(bc_adv_data, adv, adv_len);
+    memcpy(bc_pa_data, pa, pa_len);
+    le_extended_advertising_parameters_t params;
+    memset(&params, 0, sizeof(params));
+    params.advertising_event_properties = 0; /* non-connectable, non-scannable, undirected */
+    params.primary_advertising_interval_min = adv_interval_min;
+    params.primary_advertising_interval_max = adv_interval_max;
+    params.primary_advertising_channel_map = 7;
+    params.own_address_type = BD_ADDR_TYPE_LE_PUBLIC;
+    params.advertising_tx_power = 127;    /* no preference */
+    params.primary_advertising_phy = 1;   /* LE 1M */
+    params.secondary_advertising_phy = 2; /* LE 2M */
+    params.advertising_sid = sid;
+    bd_addr_t local;
+    gap_local_bd_addr(local);
+    int random = btstack_is_null_bd_addr(local);
+    if (random) params.own_address_type = BD_ADDR_TYPE_LE_RANDOM;
+    uint8_t status = gap_extended_advertising_setup(&bc_adv_set, &params, &bc_adv_handle);
+    if (status != ERROR_CODE_SUCCESS) return status;
+    bc_adv_in_use = 1;
+    if (random) {
+        /* A static random address (top bits 0b11) */
+        bd_addr_t addr = {0xC2, 0xA2, 0xD0, 0x00, 0x00, 0x01};
+        gap_extended_advertising_set_random_address(bc_adv_handle, addr);
+    }
+    gap_extended_advertising_set_adv_data(bc_adv_handle, adv_len, bc_adv_data);
+    le_periodic_advertising_parameters_t pa_params;
+    pa_params.periodic_advertising_interval_min = pa_interval_min;
+    pa_params.periodic_advertising_interval_max = pa_interval_max;
+    pa_params.periodic_advertising_properties = 0;
+    gap_periodic_advertising_set_params(bc_adv_handle, &pa_params);
+    gap_periodic_advertising_set_data(bc_adv_handle, pa_len, bc_pa_data);
+    gap_periodic_advertising_start(bc_adv_handle, 0);
+    status = gap_extended_advertising_start(bc_adv_handle, 0, 0);
+    *out_handle = bc_adv_handle;
+    return status;
+}
+
+/* Stops periodic and extended advertising and removes the set */
+uint8_t a2dpwb_broadcast_advertise_stop(void) {
+    if (!bc_adv_in_use) return ERROR_CODE_SUCCESS;
+    gap_periodic_advertising_stop(bc_adv_handle);
+    gap_extended_advertising_stop(bc_adv_handle);
+    uint8_t status = gap_extended_advertising_remove(bc_adv_handle);
+    bc_adv_in_use = 0;
+    return status;
+}
+
+/* LE Create BIG on the advertising set (GAP_SUBEVENT_BIG_CREATED follows,
+ * after BTstack set up the ISO data paths). `code`: 16 bytes, or NULL for
+ * an unencrypted BIG. */
+uint8_t a2dpwb_big_create(uint8_t big_handle, uint8_t num_bis, uint32_t sdu_interval_us, uint16_t max_sdu,
+                          uint16_t max_transport_latency_ms, uint8_t rtn, uint8_t phy, uint8_t framing,
+                          const uint8_t *code) {
+    if (!bc_adv_in_use || bc_big_in_use) return ERROR_CODE_COMMAND_DISALLOWED;
+    if (num_bis == 0 || num_bis > MAX_NR_BIS) return ERROR_CODE_INVALID_HCI_COMMAND_PARAMETERS;
+    memset(&bc_big_params, 0, sizeof(bc_big_params));
+    bc_big_params.big_handle = big_handle;
+    bc_big_params.advertising_handle = bc_adv_handle;
+    bc_big_params.num_bis = num_bis;
+    bc_big_params.sdu_interval_us = sdu_interval_us;
+    bc_big_params.max_sdu = max_sdu;
+    bc_big_params.max_transport_latency_ms = max_transport_latency_ms;
+    bc_big_params.rtn = rtn;
+    bc_big_params.phy = phy;
+    bc_big_params.packing = 0; /* sequential */
+    bc_big_params.framing = framing;
+    bc_big_params.encryption = code != NULL;
+    if (code != NULL) memcpy(bc_big_params.broadcast_code, code, 16);
+    uint8_t status = gap_big_create(&bc_big, &bc_big_params);
+    if (status == ERROR_CODE_SUCCESS) bc_big_in_use = 1;
+    return status;
+}
+
+/* LE Terminate BIG (GAP_SUBEVENT_BIG_TERMINATED follows) */
+uint8_t a2dpwb_big_terminate(uint8_t big_handle) {
+    if (!bc_big_in_use) return ERROR_CODE_COMMAND_DISALLOWED;
+    return gap_big_terminate(big_handle);
 }

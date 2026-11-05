@@ -402,6 +402,60 @@ device's Battery Level and follows its notifications; with a set of earbuds
 the lowest level is reported (`HostEvent::Battery`, "BAS: device N: battery
 X% (reported Y%)"). Emulator option `--bas L[,L2]`, `--bas-change S:L`.
 
+## Broadcast (Auracast source, developer mode)
+
+A2DPWB can also broadcast instead of streaming to a device: any LE Audio
+receiver nearby (earbuds, a speaker, a phone acting as an assistant) can
+pick it up. Started from the Developer screen's Auracast tab (name,
+password, high / standard quality, stereo / mono, test tone or system
+audio; `stream.start_broadcast`, refused with `developer.off` unless
+developer mode is on) or with `--cli --auracast <name> [--auracast-code
+<code>] [--auracast-mono] [--le-preset 24_2_2]`, which goes through the
+same service path (`state::broadcast_request`, `le_stream::run_broadcast`).
+It needs LE Audio on (`le_audio_experimental`, else error.le_audio_disabled)
+and an adapter with ISO buffers and the Isochronous Broadcaster feature.
+Home shows nothing of a running broadcast; starting a device's stream
+replaces it.
+
+- `le_audio::broadcast` (pure): the presets (BAP 1.0.1 Table 6.4, high
+  reliability, written from memory: RTN 4, 60 ms for 16 / 24 / 32 kHz, 65
+  ms for 48 kHz, 10 ms frames, 40 ms presentation delay; "high" = 48_4_2,
+  "standard" = 24_2_2), the extended advertising data (Broadcast Audio
+  Announcement 0x1852 with a random 24-bit Broadcast_ID, Public Broadcast
+  Announcement 0x1856 with the encrypted / standard / high quality bits,
+  Broadcast Name 0x30), the BASE (0x1851, periodic advertising: one
+  subgroup, LC3, Media; BIS 1 Front Left and BIS 2 Front Right, or one mono
+  BIS without a location) and a `StreamPlan` with one entry per BIS, so the
+  encode thread and the ISO sender are the unicast ones.
+- btstack-sys: `ENABLE_LE_PERIODIC_ADVERTISING`, `MAX_NR_BIS 2`; the shim
+  keeps the advertising set, its data and the BIG statically
+  (`a2dpwb_broadcast_advertise`, `a2dpwb_big_create`, `a2dpwb_big_terminate`,
+  `a2dpwb_broadcast_advertise_stop`).
+- bt-host `le/broadcast.rs`: advertising + LE Create BIG ->
+  GAP_SUBEVENT_BIG_CREATED -> `IsoSender::start_big`; stop: LE Terminate
+  BIG -> GAP_SUBEVENT_BIG_TERMINATED -> advertising removed ("Auracast:
+  stopped"). A BIG the controller ends counts as a lost stream
+  (error.auracast). `BtHost::le_start_broadcast` / `le_stop_broadcast`.
+- core `le_stream::run_broadcast`: no device; capture as for unicast.
+
+BTstack 1.8.1 pitfalls found on the way:
+- `HCI_EVENT_BIS_CAN_SEND_NOW` is emitted 4 bytes long: the BIS handle it
+  stores is cut off. The sender maps the BIS by its index.
+- LE Create BIG takes the Broadcast_Code in BTstack's `K` format (reversed
+  on the wire). A code is the UTF-8 string with its first character in the
+  first HCI octet, zero padded (as Android and Bumble send it), so
+  `Stack::big_create` hands it to BTstack reversed.
+
+Emulator: `emu_le_audio_sink.py --layout auracast [--broadcast-code CODE]`
+(`le_audio/broadcast.py`: BIG source and synchronized receiver in the
+emulated controllers; `le_audio/broadcast_sink.py`: a Bumble host as the
+broadcast sink, parsing the announcements and the BASE with Bumble's own
+code). Checked by hand on 2026-11-05: open (all SDUs on both BIS, no late
+SDU), encrypted with the right code (synced) and a wrong one (MIC failure,
+no audio), mono 24_2_2. Not yet: `run_test.py` cases and `a2dpwb_decode`
+for BIS (the decoder change in `tools/a2dp_decode` is unfinished).
+Real hardware: not tried.
+
 ## LE Audio off
 
 Users with the setting off get the behaviour of a build without LE:
@@ -450,7 +504,8 @@ Users with the setting off get the behaviour of a build without LE:
 
 - Sink ASEs only (no microphone / source ASE, no conversational streams);
   ISO data from the controller is ignored.
-- No broadcast (BIS), no BASS, no CAP procedures beyond what BAP needs.
+- Broadcast only as a source (developer mode, see above); no BASS, no CAP
+  procedures beyond what BAP needs.
 - SDUs without time stamps; no LE Read ISO TX Sync; a simple jitter buffer
   (the prefill only grows).
 - Application capture is not supported for LE Audio (system loopback,
@@ -497,7 +552,8 @@ Verification
 Missing features
 - [ ] Source ASEs (microphone): needed for TMAP Call Gateway, real CCP calls
   and the GMAP `_gs` configurations.
-- [ ] Broadcast (Auracast source, TMAP BMS, GMAP BGS).
+- [ ] Broadcast: emulator cases in `run_test.py`, BIS in `a2dpwb_decode`,
+  real hardware; TMAP BMS / GMAP BGS roles.
 - [ ] CSIP: SIRK / size / rank change notifications, OOB-only SIRK; after a
   link loss the CLI reconnects only the address it was given; the 10 s
   member search is fixed.

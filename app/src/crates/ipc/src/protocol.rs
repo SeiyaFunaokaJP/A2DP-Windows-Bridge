@@ -1383,6 +1383,33 @@ pub enum Method {
         #[serde(default)]
         codec_fallback: Option<bool>,
     },
+    /// Developer mode: broadcasts (Auracast source) for any LE Audio
+    /// receiver nearby, instead of streaming to a device; the active
+    /// profile stays. `name`: the Broadcast Name (4-32 bytes); `code`: the
+    /// Broadcast Code (4-16 bytes; none or empty: open); `quality`: "hq"
+    /// (48 kHz) or "sq" (24 kHz); `mono`: one channel instead of left and
+    /// right; `source` / `source_id` / `source_name` as for
+    /// stream.start_custom ("app" fails with error.le_audio_capture). Error
+    /// developer.off while developer mode is off; a name or code out of
+    /// range fails the stream (error.auracast).
+    #[serde(rename = "stream.start_broadcast")]
+    StreamStartBroadcast {
+        name: String,
+        #[ts(optional = nullable)]
+        #[serde(default)]
+        code: Option<String>,
+        quality: String,
+        #[ts(optional = nullable)]
+        #[serde(default)]
+        mono: Option<bool>,
+        source: String,
+        #[ts(optional = nullable)]
+        #[serde(default)]
+        source_id: Option<String>,
+        #[ts(optional = nullable)]
+        #[serde(default)]
+        source_name: Option<String>,
+    },
     /// AVRCP absolute volume 0..127
     #[serde(rename = "stream.set_volume")]
     StreamSetVolume { volume: u8 },
