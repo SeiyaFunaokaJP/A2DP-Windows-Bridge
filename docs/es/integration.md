@@ -134,7 +134,7 @@ Disponible cuando `welcome.features` contiene `"rfcomm"` (2.0.2-beta.10 y poster
 - **Funciones.** Compruebe `welcome.features` antes de usar una ampliación. Los núcleos anteriores a 2.0.2-beta.10 omiten el campo.
 - **Solicitudes desconocidas.** Una solicitud que el núcleo no puede leer (un método desconocido, parámetros incorrectos) recibe como respuesta el error `ipc.bad_request`; la conexión sigue abierta. Los núcleos anteriores a 2.0.2-beta.10 cierran en cambio la conexión. Cualquier otra trama ilegible la cierra.
 - **Campos nuevos.** El núcleo añade campos al estado y a los eventos con el tiempo. Ignore los campos que no conozca; no rechace un mensaje por ellos.
-- **Cambio de nombre en 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/193)): la canalización pasa a ser `\\.\pipe\bluecaster-<SID>`. El núcleo sigue escuchando también en `\\.\pipe\a2dpwb-<SID>`, con el mismo protocolo, durante al menos 6 meses después de 3.0.0; su retirada se anuncia antes en las notas de la versión. Pruebe primero `bluecaster-<SID>` y, si no está, `a2dpwb-<SID>`. El mutex del núcleo cambia de nombre sin esa transición.
+- **Cambio de nombre en 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/193)): la canalización pasa a ser `\\.\pipe\bluecaster-<SID>`. El núcleo sigue escuchando también en `\\.\pipe\a2dpwb-<SID>`, con el mismo protocolo, durante al menos 6 meses después de 3.0.0; su retirada se anuncia antes en las notas de la versión. Pruebe primero `bluecaster-<SID>` y, si no está, `a2dpwb-<SID>`. El mutex del núcleo pasa a ser `Local\BlueCaster_Core`; durante el mismo periodo sigue manteniendo también `Local\A2DPWB_v2_Core`, y ambas retiradas se anuncian juntas.
 
 ## Ejemplo {#example}
 

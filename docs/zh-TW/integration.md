@@ -134,7 +134,7 @@ BlueCaster 視窗使用、工具應謹慎使用的方法：`profile.save` / `pro
 - **功能。** 使用新增功能前，請檢查 `welcome.features`。2.0.2-beta.10 之前的核心不含此欄位。
 - **未知的請求。** 核心無法讀取的請求（未知的方法、錯誤的參數）會以錯誤 `ipc.bad_request` 回應；連線會保持開啟。2.0.2-beta.10 之前的核心則會關閉連線。其他任何無法讀取的訊框都會關閉連線。
 - **新欄位。** 核心會隨著時間在狀態與事件中加入欄位。請忽略您不認得的欄位；不要因為它們而拒絕訊息。
-- **3.0.0 中的更名**（[#193](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/193)）：管道會變成 `\\.\pipe\bluecaster-<SID>`。在 3.0.0 之後至少 6 個月內，核心也會繼續以相同的通訊協定在 `\\.\pipe\a2dpwb-<SID>` 上接聽；移除之前會先在發行說明中公告。請先嘗試 `bluecaster-<SID>`，再改用 `a2dpwb-<SID>`。核心的 mutex 會變更名稱，但沒有這樣的過渡期。
+- **3.0.0 中的更名**（[#193](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/193)）：管道會變成 `\\.\pipe\bluecaster-<SID>`。在 3.0.0 之後至少 6 個月內，核心也會繼續以相同的通訊協定在 `\\.\pipe\a2dpwb-<SID>` 上接聽；移除之前會先在發行說明中公告。請先嘗試 `bluecaster-<SID>`，再改用 `a2dpwb-<SID>`。核心的 mutex 會改為 `Local\BlueCaster_Core`，同一期間也會繼續持有 `Local\A2DPWB_v2_Core`，兩者的移除會一併公告。
 
 ## 範例 {#example}
 

@@ -14,7 +14,7 @@ body:
     attributes:
       label: BlueCaster version
       description: Shown in Settings → About BlueCaster.
-      placeholder: e.g. 2.0.0
+      placeholder: e.g. 3.0.0
     validations:
       required: true
 
