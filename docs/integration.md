@@ -116,7 +116,7 @@ Methods for tools:
 | `diag.info` | `{"mask": bool}` (optional) | `DiagInfo` (the "copy diagnostic info" text) |
 | `rfcomm.open`, `rfcomm.send`, `rfcomm.close` | see [RFCOMM passthrough](#rfcomm-passthrough) | |
 
-Methods the A2DPWB window uses that a tool should use only with care: `profile.save` / `profile.delete`, `settings.set` (replaces **all** settings: send the latest `settings` with your change, never a partial object), `device.forget` / `device.rename`, `adapter.*` (`adapter.assign_winusb` and `adapter.restore_driver` show a UAC prompt), `app.quit`. The others (`stream.start_custom`, `audio.apps`, `diag.*` beyond the two above, `receiver.*`, `app.*`) serve the window's own screens and may change without notice. The full list with parameters and results is the `Method` enum in `protocol.rs`.
+Methods the A2DPWB window uses that a tool should use only with care: `profile.save` / `profile.delete`, `settings.set` (replaces **all** settings: send the latest `settings` with your change, never a partial object), `device.forget` / `device.rename`, `adapter.*` (`adapter.assign_winusb` and `adapter.restore_driver` show a UAC prompt; `adapter.probe` and `adapter.run_script`, developer mode's chip tools, stop the Bluetooth stack), `app.quit`. The others (`stream.start_custom`, the other `device.*` (`device.import_windows_pairings` shows a UAC prompt), `audio.apps`, `audio.mixer` / `audio.mixer_set`, `diag.*` beyond the two above, `receiver.*`, `app.*`) serve the window's own screens and may change without notice. The full list with parameters and results is the `Method` enum in `protocol.rs`.
 
 ## RFCOMM passthrough
 
