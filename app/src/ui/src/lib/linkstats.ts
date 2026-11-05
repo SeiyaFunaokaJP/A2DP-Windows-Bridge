@@ -11,9 +11,25 @@ export const SLOT_SECONDS = 625e-6;
 /** 3-DH5 back to back on an EDR 3 Mbps link: 1021 bytes every 6 slots (2178 kbps) */
 export const EDR3_MAX_KBPS = (1021 * 8) / (6 * SLOT_SECONDS) / 1000;
 
-export const ZERO_TOTALS: LinkTotals = { packets: 0, bytes: 0, dropped: 0, capture_frames: 0, capture_dropped: 0 };
+export const ZERO_TOTALS: LinkTotals = {
+  packets: 0,
+  bytes: 0,
+  dropped: 0,
+  capture_frames: 0,
+  capture_dropped: 0,
+  capture_discontinuities: 0,
+  capture_lost: 0,
+};
 
-const FIELDS = ["packets", "bytes", "dropped", "capture_frames", "capture_dropped"] as const;
+const FIELDS = [
+  "packets",
+  "bytes",
+  "dropped",
+  "capture_frames",
+  "capture_dropped",
+  "capture_discontinuities",
+  "capture_lost",
+] as const;
 
 /** `now - base` per counter (never negative) */
 export function diffTotals(now: LinkTotals, base: LinkTotals): LinkTotals {
@@ -74,6 +90,10 @@ export interface LossStats {
   captureMs: number | null;
   /** captureDropped / captureFrames, percent */
   capturePct: number;
+  /** Gaps Windows reported in the captured audio */
+  captureGaps: number;
+  /** The audio lost in them; null while the rate is unknown */
+  captureLostMs: number | null;
   /** Counted since the Reset button (else since the stream started) */
   sinceReset: boolean;
 }
@@ -98,6 +118,8 @@ export function lossStats(s: LinkSample, reset: LinkBaseline | null, rate?: numb
     captureDropped: d.capture_dropped,
     captureMs: r > 0 ? (d.capture_dropped * 1000) / r : d.capture_dropped === 0 ? 0 : null,
     capturePct: percent(d.capture_dropped, d.capture_frames),
+    captureGaps: d.capture_discontinuities,
+    captureLostMs: r > 0 ? (d.capture_lost * 1000) / r : d.capture_lost === 0 ? 0 : null,
     sinceReset,
   };
 }

@@ -80,5 +80,5 @@ body:
     attributes:
       label: Notes
       description: |
-        Dropouts, latency, stability, sample rate, impressions — anything you noticed.
+        Dropouts, latency, stability, sample rate, impressions — anything you noticed. For dropouts, the checks in [Dropouts and Connection Problems](https://seiyafunaokajp.github.io/BlueCaster/wireless) tell the radio from the app.
         Logs are welcome. **Diagnostics → Copy Diagnostics** masks Bluetooth addresses; files from the log folder are not masked.

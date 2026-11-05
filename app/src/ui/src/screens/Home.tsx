@@ -15,6 +15,7 @@ import { Icon } from "../components/Icon";
 import {
   BatteryLevel,
   CodecBadge,
+  adapterDrivers,
   ErrorPanel,
   FirmwareDownload,
   LinkSparkline,
@@ -152,6 +153,22 @@ function OtherRadio() {
   );
 }
 
+/** OPPO earbuds turned Hi-Res on and reconnected once for it (issue #237):
+ *  said for the stream it happened in, until dismissed */
+function HiResSet() {
+  const { core } = useApp();
+  const set = () => core.state.snap!.stream.info?.hi_res_set === true;
+  const [dismissed, setDismissed] = createSignal(false);
+  createEffect(on(set, (s) => !s && setDismissed(false)));
+  return (
+    <Show when={set() && !dismissed()}>
+      <Banner kind="warn" onDismiss={() => setDismissed(true)}>
+        {t("ui.home.hi_res_set")}
+      </Banner>
+    </Show>
+  );
+}
+
 /** The stream state a device's card shows: the stream's for the device of
  *  the profile streaming (or that last failed), idle for the others */
 export function entryState(snap: Snapshot, entry: AudioEntry): StreamState {
@@ -175,6 +192,7 @@ export function Home() {
   // A failed request (Connect) until the state moves on
   const [reqError, setReqError] = createSignal<IpcError | null>(null);
   createEffect(on(() => stream().state, () => setReqError(null), { defer: true }));
+  createEffect(on(() => adapterDrivers(snap()), () => setReqError(null), { defer: true }));
 
   const error = () => {
     const e = reqError();
@@ -195,6 +213,7 @@ export function Home() {
       <Show when={error()}>{(e) => <ErrorPanel code={e().code} message={e().message} />}</Show>
       <FirmwareMissing />
       <OtherRadio />
+      <HiResSet />
 
       <Show
         when={entries().length > 0}

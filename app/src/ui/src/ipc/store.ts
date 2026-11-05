@@ -215,6 +215,7 @@ export function createCore(transport: Transport) {
       // connection the core sends one too (harmless)
       lastSent = undefined;
       lastLogs = null;
+      linkOn = false;
       resync();
       pushSubscription();
     }
@@ -230,6 +231,8 @@ export function createCore(transport: Transport) {
   let lastSent: string | undefined;
   /** The log level of the last subscription sent */
   let lastLogs: LogLevel | null = null;
+  /** Whether the last subscription sent asked for link samples */
+  let linkOn = false;
   let pushQueued = false;
 
   const lineKey = (l: LogLine) => `${l.time_ms}\u0000${l.target}\u0000${l.message}`;
@@ -271,6 +274,13 @@ export function createCore(transport: Transport) {
       const before = lastLogs;
       lastSent = key;
       lastLogs = logs;
+      // Samples from an earlier subscription would join the new ones across
+      // the gap (a step in the charts, the drops meanwhile in one sample)
+      if (link && !linkOn) {
+        linkBuf.length = 0;
+        setLinkTick((n) => n + 1);
+      }
+      linkOn = link;
       request("diag.subscribe", { logs, link, receiver })
         .then(() => {
           // Lines logged while nobody listened (the window was closed, or
@@ -282,6 +292,7 @@ export function createCore(transport: Transport) {
         .catch(() => {
           lastSent = undefined;
           lastLogs = null;
+          linkOn = false;
         });
     });
   }

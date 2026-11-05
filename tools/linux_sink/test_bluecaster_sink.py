@@ -104,6 +104,19 @@ class Streams(unittest.TestCase):
         st.on_packet(0.0, rtp(0, 0, bytes([1]) + sbc_frame(3, 3, 43)))
         self.assertIn('SBC XQ: frame is not dual channel', st.issues)
 
+    def test_long_gaps_are_counted(self):
+        st = stats(s.SBC, bytes([0x21, 0x15, 2, 53]))
+        st.decoding = False
+        frame = sbc_frame(3, 3, 53)
+        # 10 ms apart, then gaps of 40 ms (not counted), 41 ms, 120 ms, and a
+        # pause of 4 s (counted as a pause, not as a gap)
+        times = [0.0, 0.01, 0.02, 0.06, 0.101, 0.221, 4.3]
+        for i, t in enumerate(times):
+            st.on_packet(t, rtp(i, i * 128, bytes([1]) + frame))
+        self.assertEqual(st.long_gaps, 2)
+        self.assertEqual(st.pauses, 1)
+        self.assertEqual(st.snapshot(5.0)['long_gaps'], 2)
+
     def test_faststream_packets(self):
         st = stats(s.FASTSTREAM, s.vendor_caps(0x0A, 0x0001, [0x01, 0x02]))
         st.decoding = False

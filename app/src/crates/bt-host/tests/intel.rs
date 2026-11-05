@@ -357,6 +357,7 @@ fn run(ctl: &mut Controller, files: HashMap<String, Vec<u8>>, images: &[(u8, u8,
                 result = Some(r);
                 Vec::new()
             }
+            Action::UsbControl(r) => panic!("the Intel loader asked for a USB transfer: {r:?}"),
         };
         for e in events {
             actions.extend(loader.on_event(&e));
@@ -381,7 +382,10 @@ fn tlv_download_boot_and_ddc() {
     ]);
     let f = files(&[("ibt-0040-0041.sfi", sfi(true)), ("ibt-0040-0041.ddc", ddc())]);
     let run = run(&mut ctl, f, &[(0x18, 1, "ibt-0040-0041.sfi")]);
-    assert_eq!(run.result, Some(Ok(Outcome::Loaded { firmware: "ibt-0040-0041.sfi".into(), ddc: true })));
+    assert_eq!(
+        run.result,
+        Some(Ok(Outcome::Loaded { firmware: "ibt-0040-0041.sfi".into(), detail: Some("DDC applied") }))
+    );
     assert_eq!(run.files_read, ["ibt-0040-0041.sfi", "ibt-0040-0041.ddc"]);
     // Read Version with 0xFF, first the ECDSA header
     assert_eq!(ctl.commands[0], [0x05, 0xFC, 1, 0xFF]);
@@ -405,7 +409,10 @@ fn result_before_the_last_command_complete() {
     let f = files(&[("ibt-0040-0041.sfi", sfi(true))]);
     let run = run(&mut ctl, f, &[(0x17, 0, "ibt-0040-0041.sfi")]);
     // No .ddc: loaded anyway
-    assert_eq!(run.result, Some(Ok(Outcome::Loaded { firmware: "ibt-0040-0041.sfi".into(), ddc: false })));
+    assert_eq!(
+        run.result,
+        Some(Ok(Outcome::Loaded { firmware: "ibt-0040-0041.sfi".into(), detail: Some("DDC not applied") }))
+    );
     assert_eq!(ctl.resets.len(), 1);
 }
 
@@ -499,7 +506,10 @@ fn blazar_loads_the_intermediate_loader_first() {
         ("ibt-0040-0041-0190.ddc", ddc()),
     ]);
     let run = run(&mut ctl, f, &[(0x1E, 1, "ibt-0040-0041-iml.sfi"), (0x1E, 1, "ibt-0040-0041-0190.sfi")]);
-    assert_eq!(run.result, Some(Ok(Outcome::Loaded { firmware: "ibt-0040-0041-0190.sfi".into(), ddc: true })));
+    assert_eq!(
+        run.result,
+        Some(Ok(Outcome::Loaded { firmware: "ibt-0040-0041-0190.sfi".into(), detail: Some("DDC applied") }))
+    );
     assert_eq!(run.files_read, ["ibt-0040-0041-iml.sfi", "ibt-0040-0041-0190.sfi", "ibt-0040-0041-0190.ddc"]);
     assert_eq!(ctl.resets.len(), 2);
     // Bootloader mode through the intermediate loader, off once the
@@ -527,7 +537,10 @@ fn legacy_bootloader() {
     let mut ctl = Controller::new(vec![legacy_version(0x12, 0x10, 0x06, 0x01)]);
     let f = files(&[("ibt-18-16-1.sfi", sfi(false)), ("ibt-18-16-1.ddc", ddc())]);
     let run = run(&mut ctl, f, &[(0x12, 0, "ibt-18-16-1.sfi")]);
-    assert_eq!(run.result, Some(Ok(Outcome::Loaded { firmware: "ibt-18-16-1.sfi".into(), ddc: true })));
+    assert_eq!(
+        run.result,
+        Some(Ok(Outcome::Loaded { firmware: "ibt-18-16-1.sfi".into(), detail: Some("DDC applied") }))
+    );
     let ops: Vec<u16> = ctl.commands.iter().map(|c| opcode(c)).collect();
     // No Read Version after the boot: the DDC name is known
     assert_eq!(ops, [0xFC05, 0xFC0D, 0xFC01, 0xFC8B, 0xFC8B, 0xFC52]);

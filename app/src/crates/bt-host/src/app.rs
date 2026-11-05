@@ -18,13 +18,17 @@ use codec::CodecKind;
 use codec::caps::{AacCapabilities, AacObjectType, ConfigRequest, Configuration, SbcCapabilities, VendorCapability};
 use codec::sbc::{Allocation, ChannelMode};
 
+use crate::bringup::{self, ChipLoader};
 use crate::events::{addr_at, addr_str, event_type, hci_error_string, le16, le24, subevent, u8_at};
 use crate::intel;
 use crate::le::core::LeCore;
 use crate::le::iso_send::TIMER_ISO;
+use crate::link_details::{self, LinkTracker};
 use crate::link_keys::FileLinkKeyStore;
 use crate::media::{MediaPacket, RTP_HEADER_SIZE};
+use crate::probe::ProbeReport;
 use crate::rfcomm::{Rfcomm, TIMER_RFCOMM};
+use crate::sdp_services::SdpServices;
 use crate::shared::Shared;
 use crate::stats::LinkStats;
 use crate::{AfhClassification, ConnectFailure, Controls, DiscoveredDevice, HostEvent, InitFailure, MediaKey};
@@ -35,10 +39,14 @@ pub(crate) const TIMER_AFH: u32 = 1;
 pub(crate) const TIMER_PLAYBACK: u32 = 2;
 /// Read the version again after a Realtek download (HCI was busy)
 const TIMER_RTK_VERIFY: u32 = 5;
-/// The Intel firmware loader's answer timeout
-const TIMER_INTEL: u32 = 7;
+/// The chip loader's answer timeout (crate::bringup)
+const TIMER_LOADER: u32 = 7;
+/// One of our link detail commands still unanswered (link_details.rs)
+const TIMER_LINK_COMMAND: u32 = 8;
 const RTK_VERIFY_RETRY_MS: u32 = 100;
 const RTK_VERIFY_TRIES: u8 = 20;
+/// Each L2CAP packet starts with a 4-byte header
+const L2CAP_HEADER_SIZE: usize = 4;
 
 /// One radio reading per tick (RSSI and the AFH map in turn)
 const AFH_TICK_MS: u32 = 2500;
@@ -63,6 +71,12 @@ pub(crate) struct Setup {
     pub broadcom_ids: Vec<(u16, u16)>,
     /// HFP audio gateway for the headphones' battery level
     pub battery: bool,
+    /// Told where a loader is (HostConfig::on_loader)
+    pub on_loader: Option<crate::bringup::LoaderHook>,
+    /// Run the chip probe instead of HCI init (BtHost::probe): its report
+    pub probe: Option<mpsc::Sender<ProbeReport>>,
+    /// HostConfig::local_name
+    pub local_name: String,
 }
 
 /// LMP subversions Realtek chips report while running their ROM code,
@@ -90,6 +104,8 @@ pub(crate) struct HostApp {
     pub le: Option<LeCore>,
     /// RFCOMM client channels of IPC clients
     pub rfcomm: Rfcomm,
+    /// A device's services asked for (developer mode)
+    pub sdp_services: SdpServices,
 
     // ---- connection (BTstack thread only) ----
     pub a2dp_cid: u16,
@@ -126,8 +142,11 @@ pub(crate) struct HostApp {
     /// Version reads left before the download stays "not verified"
     rtk_verify_tries: u8,
     bcm_checked: bool,
-    /// The Intel firmware download before HCI init (raw transport)
-    intel: Option<intel::Loader>,
+    /// The chip bring-up before HCI init (raw transport): Intel's firmware
+    /// download
+    loader: Option<Box<dyn ChipLoader>>,
+    /// The step and percent last told to setup.on_loader
+    loader_shown: Option<(&'static str, Option<u8>)>,
 
     // ---- AVRCP ----
     volume_in_flight: Option<Instant>,
@@ -140,9 +159,17 @@ pub(crate) struct HostApp {
     afh_sent_map: Option<[u8; 10]>,
     afh_policy_version_seen: Option<u32>,
     afh_ticks: u32,
+    /// The controller's recent AFH maps ("blend") and the link they are of
+    afh_history: crate::afh::ControllerHistory,
+    afh_history_handle: Option<u16>,
     /// The next radio reading is RSSI (else the AFH map). Its own toggle: a
     /// classification sent on a tick must not always skip the same reading
     read_rssi_next: bool,
+
+    // ---- link details ----
+    link: LinkTracker,
+    /// ACL handle of the started stream (its controller backlog)
+    media_acl: Option<u16>,
 }
 
 /// Why the signaling connection failed. Page timeout, or a device that never
@@ -191,6 +218,7 @@ impl HostApp {
             afh,
             le,
             rfcomm: Rfcomm::default(),
+            sdp_services: SdpServices::default(),
             a2dp_cid: 0,
             avrcp_cid: 0,
             local_seid: 0,
@@ -214,7 +242,8 @@ impl HostApp {
             rtk_verify_pending: false,
             rtk_verify_tries: 0,
             bcm_checked: false,
-            intel: None,
+            loader: None,
+            loader_shown: None,
             volume_in_flight: None,
             playback_status: AVRCP_PLAYBACK_STATUS_STOPPED,
             playback_prev_frames: 0,
@@ -223,7 +252,24 @@ impl HostApp {
             afh_sent_map: None,
             afh_policy_version_seen: None,
             afh_ticks: 0,
+            afh_history: Default::default(),
+            afh_history_handle: None,
             read_rssi_next: true,
+            link: LinkTracker::default(),
+            media_acl: None,
+        }
+    }
+
+    /// The A2DP link's details into the stats (cleared without one)
+    fn publish_link(&self) {
+        let handle = self.shared.lock().a2dp_con_handle;
+        self.link.publish(&self.stats, handle);
+    }
+
+    /// What the controller holds of the stream's link now
+    fn sample_controller_backlog(&self, stack: &Stack) {
+        if let Some(n) = self.media_acl.and_then(|h| stack.acl_packets_in_controller(h)) {
+            self.stats.record_controller_backlog(n);
         }
     }
 
@@ -239,68 +285,135 @@ impl HostApp {
     // Setup
     // ======================================================================
 
-    /// The Intel firmware download (crate::intel) on the transport
-    /// installed already, then HCI init. Intel controllers start in a
-    /// bootloader after a cold boot; with the firmware running the loader
-    /// is done after one command.
+    /// The Intel firmware download (crate::intel), then HCI init. Intel
+    /// controllers start in a bootloader after a cold boot; with the
+    /// firmware running the loader is done after one command.
     pub fn start_intel_loader(&mut self, stack: &Stack) {
         let dir = self.setup.firmware_dir.clone();
         tracing::info!("Intel adapter: checking bootloader firmware (experimental), folder {}", dir.display());
+        let loader = intel::Loader::new(Box::new(move |name| read_firmware_file(&dir, "intel", name)));
+        self.start_loader(stack, Box::new(loader));
+    }
+
+    /// A tool (the chip probe, a chip script) on the transport installed
+    /// already, in place of HCI init: its report goes to `setup.probe`
+    pub fn start_tool(&mut self, stack: &Stack, make: crate::ToolLoader) {
+        let loader = make(&self.setup.firmware_dir);
+        self.start_loader(stack, loader);
+    }
+
+    /// A chip bring-up (crate::bringup) on the transport installed already,
+    /// then HCI init
+    fn start_loader(&mut self, stack: &Stack, mut loader: Box<dyn ChipLoader>) {
         if !stack.raw_begin() {
             tracing::error!("could not open the Bluetooth adapter");
+            if let Some(tx) = self.setup.probe.take() {
+                let error = Some("could not open the Bluetooth adapter".to_owned());
+                let _ = tx.send(ProbeReport { error, ..ProbeReport::default() });
+            }
             self.init_failed(InitFailure::Failed);
             return;
         }
-        let mut loader = intel::Loader::new(Box::new(move |name| read_firmware_file(&dir, name)));
         let actions = loader.start();
-        self.intel = Some(loader);
-        self.run_intel(stack, actions);
+        self.loader = Some(loader);
+        self.run_loader(stack, actions);
     }
 
-    fn run_intel(&mut self, stack: &Stack, actions: Vec<intel::Action>) {
-        for action in actions {
+    fn run_loader(&mut self, stack: &Stack, actions: Vec<bringup::Action>) {
+        let mut actions: std::collections::VecDeque<_> = actions.into();
+        while let Some(action) = actions.pop_front() {
             let failed = match action {
-                intel::Action::Command(c) => {
+                // Done at once; what the loader answers runs before the
+                // actions after it
+                bringup::Action::UsbControl(request) => {
+                    let result = stack.raw_control(&request);
+                    if let Some(loader) = self.loader.as_mut() {
+                        for a in loader.on_control(result).into_iter().rev() {
+                            actions.push_front(a);
+                        }
+                    }
+                    None
+                }
+                bringup::Action::Command(c) => {
                     (!stack.raw_send(HCI_COMMAND_DATA_PACKET, &c)).then_some("the adapter does not take commands")
                 }
-                intel::Action::BulkCommand(c) => {
+                bringup::Action::BulkCommand(c) => {
                     (!stack.raw_send_bulk_command(&c)).then_some("the adapter does not take commands")
                 }
-                intel::Action::Bootloader(on) => {
+                bringup::Action::Bootloader(on) => {
                     stack.set_bootloader(on);
                     None
                 }
-                intel::Action::Timer(ms) => {
-                    (!stack.timer_start(TIMER_INTEL, ms)).then_some("the loader's timer could not be started")
+                bringup::Action::Timer(ms) => {
+                    (!stack.timer_start(TIMER_LOADER, ms)).then_some("the loader's timer could not be started")
                 }
-                intel::Action::Done(result) => {
-                    self.intel_done(stack, result);
+                bringup::Action::Done(result) => {
+                    self.loader_done(stack, result);
                     return;
                 }
             };
             if let Some(why) = failed {
-                self.intel_done(stack, Err(intel::LoadError::Host(why)));
+                self.loader_done(stack, Err(bringup::LoadError::Host(why)));
                 return;
             }
         }
+        self.show_loader();
     }
 
-    fn intel_done(&mut self, stack: &Stack, result: Result<intel::Outcome, intel::LoadError>) {
-        stack.timer_stop(TIMER_INTEL);
-        self.intel = None;
+    /// Tells HostConfig::on_loader where the loader is, when its step or
+    /// percent changed (not for the tools, whose reports say it)
+    fn show_loader(&mut self) {
+        let (Some(loader), Some(hook)) = (self.loader.as_ref(), self.setup.on_loader.as_ref()) else { return };
+        if self.setup.probe.is_some() || loader.step().is_empty() {
+            return;
+        }
+        let percent = loader.progress().filter(|(_, all)| *all > 0).map(|(n, all)| (n * 100 / all).min(100) as u8);
+        let now = (loader.step(), percent);
+        if self.loader_shown == Some(now) {
+            return;
+        }
+        self.loader_shown = Some(now);
+        hook(&bringup::LoaderProgress { vendor: loader.vendor(), step: now.0.to_owned(), percent, done: None });
+    }
+
+    /// The loader's end, for HostConfig::on_loader
+    fn show_loader_done(&mut self, vendor: &'static str, step: String, ok: bool) {
+        self.loader_shown = None;
+        if let (Some(hook), None) = (self.setup.on_loader.as_ref(), self.setup.probe.as_ref()) {
+            hook(&bringup::LoaderProgress { vendor, step, percent: None, done: Some(ok) });
+        }
+    }
+
+    fn loader_done(&mut self, stack: &Stack, result: Result<bringup::Outcome, bringup::LoadError>) {
+        stack.timer_stop(TIMER_LOADER);
+        let Some(mut loader) = self.loader.take() else { return };
+        // The probe: no HCI init after it. Raw mode stays until the stack is
+        // shut down, so BTstack gets no packet
+        if let Some(tx) = self.setup.probe.take() {
+            let mut report = loader.take_report().unwrap_or_default();
+            if let Err(e) = &result {
+                report.error = Some(e.to_string());
+            }
+            report.usb = stack.usb_descriptors();
+            let _ = tx.send(report);
+            return;
+        }
+        let vendor = loader.vendor();
         match result {
             Ok(outcome) => {
                 stack.raw_end();
-                match outcome {
-                    intel::Outcome::AlreadyRunning => tracing::info!("Intel controller: firmware running already"),
-                    intel::Outcome::Loaded { firmware, ddc } => {
-                        tracing::info!(
-                            "Intel controller: firmware {firmware} loaded (DDC {})",
-                            if ddc { "applied" } else { "not applied" }
-                        )
+                let said = match outcome {
+                    bringup::Outcome::AlreadyRunning => "firmware running already".to_owned(),
+                    bringup::Outcome::Loaded { firmware, detail: Some(detail) } => {
+                        format!("firmware {firmware} loaded ({detail})")
                     }
-                    intel::Outcome::Rom => tracing::info!("Intel controller: ROM firmware, nothing to load"),
-                }
+                    bringup::Outcome::Loaded { firmware, detail: None } => format!("firmware {firmware} loaded"),
+                    bringup::Outcome::Rom => "ROM firmware, nothing to load".to_owned(),
+                    // Only from the probe, which returned above
+                    bringup::Outcome::Probed => String::new(),
+                };
+                tracing::info!("{vendor} controller: {said}");
+                self.show_loader_done(vendor, said, true);
                 self.setup_hci_and_power_on(stack, None);
             }
             // Raw mode stays to the end of the run: hci_init has not run, so
@@ -310,21 +423,20 @@ impl HostApp {
             Err(e) => {
                 let dir = self.setup.firmware_dir.display();
                 match &e {
-                    intel::LoadError::MissingFile(file) => {
-                        let stem = file.strip_suffix(".sfi").unwrap_or(file);
-                        // An intermediate loader has no .ddc
-                        let files = if stem.ends_with("-iml") {
-                            format!("{stem}.sfi")
-                        } else {
-                            format!("{stem}.sfi and {stem}.ddc")
-                        };
+                    bringup::LoadError::MissingFile(file) => {
+                        let files = loader.missing_file_hint(file);
                         tracing::error!(
-                            "Intel firmware download failed: {file} is not in {dir}. Put {files} from linux-firmware \
-                             (intel/) there and connect again."
+                            "{vendor} firmware download failed: {file} is not in {dir}. Put {files} there and \
+                             connect again."
                         );
                     }
-                    e => tracing::error!("Intel firmware download failed: {e} (firmware folder {dir})"),
+                    e => tracing::error!("{vendor} firmware download failed: {e} (firmware folder {dir})"),
                 }
+                let said = match &e {
+                    bringup::LoadError::MissingFile(file) => format!("{} missing", loader.missing_file_hint(file)),
+                    e => e.to_string(),
+                };
+                self.show_loader_done(vendor, said, false);
                 self.init_failed(InitFailure::Failed);
             }
         }
@@ -372,7 +484,7 @@ impl HostApp {
         }
         // Audio (major 0x04), Hi-Fi audio device (minor 0x28), A2DP source;
         // page timeout ~20 s (0x8000 * 0.625 ms)
-        stack.gap_setup(0x200428, 0x8000);
+        stack.gap_setup(0x200428, 0x8000, &self.setup.local_name);
         // L2CAP before any profile: it registers with HCI for Connection
         // Complete events
         stack.l2cap_init();
@@ -526,6 +638,25 @@ impl HostApp {
         let (state, cid) = stack.avdtp_state_for_addr(&addr);
         tracing::debug!("A2DP of {}: {state:?} (cid 0x{cid:04X}, ours 0x{:04X})", addr_str(&addr), self.a2dp_cid);
         state == AvdtpState::Open && cid == self.a2dp_cid
+    }
+
+    /// Takes the stream the device configured and opened itself for
+    /// `config`: our endpoint for its codec, the same codec information
+    pub fn adopt_device_stream(&mut self, config: &Configuration, configured: &(u8, Option<Vec<u8>>)) -> bool {
+        let ours = self.endpoints.get(&codec::caps::endpoint_kind(config.kind)).copied();
+        let same = match &config.request {
+            ConfigRequest::Vendor(info) => configured.1.as_ref() == Some(info),
+            // The event has no codec information to compare
+            _ => false,
+        };
+        if ours != Some(configured.0) || !same {
+            return false;
+        }
+        self.stream_codec = Some(config.kind);
+        // Packets of a previous stream must not go out on this one
+        while self.media.pop().is_ok() {}
+        self.can_send_requested = false;
+        true
     }
 
     /// Tears down a half-open or open AVDTP connection after a failed or
@@ -842,6 +973,11 @@ impl HostApp {
                     self.stats.packets_sent.fetch_add(1, Ordering::Relaxed);
                     let bytes = payload.len() + if packet.rtp { RTP_HEADER_SIZE } else { 0 };
                     self.stats.bytes_sent.fetch_add(bytes as u64, Ordering::Relaxed);
+                    // The L2CAP packet in ACL packets of the controller's size
+                    let acl_len = usize::from(stack.max_acl_data_packet_length()).max(1);
+                    let acl = (bytes + L2CAP_HEADER_SIZE).div_ceil(acl_len);
+                    self.stats.acl_packets_sent.fetch_add(acl as u64, Ordering::Relaxed);
+                    self.sample_controller_backlog(stack);
                     tracing::trace!(
                         "media: sent {} bytes, ts {}, marker {}, rtp {}, queued {depth}",
                         payload.len(),
@@ -891,6 +1027,11 @@ impl HostApp {
                 self.stats.timing.completed_gap_us.record_duration(now - last);
             }
             self.stats.timing.completed_events.fetch_add(1, Ordering::Relaxed);
+            // BTstack counted the completed packets before passing it on
+            self.sample_controller_backlog(stack);
+        }
+        if self.link.on_hci(ev, p, self.streaming) {
+            self.publish_link();
         }
         if ev == HCI_EVENT_NUMBER_OF_COMPLETED_PACKETS {
             tracing::trace!("HCI completed packets: {:02X?}", p.get(2..));
@@ -904,7 +1045,11 @@ impl HostApp {
                     stack.timer_stop(TIMER_AFH);
                     stack.timer_stop(TIMER_PLAYBACK);
                     stack.timer_stop(TIMER_RTK_VERIFY);
+                    stack.timer_stop(TIMER_LINK_COMMAND);
                     self.stats.with_radio(|r| *r = Default::default());
+                    self.link.reset();
+                    self.media_acl = None;
+                    self.publish_link();
                     self.shared.update(|s| {
                         s.hci_ready = false;
                         s.hci_off = true;
@@ -923,6 +1068,7 @@ impl HostApp {
                         self.shared.update(|s| s.inquiry_done = true);
                     }
                 }
+                self.send_link_reads(stack);
             }
             HCI_EVENT_COMMAND_COMPLETE => {
                 let opcode = le16(p, 3).unwrap_or(0);
@@ -954,6 +1100,7 @@ impl HostApp {
                     });
                 }
                 self.on_radio_command_complete(opcode, p);
+                self.send_link_reads(stack);
             }
             HCI_EVENT_USER_CONFIRMATION_REQUEST => {
                 // Just Works
@@ -1072,6 +1219,7 @@ impl HostApp {
                     );
                 } else {
                     tracing::info!("HCI ACL connection established to {}", addr_str(&addr));
+                    self.link.connected(stack, handle & 0x0FFF, addr);
                     let target = self.remote_addr == Some(addr);
                     self.shared.update(|s| {
                         s.acl_up_from = Some(addr);
@@ -1124,6 +1272,7 @@ impl HostApp {
                 self.shared.update(|s| {
                     if status == 0 && !name.is_empty() {
                         s.set_found_name(&addr, &name);
+                        s.remote_name = Some((addr, name));
                     }
                     s.name_done = true;
                 });
@@ -1167,6 +1316,12 @@ impl HostApp {
                     }
                     false
                 });
+                self.link.disconnected(handle);
+                self.publish_link();
+                if self.media_acl == Some(handle) {
+                    self.media_acl = None;
+                    self.stats.controller_backlog.store(0, Ordering::Relaxed);
+                }
                 tracing::debug!(
                     "disconnection of handle 0x{handle:04X}: a2dp link lost {lost}, hfp acl {:?}, streaming {}",
                     self.hfp_acl,
@@ -1248,6 +1403,9 @@ impl HostApp {
         self.afh_ticks = 0;
         self.afh_policy_version_seen = None;
         self.afh_sent_map = None;
+        self.link.reset();
+        self.afh_history.clear();
+        self.afh_history_handle = None;
         stack.timer_start(TIMER_AFH, 200);
     }
 
@@ -1412,7 +1570,15 @@ impl HostApp {
                     // Not done yet: the capability discovery follows, also
                     // on a connection the device opened
                     self.caps = Default::default();
-                    self.shared.update(|s| s.a2dp_con_handle = Some(handle & 0x0FFF));
+                    self.shared.update(|s| {
+                        s.a2dp_con_handle = Some(handle & 0x0FFF);
+                        // A device may configure and open the stream itself
+                        s.stream_config = None;
+                        s.stream_done = None;
+                    });
+                    self.link.a2dp_opened(stack, handle & 0x0FFF);
+                    self.publish_link();
+                    self.send_link_reads(stack);
                 }
             }
             Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CAPABILITY) => {
@@ -1556,11 +1722,12 @@ impl HostApp {
             | Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_MPEG_AAC_CONFIGURATION)
             | Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CONFIGURATION) => {
                 tracing::debug!("codec configuration event: {:02X?}", p.get(2..));
-                tracing::info!(
-                    "codec configured (local {}, remote {})",
-                    u8_at(p, 5).unwrap_or(0),
-                    u8_at(p, 6).unwrap_or(0)
-                );
+                let local = u8_at(p, 5).unwrap_or(0);
+                tracing::info!("codec configured (local {local}, remote {})", u8_at(p, 6).unwrap_or(0));
+                let info = (subevent(p) == Some(A2DP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CONFIGURATION))
+                    .then(|| le16(p, 11).and_then(|n| p.get(13..13 + n as usize)).map(<[u8]>::to_vec))
+                    .flatten();
+                self.shared.update(|s| s.stream_config = Some((local, info)));
             }
             Some(A2DP_SUBEVENT_STREAM_ESTABLISHED) => {
                 let status = u8_at(p, 13).unwrap_or(0xFF);
@@ -1587,15 +1754,32 @@ impl HostApp {
                     self.local_seid,
                     self.remote_seid
                 );
+                // A sink's delay report, if any, follows the configuration
+                self.stats.set_sink_delay(None);
                 self.shared.update(|s| {
                     s.media_mtu = mtu;
                     s.stream_done = Some(true);
                 });
                 self.connect_hfp(stack);
             }
+            Some(A2DP_SUBEVENT_SIGNALING_DELAY_REPORTING_CAPABILITY) => {
+                tracing::debug!("remote SEID {} supports delay reporting", u8_at(p, 5).unwrap_or(0));
+            }
+            Some(A2DP_SUBEVENT_SIGNALING_DELAY_REPORT) => {
+                // The sink's playout delay, from when a packet arrives until
+                // it is heard, in 100 us units (AVDTP 8.19); sent after the
+                // configuration and again when it changes
+                let delay = le16(p, 6).unwrap_or(0);
+                tracing::info!("device delay report: {:.1} ms", f64::from(delay) / 10.0);
+                self.stats.set_sink_delay(Some(delay));
+            }
             Some(A2DP_SUBEVENT_STREAM_STARTED) => {
                 tracing::info!("streaming started");
+                self.media_acl = self.shared.lock().a2dp_con_handle;
+                self.sample_controller_backlog(stack);
                 self.stats.mark_stream_start();
+                self.link.stream_started(self.media_acl);
+                self.publish_link();
                 self.set_streaming(true);
                 self.can_send_requested = false;
                 self.shared.update(|s| {
@@ -1648,6 +1832,7 @@ impl HostApp {
                 self.set_streaming(false);
                 self.can_send_requested = false;
                 self.stats.queue_depth.store(0, Ordering::Relaxed);
+                self.stats.set_sink_delay(None);
                 self.shared.update(|s| {
                     s.connected = false;
                     s.streaming = false;
@@ -1941,6 +2126,28 @@ impl HostApp {
     // AFH classification and radio readings
     // ======================================================================
 
+    /// The next link detail reading, with a deadline for its answer
+    fn send_link_reads(&mut self, stack: &Stack) {
+        if self.link.send_next(stack) {
+            stack.timer_start(TIMER_LINK_COMMAND, link_details::COMMAND_TIMEOUT.as_millis() as u32);
+        }
+    }
+
+    /// A link detail command went unanswered. BTstack's slot stays taken
+    /// until a Command Complete / Status comes, which would stop every later
+    /// command (RSSI, AFH, the liveness probe, connects). Releasing it with a
+    /// Command Status of our own is the safest way on: BTstack keeps nothing
+    /// else for these commands, and a late answer only sets the slot free
+    /// again. Not sending them at all would lose the remote chip for every
+    /// controller that answers; a stall check would take the whole stack down
+    /// for one diagnostics reading.
+    fn link_command_timeout(&mut self, stack: &Stack) {
+        let Some(opcode) = self.link.overdue(Instant::now()) else { return };
+        // Still held, and only by ours: no answer of any kind came since
+        if stack.hci_state() == HciState::Working && !stack.can_send_command_now() {
+            stack.release_command_slot(opcode, ERROR_CODE_UNKNOWN_HCI_COMMAND);
+        }
+    }
     fn afh_tick(&mut self, stack: &Stack) {
         if !self.shared.lock().hci_ready {
             return;
@@ -1953,7 +2160,7 @@ impl HostApp {
         // 1. The classification, when it changes (one command per tick)
         if classify {
             let policy = self.controls.afh_policy();
-            let c: Option<AfhClassification> = self.afh.as_mut().and_then(|a| a.classify(&policy));
+            let c: Option<AfhClassification> = self.afh.as_mut().and_then(|a| a.classify(&policy, &self.afh_history));
             self.stats.with_radio(|r| {
                 r.afh_usable = c.as_ref().map(|c| c.usable);
                 r.afh_avoided = c.as_ref().map(|c| c.avoided.clone()).unwrap_or_default();
@@ -1984,6 +2191,7 @@ impl HostApp {
                     }
                 );
                 self.afh_sent_map = c.map(|c| c.map);
+                self.afh_history.host_changed();
                 self.afh_policy_version_seen = Some(version);
                 return;
             }
@@ -1998,7 +2206,9 @@ impl HostApp {
             self.stats.with_radio(|r| {
                 r.rssi = None;
                 r.afh_in_use = None;
+                r.afh_map = None;
             });
+            self.publish_link();
             return;
         };
         if !stack.can_send_command_now() {
@@ -2007,6 +2217,9 @@ impl HostApp {
         self.read_rssi_next = !self.read_rssi_next;
         if !self.read_rssi_next {
             stack.cmd_read_rssi(handle);
+            // Failed contacts and link quality follow, one command at a time
+            self.link.poll(stack, handle);
+            self.publish_link();
         } else {
             stack.cmd_read_afh_channel_map(handle);
         }
@@ -2027,20 +2240,37 @@ impl HostApp {
             }
             HCI_OPCODE_READ_AFH_CHANNEL_MAP if rp.len() >= 14 => {
                 // status, handle, mode, map[10]
-                let in_use = if rp[0] != ERROR_CODE_SUCCESS {
+                let map = if rp[0] != ERROR_CODE_SUCCESS {
                     None
                 } else if rp[3] == 1 {
-                    Some(rp[4..14].iter().map(|b| b.count_ones()).sum::<u32>().min(79))
+                    let mut m = [0u8; 10];
+                    m.copy_from_slice(&rp[4..14]);
+                    m[9] &= 0x7F; // bit 79 is reserved
+                    Some(m)
                 } else {
-                    Some(79)
+                    Some(crate::afh::Classification::all_usable().map)
                 };
+                let in_use = map.as_ref().map(|m| crate::afh::count(m) as u32);
+                // "blend" learns from the maps of the current link; AFH off
+                // (mode 0) says nothing about the channels
+                let handle = u16::from_le_bytes([rp[1], rp[2]]) & 0x0FFF;
+                if self.afh_history_handle != Some(handle) {
+                    self.afh_history.clear();
+                    self.afh_history_handle = Some(handle);
+                }
+                if let (Some(m), 1) = (&map, rp[3]) {
+                    self.afh_history.record(m, self.afh_sent_map.as_ref());
+                }
                 tracing::debug!(
                     "radio: AFH mode {}, {in_use:?} channels in use, map {:02X?} (status 0x{:02X})",
                     rp[3],
                     &rp[4..14],
                     rp[0]
                 );
-                self.stats.with_radio(|r| r.afh_in_use = in_use);
+                self.stats.with_radio(|r| {
+                    r.afh_in_use = in_use;
+                    r.afh_map = map;
+                });
             }
             _ => {}
         }
@@ -2072,6 +2302,7 @@ impl App for HostApp {
                 }
             }
             Source::SdpClient => self.rfcomm.on_sdp(stack, packet),
+            Source::SdpServices => self.sdp_services.on_event(packet),
             Source::Rfcomm => {}
             Source::Avrcp | Source::AvrcpController | Source::AvrcpTarget => {
                 if event_type(packet) == Some(HCI_EVENT_AVRCP_META) {
@@ -2128,10 +2359,11 @@ impl App for HostApp {
                 stack.timer_start(TIMER_PLAYBACK, PLAYBACK_TICK_MS);
             }
             TIMER_RTK_VERIFY => self.verify_realtek_download(stack),
-            TIMER_INTEL => {
-                if let Some(loader) = self.intel.as_mut() {
+            TIMER_LINK_COMMAND => self.link_command_timeout(stack),
+            TIMER_LOADER => {
+                if let Some(loader) = self.loader.as_mut() {
                     let actions = loader.on_timeout();
-                    self.run_intel(stack, actions);
+                    self.run_loader(stack, actions);
                 }
             }
             TIMER_RFCOMM => self.rfcomm.on_timer(stack),
@@ -2153,9 +2385,9 @@ impl App for HostApp {
         if packet_type != HCI_EVENT_PACKET {
             return;
         }
-        if let Some(loader) = self.intel.as_mut() {
+        if let Some(loader) = self.loader.as_mut() {
             let actions = loader.on_event(packet);
-            self.run_intel(stack, actions);
+            self.run_loader(stack, actions);
         }
     }
 
@@ -2211,10 +2443,10 @@ fn remove_alias(dir: &Path, stem: &str) {
     }
 }
 
-/// An Intel firmware file (ibt-*.sfi / .ddc) from the firmware folder, or
-/// from an "intel" folder in it (as linux-firmware has them)
-fn read_firmware_file(dir: &Path, name: &str) -> Option<Vec<u8>> {
-    [dir.join(name), dir.join("intel").join(name)].iter().find_map(|path| match std::fs::read(path) {
+/// A firmware file of a chip loader from the firmware folder, or from the
+/// vendor's folder in it as linux-firmware has them ("intel")
+fn read_firmware_file(dir: &Path, vendor_dir: &str, name: &str) -> Option<Vec<u8>> {
+    [dir.join(name), dir.join(vendor_dir).join(name)].iter().find_map(|path| match std::fs::read(path) {
         Ok(data) => {
             tracing::debug!("firmware file {}: {} bytes", path.display(), data.len());
             Some(data)

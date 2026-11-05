@@ -150,11 +150,19 @@ pub struct Settings {
     /// earlier versions was on by default.
     #[serde(rename = "output_mute")]
     pub mute_output: bool,
+    /// Developer > "Volume Mixer" (off by default, issue #86): the mixer
+    /// screen, the flyout's app list and the output mute above are there
+    /// only with this on as well as debug_mode
+    pub volume_mixer: bool,
 
     pub debug_mode: bool,
     /// Developer mode: overrides of the codec and media path (in force only
     /// while debug_mode is on)
     pub dev_overrides: codec::dev::DevOverrides,
+    /// Developer mode: when each vendor's own protocol is used, and its
+    /// options, by vendor id (in force only while debug_mode is on)
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub dev_vendors: crate::vendor::Overrides,
     /// Developer mode: how the core logs (in force only while debug_mode is
     /// on; otherwise [`DevLog::default`])
     pub dev_log: DevLog,
@@ -292,8 +300,10 @@ impl Default for Settings {
             device_options: None,
             volume_sync: true,
             mute_output: false,
+            volume_mixer: false,
             debug_mode: false,
             dev_overrides: codec::dev::DevOverrides::default(),
+            dev_vendors: Default::default(),
             dev_log: DevLog::default(),
             bt_chip_pid: 0,
             bt_chip_fw_stem: String::new(),
@@ -378,7 +388,7 @@ impl Settings {
 
     /// Whether a stream mutes the default output device
     pub fn mutes_output(&self) -> bool {
-        self.mute_output && self.debug_mode
+        self.mute_output && self.volume_mixer && self.debug_mode
     }
 
     /// The SBC frame setup a stream takes from its profile: the fixed one
@@ -496,6 +506,16 @@ mod tests {
         let out = serde_json::to_value(&s).unwrap();
         assert!(out.get("device_options").is_none());
         assert_eq!(out["volume_sync"], false);
+    }
+
+    #[test]
+    fn lhdcv5_ignore_sink_max_loads_for_every_codec() {
+        // 2.0.2-beta.17 saved it under LHDC V5's name
+        let s: Settings = serde_json::from_str(r#"{"dev_overrides":{"lhdcv5_ignore_sink_max":true}}"#).unwrap();
+        assert!(s.dev_overrides.ignore_sink_max);
+        let out = serde_json::to_value(&s).unwrap();
+        assert_eq!(out["dev_overrides"]["ignore_sink_max"], true);
+        assert!(out["dev_overrides"].get("lhdcv5_ignore_sink_max").is_none());
     }
 
     #[test]

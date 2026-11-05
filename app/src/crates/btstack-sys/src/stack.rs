@@ -132,12 +132,14 @@ impl Stack {
         LOGGER.with(|l| *l.borrow_mut() = logger);
     }
 
-    /// SSP Just Works, General Bonding, name "BlueCaster", role switch and
-    /// sniff allowed
-    pub fn gap_setup(&self, class_of_device: u32, page_timeout: u16) {
+    /// SSP Just Works, General Bonding, the local name (UTF-8, at most 248
+    /// bytes; empty: "BlueCaster"), role switch and sniff allowed
+    pub fn gap_setup(&self, class_of_device: u32, page_timeout: u16, name: &str) {
         tracing::debug!(target: "btstack", "gap setup: CoD 0x{class_of_device:06X}, page timeout 0x{page_timeout:04X}");
-        // SAFETY: on the BTstack thread, after hci_init.
-        unsafe { ffi::bluecaster_gap_setup(class_of_device, page_timeout) };
+        let name = CString::new(name.replace('\0', "")).unwrap_or_default();
+        // SAFETY: on the BTstack thread, after hci_init; the shim copies the
+        // name.
+        unsafe { ffi::bluecaster_gap_setup(class_of_device, page_timeout, name.as_ptr()) };
     }
 
     pub fn l2cap_init(&self) {
@@ -204,6 +206,19 @@ impl Stack {
         // both (6 and 16 bytes).
         let status = unsafe { ffi::bluecaster_sdp_query_rfcomm(addr.as_ptr(), uuid128.as_ptr()) };
         tracing::debug!(target: "btstack", "sdp query rfcomm {} {uuid128:02X?}: 0x{status:02X}", addr_str(addr));
+        status
+    }
+
+    /// Asks the device's SDP server for the service class UUIDs and names
+    /// of all its records. Queued like [`Stack::sdp_query_rfcomm`], one at a
+    /// time. The result comes as [`crate::Source::SdpServices`] events:
+    /// SDP_EVENT_QUERY_ATTRIBUTE_VALUE per attribute byte, then
+    /// SDP_EVENT_QUERY_COMPLETE.
+    pub fn sdp_query_services(&self, addr: &[u8; 6]) -> u8 {
+        // SAFETY: on the BTstack thread after sdp_init; the shim copies the
+        // 6 bytes.
+        let status = unsafe { ffi::bluecaster_sdp_query_services(addr.as_ptr()) };
+        tracing::debug!(target: "btstack", "sdp query services {}: 0x{status:02X}", addr_str(addr));
         status
     }
 
@@ -356,6 +371,28 @@ impl Stack {
         transport::send_raw(crate::consts::HCI_ACL_DATA_PACKET, command)
     }
 
+    /// A USB control transfer for a chip loader
+    /// ([`crate::HciBackend::control`]). Not an HCI packet: logged to the
+    /// HCI capture as a log line with its result, so the capture keeps the
+    /// whole sequence in order.
+    pub fn raw_control(&self, request: &crate::ControlRequest) -> Result<Vec<u8>, String> {
+        let result = transport::control(request);
+        let outcome = match &result {
+            Ok(data) if data.is_empty() => "ok".to_owned(),
+            Ok(data) => data.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+            Err(e) => format!("failed: {e}"),
+        };
+        let line = format!("USB control {} -> {outcome}", request.describe());
+        tracing::debug!(target: "hci", "{line}");
+        crate::callbacks::log_packet(crate::consts::LOG_MESSAGE_PACKET, false, line.as_bytes());
+        result
+    }
+
+    /// The open USB device's descriptors ([`crate::HciBackend::usb_descriptors`])
+    pub fn usb_descriptors(&self) -> Option<crate::UsbDescriptors> {
+        transport::usb_descriptors()
+    }
+
     /// The controller runs its bootloader, see
     /// [`crate::HciBackend::set_bootloader`]
     pub fn set_bootloader(&self, on: bool) {
@@ -435,6 +472,86 @@ impl Stack {
         status
     }
 
+    pub fn cmd_read_failed_contact_counter(&self, con_handle: u16) -> u8 {
+        // SAFETY: on the BTstack thread.
+        let status = unsafe { ffi::bluecaster_cmd_read_failed_contact_counter(con_handle) };
+        tracing::trace!(target: "btstack", "read failed contact counter 0x{con_handle:04X}: 0x{status:02X}");
+        status
+    }
+
+    pub fn cmd_read_link_quality(&self, con_handle: u16) -> u8 {
+        // SAFETY: on the BTstack thread.
+        let status = unsafe { ffi::bluecaster_cmd_read_link_quality(con_handle) };
+        tracing::trace!(target: "btstack", "read link quality 0x{con_handle:04X}: 0x{status:02X}");
+        status
+    }
+
+    /// Answered by a Read Remote Version Information Complete event
+    pub fn cmd_read_remote_version(&self, con_handle: u16) -> u8 {
+        // SAFETY: on the BTstack thread.
+        let status = unsafe { ffi::bluecaster_cmd_read_remote_version(con_handle) };
+        tracing::trace!(target: "btstack", "read remote version 0x{con_handle:04X}: 0x{status:02X}");
+        status
+    }
+
+    pub fn cmd_read_link_supervision_timeout(&self, con_handle: u16) -> u8 {
+        // SAFETY: on the BTstack thread.
+        let status = unsafe { ffi::bluecaster_cmd_read_link_supervision_timeout(con_handle) };
+        tracing::trace!(target: "btstack", "read link supervision timeout 0x{con_handle:04X}: 0x{status:02X}");
+        status
+    }
+
+    /// Frees BTstack's command slot held by `opcode`, a command the
+    /// controller never answered: BTstack gets a Command Status with
+    /// `status` as if from the controller. Only for commands BTstack does not
+    /// wait on itself, and only while it cannot send another command.
+    pub fn release_command_slot(&self, opcode: u16, status: u8) {
+        tracing::debug!(target: "btstack", "command slot of 0x{opcode:04X} released (status 0x{status:02X})");
+        // SAFETY: on the BTstack thread, after hci_init; the shim builds the
+        // event in its own buffer.
+        unsafe { ffi::bluecaster_hci_command_status_inject(opcode, status) }
+    }
+
+    /// ACL packets of the link handed to the controller and not yet reported
+    /// sent by Number Of Completed Packets (None: no such link)
+    pub fn acl_packets_in_controller(&self, con_handle: u16) -> Option<u32> {
+        // SAFETY: on the BTstack thread.
+        let n = unsafe { ffi::bluecaster_acl_packets_in_controller(con_handle) };
+        u32::try_from(n).ok()
+    }
+
+    /// The link's role as BTstack keeps it: Some(true) central, Some(false)
+    /// peripheral, None without the link
+    pub fn acl_role_central(&self, con_handle: u16) -> Option<bool> {
+        // SAFETY: on the BTstack thread.
+        match unsafe { ffi::bluecaster_acl_role(con_handle) } {
+            0 => Some(true),
+            1 => Some(false),
+            _ => None,
+        }
+    }
+
+    /// The encryption key size BTstack read for the link (None: no link or
+    /// not encrypted yet)
+    pub fn acl_encryption_key_size(&self, con_handle: u16) -> Option<u8> {
+        // SAFETY: on the BTstack thread.
+        let n = unsafe { ffi::bluecaster_acl_encryption_key_size(con_handle) };
+        u8::try_from(n).ok().filter(|&n| n > 0)
+    }
+
+    /// Asks BTstack for the remote features unless it has them (its own
+    /// query, once per link); the answer is an HCI event
+    pub fn remote_features_query(&self, con_handle: u16) {
+        // SAFETY: on the BTstack thread.
+        unsafe { ffi::bluecaster_remote_features_query(con_handle) }
+    }
+
+    /// The controller's ACL buffer: longer L2CAP packets go out in several
+    pub fn max_acl_data_packet_length(&self) -> u16 {
+        // SAFETY: on the BTstack thread, after hci_init.
+        unsafe { ffi::bluecaster_max_acl_data_packet_length() }
+    }
+
     /// Ends a page still running: its Connection Complete follows at once
     pub fn cmd_create_connection_cancel(&self, addr: &[u8; 6]) -> u8 {
         // SAFETY: on the BTstack thread; addr is 6 bytes.
@@ -490,6 +607,15 @@ impl Stack {
         let r = unsafe { ffi::gap_remote_name_request(addr.as_ptr(), page_scan_repetition_mode, clock_offset) };
         tracing::debug!(target: "btstack", "remote name request {}: {r}", addr_str(addr));
         r
+    }
+
+    /// A remote name request to a connected device, sent at once (0) or not
+    /// (the controller takes no command now)
+    pub fn cmd_remote_name_request(&self, addr: &[u8; 6]) -> u8 {
+        // SAFETY: on the BTstack thread; addr is 6 bytes.
+        let status = unsafe { ffi::bluecaster_cmd_remote_name_request(addr.as_ptr()) };
+        tracing::debug!(target: "btstack", "remote name request (connected) {}: 0x{status:02X}", addr_str(addr));
+        status
     }
 
     /// Ends a remote name request early (BTstack has no call for it): the
@@ -795,7 +921,7 @@ impl Stack {
                 ffi::bluecaster_rfcomm_deinit();
             }
             if init & INIT_SDP != 0 {
-                ffi::sdp_client_deinit();
+                ffi::bluecaster_sdp_client_deinit();
                 ffi::sdp_deinit();
             }
             if init & INIT_L2CAP != 0 {

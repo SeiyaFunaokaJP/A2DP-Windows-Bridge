@@ -5,11 +5,16 @@
  */
 export type AclPacket = { 
 /**
- * "3-DH1", "3-DH3", "3-DH5"
+ * "3-DH1", "3-DH3", "3-DH5" ("2-DH5", "DH5" on a device without EDR
+ * 3 Mbps)
  */
 name: string, 
 /**
  * Slots per media packet with the reply slot (several 3-DH5 packets
  * for one larger than 1021 bytes)
  */
-slots: number, };
+slots: number, 
+/**
+ * From the remote device's features; false: EDR 3 Mbps assumed
+ */
+from_features?: boolean | null, };

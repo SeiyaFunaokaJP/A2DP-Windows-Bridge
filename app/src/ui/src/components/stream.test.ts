@@ -23,19 +23,19 @@ const run = (n: number, f: (i: number) => Partial<LinkSample> = () => ({})) =>
 describe("link quality", () => {
   it("is good on a link that delivers everything, whatever the RSSI", () => {
     const q = linkQuality(run(60, (i) => ({ rssi: i % 2 ? -27 : -6 })));
-    expect(q).toEqual({ level: 4, status: "good", pcBusy: false });
+    expect(q).toEqual({ level: 4, status: "good", pcBusy: false, causes: [] });
   });
 
   it("does not blame the radio for audio the PC lost at capture (issue #252)", () => {
     const q = linkQuality(run(60, (i) => ({ capture_dropped: i < 50 ? 0 : 480 })));
-    expect(q).toEqual({ level: 4, status: "warn", pcBusy: true });
+    expect(q).toEqual({ level: 4, status: "warn", pcBusy: true, causes: [] });
     const later = run(60, (i) => ({ capture_dropped: i < 10 ? 0 : 480 }));
     expect(linkQuality(later)?.pcBusy).toBe(false);
   });
 
   it("says what the radio does when both go wrong", () => {
     const q = linkQuality(run(60, (i) => ({ dropped: i < 50 ? 0 : 128, capture_dropped: i < 50 ? 0 : 480 })));
-    expect(q).toEqual({ level: 1, status: "bad", pcBusy: false });
+    expect(q).toEqual({ level: 1, status: "bad", pcBusy: false, causes: ["drops"] });
   });
 
   it("is poor while packets drop, and recovers 10 s later", () => {
@@ -49,6 +49,13 @@ describe("link quality", () => {
     const q = linkQuality(run(30, (i) => ({ queue_ms: i === 25 ? 200 : 0 })));
     expect(q?.status).toBe("warn");
     expect(q?.pcBusy).toBe(false);
+    expect(q?.causes).toEqual(["queue"]);
+  });
+
+  it("names every cause that lowered it", () => {
+    const q = linkQuality(run(60, (i) => ({ dropped: i < 55 ? 0 : 2, queue_ms: i === 58 ? 100 : 0, airtime: 0.85 })));
+    expect(q?.causes).toEqual(["drops", "queue", "airtime"]);
+    expect(q?.level).toBe(2);
   });
 
   it("has no data when nothing streams", () => {
@@ -91,6 +98,7 @@ const SBC_INFO: StreamInfo = {
   requested_in_use: false,
   abr: true,
   bitrate_capped: false,
+  hi_res_set: false,
   source: null,
   le: null,
   details: SBC_ABR,

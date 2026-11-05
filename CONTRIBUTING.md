@@ -27,6 +27,7 @@ For detailed setup instructions, see the [GitHub Pages](https://seiyafunaokajp.g
 - Visual Studio 2022 or later with C++ desktop workload (for the C libraries)
 - Node.js 22 and pnpm (for the UI)
 - Git
+- PowerShell 7 (for `build.ps1`) and Python 3.11 or later (for `tools/check_lang.py`)
 
 **Build:**
 

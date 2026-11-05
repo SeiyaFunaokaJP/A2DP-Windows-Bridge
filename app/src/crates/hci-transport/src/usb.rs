@@ -59,9 +59,9 @@ use std::thread::{JoinHandle, Thread};
 use std::time::{Duration, Instant};
 
 use btstack_sys::consts::{HCI_ACL_DATA_PACKET, HCI_COMMAND_DATA_PACKET, HCI_EVENT_PACKET, HCI_ISO_DATA_PACKET};
-use btstack_sys::{HciBackend, Upstream};
+use btstack_sys::{ControlData, ControlKind, ControlRecipient, ControlRequest, HciBackend, Upstream, UsbDescriptors};
 use nusb::descriptors::TransferType;
-use nusb::transfer::{Buffer, Bulk, ControlOut, ControlType, In, Interrupt, Out, Recipient, TransferError};
+use nusb::transfer::{Buffer, Bulk, ControlIn, ControlOut, ControlType, In, Interrupt, Out, Recipient, TransferError};
 use nusb::{Device, DeviceInfo, Endpoint, Interface, MaybeFuture};
 
 use crate::reassembly::Reassembler;
@@ -346,7 +346,8 @@ struct Opened {
     interface: Interface,
     /// The event pipe, read again on close for the reset's answer
     event_addr: u8,
-    _device: Device,
+    /// Its descriptors for a chip report
+    device: Device,
     stop: Arc<AtomicBool>,
     /// The command writer; buffers of sent commands come back for reuse
     command_tx: mpsc::Sender<(u8, Vec<u8>)>,
@@ -526,6 +527,42 @@ fn device_gone(e: &TransferError) -> bool {
     matches!(e, TransferError::Disconnected | TransferError::Unknown(22) | TransferError::Unknown(6))
 }
 
+/// The descriptors Windows keeps for the device (no I/O), with one line per
+/// interface setting
+fn descriptors(device: &Device) -> UsbDescriptors {
+    let mut summary = Vec::new();
+    let configurations = device
+        .configurations()
+        .map(|c| {
+            for alt in c.interface_alt_settings() {
+                let endpoints: Vec<String> = alt
+                    .endpoints()
+                    .map(|e| {
+                        let kind = match e.transfer_type() {
+                            TransferType::Control => "control",
+                            TransferType::Isochronous => "isochronous",
+                            TransferType::Bulk => "bulk",
+                            TransferType::Interrupt => "interrupt",
+                        };
+                        format!("0x{:02X} {kind} {}", e.address(), e.max_packet_size())
+                    })
+                    .collect();
+                summary.push(format!(
+                    "interface {} alt {} class {:02X}/{:02X}/{:02X}: {}",
+                    alt.interface_number(),
+                    alt.alternate_setting(),
+                    alt.class(),
+                    alt.subclass(),
+                    alt.protocol(),
+                    if endpoints.is_empty() { "no endpoints".to_owned() } else { endpoints.join(", ") }
+                ));
+            }
+            c.as_bytes().to_vec()
+        })
+        .collect();
+    UsbDescriptors { device: device.device_descriptor().as_bytes().to_vec(), configurations, summary }
+}
+
 impl HciBackend for UsbTransport {
     fn is_async(&self) -> bool {
         true
@@ -662,7 +699,7 @@ impl HciBackend for UsbTransport {
         self.opened = Some(Opened {
             interface,
             event_addr,
-            _device: device,
+            device,
             stop,
             command_tx,
             command_recycle_rx,
@@ -726,6 +763,58 @@ impl HciBackend for UsbTransport {
             );
             o.bootloader.store(on, Ordering::Release);
         }
+    }
+
+    fn control(&mut self, request: &ControlRequest) -> Result<Vec<u8>, String> {
+        let Some(o) = &self.opened else { return Err("the adapter is not open".into()) };
+        let control_type = match request.kind {
+            ControlKind::Standard => ControlType::Standard,
+            ControlKind::Class => ControlType::Class,
+            ControlKind::Vendor => ControlType::Vendor,
+        };
+        let recipient = match request.recipient {
+            ControlRecipient::Device => Recipient::Device,
+            ControlRecipient::Interface => Recipient::Interface,
+            ControlRecipient::Endpoint => Recipient::Endpoint,
+            ControlRecipient::Other => Recipient::Other,
+        };
+        let result = match &request.data {
+            ControlData::In(length) => o
+                .interface
+                .control_in(
+                    ControlIn {
+                        control_type,
+                        recipient,
+                        request: request.request,
+                        value: request.value,
+                        index: request.index,
+                        length: *length,
+                    },
+                    COMMAND_TIMEOUT,
+                )
+                .wait(),
+            ControlData::Out(data) => o
+                .interface
+                .control_out(
+                    ControlOut {
+                        control_type,
+                        recipient,
+                        request: request.request,
+                        value: request.value,
+                        index: request.index,
+                        data,
+                    },
+                    COMMAND_TIMEOUT,
+                )
+                .wait()
+                .map(|()| Vec::new()),
+        };
+        result.map_err(|e| format!("{e:?}"))
+    }
+
+    fn usb_descriptors(&mut self) -> Option<UsbDescriptors> {
+        let o = self.opened.as_ref()?;
+        Some(descriptors(&o.device))
     }
 
     fn can_send(&mut self, packet_type: u8) -> bool {

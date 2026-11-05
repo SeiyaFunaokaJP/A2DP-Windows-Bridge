@@ -99,6 +99,10 @@ fn vendors_and_names() {
     assert_eq!(company_name(0x005D), Some("Realtek"));
     assert_eq!(company_name(0x000A), Some("Qualcomm (CSR)"));
     assert_eq!(company_name(0x0009), Some("Infineon"));
+    // Chip makers found in headphones (Read Remote Version)
+    assert_eq!(company_name(0x0094), Some("Airoha"));
+    assert_eq!(company_name(0x02B0), Some("Bestechnic (BES)"));
+    assert_eq!(company_name(0x0642), Some("Bluetrum"));
     assert_eq!(company_name(0x1234), None);
 }
 

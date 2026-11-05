@@ -5,6 +5,8 @@ const REPO = "https://github.com/SeiyaFunaokaJP/BlueCaster";
 export const LINKS = {
   repo: REPO,
   setupGuide: `${REPO}/blob/main/docs/setup.md`,
+  /** The chip script format (docs/chip-support.md, published) */
+  chipScripts: "https://seiyafunaokajp.github.io/BlueCaster/chip-support#chip-scripts",
   /** Realtek firmware: linux-firmware rtl_bt (v1 wx_firmware_dialog.cpp) */
   firmwareRealtek: "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt",
   firmwareIntel: "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/intel",
@@ -88,6 +90,39 @@ export function bugReportUrl(r: BugReport): string {
     info = info.slice(0, info.lastIndexOf("\n") + 1 || info.length) + cut;
   }
   q.set("logs", info);
+  return `${REPO}/issues/new?${q.toString()}`;
+}
+
+/** "a.zip" of "C:\x\a.zip": the file a report asks to attach */
+export function baseName(path: string): string {
+  return path.slice(Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/")) + 1);
+}
+
+/** What a chip report is prefilled with (.github/ISSUE_TEMPLATE/chip_report.yml) */
+export interface ChipReport {
+  version: string;
+  /** "MediaTek (0x0E8D:0x0608) [unsupported]": the user adds where it came from */
+  adapter: string;
+  /** The probe's summary line */
+  summary: string;
+  /** "copy diagnostic info" text: only the Windows build is taken from it */
+  info: string;
+  /** The probe report's file name */
+  file: string;
+}
+
+/** A new chip report with what the probe read; the user attaches the file */
+export function chipReportUrl(r: ChipReport): string {
+  const q = new URLSearchParams({
+    template: "chip_report.yml",
+    title: `Chip report: ${r.summary.split(",")[0]}`,
+    version: r.version,
+    adapter: r.adapter,
+    chip: r.summary,
+    probe: `${r.file}\n(drag the file here from the Explorer window BlueCaster opened)`,
+  });
+  const os = /OS\s*:\s*Windows build (\d+) \(([^)]+)\)/.exec(r.info);
+  if (os) q.set("windows", `Windows build ${os[1]} (${os[2]})`);
   return `${REPO}/issues/new?${q.toString()}`;
 }
 

@@ -2,6 +2,12 @@ import { unwrap } from "solid-js/store";
 import type { Settings, SettingsApplied } from "../ipc/types";
 import type { AppContext } from "./context";
 
+/** The Volume Mixer (screen, flyout list, output mute): Developer > Volume
+ *  Mixer on, in developer mode (issue #86) */
+export function mixerShown(s: Pick<Settings, "developer_mode" | "volume_mixer"> | undefined): boolean {
+  return !!s?.developer_mode && s.volume_mixer;
+}
+
 /** Changes some settings: the core takes the whole object and sends it back as an event */
 export function saveSettings(app: AppContext, patch: Partial<Settings>): Promise<boolean> {
   return applySettings(app, patch).then((r) => r !== null);

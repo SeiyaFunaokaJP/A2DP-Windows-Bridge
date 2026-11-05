@@ -11,14 +11,19 @@
 
 pub mod afh;
 mod app;
+pub mod bringup;
 pub mod capture;
 pub mod chips;
 pub mod events;
 pub mod intel;
 mod le;
+pub mod link_details;
 pub mod link_keys;
 pub mod media;
+pub mod probe;
 pub mod rfcomm;
+pub mod script;
+pub mod sdp_services;
 mod shared;
 pub mod stats;
 
@@ -37,16 +42,20 @@ pub use btstack_sys::expect_transport_loss;
 pub use capture::HciCapture;
 pub use events::{addr_str, parse_addr};
 pub use le::{
-    LeAddr, LeConfig, LeDeviceId, LeDeviceInfo, LeRequest, LeScanResult, LeSduSink, LeStreamRequest, LeStreamStarted,
-    LeStreamStats, LeStreamStatus,
+    LeAddr, LeBroadcast, LeConfig, LeDeviceId, LeDeviceInfo, LeRequest, LeScanResult, LeSduSink, LeStreamRequest,
+    LeStreamStarted, LeStreamStats, LeStreamStatus,
 };
 pub use media::{MediaPacket, MediaSink};
 pub use rfcomm::{
     MAX_SEND_BYTES as RFCOMM_MAX_SEND_BYTES, OPEN_DEADLINE as RFCOMM_OPEN_DEADLINE, RfcommCloseReason, RfcommError,
     RfcommEvent, RfcommOpened, RfcommReply, RfcommSink, parse_uuid,
 };
+pub use sdp_services::{SdpRecord, ServicesError};
 use shared::{Shared, Wait};
-pub use stats::{LinkRadio, LinkStats, LiveCodec, MaxGauge, StreamTiming};
+pub use stats::{
+    EncodeTiming, EncodeTotals, LinkDetails, LinkMode, LinkRadio, LinkStats, LiveCodec, MaxGauge, RemoteFeatures,
+    RemoteVersion, StreamTiming,
+};
 
 const INIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// No HCI event at all this long after power on: the controller does not
@@ -60,6 +69,28 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEVICE_A2DP_TIMEOUT: Duration = Duration::from_secs(2);
 /// A job the run loop should take at once
 const JOB_TIMEOUT: Duration = Duration::from_secs(5);
+/// The whole chip probe: every step timing out takes 8 s
+const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Makes a tool's loader on the BtHost thread, from the firmware folder
+/// (BtHost::probe, BtHost::run_script)
+pub(crate) type ToolLoader = Box<dyn FnOnce(&std::path::Path) -> Box<dyn bringup::ChipLoader> + Send>;
+
+/// How long a chip script may take: its waits and every step timing out,
+/// and 5 minutes per upload (thousands of acknowledged commands)
+fn script_timeout(script: &script::Script) -> Duration {
+    let ms: u64 = script
+        .lines
+        .iter()
+        .map(|l| match &l.step {
+            script::Step::Wait(ms) => *ms as u64,
+            script::Step::Expect { timeout, .. } => *timeout as u64,
+            script::Step::Upload { .. } => 300_000,
+            script::Step::Hci { .. } | script::Step::Usb(_) | script::Step::Bootloader(_) => 3_000,
+        })
+        .sum();
+    Duration::from_millis(10_000 + ms)
+}
 /// An RFCOMM channel open: the BTstack thread answers by its deadline
 /// (rfcomm::OPEN_DEADLINE); this only guards against a run loop that hangs
 const RFCOMM_OPEN_TIMEOUT: Duration = Duration::from_secs(22);
@@ -94,8 +125,9 @@ pub enum TransportConfig {
 /// implements it with win-sys); called on the BTstack thread every 30 s or
 /// when the policy changes
 pub trait AfhSource: Send {
-    /// None: nothing to avoid (policy "off", no Wi-Fi)
-    fn classify(&mut self, policy: &str) -> Option<AfhClassification>;
+    /// None: nothing to avoid (policy "off", no Wi-Fi). `controller` holds
+    /// the current link's recent AFH maps (for "blend-*").
+    fn classify(&mut self, policy: &str, controller: &afh::ControllerHistory) -> Option<AfhClassification>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +165,32 @@ pub struct HostConfig {
     /// service level connection, where the headphones report it (and the LE
     /// Battery Service). Off: no HFP at all.
     pub battery: bool,
+    /// Told where a chip loader (Intel's download) is while the adapter
+    /// starts, for the Adapters screen
+    pub on_loader: Option<bringup::LoaderHook>,
+    /// The adapter's Bluetooth name, as headphones show it ([`local_name`])
+    pub local_name: String,
+}
+
+/// The name without a computer name
+pub const APP_LOCAL_NAME: &str = "BlueCaster";
+/// HCI Write Local Name: at most 248 bytes of UTF-8
+const LOCAL_NAME_MAX: usize = 248;
+
+/// The adapter's Bluetooth name: the computer's, as Windows' own Bluetooth
+/// shows it, with the app's beside it so the two can be told apart
+/// (issue #86): "Taro-PC (BlueCaster)"; no computer name: "BlueCaster"
+pub fn local_name(computer: &str) -> String {
+    let computer = computer.trim();
+    if computer.is_empty() {
+        return APP_LOCAL_NAME.into();
+    }
+    let suffix = format!(" ({APP_LOCAL_NAME})");
+    let mut end = computer.len().min(LOCAL_NAME_MAX - suffix.len());
+    while !computer.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{suffix}", computer[..end].trim_end())
 }
 
 impl HostConfig {
@@ -150,6 +208,8 @@ impl HostConfig {
             afh: None,
             le_audio: None,
             battery: false,
+            on_loader: None,
+            local_name: APP_LOCAL_NAME.into(),
         }
     }
 }
@@ -293,6 +353,16 @@ pub enum ReconnectError {
 struct LastStream {
     addr: [u8; 6],
     config: Configuration,
+    /// What the device offered then
+    caps: RemoteCaps,
+}
+
+/// An A2DP connection the device opened itself
+enum DeviceA2dp {
+    /// With the capabilities BTstack discovered
+    Caps(RemoteCaps),
+    /// The device also configured and opened the stream
+    Stream((u8, Option<Vec<u8>>)),
 }
 
 pub struct BtHost {
@@ -352,6 +422,63 @@ fn exe_dir() -> PathBuf {
 impl BtHost {
     /// Starts BTstack and waits until HCI works
     pub fn start(config: HostConfig, stats: Arc<LinkStats>) -> Result<BtHost, InitFailure> {
+        let host = BtHost::launch(config, stats, None)?;
+        match host.wait_init() {
+            Ok(()) => Ok(host),
+            Err(f) => {
+                drop(host); // shuts the stack down, releasing the adapter
+                Err(f)
+            }
+        }
+    }
+
+    /// The chip probe (crate::probe) on the adapter `config` opens, in place
+    /// of HCI init: read commands only. The stack is shut down afterwards,
+    /// releasing the adapter. Err only when no stack could run at all.
+    pub fn probe(config: HostConfig) -> Result<probe::ProbeReport, InitFailure> {
+        BtHost::run_tool(config, Box::new(|_| Box::new(probe::Probe::new())), PROBE_TIMEOUT)
+    }
+
+    /// A chip script (crate::script) on the adapter `config` opens, in place
+    /// of HCI init; its uploads read the firmware folder. Whether the script
+    /// may run (writes, denied opcodes) is the caller's to decide. The stack
+    /// is shut down afterwards.
+    pub fn run_script(config: HostConfig, script: script::Script) -> Result<probe::ProbeReport, InitFailure> {
+        let timeout = script_timeout(&script);
+        BtHost::run_tool(
+            config,
+            Box::new(move |dir| {
+                let dir = dir.to_path_buf();
+                let reader = Box::new(move |name: &str| std::fs::read(dir.join(name)).ok());
+                Box::new(script::ScriptLoader::new(script, reader))
+            }),
+            timeout,
+        )
+    }
+
+    fn run_tool(config: HostConfig, tool: ToolLoader, timeout: Duration) -> Result<probe::ProbeReport, InitFailure> {
+        let (tx, rx) = mpsc::channel();
+        let host = BtHost::launch(config, Arc::new(LinkStats::default()), Some((tx, tool)))?;
+        let report = rx.recv_timeout(timeout).unwrap_or_else(|_| probe::ProbeReport {
+            error: Some("it did not finish in time".into()),
+            ..probe::ProbeReport::default()
+        });
+        drop(host);
+        Ok(report)
+    }
+
+    /// BTstack on its thread with the transport: HCI init (or the Intel
+    /// loader first), or with `tool` that loader instead (the probe, a
+    /// script), its report to the sender
+    fn launch(
+        config: HostConfig,
+        stats: Arc<LinkStats>,
+        tool: Option<(mpsc::Sender<probe::ProbeReport>, ToolLoader)>,
+    ) -> Result<BtHost, InitFailure> {
+        let (probe, tool) = match tool {
+            Some((tx, make)) => (Some(tx), Some(make)),
+            None => (None, None),
+        };
         let shared = Arc::new(Shared::default());
         let controls = Arc::new(Controls {
             volume: AtomicI32::new(-1),
@@ -403,6 +530,8 @@ impl BtHost {
                         afh,
                         le_audio,
                         battery,
+                        on_loader,
+                        local_name,
                     } = config;
                     let failed_shared = shared.clone();
                     let result = btstack_sys::run(move |stack, remote| {
@@ -413,7 +542,15 @@ impl BtHost {
                         }
                         let le = le_audio.map(|cfg| {
                             let poster = le::core::LePoster::new(le_jobs, remote);
-                            le::core::LeCore::new(cfg, le_shared, controls.clone(), poster, le_events, battery)
+                            le::core::LeCore::new(
+                                cfg,
+                                le_shared,
+                                controls.clone(),
+                                poster,
+                                le_events,
+                                battery,
+                                local_name.clone(),
+                            )
                         });
                         capture.reset_tracking();
                         let logger = capture.clone();
@@ -429,6 +566,9 @@ impl BtHost {
                             realtek_files,
                             broadcom_ids,
                             battery,
+                            on_loader,
+                            probe,
+                            local_name,
                         };
                         let mut app = HostApp::new(
                             shared,
@@ -443,7 +583,12 @@ impl BtHost {
                             le,
                         );
                         let backend = backend(&transport);
-                        if intel_loader && !tcp {
+                        if let Some(make) = tool {
+                            // A tool, no HCI init (also over TCP: the
+                            // emulator's controller)
+                            stack.install_transport(backend);
+                            app.start_tool(stack, make);
+                        } else if intel_loader && !tcp {
                             // Intel controllers boot into a bootloader and
                             // need ibt-*.sfi / .ddc before HCI init; the
                             // loader is done at once if the firmware runs
@@ -484,13 +629,7 @@ impl BtHost {
             le_on,
             le: le_shared,
         };
-        match host.wait_init() {
-            Ok(()) => Ok(host),
-            Err(f) => {
-                drop(host); // shuts the stack down, releasing the adapter
-                Err(f)
-            }
-        }
+        Ok(host)
     }
 
     fn wait_init(&self) -> Result<(), InitFailure> {
@@ -1344,12 +1483,18 @@ impl BtHost {
             return Err(ConfigureError::Refused);
         }
         let mtu = s.media_mtu;
+        let caps = s.remote_caps.clone();
         drop(s);
         tracing::debug!("configure: stream established, media payload {mtu}");
-        if let Some(addr) = *self.remote_addr.lock().unwrap_or_else(|e| e.into_inner()) {
-            *self.last.lock().unwrap_or_else(|e| e.into_inner()) = Some(LastStream { addr, config: config.clone() });
-        }
+        self.remember_stream(config, caps);
         Ok(mtu)
+    }
+
+    fn remember_stream(&self, config: &Configuration, caps: RemoteCaps) {
+        if let Some(addr) = *self.remote_addr.lock().unwrap_or_else(|e| e.into_inner()) {
+            *self.last.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(LastStream { addr, config: config.clone(), caps });
+        }
     }
 
     /// AVDTP Start; waits until it is acknowledged
@@ -1396,6 +1541,56 @@ impl BtHost {
     /// answer.
     pub fn forget_link_key(&self, addr: [u8; 6]) -> bool {
         self.call(Duration::from_secs(2), move |_, s| s.drop_link_key(&addr)).is_some()
+    }
+
+    /// Stores a link key in the running stack and its file (one taken from
+    /// Windows): the device connects with it from then on. False when the
+    /// stack did not answer.
+    pub fn store_link_key(&self, addr: [u8; 6], key: [u8; 16], key_type: i32) -> bool {
+        self.call(Duration::from_secs(2), move |_, s| s.store_link_key(&addr, &key, key_type)).is_some()
+    }
+
+    /// The service records `addr` lists in SDP, asked over the link the
+    /// stack has to it (it never connects for this). Answered within
+    /// [`sdp_services::DEADLINE`] and a little more.
+    pub fn device_services(&self, addr: [u8; 6]) -> Result<Vec<SdpRecord>, ServicesError> {
+        let (tx, rx) = mpsc::sync_channel(1);
+        self.post(move |app, s| app.sdp_services.start(s, addr, tx));
+        match rx.recv_timeout(sdp_services::DEADLINE + Duration::from_secs(2)) {
+            Ok(r) => r,
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(ServicesError::NoAnswer),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(ServicesError::NotConnected),
+        }
+    }
+
+    /// The name `addr` gives now, asked over the link the stack has to it:
+    /// a profile may carry another (issue #237: an old one without it).
+    /// None when it does not answer.
+    pub fn remote_name(&self, addr: [u8; 6]) -> Option<String> {
+        self.shared.update(|s| {
+            s.name_done = false;
+            s.remote_name = None;
+        });
+        // Sent directly: a command in flight may hold it back a moment
+        let mut sent = false;
+        for _ in 0..10 {
+            if self.call(JOB_TIMEOUT, move |_, s| s.cmd_remote_name_request(&addr)) == Some(0) {
+                sent = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        if !sent {
+            tracing::warn!("remote name request to {} not sent", addr_str(&addr));
+            return None;
+        }
+        if self.shared.wait(NAME_REQUEST_TIMEOUT, true, |s| s.name_done) != Wait::Done {
+            tracing::warn!("remote name request to {} timed out", addr_str(&addr));
+            self.call(JOB_TIMEOUT, move |_, s| s.cmd_remote_name_request_cancel(&addr));
+            let _ = self.shared.wait(NAME_CANCEL_TIMEOUT, false, |s| s.name_done);
+            return None;
+        }
+        self.shared.lock().remote_name.take().filter(|(a, _)| *a == addr).map(|(_, name)| name)
     }
 
     pub fn is_connected(&self) -> bool {
@@ -1469,8 +1664,12 @@ impl BtHost {
         &self,
         rebuild: &dyn Fn(&RemoteCaps) -> Option<Configuration>,
     ) -> Result<Reconnected, ReconnectError> {
-        let Some((addr, config)) =
-            self.last.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|l| (l.addr, l.config.clone()))
+        let Some((addr, config, caps)) = self
+            .last
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+            .map(|l| (l.addr, l.config.clone(), l.caps.clone()))
         else {
             tracing::warn!("cannot reconnect: no earlier stream");
             return Err(ReconnectError::Failed);
@@ -1485,15 +1684,23 @@ impl BtHost {
             tracing::info!("reconnect aborted (cancel requested)");
             return Err(ReconnectError::Failed);
         }
-        if let Some(remote) = self.a2dp_from_device(addr) {
-            tracing::info!("{} connected A2DP itself, starting the stream on it", addr_str(&addr));
-            self.shared.update(|s| {
-                s.disconnect_occurred = false;
-                s.stream_done = None;
-                s.start_done = None;
-                s.last_connect_failure = None;
-            });
-            return self.configure_and_start(remote, &config, rebuild);
+        match self.a2dp_from_device(addr) {
+            Some(DeviceA2dp::Caps(remote)) => {
+                tracing::info!("{} connected A2DP itself, starting the stream on it", addr_str(&addr));
+                self.shared.update(|s| {
+                    s.disconnect_occurred = false;
+                    s.stream_done = None;
+                    s.start_done = None;
+                    s.last_connect_failure = None;
+                });
+                return self.configure_and_start(remote, &config, rebuild);
+            }
+            Some(DeviceA2dp::Stream(configured)) => {
+                if let Some(r) = self.start_device_stream(addr, caps, &configured, rebuild) {
+                    return r;
+                }
+            }
+            None => {}
         }
         self.shared.update(|s| {
             s.connected = false;
@@ -1515,20 +1722,69 @@ impl BtHost {
         self.configure_and_start(remote, &config, rebuild)
     }
 
-    /// What the device offers on an A2DP connection it opened itself, as
-    /// headphones turned back on may do: closing it to open our own makes
-    /// them announce a disconnect (issue #270). None without one, or when
-    /// its capabilities do not come.
-    fn a2dp_from_device(&self, addr: [u8; 6]) -> Option<RemoteCaps> {
+    /// An A2DP connection the device opened itself, as headphones turned
+    /// back on may do: closing it to open our own makes them announce a
+    /// disconnect (issue #270). BTstack first gives the device a moment to
+    /// configure the stream; when it does, BTstack discovers no
+    /// capabilities. None without such a connection, or when neither comes.
+    fn a2dp_from_device(&self, addr: [u8; 6]) -> Option<DeviceA2dp> {
         if self.call(Duration::from_secs(2), move |app, s| app.has_a2dp_from_device(s, addr)) != Some(true) {
             return None;
         }
-        // BTstack first gives the device a moment to configure the stream
-        if self.shared.wait(DEVICE_A2DP_TIMEOUT, true, |s| s.connected) != Wait::Done {
+        let opened = |s: &shared::State| s.stream_done == Some(true) && s.stream_config.is_some();
+        if self.shared.wait(DEVICE_A2DP_TIMEOUT, true, |s| s.connected || opened(s)) != Wait::Done {
             tracing::debug!("the A2DP connection of {} reported no capabilities", addr_str(&addr));
             return None;
         }
-        Some(self.shared.lock().remote_caps.clone())
+        let s = self.shared.lock();
+        if s.connected {
+            Some(DeviceA2dp::Caps(s.remote_caps.clone()))
+        } else {
+            s.stream_config.clone().map(DeviceA2dp::Stream)
+        }
+    }
+
+    /// Streams on the stream the device configured and opened itself, when
+    /// it is the one we would set up: the capabilities of the last stream
+    /// stand in for the ones not discovered. None: it is not, and the
+    /// connection is replaced by ours.
+    fn start_device_stream(
+        &self,
+        addr: [u8; 6],
+        remote: RemoteCaps,
+        configured: &(u8, Option<Vec<u8>>),
+        rebuild: &dyn Fn(&RemoteCaps) -> Option<Configuration>,
+    ) -> Option<Result<Reconnected, ReconnectError>> {
+        let config = rebuild(&remote)?;
+        let c = config.clone();
+        let theirs = configured.clone();
+        if self.call(Duration::from_secs(2), move |app, _| app.adopt_device_stream(&c, &theirs)) != Some(true) {
+            tracing::info!(
+                "{} configured the stream itself (local SEID {}, {:02X?}), not as {} would be: replacing it",
+                addr_str(&addr),
+                configured.0,
+                configured.1.as_deref().unwrap_or_default(),
+                config.kind.name()
+            );
+            return None;
+        }
+        tracing::info!("{} opened the stream itself, starting {} on it", addr_str(&addr), config.kind.name());
+        self.shared.update(|s| {
+            s.remote_caps = remote.clone();
+            s.connected = true;
+            s.disconnect_occurred = false;
+            s.start_done = None;
+            s.last_connect_failure = None;
+        });
+        let mtu = self.media_mtu();
+        self.remember_stream(&config, remote.clone());
+        if !self.start_stream() {
+            tracing::warn!("reconnect: stream start failed");
+            self.disconnect();
+            return Some(Err(ReconnectError::Failed));
+        }
+        tracing::info!("reconnected and streaming (mtu {mtu})");
+        Some(Ok(Reconnected { remote, config, mtu }))
     }
 
     /// The stream of a connection just (re)established, with a configuration
@@ -1608,7 +1864,8 @@ impl BtHost {
         self.controls.media_keys.store(enabled, Ordering::Release);
     }
 
-    /// AFH policy: "auto", "off" or Wi-Fi channels such as "6,11"; takes
+    /// AFH policy: "auto", "off", Wi-Fi channels such as "6,11" or
+    /// "blend-mild" / "-medium" / "-strong" (experimental); takes
     /// effect within seconds, also on a running link
     pub fn set_afh_policy(&self, policy: &str) {
         let mut p = self.controls.afh_policy.lock().unwrap_or_else(|e| e.into_inner());
@@ -1706,5 +1963,26 @@ impl BtHost {
 impl Drop for BtHost {
     fn drop(&mut self) {
         self.stop_thread(false);
+    }
+}
+
+#[cfg(test)]
+mod local_name_tests {
+    use super::local_name;
+
+    #[test]
+    fn the_computer_name_with_the_app_beside_it() {
+        assert_eq!(local_name("Taro-PC"), "Taro-PC (BlueCaster)");
+        assert_eq!(local_name("  "), "BlueCaster");
+        assert_eq!(local_name("太郎のPC"), "太郎のPC (BlueCaster)");
+    }
+
+    #[test]
+    fn at_most_248_bytes_cut_on_a_character() {
+        let long = "あ".repeat(100); // 300 bytes
+        let name = local_name(&long);
+        assert!(name.len() <= 248, "{}", name.len());
+        assert!(name.ends_with(" (BlueCaster)"));
+        assert!(name.starts_with("あああ"));
     }
 }

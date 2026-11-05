@@ -565,6 +565,15 @@ impl DevInfoSet {
         (!s.is_empty()).then_some(s)
     }
 
+    /// A UINT32 device property, None if absent or of another type
+    pub(crate) fn property_u32(&self, data: &SP_DEVINFO_DATA, key: &DEVPROPKEY) -> Option<u32> {
+        let mut ty = DEVPROPTYPE::default();
+        let mut buf = [0u8; 4];
+        // SAFETY: valid set, element and key; the buffer length is passed.
+        unsafe { SetupDiGetDevicePropertyW(self.0, data, key, &mut ty, Some(&mut buf), None, 0) }.ok()?;
+        (ty == windows::Win32::Devices::Properties::DEVPROP_TYPE_UINT32).then(|| u32::from_le_bytes(buf))
+    }
+
     /// The driver that owns the device now (all fields empty if none)
     pub(crate) fn driver_info(&self, data: &SP_DEVINFO_DATA) -> DriverInfo {
         DriverInfo {

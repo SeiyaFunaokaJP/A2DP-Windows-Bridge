@@ -241,7 +241,23 @@ pub struct AssignOutcome {
     pub reboot_required: bool,
     /// The driver now
     pub state: DriverState,
+    /// The devices Windows had connected through the adapter, disconnected
+    /// first
+    pub disconnected: Vec<String>,
 }
+
+/// How long installing WinUSB (with the restart of the device) may take.
+/// Windows stops the old driver first; when it cannot (its Bluetooth still
+/// holds the radio), DiInstallDevice does not return until Windows
+/// restarts. Normally it takes under a second, with the restart up to ~15 s.
+const INSTALL_LIMIT: Duration = Duration::from_secs(45);
+
+/// The device set and element, handed to the install thread
+struct InstallJob(DevInfoSet, SP_DEVINFO_DATA);
+// SAFETY: the set is used by one thread at a time: the install thread owns
+// it, and gives it back only when done (or keeps it if Windows never
+// returns; the process then exits with it).
+unsafe impl Send for InstallJob {}
 
 /// What `restore` did
 #[derive(Debug, Clone)]
@@ -292,7 +308,7 @@ pub fn assign_winusb(instance_id: &str) -> Result<AssignOutcome, DriverError> {
         return Err(DriverError::NotElevated);
     }
     require_usb(instance_id)?;
-    let (set, mut data) = open(instance_id)?;
+    let (set, data) = open(instance_id)?;
     // Windows remembers unplugged devices; installing on one would only
     // take effect when it is plugged in, and could not be checked
     if locate(instance_id).is_none() {
@@ -308,9 +324,13 @@ pub fn assign_winusb(instance_id: &str) -> Result<AssignOutcome, DriverError> {
             class_changed: false,
             reboot_required: false,
             state: driver_state(instance_id)?,
+            disconnected: Vec::new(),
         });
     }
     let inf = winusb_inf_path()?;
+    // Windows cannot stop its Bluetooth on a radio with a connected device
+    // (an audio link above all): the install would hang
+    let disconnected = crate::bt_radios::disconnect_through(instance_id);
     tracing::info!(
         "driver: assigning WinUSB to {instance_id} (now {} {} {})",
         before.service,
@@ -330,9 +350,46 @@ pub fn assign_winusb(instance_id: &str) -> Result<AssignOutcome, DriverError> {
     // Step 2: the interface GUID, kept beside any GUIDs already there
     let guids_before = write_interface_guid(&set, &data).map_err(DriverError::win32("writing DeviceInterfaceGUIDs"))?;
 
-    // Steps 3 and 4
-    let mut class_changed = false;
-    let result = install(&set, &mut data, &inf, &mut class_changed);
+    // Steps 3 and 4, on a thread: Windows may not return (INSTALL_LIMIT)
+    let (tx, rx) = std::sync::mpsc::channel();
+    let job = InstallJob(set, data);
+    std::thread::spawn(move || {
+        let InstallJob(set, mut data) = job;
+        let mut class_changed = false;
+        let mut result = install(&set, &mut data, &inf, &mut class_changed);
+        if let Ok(true) = result {
+            // Windows could not stop the device to load WinUSB (issue #81:
+            // the core then fails with "failed to initialize WinUSB (error
+            // 50)" until the adapter is replugged or Windows restarts).
+            // Restart it as Device Manager does; only what still needs a
+            // restart after that is reported
+            result = Ok(restart_device(&set, &mut data));
+        }
+        let _ = tx.send((result, class_changed, InstallJob(set, data)));
+    });
+    let (result, class_changed, InstallJob(set, _)) = match rx.recv_timeout(INSTALL_LIMIT) {
+        Ok(done) => done,
+        Err(_) => {
+            // WinUSB is on the device, but its old driver never stopped:
+            // Windows loads it at the next restart
+            let state = driver_state(instance_id)?;
+            tracing::warn!(
+                "driver: installing WinUSB on {instance_id} did not finish in {INSTALL_LIMIT:?}; now {} ({:?}), problem {:?}: restart needed",
+                state.driver.service,
+                state.kind,
+                state.problem_code
+            );
+            let class_changed = !state.driver.class_guid.eq_ignore_ascii_case(&before.class_guid);
+            return Ok(AssignOutcome {
+                previous,
+                already_winusb: false,
+                class_changed,
+                reboot_required: true,
+                state,
+                disconnected,
+            });
+        }
+    };
     tracing::debug!(
         "driver: install on {instance_id}: {}, class changed {class_changed}",
         match &result {
@@ -343,15 +400,7 @@ pub fn assign_winusb(instance_id: &str) -> Result<AssignOutcome, DriverError> {
         }
     );
     match result {
-        Ok(mut reboot_required) => {
-            if reboot_required {
-                // Windows could not stop the device to load WinUSB (issue
-                // #81: the core then fails with "failed to initialize WinUSB
-                // (error 50)" until the adapter is replugged or Windows
-                // restarts). Restart it as Device Manager does; only what
-                // still needs a restart after that is reported
-                reboot_required = restart_device(&set, &mut data);
-            }
+        Ok(reboot_required) => {
             let state = driver_state(instance_id)?;
             tracing::info!(
                 "driver: {instance_id} is now on {} ({:?}){}",
@@ -359,7 +408,7 @@ pub fn assign_winusb(instance_id: &str) -> Result<AssignOutcome, DriverError> {
                 state.kind,
                 if reboot_required { ", restart needed" } else { "" }
             );
-            Ok(AssignOutcome { previous, already_winusb: false, class_changed, reboot_required, state })
+            Ok(AssignOutcome { previous, already_winusb: false, class_changed, reboot_required, state, disconnected })
         }
         Err(failure) => {
             drop(set); // release the device before putting it back

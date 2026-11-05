@@ -36,11 +36,29 @@ body:
       label: Headphones / speaker
       placeholder: e.g. Sony WH-1000XM4
 
+  - type: markdown
+    attributes:
+      value: |
+        **Sound drops out, stutters, or the connection is unstable?** Most such reports so far were the radio, not the app: another radio next to the adapter, a second connection of the headphones, or a bit rate the link cannot carry. [Dropouts and connection problems](https://seiyafunaokajp.github.io/BlueCaster/wireless) explains each check. Please try them first if you can, and tick what you tried below.
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: What I tried
+      description: For dropouts and connection problems. Leave it empty if the problem is something else.
+      options:
+        - label: Turned off every other Bluetooth adapter in this PC (the built-in one, for example)
+        - label: Turned off dual connection (multipoint) in the headphones' app, or disconnected the phone, and closed the headphones' app
+        - label: Moved the adapter to a USB 2.0 port or a short extension cable, away from USB 3 ports and other wireless receivers (mouse, keyboard, headset dongles)
+        - label: Put this PC on 5 or 6 GHz Wi-Fi, or set AFH to Manual with the router's 2.4 GHz channel
+        - label: Tried a lower bit rate (or ABR on), and checked whether the problem stays with SBC or AAC
+        - label: Looked at Diagnostics > Link Quality while it happened (signal, send queue, packets dropped)
+
   - type: dropdown
     id: dual_connection
     attributes:
       label: Dual connection
-      description: Were the headphones connected to a second device (a phone, for example) at the same time?
+      description: Were the headphones connected to a second device at the same time? A phone, or this PC's own Bluetooth, counts, also when it is only there for the headphones' app (battery, noise control, EQ).
       options:
         - "No"
         - "Yes"
@@ -54,6 +72,17 @@ body:
       options:
         - "No"
         - "Yes"
+        - I don't know
+
+  - type: dropdown
+    id: wifi
+    attributes:
+      label: Wi-Fi
+      description: Which Wi-Fi was this PC on?
+      options:
+        - 2.4 GHz
+        - 5 or 6 GHz
+        - None (wired or off)
         - I don't know
 
   - type: dropdown

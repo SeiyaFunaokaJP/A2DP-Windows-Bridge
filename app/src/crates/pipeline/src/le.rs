@@ -255,6 +255,7 @@ struct FrameEncoder {
     pcm16: Vec<i16>,
     sets: u64,
     errors: u64,
+    clock: crate::EncodeClock,
 }
 
 impl FrameEncoder {
@@ -275,6 +276,7 @@ impl FrameEncoder {
             _ => self.layout.empty_set(),
         };
         let octets = usize::from(self.layout.params.octets);
+        let started = Instant::now();
         for (slot, enc) in self.layout.channels.iter().zip(&mut self.encoders) {
             for (s, (&l, &r)) in self.pcm16.iter_mut().zip(self.l.iter().zip(&self.r)) {
                 *s = to_i16(match slot.source {
@@ -289,6 +291,7 @@ impl FrameEncoder {
                 out.fill(0);
             }
         }
+        self.clock.add(started.elapsed(), u64::from(self.layout.params.frame_us) * 1000);
         self.sets += 1;
         tracing::trace!("LE encode thread: SDU set {} ({} SDUs)", self.sets, set.len());
         sink.push(set);
@@ -372,6 +375,7 @@ impl LeEncoder {
                 pcm16: vec![0; ns],
                 sets: 0,
                 errors: 0,
+                clock: crate::EncodeClock::default(),
             },
         })
     }
@@ -445,9 +449,10 @@ impl LePipeline {
         let control = Control::new();
         let thread = {
             let control = control.clone();
+            let stats = stats.clone();
             std::thread::Builder::new()
                 .name("le-encode".into())
-                .spawn(move || le_encode_thread(encoder, consumer, sink, &control))
+                .spawn(move || le_encode_thread(encoder, consumer, sink, &stats, &control))
                 .map_err(|e| format!("spawning the LE encode thread: {e}"))?
         };
         let capture = CaptureInput {
@@ -494,7 +499,13 @@ impl Drop for LePipeline {
     }
 }
 
-fn le_encode_thread(mut encoder: LeEncoder, mut ring: rtrb::Consumer<u8>, sink: impl SduSink, control: &Control) {
+fn le_encode_thread(
+    mut encoder: LeEncoder,
+    mut ring: rtrb::Consumer<u8>,
+    sink: impl SduSink,
+    stats: &LinkStats,
+    control: &Control,
+) {
     let _priority = crate::thread_priority();
     let frame_bytes = encoder.input.frame_bytes();
     // ~10 ms rounds, at least 128 frames (as the A2DP encode thread)
@@ -548,6 +559,7 @@ fn le_encode_thread(mut encoder: LeEncoder, mut ring: rtrb::Consumer<u8>, sink: 
             chunk.commit_all();
         }
         encoder.push(&read_buf[..bytes], &sink);
+        encoder.frame.clock.flush(stats);
     }
     tracing::debug!(
         "LE encode thread: stopped after {} SDU sets, {} encode errors",
@@ -820,6 +832,10 @@ mod tests {
         pipeline.stop();
         assert_eq!(queue.lock().unwrap().len(), 4);
         assert_eq!(stats.capture_frames.load(Ordering::Relaxed), 4 * 360);
+        // Each set timed against its 7.5 ms of audio
+        let enc = stats.encode.totals();
+        assert_eq!((enc.calls, enc.audio_ns), (4, 4 * 7_500_000));
+        assert!(enc.busy_ns > 0);
         let p = plan(preset(44100, 7500, 75), vec![cis(1, &[L])]);
         let config = LePipelineConfig { plan: p, input, buffer: BufferPreset::Standard };
         assert!(LePipeline::start(config, queue, stats).is_err());

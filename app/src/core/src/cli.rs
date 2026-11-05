@@ -56,11 +56,18 @@ Usage: bluecaster-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
   --sbc-mode <mode>     SBC channel mode: joint_stereo (default), stereo,
                         mono (dual channel: -c sbcxq)
   --sbc-bitpool <n>     SBC / SBC XQ bitpool (default: by quality)
-  --afh <policy>        auto, off or Wi-Fi channels to avoid such as 6,11
+  --afh <policy>        auto, off or Wi-Fi channels to avoid such as 6,11;
+                        blend-mild, blend-medium, blend-strong (experimental)
   --remote-sink <host[:port]|auto>
                         statistics of a measuring receiver (tools/linux_sink);
                         without -d, stream to that receiver
   --scan [seconds]      list nearby devices and exit
+  --probe               read what the adapter answers (read commands only, no
+                        HCI init; for adapters BlueCaster cannot use yet), save it
+                        to logs\\probe and exit
+  --script <file>       run a chip script on the adapter in place of HCI init
+                        (docs/chip-support.md), save its report and exit
+  --allow-writes        let --script send requests that may change the chip
 
 LE Audio (experimental, LC3 over LE isochronous channels):
   --le-audio            stream to the LE Audio device -d (BAP unicast, LC3)
@@ -68,6 +75,12 @@ LE Audio (experimental, LC3 over LE isochronous channels):
   --le-preset <name>    use only this BAP configuration (e.g. 48_2_2, 16_2_1)
   --le-low-latency      GMAP low latency (7.5 / 10 ms frames) for a gaming headset
   --le-scan [seconds]   list the LE Audio devices nearby and exit
+  --auracast <name>     broadcast under this name instead (Auracast source, no
+                        device; --le-preset picks 16_2_2 ... 48_6_2, default
+                        48_4_2)
+  --auracast-code <code>
+                        encrypt the broadcast with this code (4-16 bytes)
+  --auracast-mono       one mono channel instead of left and right
 
 Development / testing:
   --hci-tcp <host:port> H4 over TCP to a virtual controller (tools/emu)
@@ -77,6 +90,7 @@ Development / testing:
   --sessions <n>        stream n times in a row with --duration each, as
                         Disconnect / Connect in the app (A2DP)
   --wait-off            headphones turned off: wait for them, as the app does
+  --services            once streaming, list the services the device gives in SDP
   --restart-on-link     start the session again as soon as its link is up, as
                         a setting changed while connecting does
   --restart             with --sessions: between sessions restart Bluetooth
@@ -119,6 +133,11 @@ struct Args {
     afh: Option<String>,
     remote_sink: Option<String>,
     scan: Option<u32>,
+    probe: bool,
+    /// --services: once streaming, the services the device lists in SDP
+    services: bool,
+    script: Option<PathBuf>,
+    allow_writes: bool,
     hci_tcp: Option<String>,
     hci_capture: Option<PathBuf>,
     test_tone: bool,
@@ -151,6 +170,12 @@ struct LeArgs {
     mcp_dry_run: bool,
     ccp_sim: Option<String>,
     ccp_console: bool,
+    /// --auracast <name>: broadcast instead of a unicast stream
+    broadcast: Option<String>,
+    /// --auracast-code
+    broadcast_code: Option<String>,
+    /// --auracast-mono
+    broadcast_mono: bool,
 }
 
 /// --le-scan without a time (v1 scan_seconds)
@@ -194,6 +219,10 @@ fn parse(args: &[String]) -> Result<Args, String> {
         afh: None,
         remote_sink: None,
         scan: None,
+        probe: false,
+        services: false,
+        script: None,
+        allow_writes: false,
         hci_tcp: None,
         hci_capture: None,
         test_tone: false,
@@ -286,6 +315,10 @@ fn parse(args: &[String]) -> Result<Args, String> {
                 };
                 a.scan = Some(secs);
             }
+            "--probe" => a.probe = true,
+            "--services" => a.services = true,
+            "--script" => a.script = Some(value(&mut it, "--script")?.into()),
+            "--allow-writes" => a.allow_writes = true,
             "--hci-tcp" => a.hci_tcp = Some(value(&mut it, "--hci-tcp")?),
             "--hci-capture" => a.hci_capture = Some(value(&mut it, "--hci-capture")?.into()),
             "--test-tone" => a.test_tone = true,
@@ -318,6 +351,12 @@ fn parse(args: &[String]) -> Result<Args, String> {
             "--mcp-dry-run" => a.le.mcp_dry_run = true,
             "--ccp-sim" => a.le.ccp_sim = Some(value(&mut it, "--ccp-sim")?),
             "--ccp-console" => a.le.ccp_console = true,
+            "--auracast" => {
+                a.le.on = true;
+                a.le.broadcast = Some(value(&mut it, "--auracast")?);
+            }
+            "--auracast-code" => a.le.broadcast_code = Some(value(&mut it, "--auracast-code")?),
+            "--auracast-mono" => a.le.broadcast_mono = true,
             "-h" | "--help" => return Err(String::new()),
             other => return Err(format!("unknown option {other}")),
         }
@@ -385,9 +424,68 @@ pub fn run(args: &[String]) -> i32 {
         tx,
     );
 
+    if a.le.broadcast.is_some() {
+        let code = le_broadcast(&a, &service, &rx, &running);
+        service.shutdown();
+        capture.stop();
+        return code;
+    }
+
     if a.le.on {
         // LE Audio (experimental): its own flow (v1 le_audio_cli.cpp)
         let code = le_run(&a, &service, &running);
+        service.shutdown();
+        capture.stop();
+        return code;
+    }
+
+    if let Some(file) = &a.script {
+        let code = run_script(&service, file, a.allow_writes, a.usb.as_ref().map(|(u, _)| u.as_str()));
+        service.shutdown();
+        capture.stop();
+        return code;
+    }
+
+    if a.probe {
+        let code = match service.probe_adapter(None) {
+            Ok(report) => {
+                for s in &report.steps {
+                    let answer = match (&s.answer, &s.error) {
+                        (Some(a), _) => a.iter().map(|b| format!("{b:02x}")).collect(),
+                        (None, Some(e)) => format!("failed: {e}"),
+                        (None, None) => "no answer".to_owned(),
+                    };
+                    println!("{:<34} {:>5} ms  {answer}", s.name, s.millis);
+                }
+                if let Some(usb) = &report.usb {
+                    println!();
+                    for line in &usb.summary {
+                        println!("{line}");
+                    }
+                }
+                println!("\n{}", bluecaster_core::probe_report::summary_line(&report));
+                let adapter = a.usb.as_ref().map(|(u, _)| u.as_str());
+                match bluecaster_core::probe_report::save(
+                    &bluecaster_core::paths::config_dir(),
+                    &report,
+                    adapter,
+                    env!("CARGO_PKG_VERSION"),
+                ) {
+                    Ok(path) => {
+                        println!("Saved to {}", path.display());
+                        0
+                    }
+                    Err(e) => {
+                        eprintln!("The report could not be saved: {e}");
+                        1
+                    }
+                }
+            }
+            Err(m) => {
+                eprintln!("{m}");
+                1
+            }
+        };
         service.shutdown();
         capture.stop();
         return code;
@@ -526,6 +624,7 @@ pub fn run(args: &[String]) -> i32 {
         sbc: a.sbc,
         sample_rate: a.rate,
         bit_depth: a.bits,
+        codec_values: Vec::new(),
         source,
         volume_sync: VolumeSync::Off,
         mute_output: false,
@@ -634,7 +733,12 @@ fn stream_session(
             Ok(ServiceEvent::State(state, msg)) => {
                 println!("[{state:?}] {msg}");
                 match state {
-                    StreamState::Streaming if streaming_since.is_none() => streaming_since = Some(Instant::now()),
+                    StreamState::Streaming if streaming_since.is_none() => {
+                        streaming_since = Some(Instant::now());
+                        if a.services {
+                            print_services(service, a.device.as_deref());
+                        }
+                    }
                     StreamState::Error => {
                         *code = 1;
                         return false;
@@ -652,10 +756,26 @@ fn stream_session(
             Ok(ServiceEvent::Battery(v)) => println!("Headphone battery: {v}%"),
             Ok(ServiceEvent::BatteryRefused) => println!("Headphone battery: unknown (HFP refused)"),
             Ok(ServiceEvent::OtherDeviceBack(a)) => println!("Another device connected: {}", bt_host::addr_str(&a)),
+            // The loader's own log lines say it
+            Ok(ServiceEvent::Loader(_)) => {}
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => return false,
         }
     }
+}
+
+/// --services: asked on a thread of its own, the stream goes on meanwhile
+fn print_services(service: &Service, device: Option<&str>) {
+    let (Some(host), Some(addr)) = (service.host(), device.and_then(bt_host::parse_addr)) else { return };
+    let _ = std::thread::Builder::new().name("cli-services".into()).spawn(move || match host.device_services(addr) {
+        Ok(records) => {
+            println!("Services: {} record(s)", records.len());
+            for r in records {
+                println!("  {} {}", r.classes.join(" "), r.name.as_deref().unwrap_or("-"));
+            }
+        }
+        Err(e) => println!("Services: {e:?}"),
+    });
 }
 
 // ---- LE Audio (experimental): v1 le_audio_cli.cpp ----
@@ -738,6 +858,78 @@ fn le_connect_group(
     Some(ids)
 }
 
+/// --script: checks the script as the window does (writes need
+/// --allow-writes, denied opcodes never run), runs it, prints each line and
+/// saves the report
+fn run_script(service: &Service, file: &std::path::Path, allow_writes: bool, adapter: Option<&str>) -> i32 {
+    let text = match std::fs::read_to_string(file) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Cannot read {}: {e}", file.display());
+            return 1;
+        }
+    };
+    let script = match bt_host::script::parse(&text) {
+        Ok(s) => s,
+        Err(errors) => {
+            for e in errors {
+                eprintln!("{e}");
+            }
+            return 1;
+        }
+    };
+    let line = |l: &bt_host::script::ScriptLine| format!("line {}: {}", l.line, l.text);
+    // The vendor from -u VID:PID; a selector by instance ID or none gets no
+    // deny list (the window knows the adapter)
+    let vendor = adapter
+        .and_then(|u| UsbSelector::from_arg(u).ok())
+        .and_then(|s| s.vid_pid)
+        .map_or(bt_host::chips::ChipVendor::Unknown, |(vid, pid)| bt_host::chips::vendor_for_usb(vid, pid, None));
+    let denied = script.denied(bt_host::chips::denied_opcodes(vendor));
+    if !denied.is_empty() {
+        eprintln!("These lines could change the chip for good and never run on a {} adapter:", vendor.name());
+        for l in denied {
+            eprintln!("  {}", line(l));
+        }
+        return 1;
+    }
+    let writes = script.writes();
+    if !writes.is_empty() && !allow_writes {
+        eprintln!("These lines may change the chip; run with --allow-writes to send them:");
+        for l in writes {
+            eprintln!("  {}", line(l));
+        }
+        return 1;
+    }
+    let total = script.lines.len();
+    match service.run_script(None, script) {
+        Ok(report) => {
+            for l in bt_host::script::report_text(&report) {
+                println!("{l}");
+            }
+            match &report.error {
+                Some(e) => println!("\nStopped at {e}"),
+                None => println!("\n{} of {total} lines done", report.steps.len()),
+            }
+            match bluecaster_core::probe_report::save_script(
+                &bluecaster_core::paths::config_dir(),
+                &report,
+                &text,
+                adapter,
+                env!("CARGO_PKG_VERSION"),
+            ) {
+                Ok(path) => println!("Saved to {}", path.display()),
+                Err(e) => eprintln!("The report could not be saved: {e}"),
+            }
+            i32::from(report.error.is_some())
+        }
+        Err(m) => {
+            eprintln!("{m}");
+            1
+        }
+    }
+}
+
 /// v1's --le-scan listing line
 fn le_scan_line(r: &bt_host::LeScanResult) -> String {
     format!(
@@ -761,6 +953,52 @@ fn le_setup(
     // (a failed connection printed why)
     let ids = le_connect_group(host, devices, &mut std::io::stdout()).ok_or_else(String::new)?;
     host.le_start_stream(ids, request.clone(), &bluecaster_core::le_silence_set)
+}
+
+/// The LE Audio source of the command line: the test tone, a virtual
+/// device, or system audio
+fn le_source(a: &Args) -> SourceRequest {
+    if a.test_tone {
+        SourceRequest::TestTone
+    } else if a.mode == "virtual" && !a.audio_device.is_empty() {
+        SourceRequest::VirtualDevice { id: a.audio_device.clone(), name: a.audio_device.clone(), auto_switch: false }
+    } else {
+        SourceRequest::SystemLoopback
+    }
+}
+
+/// --auracast: broadcast until --duration or Ctrl+C, through the service as
+/// the app's stream.start_broadcast does; the exit code
+fn le_broadcast(a: &Args, service: &Service, rx: &mpsc::Receiver<ServiceEvent>, running: &AtomicBool) -> i32 {
+    let le = &a.le;
+    let b = crate::state::BroadcastStream {
+        name: le.broadcast.clone().unwrap_or_default(),
+        code: le.broadcast_code.clone(),
+        quality: "hq".into(),
+        mono: Some(le.broadcast_mono),
+        source: "tone".into(),
+        ..Default::default()
+    };
+    let mut request = match crate::state::broadcast_request(&b, bt_host::media::MEDIA_PAYLOAD_LIMIT_DEFAULT) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Auracast: {} {:?}", e.code, e.message.args);
+            return 2;
+        }
+    };
+    request.source = le_source(a);
+    if let (Some(p), Some(l)) = (&le.preset, request.le.as_mut()) {
+        l.preset = Some(p.clone());
+    }
+    println!("Starting the broadcast \"{}\"...", b.name.trim());
+    service.start_streaming(request);
+    let mut code = 0;
+    let receiver = bluecaster_core::receiver::ReceiverClient::new();
+    stream_session(a, service, rx, running, &receiver, &mut code);
+    if let Some(host) = service.host() {
+        le_print_stats(&host);
+    }
+    code
 }
 
 /// The LE Audio flow (v1 le_audio_cli_run); the process exit code
@@ -847,13 +1085,7 @@ fn le_run(a: &Args, service: &Service, running: &Arc<AtomicBool>) -> i32 {
     println!("\nStreaming LE Audio: {}", started.status.summary);
 
     // Audio at the LC3 rate (WASAPI converts to it)
-    let source = if a.test_tone {
-        SourceRequest::TestTone
-    } else if a.mode == "virtual" && !a.audio_device.is_empty() {
-        SourceRequest::VirtualDevice { id: a.audio_device.clone(), name: a.audio_device.clone(), auto_switch: false }
-    } else {
-        SourceRequest::SystemLoopback
-    };
+    let source = le_source(a);
     let mut rc = 0;
     let start_audio = |started: &bt_host::LeStreamStarted| match bluecaster_core::LeAudioPath::start(
         &source,
@@ -1119,6 +1351,31 @@ mod tests {
         // The classic --scan is another option
         let a = parse(&args("--cli --scan 4")).unwrap();
         assert_eq!((a.scan, a.le.on), (Some(4), false));
+    }
+
+    #[test]
+    fn auracast_options() {
+        let a =
+            parse(&args("--cli --hci-tcp 127.0.0.1:9900 --auracast BlueCaster-test --test-tone --duration 5")).unwrap();
+        assert!(a.le.on && a.test_tone && a.device.is_none());
+        assert_eq!(a.le.broadcast.as_deref(), Some("BlueCaster-test"));
+        assert!(a.le.broadcast_code.is_none() && !a.le.broadcast_mono);
+        let a = parse(&[
+            "--cli".into(),
+            "--auracast".into(),
+            "Living room".into(),
+            "--auracast-code".into(),
+            "1234abcd".into(),
+            "--auracast-mono".into(),
+            "--le-preset".into(),
+            "24_2_2".into(),
+        ])
+        .unwrap();
+        assert_eq!(a.le.broadcast.as_deref(), Some("Living room"));
+        assert_eq!(a.le.broadcast_code.as_deref(), Some("1234abcd"));
+        assert!(a.le.broadcast_mono);
+        assert_eq!(a.le.preset.as_deref(), Some("24_2_2"));
+        assert_eq!(parse(&args("--cli --auracast")).err().as_deref(), Some("--auracast needs a value"));
     }
 
     #[test]

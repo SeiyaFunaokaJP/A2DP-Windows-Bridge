@@ -1222,12 +1222,13 @@ impl RemoteCaps {
     }
 
     /// Capture rate for LHDC V5: 44.1 / 48 / 96 / 192 kHz as the remote
-    /// lists them, preferring `wanted` (88.2k maps to 96k)
+    /// lists them, preferring `wanted`. LHDC V5 has no 88.2 kHz: a profile
+    /// an earlier version saved with it gets Auto's rate, as any rate the
+    /// sink does not list (issue #86: not 96 kHz behind a "88200 Hz")
     pub fn pick_lhdcv5_sample_rate(&self, wanted: u32) -> u32 {
         let rates = self.lhdcv5_rates();
         tracing::debug!("caps: LHDC V5 rate for {wanted} Hz from rates 0x{rates:02x}");
         let has = |bit: u8| rates & bit != 0;
-        let wanted = if wanted == 88200 { 96000 } else { wanted };
         match wanted {
             44100 if has(LHDCV5_SR_44100) => return 44100,
             48000 if has(LHDCV5_SR_48000) => return 48000,
@@ -1971,6 +1972,11 @@ mod tests {
         assert_eq!(caps.listed_sample_rates(CodecKind::LhdcV5), vec![44100, 48000]);
         assert_eq!(caps.listed_bit_depths(CodecKind::LhdcV5), vec![16, 24]);
         assert_eq!(caps.listed_max_bitrate(CodecKind::LhdcV5), 900_000);
+        // No 88.2 kHz: a rate not listed falls back to 48 kHz, not 96 kHz
+        caps.lhdcv5_info[6] |= LHDCV5_SR_96000;
+        assert_eq!(caps.listed_sample_rates(CodecKind::LhdcV5), vec![44100, 48000, 96000]);
+        assert_eq!(caps.pick_lhdcv5_sample_rate(88200), 48000);
+        assert_eq!(caps.pick_lhdcv5_sample_rate(96000), 96000);
         caps.lhdcv5_info[7] = LHDCV5_BITS_16;
         assert_eq!(caps.listed_bit_depths(CodecKind::LhdcV5), vec![16]);
         assert_eq!(caps.listed_max_bitrate(CodecKind::LhdcV5), 0);

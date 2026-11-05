@@ -1,8 +1,9 @@
 //! OPPO Enco Free4 earbuds offered BlueCaster LHDC V5 at 48 kHz and 400 kbps while
 //! a phone got 192 kHz (issue #237). Their app sets Hi-Res over the HeyMelody
-//! protocol on their own RFCOMM service. A profile that asks for more of LHDC
-//! V5 sets it the same way: it can show on the next connection. Earbuds that
-//! had the mode off get it back when it changed nothing.
+//! protocol on their own RFCOMM service. A stream that wants more of LHDC V5
+//! sets it the same way, once per earbuds. They list the new limit only on a
+//! new connection, so one is made for it; earbuds that had the mode off get it
+//! back when it changed nothing.
 //!
 //! The protocol as LHDC-Switch uses it (MIT, THIRD_PARTY_LICENSES.md). A packet
 //! is `AA | length (LEB128) | 00 00 | command (2 bytes, little endian) |
@@ -11,7 +12,9 @@
 //! sequence, its payload starts with a status (0: fine). A long one comes in
 //! pieces, `01` first and `03` last, each with 3 bytes before its data.
 //!
-//! Writes are for the models LHDC-Switch tried them on.
+//! LHDC-Switch writes only to the two models it was tried on. Here any earbuds
+//! that report the write in their capabilities get it (issue #237: an Enco X4
+//! with Hi-Res off was left out): a write that brings nothing is undone.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
@@ -48,9 +51,6 @@ const CAN_WRITE_FEATURES: usize = 7;
 const CAN_READ_CODEC: usize = 17;
 const CAN_WRITE_CODEC: usize = 37;
 
-/// Enco Free4, and their Dynaudio edition
-const VERIFIED_PRODUCTS: [u32; 2] = [0x06_8C10, 0x06_C010];
-
 /// From opening the channel to the first read
 const OPEN_SETTLE: Duration = Duration::from_millis(300);
 /// Between requests
@@ -59,6 +59,15 @@ const REQUEST_GAP: Duration = Duration::from_millis(200);
 const ANSWER_TIMEOUT: Duration = Duration::from_millis(3500);
 /// Longest packet accepted (more: not a packet start)
 const MAX_LENGTH: usize = 4096;
+
+/// How the earbuds took a write
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Taken {
+    /// The connection stays
+    Kept,
+    /// They ended the link for it: a new connection is due
+    LinkClosed,
+}
 
 /// Earbuds of this protocol, by their name
 pub fn is_oppo(device_name: &str) -> bool {
@@ -177,7 +186,6 @@ fn feature(features: &[u8], id: u8) -> Option<u8> {
 
 /// The earbuds as they report themselves
 struct State {
-    product: u32,
     capabilities: Vec<u8>,
     hi_res: Option<u8>,
     spatial_audio: Option<u8>,
@@ -254,46 +262,41 @@ impl<'a> Link<'a> {
         );
         tracing::debug!("OPPO: capabilities {capabilities:02X?}, features {features:02X?}");
         Some(State {
-            product,
             hi_res: feature(&features, HI_RES),
             spatial_audio: feature(&features, SPATIAL_AUDIO),
             capabilities,
         })
     }
 
-    /// True when the earbuds took the write, also when they end the link for it
-    fn write(&mut self, command: u16, payload: &[u8]) -> bool {
+    /// How the earbuds took the write; None when they did not
+    fn write(&mut self, command: u16, payload: &[u8]) -> Option<Taken> {
         match self.request(command, payload) {
             Reply::Answer(answer) if answer.first() == Some(&0) => {
                 tracing::info!("OPPO: write {command:04X} {payload:02X?} taken");
-                true
+                Some(Taken::Kept)
             }
             Reply::Answer(answer) => {
                 tracing::warn!("OPPO: write {command:04X} refused ({:02X?})", answer.first());
-                false
+                None
             }
             Reply::NoAnswer => {
                 tracing::info!("OPPO: no answer to write {command:04X}");
-                false
+                None
             }
-            Reply::Closed => true,
+            Reply::Closed => Some(Taken::LinkClosed),
         }
     }
 }
 
 /// Asks the connected earbuds for LHDC with Hi-Res. The mode they were in (0:
-/// off) when they took the write: more of LHDC V5 can then come with a new
+/// off) and how they took the write: more of LHDC V5 can then come with a new
 /// connection. The write goes out also when they report Hi-Res on already, set
 /// from a phone: it is that mode and no more that BlueCaster was offered (issue
 /// #237). Spatial audio excludes Hi-Res and is the user's: then nothing is
 /// written.
-pub fn ask_for_hi_res(host: &BtHost, addr: [u8; 6]) -> Option<u8> {
+pub fn ask_for_hi_res(host: &BtHost, addr: [u8; 6]) -> Option<(u8, Taken)> {
     let mut link = Link::open(host, addr)?;
     let state = link.state()?;
-    if !VERIFIED_PRODUCTS.contains(&state.product) {
-        tracing::info!("OPPO: product {:06X} not known to take the write", state.product);
-        return None;
-    }
     let (true, Some(before)) = (capability(&state.capabilities, CAN_WRITE_FEATURES), state.hi_res) else {
         tracing::info!("OPPO: these earbuds report no Hi-Res mode");
         return None;
@@ -307,13 +310,12 @@ pub fn ask_for_hi_res(host: &BtHost, addr: [u8; 6]) -> Option<u8> {
     } else {
         link.write(FEATURE_WRITE, &[HI_RES, 1])
     };
-    taken.then_some(before)
+    taken.map(|t| (before, t))
 }
 
-/// Sets the connected earbuds' Hi-Res back off. True when a new connection is
-/// due: the write may end the audio connection.
-pub fn set_hi_res_off(host: &BtHost, addr: [u8; 6]) -> bool {
-    Link::open(host, addr).is_some_and(|mut link| link.write(FEATURE_WRITE, &[HI_RES, 0]))
+/// Sets the connected earbuds' Hi-Res back off; None when they did not take it
+pub fn set_hi_res_off(host: &BtHost, addr: [u8; 6]) -> Option<Taken> {
+    Link::open(host, addr)?.write(FEATURE_WRITE, &[HI_RES, 0])
 }
 
 #[cfg(test)]

@@ -96,6 +96,19 @@ pub fn set_theme(app: AppHandle, theme: String) {
     windows::set_theme(&app, &theme);
 }
 
+#[derive(Serialize)]
+pub struct Accent {
+    light: String,
+    dark: String,
+}
+
+/// Windows' accent colours (read again when the window gets the focus, so a
+/// change in Settings shows); None keeps the UI's default
+#[tauri::command]
+pub fn accent_colors() -> Option<Accent> {
+    win_sys::accent::accent_colors().map(|a| Accent { light: a.light, dark: a.dark })
+}
+
 /// Opens a web page in the user's browser (https only)
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {

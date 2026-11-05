@@ -371,6 +371,8 @@ export function sentSince(r: ReceiverState | null, base: Baseline): LinkTotals |
     dropped: sub(now.dropped, b?.dropped),
     capture_frames: sub(now.capture_frames, b?.capture_frames),
     capture_dropped: sub(now.capture_dropped, b?.capture_dropped),
+    capture_discontinuities: sub(now.capture_discontinuities, b?.capture_discontinuities),
+    capture_lost: sub(now.capture_lost, b?.capture_lost),
   };
 }
 

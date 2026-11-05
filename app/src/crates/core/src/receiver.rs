@@ -894,8 +894,14 @@ mod tests {
         let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
         let client = ReceiverClient::new();
         client.start(&format!("127.0.0.1:{port}"));
-        assert!(wait_for(|| client.status().0 == ReceiverStatus::Failed));
-        assert!(client.status().1.contains("refused") || client.status().1.contains("timed out"));
+        assert!(wait_for(|| client.status().0 == ReceiverStatus::Failed), "no failure: {:?}", client.status());
+        // Refused, or slow to be (timed out), or another error of the connect
+        // (CI runners have given other ones); what came is in the message
+        let why = client.status().1;
+        assert!(
+            why.contains("refused") || why.contains("timed out") || why.starts_with("cannot connect"),
+            "port {port}: {why:?}"
+        );
         client.start("host:99999");
         assert_eq!(client.status(), (ReceiverStatus::Failed, "invalid address (host or host:port)".into()));
         client.stop();

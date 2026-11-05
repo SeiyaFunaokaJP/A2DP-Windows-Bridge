@@ -7,8 +7,8 @@
 //! through the same writer. A client that falls behind on events gets a new
 //! snapshot instead (it sees the revision gap).
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use ipc::{ClientMessage, ErrorInfo, Event, Method, Msg, PROTOCOL_VERSION, ServerMessage, read_frame, write_frame};
@@ -89,6 +89,7 @@ async fn session(state: Arc<CoreState>, pipe: NamedPipeServer) -> Result<(), ipc
         }
     };
     tracing::info!("IPC: {client} connected");
+    lock_clients().push(client.clone());
     write_frame(
         &mut wr,
         &ServerMessage::Welcome {
@@ -213,7 +214,25 @@ async fn session(state: Arc<CoreState>, pipe: NamedPipeServer) -> Result<(), ipc
     set_subscribed(&state.link_subscribers, &mut link, false);
     set_subscribed(&state.receiver_subscribers, &mut receiver, false);
     tracing::info!("IPC: {client} disconnected");
+    {
+        let mut clients = lock_clients();
+        if let Some(i) = clients.iter().position(|c| *c == client) {
+            clients.remove(i);
+        }
+    }
     result
+}
+
+/// The clients connected now, by their hello's name ("bluecaster-ui/2.0.2",
+/// "encodeck/1.14.0"), for the diagnostics
+static CLIENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+fn lock_clients() -> std::sync::MutexGuard<'static, Vec<String>> {
+    CLIENTS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+pub(crate) fn clients() -> Vec<String> {
+    lock_clients().clone()
 }
 
 /// A client's frame after the hello
