@@ -82,6 +82,7 @@ pub fn assign(state: &Arc<CoreState>, instance_id: &str) -> Result<Value, ErrorI
         tracing::warn!("cannot keep the driver record {}: {e}", path.display());
     }
     let mut adapters = state.refresh_adapters();
+    state.driver_changed();
     // Even after the helper restarted the device, Windows may load WinUSB
     // only after a replug or a restart (issue #81: until then opening the
     // adapter fails with "failed to initialize WinUSB (error 50)")
@@ -109,6 +110,7 @@ pub fn restore(state: &Arc<CoreState>, instance_id: &str) -> Result<Value, Error
     match code {
         0 => {
             let _ = std::fs::remove_file(&path);
+            state.driver_changed();
             if let Some(other) = other_radio_in_use(instance_id) {
                 return Err(ErrorInfo {
                     code: "adapter.restore_other_radio".into(),
