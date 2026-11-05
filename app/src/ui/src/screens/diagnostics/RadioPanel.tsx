@@ -223,7 +223,7 @@ export function RadioPanel() {
         {/* The device's chip (everyone), the link's state (developer mode) */}
         <Show when={brEdr()}>
           <section class="card lq-group" aria-labelledby="lq-device">
-            <h2 id="lq-device">{t("ui.home.device")}</h2>
+            <h2 id="lq-device">{t("ui.diag.audio_device")}</h2>
             <dl class="lq-rows" aria-labelledby="lq-device">
               <Row label={t("ui.diag.chip_maker")} value={chip()?.company ?? DASH} />
               <Row label={t("ui.diag.chip_version")} value={chip()?.version ?? DASH} />
