@@ -23,12 +23,17 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 /// Frames larger than this are refused (a snapshot is a few kB)
 pub const MAX_FRAME: usize = 4 << 20;
 
+/// The variable's name up to 2.0.x (A2DPWB_INSTANCE), still read when
+/// BLUECASTER_INSTANCE is not set: scripts and EncoDeck's probe set it for
+/// test instances. Can be removed 6–12 months after 3.0.0. // compat
+pub const OLD_INSTANCE_VAR: &str = "A2DPWB_INSTANCE";
+
 /// Development: `BLUECASTER_INSTANCE=<name>` gives a core its own pipe and
 /// instance mutex, so that it runs beside the installed one (together with
 /// `BLUECASTER_CONFIG_DIR` for a test folder). Letters, digits, '-' and '_' (up
 /// to 32); anything else is ignored. Empty for the normal instance.
 pub fn instance_suffix() -> String {
-    match std::env::var("BLUECASTER_INSTANCE") {
+    match std::env::var("BLUECASTER_INSTANCE").or_else(|_| std::env::var(OLD_INSTANCE_VAR)) {
         Ok(v)
             if !v.is_empty()
                 && v.len() <= 32

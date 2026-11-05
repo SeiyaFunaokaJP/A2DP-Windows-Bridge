@@ -1,7 +1,7 @@
 //! The first start of v2 on a settings folder that v1 used: before v2 reads
-//! or writes anything, the folder is copied as it is to `backup-v1\` (once),
-//! then v1's files are brought to v2's schema. (Since 3.0.0 the copy is
-//! made at `backup\v1\`.)
+//! or writes anything, the folder is copied as it is to `backup\v1\` (once;
+//! 2.0.x made it at `backup-v1\`), then v1's files are brought to v2's
+//! schema.
 //!
 //! - settings.json gets `schema_version` (v1 wrote none; v2 reads a missing
 //!   one as 1). Keys v2 does not know stay, so going back to v1 still works.
@@ -101,15 +101,15 @@ fn backup_v1_tmp(dir: &Path) -> std::path::PathBuf {
 }
 
 const BACKUP_README: &str = "\
-This folder is a copy of the BlueCaster settings folder as A2DP Windows Bridge v1
-left it. Version 2 made it once, before it first used the folder.
+This folder is a copy of the settings folder (%APPDATA%\\A2DPWB) as A2DP Windows
+Bridge v1 left it. Version 2 made it once, before it first used the folder.
 
-To go back to v1 with these settings: exit BlueCaster v2 (tray icon > Exit), copy
-the files of this folder into the folder above it, replacing the files there,
-then start v1. Pairings (link_keys.txt) made with v2 are kept only if you
-leave link_keys.txt out of the copy.
+To go back to v1 with these settings: exit BlueCaster (tray icon > Exit), copy
+the files of this folder into %APPDATA%\\A2DPWB (create it), then start v1.
+Pairings (link_keys.txt) made since are kept only if you leave link_keys.txt
+out of the copy.
 
-Nothing reads this folder; it can be deleted once v2 works for you.
+Nothing reads this folder; it can be deleted once BlueCaster works for you.
 ";
 
 /// What [`prepare`] did
@@ -438,8 +438,10 @@ version 2.0.x left them (settings, profiles, known devices, pairings, adapter
 records). Version 3.0.0 made it once, before it moved the files into sub
 folders.
 
-To go back to 2.0.x: uninstall 3.0.0, copy the files of this folder into
-%APPDATA%\\A2DPWB (create it), then install 2.0.x.
+To go back to 2.0.x: first copy the files of this folder into
+%APPDATA%\\A2DPWB (create it), then uninstall 3.0.0 and install 2.0.x. Copy
+first: uninstalling with 'Delete user data' ticked removes %APPDATA%\\BlueCaster,
+this folder included.
 
 Nothing reads this folder; it can be deleted once 3.0.0 works for you.
 ";

@@ -22,19 +22,43 @@
 //! so it uses only std, tracing and time.
 
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 /// The settings folder's name in %APPDATA%
 pub const FOLDER_NAME: &str = "BlueCaster";
 /// Its name up to 2.0.x // compat
 pub const OLD_FOLDER_NAME: &str = "A2DPWB";
+/// The environment variable up to 2.0.x (A2DPWB_CONFIG_DIR), still read
+/// when BLUECASTER_CONFIG_DIR is not set: scripts and EncoDeck's probe set
+/// it for test instances. Can be removed 6–12 months after 3.0.0. // compat
+pub const OLD_CONFIG_DIR_VAR: &str = "A2DPWB_CONFIG_DIR";
 
 /// What [`config_dir`] did to the folder of 2.0.x, for the log (tracing is
 /// not set up yet when it first runs)
 static FOLDER_NOTE: Mutex<Option<String>> = Mutex::new(None);
 
+/// Whether an older program that writes to the old folder still runs (a
+/// 2.0.x core, v1): while it does, the folder is not moved. The programs
+/// register the check at start ([`set_old_app_check`]: it needs win-sys'
+/// mutexes, which this std-only file has not); without one the folder is
+/// moved at once (tests, tools).
+static OLD_APP_RUNS: OnceLock<fn() -> bool> = OnceLock::new();
+
+/// Registers the check [`move_old_folder`] makes before it touches the
+/// folder of 2.0.x; the first registration counts
+pub fn set_old_app_check(check: fn() -> bool) {
+    let _ = OLD_APP_RUNS.set(check);
+}
+
+fn old_app_runs() -> bool {
+    OLD_APP_RUNS.get().is_some_and(|check| check())
+}
+
 pub fn config_dir() -> PathBuf {
-    let dir = match std::env::var_os("BLUECASTER_CONFIG_DIR").filter(|v| !v.is_empty()) {
+    let var = std::env::var_os("BLUECASTER_CONFIG_DIR")
+        .filter(|v| !v.is_empty())
+        .or_else(|| std::env::var_os(OLD_CONFIG_DIR_VAR).filter(|v| !v.is_empty()));
+    let dir = match var {
         Some(d) => PathBuf::from(d),
         None => match std::env::var_os("APPDATA") {
             Some(a) => {
@@ -58,15 +82,55 @@ pub fn take_folder_note() -> Option<String> {
     FOLDER_NOTE.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
-/// Moves the settings folder of 2.0.x (`old`) to `new` unless `new` exists:
-/// a rename (atomic: of the core and the window starting together, one
-/// wins and the other finds `new`), else (another volume, a file held
-/// open) a copy assembled in a folder of this process' own, renamed to
-/// `new` when complete, then the old folder deleted. What happened, or
-/// None when there was nothing to do.
+/// Moves the settings folder of 2.0.x (`old`) to `new`: a rename (atomic:
+/// of the core and the window starting together, one wins and the other
+/// finds `new`), else (another volume, a file held open) a copy assembled
+/// in a folder of this process' own, renamed to `new` when complete, then
+/// the old folder deleted. What happened, or None when there was nothing
+/// to do.
+///
+/// Not while a 2.0.x core or v1 runs ([`set_old_app_check`]): they write
+/// to `old`, and a half-moved folder under them would lose what they write
+/// and their pairings. The core calls again once it has stopped them.
+///
+/// When `new` exists already (made for the log before the old program had
+/// exited, or a 3.0.0 test build's) but holds no settings.json, the files
+/// of `old` that `new` lacks are copied into it ([`merge_folders`]) and
+/// `old` is deleted; settings.json goes last, so that an interrupted copy
+/// is finished at the next start. A `new` with its own settings.json is
+/// left as it is, and `old` beside it, with a note in the log.
 pub fn move_old_folder(old: &Path, new: &Path) -> Option<String> {
-    if new.exists() || !old.is_dir() {
+    if !old.is_dir() {
         return None;
+    }
+    if old_app_runs() {
+        return Some(format!(
+            "settings folder {} not moved yet: a 2.0.x core or v1 still runs (moved once it has exited)",
+            old.display()
+        ));
+    }
+    if new.exists() {
+        if settings_file(new).exists() {
+            return Some(format!(
+                "settings folder {} left in place: {} exists with its own settings.json",
+                old.display(),
+                new.display()
+            ));
+        }
+        return Some(match merge_folders(old, new) {
+            Ok(bytes) => {
+                let deleted = match std::fs::remove_dir_all(old) {
+                    Ok(()) => "deleted".to_string(),
+                    Err(e) => format!("not deleted: {e}"),
+                };
+                format!(
+                    "settings folder {} merged into {} ({bytes} bytes), the old one {deleted}",
+                    old.display(),
+                    new.display()
+                )
+            }
+            Err(e) => format!("settings folder {} could not be merged into {}: {e}", old.display(), new.display()),
+        });
     }
     let rename_error = match std::fs::rename(old, new) {
         Ok(()) => return Some(format!("settings folder {} renamed to {}", old.display(), new.display())),
@@ -113,6 +177,37 @@ fn copy_folder(old: &Path, new: &Path) -> std::io::Result<Option<(u64, std::io::
             Err(e)
         }
     }
+}
+
+/// Copies what `from` has and `to` lacks into `to`, recursively (files that
+/// exist in `to` are kept), settings.json at the top level last -> bytes
+/// copied
+fn merge_folders(from: &Path, to: &Path) -> std::io::Result<u64> {
+    const SETTINGS: &str = "settings.json";
+    let bytes = merge_dir(from, to, &|n| !n.eq_ignore_ascii_case(SETTINGS))?;
+    let settings = from.join(SETTINGS);
+    if settings.is_file() && !to.join(SETTINGS).exists() {
+        return Ok(bytes + std::fs::copy(&settings, to.join(SETTINGS))?);
+    }
+    Ok(bytes)
+}
+
+fn merge_dir(from: &Path, to: &Path, keep: &dyn Fn(&std::ffi::OsStr) -> bool) -> std::io::Result<u64> {
+    std::fs::create_dir_all(to)?;
+    let mut bytes = 0;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        if !keep(&entry.file_name()) {
+            continue;
+        }
+        let dest = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            bytes += merge_dir(&entry.path(), &dest, &|_| true)?;
+        } else if !dest.exists() {
+            bytes += std::fs::copy(entry.path(), &dest)?;
+        }
+    }
+    Ok(bytes)
 }
 
 /// Copies `from` into `to` (created), recursively; `keep` decides on each
@@ -517,14 +612,44 @@ mod tests {
         assert!(!old.exists());
         assert_eq!(std::fs::read_to_string(new.join("settings.json")).unwrap(), "{}");
         assert!(new.join("logs").join("hci").join("hci-1.pklg").is_file());
-        // Once: a new folder is never replaced, an old one coming back stays
+        // Once: a new folder with its own settings is never replaced, an old
+        // one coming back stays beside it
         std::fs::create_dir_all(&old).unwrap();
         std::fs::write(old.join("settings.json"), "old").unwrap();
-        assert_eq!(move_old_folder(&old, &new), None);
+        let note = move_old_folder(&old, &new).unwrap();
+        assert!(note.contains("left in place"), "{note}");
+        assert!(old.join("settings.json").is_file());
         assert_eq!(std::fs::read_to_string(new.join("settings.json")).unwrap(), "{}");
         // Nothing to move
         assert_eq!(move_old_folder(&t.0.join("none"), &t.0.join("other")), None);
         assert!(!t.0.join("other").exists());
+    }
+
+    #[test]
+    fn the_old_folder_is_merged_into_a_new_one_without_settings() {
+        // The window made the new folder for its log before the 2.0.x core
+        // had exited; the core then finds both
+        let t = TempDir::new("merge");
+        let (old, new) = (t.0.join("A2DPWB"), t.0.join("BlueCaster"));
+        std::fs::create_dir_all(old.join("logs")).unwrap();
+        std::fs::create_dir_all(new.join("logs").join("2026-11-06")).unwrap();
+        std::fs::write(old.join("settings.json"), "{}").unwrap();
+        std::fs::write(old.join("link_keys.txt"), "keys").unwrap();
+        std::fs::write(old.join("logs").join("a2dpwb-core.2026-11-05.log"), "old log").unwrap();
+        std::fs::write(new.join("logs").join("2026-11-06").join("ui.log"), "new log").unwrap();
+        let note = move_old_folder(&old, &new).unwrap();
+        assert!(note.contains("merged") && note.contains("deleted"), "{note}");
+        assert!(!old.exists());
+        assert_eq!(std::fs::read_to_string(new.join("settings.json")).unwrap(), "{}");
+        assert_eq!(std::fs::read_to_string(new.join("link_keys.txt")).unwrap(), "keys");
+        assert!(new.join("logs").join("a2dpwb-core.2026-11-05.log").is_file());
+        assert_eq!(std::fs::read_to_string(new.join("logs").join("2026-11-06").join("ui.log")).unwrap(), "new log");
+        // A file the new folder has already is kept
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("link_keys.txt"), "other keys").unwrap();
+        std::fs::remove_file(new.join("settings.json")).unwrap();
+        move_old_folder(&old, &new).unwrap();
+        assert_eq!(std::fs::read_to_string(new.join("link_keys.txt")).unwrap(), "keys");
     }
 
     #[test]

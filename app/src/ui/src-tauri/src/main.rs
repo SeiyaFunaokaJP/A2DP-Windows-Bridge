@@ -21,9 +21,17 @@ use tauri::Manager;
 use tauri::webview::PageLoadEvent;
 
 fn main() {
+    // The settings folder of 2.0.x is moved by whichever process comes
+    // first, but not under a 2.0.x core or v1 that still writes to it (the
+    // core stops them and moves it then)
+    logging::paths::set_old_app_check(old_app_runs);
     let _log = logging::init();
     let flyout = std::env::args().any(|a| a == "--flyout");
     let quick_settings = std::env::args().any(|a| a == "--quick-settings");
+    fn old_app_runs() -> bool {
+        use win_sys::single_instance::{V1_MUTEX_NAME, is_held};
+        is_held(&ipc::old_core_mutex_name()) || is_held(V1_MUTEX_NAME)
+    }
     tracing::info!(
         "bluecaster {} starting{} (WebView2 {})",
         env!("CARGO_PKG_VERSION"),
