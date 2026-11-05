@@ -2235,11 +2235,37 @@ option {
 /* Diagnostics                                                       */
 /* ---------------------------------------------------------------- */
 
+.tabs-bar {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
 .tabs {
+  flex: 1;
+  min-width: 0;
   display: flex;
   gap: var(--s1);
-  border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs-scroll {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  border: none;
+  border-radius: var(--r-ctl, 4px);
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.tabs-scroll:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.tabs-scroll.left .icon {
+  transform: scaleX(-1);
 }
 .tab {
   display: inline-flex;
@@ -2357,10 +2383,6 @@ option {
   display: inline-flex;
   align-items: baseline;
   gap: var(--s2);
-}
-.chart-ago {
-  font-size: var(--fs-12);
-  color: var(--text-3);
 }
 .chart-legend {
   grid-column: 1 / -1;
@@ -3457,6 +3479,11 @@ html.win-flyout body {
   width: 0.75rem;
   height: 0.75rem;
   border-radius: 2px;
+}
+.radio-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
 }
 .radio-tips {
   margin: 0;
