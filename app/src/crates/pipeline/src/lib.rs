@@ -99,6 +99,13 @@ impl CaptureInput {
         }
     }
 
+    /// Windows reported a gap in the captured audio, `lost_frames` long
+    /// when known
+    pub fn discontinuity(&mut self, lost_frames: Option<u64>) {
+        self.stats.capture_discontinuities.fetch_add(1, Ordering::Relaxed);
+        self.stats.capture_lost_frames.fetch_add(lost_frames.unwrap_or(0), Ordering::Relaxed);
+    }
+
     /// Silence the capture inserted while nothing played: encoded like
     /// audio, but not counted as audio (AVRCP playback status)
     pub fn push_silence(&mut self, frames: usize) {
@@ -330,6 +337,9 @@ fn encode_thread(
     let mut last_round: Option<Instant> = None;
     let mut window = RoundStats::new();
     let mut live = abr.then(|| live_codec(encoder.as_ref()));
+    let mut clock = EncodeClock::default();
+    // Playback time of one encoder call
+    let audio_per_encode = per_encode as u64 * 1_000_000_000 / u64::from(input.sample_rate.max(1));
     let mut muted = false;
     tracing::debug!(
         "encode thread: {kind}, {:?} {} ch -> {fmt:?} {out_ch} ch at {} Hz, {per_encode} frames per encode, \
@@ -418,7 +428,10 @@ fn encode_thread(
                 PcmFormat::I16 => Pcm::I16(&pcm16[offset..offset + block]),
                 PcmFormat::I32 => Pcm::I32(&pcm32[offset..offset + block]),
             };
-            match encoder.encode(pcm, &mut encoded) {
+            let started = Instant::now();
+            let result = encoder.encode(pcm, &mut encoded);
+            clock.add(started.elapsed(), audio_per_encode);
+            match result {
                 Ok(e) if e.bytes > 0 => {
                     sent += packetizer.push(&encoded[..e.bytes], e.frames, timestamp, &mut |p| {
                         sink.send(p);
@@ -439,6 +452,7 @@ fn encode_thread(
         sent += packetizer.end_round(&mut |p| {
             sink.send(p);
         });
+        clock.flush(sink.stats());
         sink.stats().timing.queue_depth_max.record(sink.depth().into());
         if let Some(t) = encode_start {
             window.round(frames, available, sent, sink.depth(), t.elapsed());
@@ -476,6 +490,33 @@ fn publish_live(encoder: &dyn Encoder, sink: &MediaSink, last: &mut Option<LiveC
 
 /// How often the encode thread logs its debug summary
 const SUMMARY_INTERVAL: Duration = Duration::from_secs(10);
+
+/// What the encoder calls of one round took, handed to
+/// [`LinkStats::encode`] once per round (Diagnostics, developer mode)
+#[derive(Debug, Default)]
+pub(crate) struct EncodeClock {
+    calls: u64,
+    busy_ns: u64,
+    audio_ns: u64,
+    peak_ns: u64,
+}
+
+impl EncodeClock {
+    /// One encoder call took `took` for `audio_ns` of audio
+    #[inline]
+    pub(crate) fn add(&mut self, took: Duration, audio_ns: u64) {
+        let ns = took.as_nanos() as u64;
+        self.calls += 1;
+        self.busy_ns += ns;
+        self.audio_ns += audio_ns;
+        self.peak_ns = self.peak_ns.max(ns);
+    }
+
+    pub(crate) fn flush(&mut self, stats: &LinkStats) {
+        stats.encode.add(self.calls, self.busy_ns, self.audio_ns, self.peak_ns);
+        *self = EncodeClock::default();
+    }
+}
 
 /// Encode thread counters for the periodic debug summary (collected only
 /// while debug logging is on), reset each window
@@ -683,6 +724,10 @@ mod tests {
         }
         let live = stats.live_codec().unwrap();
         assert!(live.bitpool <= 49, "{live:?}");
+        // Every SBC frame (128 samples at 48 kHz) timed against its audio
+        let enc = stats.encode.totals();
+        assert!(enc.calls > 0 && enc.busy_ns > 0);
+        assert_eq!(enc.audio_ns, enc.calls * (128 * 1_000_000_000 / 48000));
         let want = codec::sbc::SbcConfig {
             sample_rate: 48000,
             channel_mode: codec::sbc::ChannelMode::JointStereo,

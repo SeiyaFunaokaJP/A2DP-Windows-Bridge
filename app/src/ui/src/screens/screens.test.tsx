@@ -4,6 +4,7 @@ import { App } from "../app/App";
 import { FALLBACK_NOTE_MS } from "../components/stream";
 import { setLanguage, t } from "../i18n";
 import { MockCore, type MockOptions } from "../ipc/mock";
+import type { Snapshot } from "../ipc/types";
 import { createCore } from "../ipc/store";
 import { endSettle } from "./Codecs";
 
@@ -30,6 +31,37 @@ afterEach(async () => {
 const homeCard = (name: string) => screen.findByRole("group", { name });
 
 describe("Home", () => {
+  it("says Hi-Res was turned on in the earbuds until dismissed (issue #237)", async () => {
+    start("#/home");
+    const wh = await homeCard("WH-1000XM5");
+    fireEvent.click(within(wh).getByRole("button", { name: "Connect" }));
+    await within(wh).findByRole("button", { name: "Disconnect" });
+    expect(screen.queryByText(t("ui.home.hi_res_set"))).toBeNull();
+    // The stream the reconnect for it brought
+    const m = mock as unknown as { snap: Snapshot; emit: (e: unknown) => void };
+    await waitFor(() => expect(m.snap.stream.info).toBeTruthy());
+    m.snap.stream = { ...m.snap.stream, info: { ...m.snap.stream.info!, hi_res_set: true } };
+    m.emit({ kind: "stream", value: m.snap.stream });
+    const text = await screen.findByText(t("ui.home.hi_res_set"));
+    fireEvent.click(within(text.closest(".banner") as HTMLElement).getByRole("button", { name: t("modal.close") }));
+    await waitFor(() => expect(screen.queryByText(t("ui.home.hi_res_set"))).toBeNull());
+  });
+
+  it("drops the driver error once the error's own button put the adapter on WinUSB", async () => {
+    start("#/home");
+    const wh = await homeCard("WH-1000XM5");
+    const m = mock as unknown as { snap: Snapshot; emit: (e: unknown) => void };
+    m.snap.adapter = { ...m.snap.adapter, adapters: m.snap.adapter.adapters.map((a) => ({ ...a, driver: "bluetooth" as const })) };
+    m.emit({ kind: "adapter", value: m.snap.adapter });
+    fireEvent.click(within(wh).getByRole("button", { name: "Connect" }));
+    const replace = await screen.findByRole("button", { name: "Replace with WinUSB driver" });
+    fireEvent.click(replace);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Replace with WinUSB driver" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Replace with WinUSB driver" })).toBeNull());
+    expect(document.querySelector(".banner.error, .banner-error")).toBeNull();
+  });
+
   it("connects and disconnects with the device's own button", async () => {
     const { calls } = start("#/home");
     const wh = await homeCard("WH-1000XM5");
@@ -296,7 +328,9 @@ describe("every screen renders", () => {
 
   it("diagnostics tabs", async () => {
     start("#/diagnostics");
-    for (const name of ["Connection Flow", "Log", "Link Quality"]) {
+    // The stream tab first
+    expect(await screen.findByRole("tab", { name: "Stream" })).toHaveAttribute("aria-selected", "true");
+    for (const name of ["Radio", "Audio capture", "Connection Flow", "Log", "Stream"]) {
       fireEvent.click(await screen.findByRole("tab", { name }));
       expect(screen.getByRole("tab", { name })).toHaveAttribute("aria-selected", "true");
     }
@@ -361,7 +395,10 @@ describe("every screen renders", () => {
   it("the flyout", async () => {
     start("", { window: "flyout" });
     expect(await screen.findByRole("button", { name: "Connect" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open app" })).toBeInTheDocument();
+    // Beside Connect, not in a row of its own (issue #86)
+    const open = screen.getByRole("button", { name: "Open app" });
+    expect(open.closest(".fly-actions")).not.toBeNull();
+    expect(document.querySelector(".fly-foot")).toBeNull();
   });
 
   it("the flyout looks like Home's card: the device chooser as its title, the codec in two lines (issue #86)", async () => {

@@ -190,6 +190,12 @@ fn add_folder(
                 zip.add(&zip_name(config, &path), &data);
             }
         }
+        // Chip probe reports: raw HCI answers with the adapter's address
+        for (name, path) in files_in(&paths::probe_dir(config), |n| n.ends_with(".json")) {
+            if let Ok(data) = std::fs::read(path) {
+                zip.add(&format!("probe/{name}"), &data);
+            }
+        }
     }
 }
 
@@ -246,7 +252,9 @@ fn readme(stamp: &str, mask: bool, hci: bool, skipped: &[String]) -> String {
          logs/hci/        HCI captures (.pklg) for Wireshark: recorder-* is the flight recorder at the time of\n\
                           this bundle, hci-* were saved when a stream failed. Media payloads are cut short\n\
                           and pairing keys zeroed (link keys, LTK, IRK, CSRK, DH key); captures started by\n\
-                          hand are not included (they keep them)\n\n",
+                          hand are not included (they keep them)\n\
+         probe/           chip probe reports (Adapter > Read chip info, developer mode): the adapter's\n\
+                          answers to read commands, with its address; only with the HCI captures\n\n",
         env!("CARGO_PKG_VERSION")
     );
     let _ = writeln!(
@@ -261,7 +269,7 @@ fn readme(stamp: &str, mask: bool, hci: bool, skipped: &[String]) -> String {
         }
     );
     if !hci {
-        s.push_str("HCI captures: left out\n");
+        s.push_str("HCI captures and chip probe reports: left out\n");
     } else if mask {
         s.push_str("HCI captures: they contain the full Bluetooth addresses and device names (not the pairing keys)\n");
     }

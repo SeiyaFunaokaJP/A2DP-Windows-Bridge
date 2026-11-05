@@ -51,6 +51,10 @@ pub struct StreamRequest {
     pub sample_rate: Option<u32>,
     /// None = auto (24-bit where the codec carries it)
     pub bit_depth: Option<u8>,
+    /// Under Auto-select, each codec's own settings (the profile's): used
+    /// for the codec Auto picks while `DevOverrides::auto_codec_settings`
+    /// is on (developer mode), else not
+    pub codec_values: Vec<(CodecKind, crate::profiles::CodecValues)>,
     pub source: SourceRequest,
     pub volume_sync: VolumeSync,
     /// The default output device is muted while streaming
@@ -169,6 +173,9 @@ pub struct StreamInfo {
     pub abr: bool,
     /// The device's maximum bit rate lowered the profile's (LHDC V5)
     pub bitrate_capped: bool,
+    /// OPPO earbuds turned Hi-Res on for this connection, after one
+    /// reconnect for it (issue #237)
+    pub hi_res_set: bool,
     /// Where the audio comes from (sent again when an application capture
     /// starts or stops waiting for the app)
     pub source: SourceInfo,
@@ -370,6 +377,10 @@ pub struct KnownCodecs {
     /// that, issue #86); empty when last recorded by an older version
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub caps: Vec<CodecDeviceCaps>,
+    /// OPPO earbuds took the Hi-Res request once: not asked again until this
+    /// record is cleared (issue #237)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hi_res_asked: bool,
 }
 
 impl KnownCodecs {
@@ -379,6 +390,7 @@ impl KnownCodecs {
             keys: codec_keys(remote),
             sbc: remote.sbc_caps.as_ref().map(sbc_device_caps),
             caps: codec_device_caps(remote),
+            hi_res_asked: false,
         }
     }
 }
@@ -445,6 +457,12 @@ impl Sink for SharedInput {
     fn silence(&mut self, frames: usize, _format: Format) {
         if let Ok(mut input) = self.0.try_lock() {
             input.push_silence(frames);
+        }
+    }
+
+    fn discontinuity(&mut self, lost_frames: Option<u64>) {
+        if let Ok(mut input) = self.0.try_lock() {
+            input.discontinuity(lost_frames);
         }
     }
 }
@@ -589,7 +607,6 @@ impl ActiveSource {
     fn health(&self) -> CaptureReading {
         self.running().map_or_else(CaptureReading::default, |r| CaptureReading {
             filled_frames: r.filled_frames(),
-            discontinuities: r.discontinuities(),
             packet_gap: r.take_packet_gap(),
         })
     }
@@ -1018,6 +1035,38 @@ fn rom_or(host: &BtHost, msg: Msg) -> Msg {
     Msg::new("firmware.rom_running")
 }
 
+/// Earbuds of a vendor's protocol: by the name they give now, asked once a
+/// connection into `given`, unless developer mode says always or never
+fn vendor_named(host: &BtHost, req: &StreamRequest, given: &mut Option<Option<String>>, id: &str) -> bool {
+    let Some(v) = vendor::vendor(id) else { return false };
+    match vendor::mode(id) {
+        vendor::Mode::Never => {
+            tracing::info!("{}: left alone (developer mode)", v.name);
+            return false;
+        }
+        vendor::Mode::Always => {
+            tracing::info!("{}: its protocol whatever the name (developer mode)", v.name);
+            return true;
+        }
+        vendor::Mode::Auto => {}
+    }
+    // The name the device gives: the saved one is the user's to change
+    // (issue #237: an old profile had none). That one only when it does
+    // not answer.
+    let name = match given.get_or_insert_with(|| host.remote_name(req.device)) {
+        Some(name) => name.as_str(),
+        None => {
+            tracing::info!(
+                "{}: no name from the device, the saved one {}",
+                v.name,
+                crate::diag::quoted(&req.device_name)
+            );
+            &req.device_name
+        }
+    };
+    (v.named)(name)
+}
+
 fn connect_error(f: Option<ConnectFailure>) -> Msg {
     Msg::new(match f {
         Some(ConnectFailure::Stalled) => "error.btstack_no_answer",
@@ -1052,10 +1101,37 @@ fn peer_params(remote: &RemoteCaps, kind: CodecKind, channels: u32, req: &Stream
         remote.aac_max_bitrate(),
         remote.lhdcv5_bitrate_limits()
     );
+    // Developer mode: the encoder goes by the quality, not the sink's
+    // maximum (LHDC V5's P7[5:4], AAC's bit rate, Opus 05's, the SBC
+    // bitpool); the SET_CONFIGURATION still echoes the sink's (issue #237)
+    let ignore_max = codec::dev::overrides().ignore_sink_max;
+    let mut lhdcv5_bitrate_limits = remote.lhdcv5_bitrate_limits();
+    let mut sbc_max_bitpool = remote.sbc_max_bitpool();
+    let mut aac_max_bitrate = if kind == CodecKind::Aac { remote.aac_max_bitrate() } else { 0 };
+    let mut opus_max_bitrate = opus_max_bitrate;
+    if ignore_max {
+        let listed = match kind {
+            CodecKind::LhdcV5 => lhdcv5_bitrate_limits & 0x30 != 0,
+            CodecKind::Sbc | CodecKind::SbcXq => sbc_max_bitpool >= 2,
+            CodecKind::Aac => aac_max_bitrate != 0,
+            CodecKind::Opus05 => opus_max_bitrate != 0,
+            _ => false,
+        };
+        if listed {
+            tracing::warn!("{}: ignoring the sink's maximum bit rate (developer mode)", kind.name());
+        }
+        lhdcv5_bitrate_limits &= !0x30;
+        // Above every codec cap; the sink's minimum still applies
+        if sbc_max_bitpool >= 2 {
+            sbc_max_bitpool = u8::MAX;
+        }
+        aac_max_bitrate = 0;
+        opus_max_bitrate = 0;
+    }
     PeerParams {
-        lhdcv5_bitrate_limits: remote.lhdcv5_bitrate_limits(),
+        lhdcv5_bitrate_limits,
         sbc_min_bitpool: remote.sbc_min_bitpool(),
-        sbc_max_bitpool: remote.sbc_max_bitpool(),
+        sbc_max_bitpool,
         sbc_bitpool: match kind {
             CodecKind::Sbc => req.sbc_bitpool,
             CodecKind::SbcXq => req.sbcxq_bitpool,
@@ -1065,7 +1141,7 @@ fn peer_params(remote: &RemoteCaps, kind: CodecKind, channels: u32, req: &Stream
         opus_frame_ms,
         opus_channels,
         opus_max_bitrate,
-        aac_max_bitrate: if kind == CodecKind::Aac { remote.aac_max_bitrate() } else { 0 },
+        aac_max_bitrate,
         aptxad_r2: kind == CodecKind::AptxAdaptive && remote.aptxad_r2(),
     }
 }
@@ -1125,6 +1201,17 @@ fn sbc_abr(req: &StreamRequest, kind: CodecKind) -> bool {
     req.abr && matches!(kind, CodecKind::Sbc | CodecKind::SbcXq) && req.codec == Some(kind)
 }
 
+/// The format Windows plays `source` in (the render device's), for matching
+/// it (`DevOverrides::match_source`); None for the test tone or when it
+/// cannot be read
+fn source_mix(source: &SourceRequest) -> Option<audio_capture::MixFormat> {
+    match source {
+        SourceRequest::SystemLoopback | SourceRequest::Application { .. } => audio_capture::mix_format(None),
+        SourceRequest::VirtualDevice { id, .. } if !id.is_empty() => audio_capture::mix_format(Some(id)),
+        _ => None,
+    }
+}
+
 /// Starts the encode thread; ABR as the encoder runs it
 fn start_pipeline(
     encoder: Box<dyn Encoder>,
@@ -1143,7 +1230,11 @@ fn start_pipeline(
             mtu,
             abr,
             buffer: BufferPreset::Standard,
-            mute: Some(Box::new(host.volume_is_zero())),
+            // Volume 0, or Windows' mute key under the output mute
+            mute: Some(Box::new({
+                let zero = host.volume_is_zero();
+                move || zero() || crate::mute_output::key_silenced()
+            })),
         },
         sink,
         host.stats().clone(),
@@ -1254,11 +1345,12 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // Huawei earbuds that do not list LDAC: asked for, not for Auto, as the
     // mode stays set on them and trades connection stability for it. No LDAC
     // from it: earbuds that had it off get it back, and a connection after it.
+    let mut given_name = None;
     if req.codec == Some(CodecKind::Ldac)
         && !remote.has(CodecKind::Ldac)
         && remote.audio_sinks_in_use == 0
-        && vendor::huawei::is_huawei(&req.device_name)
         && !stopped()
+        && vendor_named(&host, &req, &mut given_name, vendor::HUAWEI)
     {
         inner.notify(StreamState::Connecting, Msg::new("status.huawei_ldac"));
         if let Some(before) = vendor::huawei::ask_for_ldac(&host, req.device) {
@@ -1277,33 +1369,67 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             };
         }
     }
-    // OPPO earbuds that cap LHDC V5: asked for, not for Auto, and only when
-    // the profile wants more than the 400 kbps they may give anyway. Nothing
-    // gained: earbuds that had Hi-Res off get it back, and a connection after it.
-    if req.codec == Some(CodecKind::LhdcV5)
-        && req.quality != Quality::Mobile
-        && !req.abr
-        && remote.listed_max_bitrate(CodecKind::LhdcV5) != 0
-        && remote.audio_sinks_in_use == 0
-        && vendor::oppo::is_oppo(&req.device_name)
-        && !stopped()
+    // OPPO earbuds that cap LHDC V5: asked for Hi-Res when LHDC V5 streams,
+    // chosen or by Auto, above the 400 kbps they may give anyway. They list
+    // what it brought only on a new connection: one is made for it. Once per
+    // earbuds, kept with what they offered: the next connections go by what
+    // they list, until that record is cleared (issue #237).
+    let mut hi_res_set = false;
+    let lhdc_streams = match req.codec {
+        Some(k) => k == CodecKind::LhdcV5,
+        None => remote.best_in(&req.auto_order, req.experimental_codecs) == Some(CodecKind::LhdcV5),
+    };
+    let oppo_blocked = if !lhdc_streams {
+        Some("LHDC V5 does not stream")
+    } else if req.quality == Quality::Mobile {
+        Some("quality is Low")
+    } else if req.abr {
+        Some("ABR is on")
+    } else if remote.listed_max_bitrate(CodecKind::LhdcV5) == 0 {
+        Some("they list no peak bit rate")
+    } else if remote.audio_sinks_in_use > 0 {
+        Some("another device streams to them")
+    } else {
+        None
+    };
+    let ask_again = vendor::option(vendor::OPPO, vendor::OPPO_EVERY_CONNECTION);
+    let oppo_candidate = remote.has(CodecKind::LhdcV5) && (ask_again || !inner.hi_res_asked(&addr)) && !stopped();
+    if oppo_candidate
+        && let Some(why) = oppo_blocked
+        && vendor_named(&host, &req, &mut given_name, vendor::OPPO)
     {
+        tracing::info!("OPPO: Hi-Res not asked for: {why}");
+    }
+    if oppo_candidate && oppo_blocked.is_none() && vendor_named(&host, &req, &mut given_name, vendor::OPPO) {
         inner.notify(StreamState::Connecting, Msg::new("status.oppo_hi_res"));
-        if let Some(before) = vendor::oppo::ask_for_hi_res(&host, req.device) {
+        // Whether they kept the link or not, a new connection follows
+        if let Some((before, _)) = vendor::oppo::ask_for_hi_res(&host, req.device) {
+            inner.set_hi_res_asked(&addr);
             let listed = remote.listed_max_bitrate(CodecKind::LhdcV5);
-            let mut result = connect_again();
-            if before == 0
-                && result.as_ref().is_ok_and(|caps| caps.listed_max_bitrate(CodecKind::LhdcV5) == listed)
-                && !stopped()
-                && vendor::oppo::set_hi_res_off(&host, req.device)
-            {
-                result = connect_again();
-            }
-            remote = match result {
+            tracing::info!("OPPO: connecting again for Hi-Res");
+            remote = match connect_again() {
                 Ok(caps) => caps,
                 Err(_) if stopped() => return inner.notify(StreamState::Idle, Msg::new("status.ready")),
                 Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
             };
+            let now = remote.listed_max_bitrate(CodecKind::LhdcV5);
+            if now != listed {
+                tracing::info!("OPPO: LHDC V5's maximum went from {listed} to {now} bps with Hi-Res");
+                hi_res_set = true;
+            } else if before == 0 && !stopped() {
+                // Nothing gained: earbuds that had it off get it back (a new
+                // connection only when they end the link for it)
+                tracing::info!("OPPO: Hi-Res changed nothing, setting it back off");
+                if vendor::oppo::set_hi_res_off(&host, req.device) == Some(vendor::oppo::Taken::LinkClosed) {
+                    remote = match connect_again() {
+                        Ok(caps) => caps,
+                        Err(_) if stopped() => return inner.notify(StreamState::Idle, Msg::new("status.ready")),
+                        Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
+                    };
+                }
+            } else {
+                tracing::info!("OPPO: Hi-Res changed nothing, it stays on as it was");
+            }
         }
     }
     inner.record_codecs(&addr, KnownCodecs::of(&remote));
@@ -1357,6 +1483,18 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         tracing::warn!("codec fallback: {} not available ({why:?}), using {}", wanted.name(), kind.name());
     }
     tracing::info!("codec selected: {}", kind.name());
+    // Developer mode: Auto-select with the picked codec's own settings
+    let own = req.codec_values.iter().find(|(k, _)| *k == kind).map(|(_, v)| v.clone());
+    let req = match own.filter(|_| req.codec.is_none() && codec::dev::overrides().auto_codec_settings) {
+        Some(v) => {
+            tracing::info!("codec: {} with its own settings under Auto-select (developer mode): {v:?}", kind.name());
+            // A copy: the connect closure keeps the request borrowed
+            let mut r = req.clone();
+            v.apply_to(&mut r);
+            r
+        }
+        None => req.clone(),
+    };
     tracing::debug!(
         "codec: requested {:?} (fallback {}), chose {} ({})",
         req.codec.map(CodecKind::name),
@@ -1378,10 +1516,23 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // (44.1 kHz, say). Not the highest it lists nor the Windows mix rate
     // (issue #86: 96 kHz brought latency and trouble with no audible gain,
     // and Windows mixes at 48 kHz); 96 kHz when chosen. WASAPI resamples.
-    let mut preferred = req.sample_rate.unwrap_or(AUTO_SAMPLE_RATE);
+    // Developer mode: Auto follows the captured output's format instead
+    let mix = (codec::dev::overrides().match_source && (req.sample_rate.is_none() || req.bit_depth.is_none()))
+        .then(|| source_mix(&req.source))
+        .flatten();
+    if let Some(m) = mix {
+        tracing::info!("codec: matching the source (developer mode): {} Hz, {}-bit", m.rate, m.bits);
+    }
+    let mut preferred = req.sample_rate.or(mix.map(|m| m.rate)).unwrap_or(AUTO_SAMPLE_RATE);
     tracing::debug!(
         "capture rate: {preferred} Hz preferred ({})",
-        if req.sample_rate.is_some() { "profile" } else { "Auto" }
+        if req.sample_rate.is_some() {
+            "profile"
+        } else if mix.is_some() {
+            "the source's"
+        } else {
+            "Auto"
+        }
     );
     if preferred > kind.max_sample_rate() {
         tracing::info!(
@@ -1448,9 +1599,12 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
 
     // LDAC, aptX HD and LHDC V5 carry 24-bit unless the profile says 16
     // (LHDC V5 only when the sink has 24-bit); aptX Adaptive always
+    let source_16bit = req.bit_depth.is_none() && mix.is_some_and(|m| m.bits <= 16);
     let bits: u8 = match (kind, req.bit_depth) {
         (CodecKind::AptxAdaptive, _) => 24,
         (_, Some(16)) => 16,
+        // Matching a 16-bit source (developer mode)
+        _ if source_16bit => 16,
         (CodecKind::Ldac | CodecKind::AptxHd, _) => 24,
         (CodecKind::LhdcV5, _) if remote.lhdcv5_24bit() => 24,
         _ => 16,
@@ -1588,6 +1742,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         requested_in_use: matches!(replaced, Some((_, Unavailable::SepInUse { .. }))),
         abr,
         bitrate_capped,
+        hi_res_set,
         source: source.info(),
         details: Some(Box::new(codec_details(kind, &config, &remote, &*encoder, mtu, format.sample_rate))),
     };
@@ -1645,6 +1800,13 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     let mut reopen_ticks = 0u32;
     let mut lost_for_good = false;
     let mut discontinuities = DiscontinuityLog::default();
+    // Developer mode: another limit on how long a packet waits in the send
+    // queue (0 = the default)
+    let queue_wait = codec::dev::overrides().queue_max_wait_ms;
+    host.stats().queue_max_wait_ms.store(queue_wait, std::sync::atomic::Ordering::Relaxed);
+    if queue_wait > 0 {
+        tracing::info!("send queue: packets dropped after {queue_wait} ms (developer mode)");
+    }
     let mut health = StreamHealth::start(host.stats().clone(), format.sample_rate, active.health());
     while !stopped() {
         inner.wait_tick(Duration::from_millis(200));

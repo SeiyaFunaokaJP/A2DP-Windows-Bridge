@@ -63,10 +63,10 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LHDC V5、LDAC
 **aptX HD・aptX Low Latency は実験的な対応です。** Android / PipeWire の実装に合わせ、エンコード→デコードの往復テストは通っていますが、実機のヘッドホンでの検証はまだです。表のレイテンシーは一般的な目安で、BlueCaster で測定した値ではありません。
 
 {: .warning }
-**LHDC V5 について。** Google が Android 17（AOSP、Apache-2.0）に追加した LHDC V5 エンコーダーの C 移植版を使用しています。移植版は AOSP の Rust 版エンコーダーとビット単位で一致することを確認済みで、A2DP のシグナリングは Android の `a2dp_vendor_lhdcv5` に合わせています。実機の LHDC V5 ヘッドホンでも、ユーザーにより v1.1.1-beta.1 で 1000 kbps / 192 kHz での動作が確認されています（[#50](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/50)）。v2 も同じエンコーダーを使います。対応するのはロッシーの LHDC V5 のみで、LHDC V2/V3（従来機）とロスレスの「LHDC-RAW」にはオープンソースのエンコーダーがありません。自動選択では LHDC V5 は LDAC・aptX 系より下、AAC・SBC より上に位置します。
+**LHDC V5 について。** Google が Android 17（AOSP、Apache-2.0）に追加した LHDC V5 エンコーダーの C 移植版を使用しています。移植版は AOSP の Rust 版エンコーダーとビット単位で一致することを確認済みで、A2DP のシグナリングは Android の `a2dp_vendor_lhdcv5` に合わせています。実機の LHDC V5 ヘッドホンでも、ユーザーにより v1.1.1-beta.1 で 1000 kbps / 192 kHz での動作が確認されています（[#50](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/50)）。v2 も同じエンコーダーを使います。対応するのはロッシーの LHDC V5 のみで、LHDC V2/V3（従来機）とロスレスの「LHDC-RAW」にはオープンソースのエンコーダーがありません。自動選択では LHDC V5 が最上位で、LDAC より上に位置します。
 
 {: .warning }
-**Opus は実験的な対応です。** Android の A2DP Opus ベンダーコーデック（Android 13 以降、ベンダー ID 0x000000E0 Google）で、48 kHz・20 ms フレーム・ステレオ 256 kbps（Android が要求する値。標準 192、モバイル 128 kbps）を libopus 1.5.2 でエンコードします。仮想シンクとのエンドツーエンドテストには合格していますが、実際の Opus 対応ヘッドホンでは未確認です。自動選択では LHDC V5 の下、AAC / SBC の上です。
+**Opus は実験的な対応です。** Android の A2DP Opus ベンダーコーデック（Android 13 以降、ベンダー ID 0x000000E0 Google）で、48 kHz・20 ms フレーム・ステレオ 256 kbps（Android が要求する値。標準 192、モバイル 128 kbps）を libopus 1.5.2 でエンコードします。仮想シンクとのエンドツーエンドテストには合格していますが、実際の Opus 対応ヘッドホンでは未確認です。自動選択では aptX Adaptive の下、aptX HD の上です。
 
 {: .warning }
 **Opus 05 は実験的な対応で、実機では未確認です。** PipeWire 独自の A2DP Opus ベンダーコーデック（ベンダー ID 0x000005F1、コーデック ID 0x1005、PipeWire の `opus_05`）で、実装しているのは PipeWire だけなので、受け手は A2DP シンクとして動く PipeWire の PC に限られます。BlueCaster が送るのはステレオの音楽の方向だけ（5.1 / 7.1 や戻りの音声はなし）で、48 kHz・10 ms フレーム（シンクが 20 ms だけならそれ）、エンコーダーとビットレートは Opus と同じで、シンクの上限で頭打ちにします。自動選択では選ばないので、**コーデック** 画面か `-c opus05` で選んでください。PipeWire と同じ能力を出す仮想シンクとのエンドツーエンドテストには合格していますが、実際の PipeWire では試していません。A2DP シンクとしての PipeWire は、Opus 05 を 0.3.57 から、Android の Opus（`opus_g`）を 1.2.0 から受けられます。Ubuntu 24.04 LTS の PipeWire 1.0.5 は Opus 05 だけ、Ubuntu 25.10（1.4.7）と 26.04 LTS（1.6.2）は両方です。どちらも BlueCaster ではまだ確かめていません。
@@ -75,7 +75,7 @@ USB Bluetooth アダプターを WinUSB モードで使用し、**LHDC V5、LDAC
 **SBC XQ** は Sony WH-1000XM4 で確認済みです（デュアルチャネル、48 kHz で bitpool 43、552 kbps）。この設定を拒否するシンクには、通常の SBC でつなぎ直します。**FastStream は実験的な対応です。** 仮想シンクとのエンドツーエンドテストには合格していますが、実際の FastStream 対応ヘッドホンでは試していません。音楽の方向のみで、自動選択では選びません。
 
 {: .note }
-**クラシック aptX だけが目的なら**、Windows 10 標準の Bluetooth スタックがクラシック aptX に対応しています（aptX HD・aptX LL・aptX Adaptive は非対応）。その場合 BlueCaster は不要です。BlueCaster が主に役立つのは LDAC・aptX HD・aptX Low Latency です。
+**クラシック aptX だけが目的なら**、Windows 10 標準の Bluetooth スタックがクラシック aptX に対応しています（aptX HD・aptX LL・aptX Adaptive は非対応）。その場合 BlueCaster は不要です。BlueCaster が主に役立つのは LHDC V5・LDAC・aptX Adaptive・aptX HD・aptX Low Latency です。
 
 {: .note }
 **aptX Adaptive について。** [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) の MIT ライセンスの Rust 製エンコーダーでエンコードします。そのテーブルは、作者が Qualcomm の出荷済みバイナリと無線のキャプチャから再構成したものです。48 kHz ステレオ（44.1 kHz を指定しても 48 kHz で取り込みます）、24 bit で、高音質 427 kbps か低遅延 265 kbps（R2 のシンクは 270）、高音質では ABR が使えます。96 kHz（高音質 646 kbps）は、コーデックの設定で 96 kHz を選んだときに、ヘッドホンが 96 kHz を通知する R2 のシンクであれば使います。低遅延では使いません。自動では 48 kHz です。自動選択では LHDC V5、LDAC の次に選ばれます。**コーデック** 画面か `-c aptxad` で選ぶこともできます。2.0.2-beta.6 で EarFun Air Pro 4+ を使った 48 kHz での動作が利用者から報告されており、クラシック aptX と同じくらい安定しています。96 kHz もその後、実際のヘッドホンで確認されました（[#86](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/86)）。上流は Linux で Bose QuietComfort Ultra（第 1 世代）と B&W Px7 S2e での動作を報告しています。詳しくは [aptX ファミリーと aptX Adaptive](usage#aptx-compatibility)を参照してください。
@@ -97,6 +97,10 @@ BlueCaster 本体は Windows 専用（Windows 10 22H2 または Windows 11）で
 
 Sony WH-1000XM4・WH-1000XM6、EarFun Air Pro 4+、Grado GW100x などを、TP-Link UB500、汎用 RTL8761B、ノート PC 内蔵の RTL8852BE、ASUS BT400、CSR8510 のアダプターで確認しています。コーデック、バージョン、元になった報告まで含めた一覧は **[検証済みの機器](../hardware)**（英語） にあります。
 
+## 音切れと接続の問題
+
+音切れと接続の報告が結局何だったのか、報告する前に行う確認、通信品質の読み方: **[音切れと接続の問題](wireless)**。
+
 ## 連携するツール
 
 イヤホンの操作アプリなど、BlueCaster と組み合わせて動くと issue で報告された他のアプリです（BlueCaster が作ったりサポートしたりしているものではありません）: **[Works With](../works-with)**（英語）。
@@ -113,7 +117,7 @@ BlueCaster は WASAPI でオーディオをキャプチャし、3 つのモー�
 
 **仮想デバイス**モードでは、Windows の既定の再生デバイスを選択した仮想デバイスに切り替えて（**接続中は Windows の既定の出力にする**）、そのループバック出力をキャプチャします。仮想デバイスに出力するアプリの音声が Bluetooth でストリーミングされます。ストリーミングを止めると、元の既定デバイスに戻します。
 
-システムループバックは既定の再生デバイスから音声を奪わないため、音声は Bluetooth とそのデバイスの両方から出ます。詳しくは[キャプチャモード](usage#capture-modes)を参照してください。
+システムループバックは既定の再生デバイスから音声を奪わないため、音声は Bluetooth とそのデバイスの両方から出ます。選んだ仮想デバイスを開けないときは、代わりにシステムの音声を送り、そのことを表示します。詳しくは[キャプチャモード](usage#capture-modes)を参照してください。
 
 ## 動作の仕組み
 
@@ -139,14 +143,14 @@ BlueCaster は Windows の Bluetooth スタックを完全にバイパスしま�
 
 ## 主な機能
 
-- **マルチコーデック**: LHDC V5、LDAC、aptX Adaptive、aptX HD、aptX、aptX Low Latency、AAC、SBC、Opus / Opus 05（試験的）（自動ネゴシエーション対応）
+- **マルチコーデック**: LHDC V5、LDAC、aptX Adaptive、aptX HD、aptX、aptX Low Latency、AAC、SBC XQ、SBC、Opus / Opus 05 / FastStream（試験的）（自動ネゴシエーション対応）
 - **LE Audio（実験的）**: LE Audio のヘッドホン・イヤホンへ LC3 で送信（BAP ユニキャスト、左右一組のイヤホン、ヘッドセットの音量、メディアボタン、GMAP の低遅延）。Bluetooth 5.2 のアイソクロナスチャネルに対応したアダプターが必要です。確かめたのは Bluetooth のエミュレータだけで、実機の LE Audio ヘッドホンではまだ試していません（[使い方](usage#le-audio)を参照）
 - **3 つのキャプチャモード**: システムループバック、仮想オーディオデバイスルーティング、または 1 つのアプリの出力
 - **ウィンドウ・トレイ・CLI**: セットアップと診断はウィンドウ、毎日の接続はトレイのフライアウトとメニュー、ほかにコマンドライン（[使い方](usage)を参照）
-- **アプリ内で WinUSB を割り当て**: アダプターへの WinUSB ドライバーの割り当てと元のドライバーへの復元。Zadig は不要です（[セットアップ](setup#winusb)を参照）
-- **初回セットアップ**: アダプター、ドライバーとファームウェア、ヘッドホン、最初の接続
-- **ABR**: 不安定な接続時のアダプティブビットレート（LDAC、LHDC V5、aptX Adaptive）
-- **自動再接続**: 切断時に自動再接続（最大 10 回）。PC のスリープからの復帰後も再接続
+- **アプリ内で WinUSB を割り当て**: アダプターへの WinUSB ドライバーの割り当てと元のドライバーへの復元。Zadig は不要です（[セットアップ](setup#winusb)を参照）。Windows がこのアダプターでペアリングしたヘッドホンは、ペアリングし直さずに接続できます
+- **初回セットアップ**: アダプター、ドライバーとファームウェア、ヘッドホン、最初の接続、全般設定
+- **ABR**: 不安定な接続時のアダプティブビットレート（LDAC、LHDC V5、aptX Adaptive。SBC と SBC XQ は bitpool を適応的に調整）
+- **自動再接続**: 接続が切れたときに再接続（3 回。アダプターを起動し直す必要があるときは 10 回）。PC のスリープからの復帰後も再接続します。**オーディオデバイス** の **自動で再接続する** でオフにできます
 - **通信品質と AFH**: 送信内容・RSSI・使用中のチャネルを表示し、避けるべき Wi-Fi チャネルをアダプターに伝えます（[使い方](usage#link-quality)を参照）
 - **ヘッドホン操作（AVRCP）**: ヘッドホンや Windows の音量と連動する音量スライダー、ヘッドホンの再生/一時停止・曲送り・曲戻しで PC の再生を操作（[使い方](usage#headphone-buttons) を参照）
 - **デバイスごとの設定**: オーディオデバイスごとにコーデック（その設定つき）と出力ソースを持ち、ホームに並んで表示され、トレイからも接続できます

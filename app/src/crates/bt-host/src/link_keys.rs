@@ -97,6 +97,12 @@ pub fn forget(file: &Path, addr: &[u8; 6]) {
     FileLinkKeyStore::open(file).delete(addr);
 }
 
+/// Stores `addr`'s key in `dir`/link_keys.txt while no stack holds the
+/// file (a running stack: [`crate::BtHost::store_link_key`])
+pub fn store(dir: &Path, addr: &[u8; 6], key: &[u8; 16], key_type: i32) {
+    FileLinkKeyStore::open(dir).put(addr, key, key_type);
+}
+
 impl LinkKeyStore for FileLinkKeyStore {
     fn get(&mut self, addr: &[u8; 6]) -> Option<([u8; 16], i32)> {
         let found = self.entries.iter().find(|e| &e.addr == addr).map(|e| (e.key, e.key_type));

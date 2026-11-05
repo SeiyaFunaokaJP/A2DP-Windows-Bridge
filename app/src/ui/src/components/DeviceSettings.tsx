@@ -13,7 +13,7 @@ import { createStore, unwrap } from "solid-js/store";
 import { useApp } from "../app/context";
 import { t } from "../i18n";
 import { codecSpec } from "../lib/codecs";
-import type { AudioApp, AudioDevice, Device, Profile } from "../ipc/types";
+import type { AudioApp, AudioDevice, Device, Profile, Snapshot } from "../ipc/types";
 import { LINKS } from "../lib/links";
 import {
   appCaptureSupport,
@@ -198,14 +198,38 @@ function newestBase(list: Profile[]): Profile {
 
 type CaptureFormatProps = { fields: DeviceFields; profiles: Profile[]; devices: AudioDevice[] | null };
 
+/** The rate and bit depth a profile streams with (0: Auto): what streams
+ *  now while the device is connected, else its own values; Auto-select
+ *  streams Auto's (unless developer mode keeps each codec's, issue #86) */
+function streamedFormat(p: Profile, snap: Snapshot): { sample_rate: number; bit_depth: number } {
+  const info = snap.stream.state === "streaming" && snap.stream.profile === p.name ? snap.stream.info : null;
+  const s = snap.settings;
+  const own = !(s.auto_codec && !p.le_audio) || (s.developer_mode && s.dev_overrides.auto_codec_settings);
+  const chosen = own ? p : { sample_rate: 0, bit_depth: 0 };
+  if (info && !info.le) return { sample_rate: info.sample_rate, bit_depth: chosen.bit_depth };
+  return { sample_rate: chosen.sample_rate, bit_depth: chosen.bit_depth };
+}
+
 /** The format Windows mixes the captured device in (rate, bits; null while
- *  unknown), and what a profile of the device asks for otherwise */
-function captureFormat(props: CaptureFormatProps) {
+ *  unknown), and what a profile of the device streams with otherwise */
+function captureFormat(props: CaptureFormatProps, snap: Snapshot) {
   const d = captureDevice(props.fields, props.devices ?? []);
   if (!d || d.mix_rate === null || d.mix_bits === null) return null;
-  // The first profile that asks for another format
-  const off = props.profiles.map((p) => formatMismatch(p, d)).find((m) => m.rate || m.bits) ?? null;
+  // The first profile that streams another format
+  const off =
+    props.profiles
+      .map((p) => {
+        const f = streamedFormat(p, snap);
+        return { ...formatMismatch(f, d), ...f };
+      })
+      .find((m) => m.rate || m.bits) ?? null;
   return { rate: d.mix_rate, bits: d.mix_bits, off };
+}
+
+/** "48000 Hz / 24-bit" */
+function formatText(rate: number, bits: number): string {
+  const depth = bits === 16 || bits === 24 ? t(`bitdepth.${bits}`) : `${bits}-bit`;
+  return bits ? `${rate} Hz / ${depth}` : `${rate} Hz`;
 }
 
 /**
@@ -214,8 +238,9 @@ function captureFormat(props: CaptureFormatProps) {
  * for another rate or bit depth (v1 capture.device_format).
  */
 function CaptureFormat(props: CaptureFormatProps) {
+  const { core } = useApp();
   return (
-    <Show when={captureFormat(props)}>
+    <Show when={captureFormat(props, core.state.snap!)}>
       {(c) => (
         <span
           class="format-box"
@@ -235,17 +260,24 @@ function CaptureFormat(props: CaptureFormatProps) {
   );
 }
 
-/** Why the format box is amber: it still streams, converted (issue #86).
- *  It speaks of the audio device, never of the profile by its name. */
+/** Why the format box is amber: it still streams, converted (issue #86),
+ *  with both formats. It speaks of the codec, never of the profile by its
+ *  name. */
 function FormatWarning(props: CaptureFormatProps) {
-  const which = (o: { rate: boolean; bits: boolean }) =>
-    [o.rate ? t("connection.sample_rate") : "", o.bits ? t("connection.bit_depth") : ""].filter((x) => x).join(", ");
+  const { core } = useApp();
+  const c = () => captureFormat(props, core.state.snap!);
   return (
-    <Show when={captureFormat(props)?.off}>
+    <Show when={c()?.off}>
       {(o) => (
         <p class="field-warn">
           <Icon name="warning" />
-          <span>{t("ui.profile.format_differs", which(o()))}</span>
+          <span>
+            {t(
+              "ui.profile.format_differs",
+              formatText(o().sample_rate || c()!.rate, o().bit_depth),
+              formatText(c()!.rate, c()!.bits),
+            )}
+          </span>
         </p>
       )}
     </Show>

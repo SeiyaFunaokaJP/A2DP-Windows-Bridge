@@ -7,12 +7,18 @@
 //! bluecaster-driver assign <instance-id> [--out <file>]
 //! bluecaster-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
 //! bluecaster-driver restore --records <dir> [--out <file>]
+//! bluecaster-driver windows-keys <radio-address> [--out <file>]
 //! ```
 //!
 //! The result is one JSON object on stdout (and in `--out`), logs go to
 //! stderr (and to the file of `--log <file>`, at debug level with
 //! `--verbose`: every command takes both), nothing is asked interactively. `assign` and `restore` need
 //! administrator rights; `list` and `state` do not.
+//!
+//! `windows-keys` reads the link keys Windows' Bluetooth keeps for the radio
+//! with that address (win-sys::bt_keys), for the core to take over the
+//! devices paired with it. It needs administrator rights too; the keys go to
+//! stdout and `--out` only, never to the log.
 //!
 //! Elevation: the exe has no manifest asking for administrator rights, so
 //! `list` and `state` run without a UAC prompt. The caller starts `assign`
@@ -65,6 +71,7 @@ const USAGE: &str = "usage:
   bluecaster-driver assign <instance-id> [--out <file>]
   bluecaster-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
   bluecaster-driver restore --records <dir> [--out <file>]
+  bluecaster-driver windows-keys <radio-address> [--out <file>]
 every command: [--log <file>] [--verbose]";
 
 #[derive(Debug, PartialEq)]
@@ -74,6 +81,7 @@ enum Command {
     Assign { instance_id: String },
     Restore { instance_id: String, previous: Option<String> },
     RestoreRecords { dir: PathBuf },
+    WindowsKeys { radio: [u8; 6] },
 }
 
 #[derive(Debug, PartialEq)]
@@ -147,7 +155,11 @@ fn main() -> ExitCode {
     let mut result = result;
     result["exit_code"] = json!(code);
     let text = serde_json::to_string_pretty(&result).unwrap_or_else(|_| "{}".into());
-    tracing::info!("exit {code}: {result}");
+    // Link keys are secrets: the log gets their number only
+    match result.get("keys").and_then(Value::as_array) {
+        Some(keys) => tracing::info!("exit {code}: {} key(s)", keys.len()),
+        None => tracing::info!("exit {code}: {result}"),
+    }
     println!("{text}");
     if let Some(path) = out
         && let Err(e) = std::fs::write(&path, &text)
@@ -186,6 +198,10 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
             Command::RestoreRecords { dir: records.take().unwrap_or_default() }
         }
         "restore" => Command::Restore { instance_id: instance_id()?, previous: previous.take() },
+        "windows-keys" => {
+            let a = positional.next().ok_or("windows-keys needs the radio's address")?;
+            Command::WindowsKeys { radio: parse_address(&a).ok_or(format!("bad address {a}"))? }
+        }
         other => return Err(format!("unknown command {other}")),
     };
     if let Some(extra) = positional.next() {
@@ -210,6 +226,45 @@ fn run(command: &Command) -> (u8, Value) {
         Command::Assign { instance_id } => assign(instance_id),
         Command::Restore { instance_id, previous } => restore(instance_id, previous.as_deref()),
         Command::RestoreRecords { dir } => restore_records(dir),
+        Command::WindowsKeys { radio } => windows_keys(radio),
+    }
+}
+
+/// "XX:XX:XX:XX:XX:XX" (or with dashes) in display order
+fn parse_address(s: &str) -> Option<[u8; 6]> {
+    let parts: Vec<&str> = s.split([':', '-']).collect();
+    let mut a = [0u8; 6];
+    if parts.len() != 6 {
+        return None;
+    }
+    for (b, p) in a.iter_mut().zip(parts) {
+        if p.len() != 2 {
+            return None;
+        }
+        *b = u8::from_str_radix(p, 16).ok()?;
+    }
+    Some(a)
+}
+
+fn windows_keys(radio: &[u8; 6]) -> (u8, Value) {
+    if !win_sys::elevation::is_elevated() {
+        return (exit::NOT_ELEVATED, error_json("not_elevated", "windows-keys needs administrator rights"));
+    }
+    match win_sys::bt_keys::read_link_keys(radio) {
+        Ok(keys) => {
+            let list: Vec<Value> = keys
+                .iter()
+                .flatten()
+                .map(|k| {
+                    json!({
+                        "address": win_sys::bt_paired::format_address(&k.address),
+                        "key": k.key.iter().map(|b| format!("{b:02x}")).collect::<String>(),
+                    })
+                })
+                .collect();
+            (exit::OK, json!({ "ok": true, "command": "windows-keys", "radio_found": keys.is_some(), "keys": list }))
+        }
+        Err(e) => (exit::FAILED, error_json("registry", &e.to_string())),
     }
 }
 
@@ -248,6 +303,7 @@ fn assign(instance_id: &str) -> (u8, Value) {
                     "class_changed": outcome.class_changed,
                     "reboot_required": outcome.reboot_required,
                     "state": StateJson::from(&outcome.state),
+                    "disconnected": outcome.disconnected,
                 }),
             )
         }
@@ -633,6 +689,13 @@ mod tests {
         assert!(args(&["restore", "X", "--records", "D"]).is_err());
         assert!(args(&["restore", "--records", "D", "--previous", "{}"]).is_err());
         assert!(args(&["list", "--records", "D"]).is_err());
+        assert_eq!(
+            args(&["windows-keys", "00:1A:7D:da:71:13"]).unwrap().command,
+            Command::WindowsKeys { radio: [0x00, 0x1A, 0x7D, 0xDA, 0x71, 0x13] }
+        );
+        assert!(args(&["windows-keys"]).is_err());
+        assert!(args(&["windows-keys", "00:1A:7D:DA:71"]).is_err());
+        assert!(args(&["windows-keys", "00:1A:7D:DA:71:1G"]).is_err());
     }
 
     #[test]

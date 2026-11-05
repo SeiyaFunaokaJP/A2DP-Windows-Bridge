@@ -271,6 +271,8 @@ describe("no device", () => {
     }
     expect(await screen.findByRole("button", { name: t("ui.home.add_device") })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+    // With no Connect, "Open app" keeps its own row
+    expect(screen.getByRole("button", { name: t("ui.flyout.open_app") }).closest(".fly-foot")).not.toBeNull();
   });
 
   it("forgetting a device takes its profile with it (issue #86)", async () => {

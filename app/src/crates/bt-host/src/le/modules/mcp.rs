@@ -406,7 +406,7 @@ mod tests {
         let r = replies.clone();
         m.reply_later = Arc::new(move |con, op, result| r.lock().unwrap().push((con, op, result)));
         let mut server = GattServer::new();
-        server.build_base();
+        server.build_base("BlueCaster");
         m.add_gatt_services(&mut server.builder(2));
         m.backend.start(Box::new(|| {}));
         (m, replies, server)

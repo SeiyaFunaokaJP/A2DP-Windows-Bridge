@@ -42,11 +42,12 @@
 //! offload use cases, and a reset to the bootloader to replace a running
 //! firmware of another version.
 //!
-//! Plain data and std only: [`Loader`] is a state machine fed with HCI
-//! events; the caller carries out its [`Action`]s.
+//! Plain data and std only: [`Loader`] is a [`ChipLoader`] (crate::bringup)
+//! fed with HCI events; the caller carries out its [`Action`]s.
 
-use std::fmt;
 use std::time::Instant;
+
+pub use crate::bringup::{Action, ChipLoader, FileReader, LoadError, Outcome};
 
 const OP_RESET: u16 = 0xFC01;
 const OP_READ_VERSION: u16 = 0xFC05;
@@ -519,85 +520,6 @@ pub fn parse_ddc(data: &[u8]) -> Result<Vec<Vec<u8>>, &'static str> {
 // The loader
 // ==========================================================================
 
-/// What the caller does for the [`Loader`]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Action {
-    /// Send an HCI command (opcode, length, parameters) on the control pipe
-    Command(Vec<u8>),
-    /// Send a Secure Send command on the bulk OUT pipe (the ACL slot)
-    BulkCommand(Vec<u8>),
-    /// The controller runs its bootloader (events also on the bulk IN pipe,
-    /// no HCI Reset), or no longer
-    Bootloader(bool),
-    /// (Re)start the loader's timer: [`Loader::on_timeout`] when it fires
-    Timer(u32),
-    /// Finished. Ok: HCI init may start; Err: the controller is unusable
-    Done(Result<Outcome, LoadError>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Outcome {
-    /// The operational firmware was running already
-    AlreadyRunning,
-    /// Firmware loaded and booted (`firmware`: the last .sfi); `ddc`: the
-    /// device configuration was applied
-    Loaded { firmware: String, ddc: bool },
-    /// A legacy ROM controller (7260, 7265, 3160): runs without a download
-    Rom,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LoadError {
-    /// The transport did not take a command, or no timer could be started
-    Host(&'static str),
-    /// A command was answered with this error status
-    Command {
-        opcode: u16,
-        status: u8,
-    },
-    /// No answer in time
-    Timeout(&'static str),
-    /// The Read Version answer could not be read
-    BadVersion,
-    /// A controller generation this loader does not know
-    UnsupportedVariant(u8),
-    Unsupported(&'static str),
-    /// This firmware file is not in the folder
-    MissingFile(String),
-    /// The firmware file is not what the controller takes
-    BadFile {
-        file: String,
-        why: &'static str,
-    },
-    /// The bootloader rejected the image (vendor event 0x06)
-    Rejected(u8),
-}
-
-impl fmt::Display for LoadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LoadError::Host(what) => f.write_str(what),
-            LoadError::Command { opcode, status } => {
-                write!(f, "command 0x{opcode:04X} failed with status 0x{status:02X}")
-            }
-            LoadError::Timeout(step) => write!(f, "no answer from the controller ({step})"),
-            LoadError::BadVersion => write!(f, "unreadable Intel version information"),
-            LoadError::UnsupportedVariant(v) => write!(f, "Intel hardware variant 0x{v:02X} is not supported"),
-            LoadError::Unsupported(why) => write!(f, "not supported: {why}"),
-            LoadError::MissingFile(file) => write!(f, "firmware file {file} not found"),
-            LoadError::BadFile { file, why } => write!(f, "firmware file {file}: {why}"),
-            LoadError::Rejected(result) => {
-                write!(
-                    f,
-                    "the controller rejected the firmware (result 0x{result:02X}); is the file for this controller?"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for LoadError {}
-
 /// After a boot: the legacy DDC (its name is known before), or Read Version
 /// (TLV: an intermediate loader or the operational firmware)
 #[derive(Debug, Clone)]
@@ -694,9 +616,6 @@ fn classify(event: &[u8]) -> Event<'_> {
         _ => Event::Other,
     }
 }
-
-/// Reads a firmware file of the firmware folder by name ("ibt-0040-0041.sfi")
-pub type FileReader = Box<dyn FnMut(&str) -> Option<Vec<u8>>>;
 
 /// The firmware download as a state machine: [`start`](Self::start), then
 /// every HCI event to [`on_event`](Self::on_event) and the timer to
@@ -868,7 +787,8 @@ impl Loader {
                     tracing::warn!("Intel Set Event Mask: status 0x{status:02X}");
                 }
                 let firmware = self.last_firmware.take().unwrap_or_default();
-                self.finish(Ok(Outcome::Loaded { firmware, ddc }))
+                let detail = if ddc { "DDC applied" } else { "DDC not applied" };
+                self.finish(Ok(Outcome::Loaded { firmware, detail: Some(detail) }))
             }
             state @ (State::Idle | State::Checking(_) | State::Done) => {
                 self.state = state;
@@ -1102,6 +1022,46 @@ impl Loader {
     fn event_mask(&mut self, ddc: bool) -> Vec<Action> {
         self.state = State::EventMask { ddc };
         vec![Action::Command(command(OP_SET_EVENT_MASK, &EVENT_MASK)), Action::Timer(COMMAND_TIMEOUT_MS)]
+    }
+}
+
+impl ChipLoader for Loader {
+    fn vendor(&self) -> &'static str {
+        "Intel"
+    }
+
+    fn start(&mut self) -> Vec<Action> {
+        Loader::start(self)
+    }
+
+    fn on_event(&mut self, event: &[u8]) -> Vec<Action> {
+        Loader::on_event(self, event)
+    }
+
+    fn on_timeout(&mut self) -> Vec<Action> {
+        Loader::on_timeout(self)
+    }
+
+    fn step(&self) -> &'static str {
+        match self.state {
+            State::Idle | State::Done => "",
+            ref s => s.step(),
+        }
+    }
+
+    /// Secure Send: the commands sent of the image's
+    fn progress(&self) -> Option<(usize, usize)> {
+        match &self.state {
+            State::Sending(d) => Some((d.next, d.commands.len())),
+            _ => None,
+        }
+    }
+
+    /// An intermediate loader has no .ddc
+    fn missing_file_hint(&self, file: &str) -> String {
+        let stem = file.strip_suffix(".sfi").unwrap_or(file);
+        let files = if stem.ends_with("-iml") { format!("{stem}.sfi") } else { format!("{stem}.sfi and {stem}.ddc") };
+        format!("{files} from linux-firmware (intel/)")
     }
 }
 

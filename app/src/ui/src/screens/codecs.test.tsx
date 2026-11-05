@@ -251,6 +251,28 @@ describe("the Codecs screen", () => {
     expect(within(wh).queryByText(t("error.codec_not_supported", "aptX HD"))).toBeNull();
   });
 
+  it("opens a codec's settings under Auto-select while developer mode keeps them (issue #86)", async () => {
+    const { calls, core } = start("#/codecs");
+    const wh = await section("WH-1000XM5");
+    const settings = core.state.snap!.settings;
+    await core.request("settings.set", {
+      settings: {
+        ...settings,
+        auto_codec: true,
+        developer_mode: true,
+        dev_overrides: { ...settings.dev_overrides, auto_codec_settings: true },
+      },
+    });
+    await waitFor(() => expect(autoSwitch()).toBeChecked());
+    const before = calls.filter((c) => c.method === "settings.set").length;
+    fireEvent.click(within(wh).getByRole("button", { name: t("ui.profile.codec_settings", t("codec.aac")) }));
+    expect(await screen.findByRole("dialog", { name: t("ui.profile.codec_settings", t("codec.aac")) })).toBeTruthy();
+    // No offer to turn Auto-select off, and it stays on
+    expect(screen.queryByRole("dialog", { name: t("ui.codecs.auto_dialog_title") })).toBeNull();
+    expect(calls.filter((c) => c.method === "settings.set")).toHaveLength(before);
+    expect(autoSwitch()).toBeChecked();
+  });
+
   it("chooses an unsupported card while developer mode forces it", async () => {
     const { calls, core } = start("#/codecs");
     const wh = await section("WH-1000XM5");
@@ -370,6 +392,24 @@ describe("saved devices on the Audio Devices screen", () => {
     );
     const entry = main().getByText(/Galaxy Buds2 Pro/).closest(".device-entry") as HTMLElement;
     expect(within(entry).queryByRole("button", { name: t("ui.devices.add") })).toBeNull();
+  });
+
+  it("asks first when Windows' Bluetooth has the device paired too (issue #86)", async () => {
+    const { calls } = start("#/devices");
+    mock!.windowsPaired = ["f4:4e:fd:00:11:22"];
+    fireEvent.click(await screen.findByRole("button", { name: t("connection.scan") }));
+    const row = (await screen.findByText(/Galaxy Buds2 Pro/)).closest(".device-row") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: t("ui.devices.add") }));
+    let dialog = await screen.findByRole("dialog", { name: t("ui.devices.windows_paired_title") });
+    expect(dialog).toHaveTextContent(t("ui.devices.windows_paired_text", "Galaxy Buds2 Pro"));
+    fireEvent.click(within(dialog).getByRole("button", { name: t("modal.cancel") }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(calls.some((c) => c.method === "profile.save")).toBe(false);
+    // Added anyway
+    fireEvent.click(within(row).getByRole("button", { name: t("ui.devices.add") }));
+    dialog = await screen.findByRole("dialog", { name: t("ui.devices.windows_paired_title") });
+    fireEvent.click(within(dialog).getByRole("button", { name: t("ui.devices.add_anyway") }));
+    await waitFor(() => expect(calls.some((c) => c.method === "profile.save")).toBe(true));
   });
 
   it("makes a profile that picks the best codec for a device added without one", async () => {
@@ -624,6 +664,26 @@ async function codecSettings(where: HTMLElement, label: string) {
 }
 
 describe("codec settings", () => {
+  it("LHDC V5 forgets what the device reported (issue #237)", async () => {
+    const { calls } = start("#/codecs", "capped");
+    const moto = await section("moto buds+");
+    const dialog = await codecSettings(moto, "codec.lhdc_v5");
+    expect(within(dialog).getByText(t("ui.profile.codec_settings_device", "moto buds+"))).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: t("ui.profile.forget_report") }));
+    await waitFor(() => expect(calls.some((c) => c.method === "device.forget_codecs")).toBe(true));
+    expect(calls.find((c) => c.method === "device.forget_codecs")?.params).toEqual({ address: "34:1C:F0:AA:BB:CC" });
+    // Nothing reported any more: the button goes with the note
+    await waitFor(() => expect(within(dialog).queryByRole("button", { name: t("ui.profile.forget_report") })).toBeNull());
+    expect(within(dialog).queryByText(t("ui.profile.codec_settings_device", "moto buds+"))).toBeNull();
+  });
+
+  it("other codecs keep what the device reported", async () => {
+    start("#/codecs", "capped");
+    const moto = await section("moto buds+");
+    const dialog = await codecSettings(moto, "codec.aac");
+    expect(within(dialog).queryByRole("button", { name: t("ui.profile.forget_report") })).toBeNull();
+  });
+
   it("LHDC V5 offers 192 kHz and greys out the quality while ABR is on", async () => {
     start("#/codecs");
     // A device whose codecs are not known yet: all of them offered
@@ -699,7 +759,7 @@ describe("codec settings within what the device lists (issue #86: moto buds+)", 
     start("#/codecs", "capped");
     const dialog = await codecSettings(await section("moto buds+"), "codec.lhdc_v5");
     const rate = within(dialog).getByLabelText(t("connection.sample_rate"));
-    expect(within(rate).getAllByRole("option").map((o) => o.textContent)).toEqual([t("codec.auto"), "44100 Hz", "48000 Hz"]);
+    expect(within(rate).getAllByRole("option").map((o) => o.textContent)).toEqual([t("codec.auto_value", "48000 Hz"), "44100 Hz", "48000 Hz"]);
     // High, Medium-High (issue #203), Medium, Low (issue #86)
     const quality = within(dialog).getByLabelText(t("connection.quality"));
     expect(within(quality).getAllByRole("option").map((o) => o.textContent)).toEqual([
@@ -753,18 +813,19 @@ describe("codec settings within what the device lists (issue #86: moto buds+)", 
     start("#/codecs", "capped");
     const rates = async (device: string) => {
       const dialog = await codecSettings(await section(device), "codec.aptx_adaptive");
-      const list = within(within(dialog).getByLabelText(t("connection.sample_rate")))
-        .getAllByRole("option")
-        .map((o) => o.textContent);
+      // One rate: shown fixed, not Auto and that rate to choose between
+      const field = within(dialog).getByLabelText(t("connection.sample_rate"));
+      const list =
+        field instanceof HTMLInputElement ? [field.value] : within(field).getAllByRole("option").map((o) => o.textContent);
       fireEvent.click(within(dialog).getByRole("button", { name: t("modal.close") }));
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
       return list;
     };
     // A Bose QC Ultra lists 44.1 / 48 kHz only (issue #86); an EarFun Air
     // Pro 4+ 96 kHz too; a device not connected yet is not offered 96 kHz
-    expect(await rates("QC Ultra Earbuds")).toEqual([t("codec.auto"), "48000 Hz"]);
-    expect(await rates("EarFun Air Pro 4+")).toEqual([t("codec.auto"), "48000 Hz", "96000 Hz"]);
-    expect(await rates("SRS-XB13")).toEqual([t("codec.auto"), "48000 Hz"]);
+    expect(await rates("QC Ultra Earbuds")).toEqual(["48000 Hz"]);
+    expect(await rates("EarFun Air Pro 4+")).toEqual([t("codec.auto_value", "48000 Hz"), "48000 Hz", "96000 Hz"]);
+    expect(await rates("SRS-XB13")).toEqual(["48000 Hz"]);
   });
 });
 
@@ -777,17 +838,16 @@ describe("SBC settings", () => {
     const rate = within(dialog).getByRole("status");
     expect(rate).toHaveTextContent("≈ 357 kbps");
 
-    // The WH-1000XM5 lists 8 subbands and loudness only (the mock's XM5_SBC)
-    const subbands = within(dialog).getByLabelText(t("ui.diag.cd_subbands"));
-    expect(within(subbands).getAllByRole("option").map((o) => o.textContent)).toEqual([t("codec.auto"), "8"]);
-    const alloc = within(dialog).getByLabelText(t("ui.diag.cd_allocation"));
-    expect(within(alloc).queryByRole("option", { name: t("ui.diag.cd_alloc.snr") })).toBeNull();
+    // The WH-1000XM5 lists 8 subbands and loudness only (the mock's
+    // XM5_SBC): each shown fixed, nothing to choose
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_subbands"))).toHaveValue("8");
+    expect(within(dialog).getByLabelText(t("ui.diag.cd_allocation"))).toHaveValue(t("ui.diag.cd_alloc.loudness"));
     const blocks = within(dialog).getByLabelText(t("ui.diag.cd_blocks"));
     expect(within(blocks).getAllByRole("option")).toHaveLength(5);
     // Dual channel is SBC XQ
     const mode = within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"));
     expect(within(mode).getAllByRole("option").map((o) => o.textContent)).toEqual(
-      [t("codec.auto"), ...["joint_stereo", "stereo", "mono"].map((m) => t(`ui.diag.cd_mode.${m}`))],
+      [t("codec.auto_value", t("ui.diag.cd_mode.joint_stereo")), ...["joint_stereo", "stereo", "mono"].map((m) => t(`ui.diag.cd_mode.${m}`))],
     );
 
     // 8 blocks: shorter frames, a higher rate
@@ -823,6 +883,9 @@ describe("SBC settings", () => {
     expect(within(dialog).getByLabelText(t("ui.diag.cd_blocks"))).toBeInTheDocument();
     expect(within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"))).toHaveValue(t("ui.diag.cd_mode.dual_channel"));
     expect(within(dialog).getByLabelText(t("ui.diag.cd_channel_mode"))).toHaveAttribute("readonly");
+    // One bit depth: a value, not a list (issue #86)
+    expect(within(dialog).getByLabelText(t("connection.bit_depth"))).toHaveValue(t("bitdepth.16"));
+    expect(within(dialog).queryByRole("combobox", { name: t("connection.bit_depth") })).toBeNull();
   });
 
   it("offer what the device listed and show the bit rate as it changes", async () => {
@@ -992,9 +1055,15 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     expect(entry.querySelector(".field-error")).toBeNull();
     const warning = entry.querySelector(".field-warn")!;
     expect(box).toHaveClass("st-warn");
-    expect(warning).toHaveTextContent(t("ui.profile.format_differs", t("connection.sample_rate")));
+    // Both formats in it (issue #86)
+    expect(warning).toHaveTextContent(t("ui.profile.format_differs", "96000 Hz", "48000 Hz / 32-bit"));
     // The device, not its profile by name (issue #86)
     expect(warning).not.toHaveTextContent("WH-1000XM5 (LDAC)");
+    // Auto-select streams Auto, not the profile's 96 kHz: no warning left
+    const settings = (await mock!.call("state.snapshot")) as { settings: Record<string, unknown> };
+    await mock!.call("settings.set", { settings: { ...settings.settings, auto_codec: true } });
+    await waitFor(() => expect(entry.querySelector(".field-warn")).toBeNull());
+    expect(box).not.toHaveClass("st-warn");
   });
 
   it("lists System Loopback, the virtual devices and the playing apps in one list", async () => {
@@ -1152,6 +1221,7 @@ describe("the max media packet size (each device's, on the Developer page since 
     await deviceEntry(/WH-1000XM5/);
     await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
     location.hash = "#/developer";
+    fireEvent.click(await screen.findByRole("tab", { name: t("ui.dev.codec_settings") }));
     const section = await screen.findByRole("region", { name: t("advanced.max_packet") });
     // By the device's name, not its profile's
     const packet = within(section).getByLabelText("WH-1000XM5");

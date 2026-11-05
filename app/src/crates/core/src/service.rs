@@ -232,6 +232,8 @@ pub enum ServiceEvent {
     /// saved device connected to the PC (its address): its session may
     /// start instead
     OtherDeviceBack([u8; 6]),
+    /// A firmware loader's step, percent or end while the adapter starts
+    Loader(bt_host::bringup::LoaderProgress),
 }
 
 pub struct ServiceOptions {
@@ -411,6 +413,15 @@ impl Inner {
         let cli = self.le_cli.lock().unwrap_or_else(|e| e.into_inner()).clone();
         c.le_audio = le_config(le_on, cli.as_ref(), &self.opts);
         c.battery = true;
+        // The computer's name, as Windows' own Bluetooth (issue #86)
+        c.local_name = bt_host::local_name(&win_sys::computer::computer_name().unwrap_or_default());
+        // The Adapters screen shows a loader's progress while the adapter
+        // starts (the stack's handle comes only after)
+        let events = self.events.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let events = Mutex::new(events);
+        c.on_loader = Some(Arc::new(move |p| {
+            let _ = events.lock().unwrap_or_else(|e| e.into_inner()).send(ServiceEvent::Loader(p.clone()));
+        }));
         tracing::debug!(
             "host config: transport {:?}, firmware dir {:?}, realtek pid {:04x} files {:?}, intel loader {}, broadcom ids {}, LE {} (cli {:?})",
             c.transport,
@@ -450,7 +461,7 @@ impl Inner {
                     let h = Arc::new(h);
                     let s = self.settings.lock().unwrap_or_else(|e| e.into_inner()).clone();
                     h.set_media_keys(s.media_keys);
-                    h.set_afh_policy(self.opts.afh.as_deref().unwrap_or(&s.afh));
+                    h.set_afh_policy(self.opts.afh.as_deref().unwrap_or(afh_policy(&s)));
                     self.le_active.store(le_on, Ordering::Release);
                     self.streamed.store(false, Ordering::Release);
                     self.note_le_capable(&h);
@@ -685,6 +696,46 @@ impl Inner {
         !self.stop_requested()
     }
 
+    /// [`Service::probe_adapter`]: holds the stack slot meanwhile, so no
+    /// stack starts on the adapter during the probe
+    fn probe(&self, instance_id: Option<String>) -> Result<bt_host::probe::ProbeReport, Msg> {
+        self.tool(instance_id, "chip probe", BtHost::probe)
+    }
+
+    /// [`Service::run_script`], as [`Inner::probe`]
+    fn script(
+        &self,
+        instance_id: Option<String>,
+        script: bt_host::script::Script,
+    ) -> Result<bt_host::probe::ProbeReport, Msg> {
+        self.tool(instance_id, "chip script", move |c| BtHost::run_script(c, script))
+    }
+
+    /// A tool in place of a stack on the adapter `instance_id` (None: the one
+    /// a stack would open), holding the stack slot meanwhile
+    fn tool(
+        &self,
+        instance_id: Option<String>,
+        what: &str,
+        run: impl FnOnce(HostConfig) -> Result<bt_host::probe::ProbeReport, InitFailure>,
+    ) -> Result<bt_host::probe::ProbeReport, Msg> {
+        let mut slot = self.host.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(h) = slot.take() {
+            h.shutdown();
+        }
+        let mut c = self.host_config(false);
+        if let (TransportConfig::Usb(sel), Some(id)) = (&mut c.transport, instance_id) {
+            sel.instance_id = Some(id);
+            sel.vid_pid = None;
+            sel.preferred = None;
+        }
+        tracing::info!("{what}: transport {:?}", c.transport);
+        run(c).map_err(|f| {
+            tracing::error!("{what}: no stack could run ({f:?})");
+            Msg::new("error.btstack_init")
+        })
+    }
+
     pub fn shutdown_host(&self) {
         let old = self.host.lock().unwrap_or_else(|e| e.into_inner()).take();
         if let Some(h) = old {
@@ -728,16 +779,34 @@ impl Inner {
     }
 
     /// What a device offered (after capability discovery)
-    pub fn record_codecs(&self, addr: &str, codecs: stream::KnownCodecs) {
+    pub fn record_codecs(&self, addr: &str, mut codecs: stream::KnownCodecs) {
         tracing::debug!("codecs of {addr}: {:?}, sbc {:?}", codecs.keys, codecs.sbc);
         let mut known = self.codecs.lock().unwrap_or_else(|e| e.into_inner());
+        // Kept with what it offers until the record is cleared
+        codecs.hi_res_asked |= known.get(&addr.to_uppercase()).is_some_and(|k| k.hi_res_asked);
         if known.get(&addr.to_uppercase()) == Some(&codecs) {
             return;
         }
         known.insert(addr.to_uppercase(), codecs);
-        if let Err(e) = crate::devices::save_codecs(&self.opts.config_dir, &known) {
+        self.save_codecs(&known);
+    }
+
+    fn save_codecs(&self, known: &BTreeMap<String, stream::KnownCodecs>) {
+        if let Err(e) = crate::devices::save_codecs(&self.opts.config_dir, known) {
             tracing::warn!("cannot save the devices' codecs: {e}");
         }
+    }
+
+    /// OPPO earbuds took the Hi-Res request already (issue #237)
+    pub fn hi_res_asked(&self, addr: &str) -> bool {
+        let known = self.codecs.lock().unwrap_or_else(|e| e.into_inner());
+        known.get(&addr.to_uppercase()).is_some_and(|k| k.hi_res_asked)
+    }
+
+    pub fn set_hi_res_asked(&self, addr: &str) {
+        let mut known = self.codecs.lock().unwrap_or_else(|e| e.into_inner());
+        known.entry(addr.to_uppercase()).or_default().hi_res_asked = true;
+        self.save_codecs(&known);
     }
 
     pub fn save_device(&self, addr: &str, name: &str) {
@@ -775,10 +844,17 @@ pub struct Service {
     _power: Option<win_sys::power::PowerNotifier>,
 }
 
+/// The saved AFH policy, as a stack runs it: the experimental "blend-*"
+/// only in developer mode (the CLI's --afh is taken as given)
+fn afh_policy(settings: &Settings) -> &str {
+    bt_host::afh::effective_policy(&settings.afh, settings.debug_mode)
+}
+
 /// The developer overrides (and the health log's interval) count only while
 /// developer mode is on
 fn apply_dev_overrides(settings: &Settings) {
     codec::dev::set_overrides(if settings.debug_mode { settings.dev_overrides } else { Default::default() });
+    crate::vendor::set_overrides(if settings.debug_mode { settings.dev_vendors.clone() } else { Default::default() });
     crate::health::set_every_interval(settings.log().health_every_interval);
 }
 
@@ -902,7 +978,7 @@ impl Service {
         let host = self.host();
         if let Some(h) = &host {
             h.set_media_keys(settings.media_keys);
-            h.set_afh_policy(self.inner.opts.afh.as_deref().unwrap_or(&settings.afh));
+            h.set_afh_policy(self.inner.opts.afh.as_deref().unwrap_or(afh_policy(&settings)));
         }
         let old = std::mem::replace(&mut *self.inner.settings.lock().unwrap_or_else(|e| e.into_inner()), settings);
         let new_le = self.inner.settings.lock().unwrap_or_else(|e| e.into_inner()).le_audio_experimental;
@@ -1147,6 +1223,18 @@ impl Service {
         self.inner.codecs.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
+    /// Forgets what a device offered, and that it was asked for Hi-Res: its
+    /// next connection reads and asks again (issue #237). False: nothing kept.
+    pub fn forget_device_codecs(&self, address: &str) -> bool {
+        let mut known = self.inner.codecs.lock().unwrap_or_else(|e| e.into_inner());
+        if known.remove(&address.to_uppercase()).is_none() {
+            return false;
+        }
+        tracing::info!("device {address}: what it offered forgotten");
+        self.inner.save_codecs(&known);
+        true
+    }
+
     pub fn settings(&self) -> Settings {
         self.inner.settings.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
@@ -1244,6 +1332,39 @@ impl Service {
             tracing::info!("scan: no longer waiting for the headphones");
             self.stop_streaming();
         }
+    }
+
+    /// The chip probe (bt_host::probe) on the adapter `instance_id` (None:
+    /// the one a stack would open): read commands only, for adapters
+    /// BlueCaster cannot bring up yet. The stack stops first; the next use
+    /// starts a new one.
+    pub fn probe_adapter(&self, instance_id: Option<String>) -> Result<bt_host::probe::ProbeReport, Msg> {
+        self.end_wait_for_device();
+        if self.is_running() {
+            return Err(Msg::new("status.streaming"));
+        }
+        if self.is_scanning() {
+            return Err(Msg::new("status.scanning_devices"));
+        }
+        self.inner.probe(instance_id)
+    }
+
+    /// A chip script (bt_host::script) on the adapter `instance_id`, as
+    /// [`Service::probe_adapter`]. The caller has checked it: written
+    /// requests allowed, no denied opcode.
+    pub fn run_script(
+        &self,
+        instance_id: Option<String>,
+        script: bt_host::script::Script,
+    ) -> Result<bt_host::probe::ProbeReport, Msg> {
+        self.end_wait_for_device();
+        if self.is_running() {
+            return Err(Msg::new("status.streaming"));
+        }
+        if self.is_scanning() {
+            return Err(Msg::new("status.scanning_devices"));
+        }
+        self.inner.script(instance_id, script)
     }
 
     /// Inquiry for nearby (classic) devices
@@ -1426,6 +1547,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn afh_blend_runs_only_in_developer_mode() {
+        let s = |afh: &str, debug_mode| Settings { afh: afh.into(), debug_mode, ..Default::default() };
+        assert_eq!(afh_policy(&s("blend-medium", true)), "blend-medium");
+        assert_eq!(afh_policy(&s("blend-medium", false)), "auto");
+        assert_eq!(afh_policy(&s("6,11", false)), "6,11");
+        assert_eq!(afh_policy(&s("off", false)), "off");
+    }
+
+    #[test]
     fn only_a_link_that_just_came_up_keeps_the_stack() {
         assert!(link_is_fresh(Some(Duration::from_secs(5))));
         assert!(!link_is_fresh(Some(FRESH_LINK)));
@@ -1466,11 +1596,17 @@ mod tests {
 
     #[test]
     fn the_output_mute_takes_developer_mode_and_spares_the_test_tone() {
-        let settings =
-            |debug_mode, mute_output| crate::settings::Settings { debug_mode, mute_output, ..Default::default() };
-        assert!(settings(true, true).mutes_output());
-        assert!(!settings(true, false).mutes_output());
-        assert!(!settings(false, true).mutes_output());
+        let settings = |debug_mode, volume_mixer, mute_output| crate::settings::Settings {
+            debug_mode,
+            volume_mixer,
+            mute_output,
+            ..Default::default()
+        };
+        assert!(settings(true, true, true).mutes_output());
+        assert!(!settings(true, true, false).mutes_output());
+        assert!(!settings(false, true, true).mutes_output());
+        // The mixer turned off in Developer takes the mute with it
+        assert!(!settings(true, false, true).mutes_output());
 
         let req = StreamRequest { mute_output: true, ..request() };
         let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: false };
@@ -1549,7 +1685,7 @@ mod tests {
         assert!(!s.change_source(tone()));
         // LE Audio
         s.inner.notify(StreamState::Streaming, Msg::new("status.connected"));
-        let le = bt_host::LeRequest { extra_devices: Vec::new(), preset: None, low_latency: true };
+        let le = bt_host::LeRequest { low_latency: true, ..bt_host::LeRequest::default() };
         *s.last_request.lock().unwrap() = Some(StreamRequest { le: Some(le), ..request() });
         assert!(!s.change_source(tone()));
         assert_eq!(s.inner.take_source_change(), None);

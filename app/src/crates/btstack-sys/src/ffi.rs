@@ -18,6 +18,7 @@ unsafe extern "C" {
     pub fn bluecaster_hci_init(is_async: c_int);
     pub fn bluecaster_transport_deliver(packet_type: u8, packet: *const u8, size: u16) -> c_int;
     pub fn bluecaster_transport_packet_sent();
+    pub fn bluecaster_hci_command_status_inject(opcode: u16, status: u8);
     pub fn bluecaster_hci_dump_init();
     pub fn bluecaster_set_link_key_db(rust_store: c_int);
     pub fn bluecaster_add_hci_event_handler();
@@ -31,9 +32,11 @@ unsafe extern "C" {
     pub fn bluecaster_rfcomm_deinit();
     pub fn bluecaster_rfcomm_create_channel(addr: *const u8, server_channel: u8, out_cid: *mut u16) -> u8;
     pub fn bluecaster_sdp_query_rfcomm(addr: *const u8, uuid128: *const u8) -> u8;
+    pub fn bluecaster_sdp_query_services(addr: *const u8) -> u8;
+    pub fn bluecaster_sdp_client_deinit();
 
     // ---- shim.c: GAP, SDP, endpoints, configuration ----
-    pub fn bluecaster_gap_setup(class_of_device: u32, page_timeout: u16);
+    pub fn bluecaster_gap_setup(class_of_device: u32, page_timeout: u16, name: *const c_char);
     pub fn bluecaster_sdp_register_records(controller_features: u16, target_features: u16);
     pub fn bluecaster_create_stream_endpoint(
         slot: c_int,
@@ -81,8 +84,18 @@ unsafe extern "C" {
     pub fn bluecaster_cmd_set_afh_classification(map: *const u8) -> u8;
     pub fn bluecaster_cmd_read_afh_channel_map(con_handle: u16) -> u8;
     pub fn bluecaster_cmd_read_rssi(con_handle: u16) -> u8;
+    pub fn bluecaster_cmd_read_failed_contact_counter(con_handle: u16) -> u8;
+    pub fn bluecaster_cmd_read_link_quality(con_handle: u16) -> u8;
+    pub fn bluecaster_cmd_read_remote_version(con_handle: u16) -> u8;
+    pub fn bluecaster_cmd_read_link_supervision_timeout(con_handle: u16) -> u8;
+    pub fn bluecaster_acl_packets_in_controller(con_handle: u16) -> c_int;
+    pub fn bluecaster_acl_role(con_handle: u16) -> c_int;
+    pub fn bluecaster_acl_encryption_key_size(con_handle: u16) -> c_int;
+    pub fn bluecaster_remote_features_query(con_handle: u16);
+    pub fn bluecaster_max_acl_data_packet_length() -> u16;
     pub fn bluecaster_cmd_read_bd_addr() -> u8;
     pub fn bluecaster_cmd_read_local_version() -> u8;
+    pub fn bluecaster_cmd_remote_name_request(addr: *const u8) -> u8;
     pub fn bluecaster_cmd_remote_name_request_cancel(addr: *const u8) -> u8;
     pub fn bluecaster_hci_get_state() -> c_int;
     pub fn bluecaster_hci_can_send_command_now() -> c_int;
@@ -102,7 +115,6 @@ unsafe extern "C" {
     pub fn l2cap_deinit();
     pub fn sdp_init();
     pub fn sdp_deinit();
-    pub fn sdp_client_deinit();
 
     // ---- BTstack: GAP ----
     pub fn gap_inquiry_start(duration_in_1280ms_units: u8) -> c_int;
@@ -241,6 +253,35 @@ unsafe extern "C" {
     ) -> u8;
     pub fn bluecaster_iso_send(cis_handle: u16, sequence_number: u16, sdu: *const u8, len: u16) -> u8;
 
+    // ---- shim.c: broadcast ----
+    #[allow(clippy::too_many_arguments)]
+    pub fn bluecaster_broadcast_advertise(
+        sid: u8,
+        adv_interval_min: u16,
+        adv_interval_max: u16,
+        pa_interval_min: u16,
+        pa_interval_max: u16,
+        adv: *const u8,
+        adv_len: u16,
+        pa: *const u8,
+        pa_len: u16,
+        out_handle: *mut u8,
+    ) -> u8;
+    pub fn bluecaster_broadcast_advertise_stop() -> u8;
+    #[allow(clippy::too_many_arguments)]
+    pub fn bluecaster_big_create(
+        big_handle: u8,
+        num_bis: u8,
+        sdu_interval_us: u32,
+        max_sdu: u16,
+        max_transport_latency_ms: u16,
+        rtn: u8,
+        phy: u8,
+        framing: u8,
+        code: *const u8,
+    ) -> u8;
+    pub fn bluecaster_big_terminate(big_handle: u8) -> u8;
+
     // ---- BTstack: GAP (LE) ----
     pub fn gap_set_scan_params(scan_type: u8, scan_interval: u16, scan_window: u16, filter_policy: u8) -> u8;
     pub fn gap_start_scan();
@@ -252,6 +293,7 @@ unsafe extern "C" {
     // ---- BTstack: HCI ISO ----
     pub fn hci_set_num_iso_packets_to_queue(num_packets: u8);
     pub fn hci_request_cis_can_send_now_events(cis_con_handle: u16) -> u8;
+    pub fn hci_request_bis_can_send_now_events(big_handle: u8) -> u8;
 
     // ---- BTstack: SM ----
     pub fn sm_request_pairing(con: u16);

@@ -218,23 +218,33 @@ class LeEmuController(EmuController):
         peer_link = next((x for x in links if x.cig_id == link.cig_id and x.cis_id == link.cis_id), None)
         return peer, peer_link
 
+    def iso_completed(self, handle):
+        self.send_hci_packet(hci.HCI_Number_Of_Completed_Packets_Event(
+            connection_handles=[handle], num_completed_packets=[1]))
+
     def on_hci_iso_data_packet(self, packet):
         handle = packet.connection_handle
         link = self.central_cis_links.get(handle) or self.peripheral_cis_links.get(handle)
-        loop = asyncio.get_running_loop()
-
-        def completed():
-            self.send_hci_packet(hci.HCI_Number_Of_Completed_Packets_Event(
-                connection_handles=[handle], num_completed_packets=[1]))
-
         if link is None:
             log.warning('ISO data for unknown handle 0x%04X', handle)
-            completed()
+            self.iso_completed(handle)
             return
+        params = CIS_PARAMS.get((link.cig_id, link.cis_id), {})
+
+        def receivers():
+            peer, peer_link = self._peer_cis(link)
+            return [(peer, peer_link.handle)] if peer is not None and peer_link is not None else []
+        self.schedule_iso_sdu(packet, 'CIS', params.get('sdu_interval', 10000), params.get('latency_ms', 0),
+                              receivers)
+
+    def schedule_iso_sdu(self, packet, kind, interval_us, latency_ms, receivers):
+        """Carries one SDU of a CIS or BIS (kind) at its SDU interval: to the
+        (controller, handle) pairs receivers() returns when it is due, then
+        Number Of Completed Packets to the sender."""
+        handle = packet.connection_handle
+        loop = asyncio.get_running_loop()
         if packet.pb_flag != 0b10:
             log.warning('ISO data with PB flag %s (only complete SDUs are carried)', bin(packet.pb_flag))
-        params = CIS_PARAMS.get((link.cig_id, link.cis_id), {})
-        interval_us = params.get('sdu_interval', 10000)
         interval = interval_us / 1e6
         now = loop.time()
         if self.iso_t0 is None:
@@ -242,7 +252,7 @@ class LeEmuController(EmuController):
         if self.heartbeat is None:
             self.heartbeat_due = now + HEARTBEAT_S
             self.heartbeat = loop.call_at(self.heartbeat_due, self._heartbeat, self.heartbeat_due)
-        # SDU interval n of the CIS: the first SDU takes the next interval,
+        # SDU interval n of the CIS or BIS: the first SDU takes the next interval,
         # then each the next free one. The host's lateness is how long after
         # the start of that interval the SDU arrived, less the time this
         # event loop was stalled (such stalls happen, 60-90 ms): meanwhile,
@@ -256,7 +266,7 @@ class LeEmuController(EmuController):
         # at least LATE_US (4 intervals of 7.5 ms, 3 of 10 ms), and as a real
         # controller only flushes an SDU after the CIG's Max Transport
         # Latency, that much too.
-        late_us = max(LATE_US, params.get('latency_ms', 0) * 1000)
+        late_us = max(LATE_US, latency_ms * 1000)
         late = max(LATE_INTERVALS, math.ceil(late_us / interval_us))
         n_now = int(math.ceil((now - self.iso_t0) / interval - 1e-6))
         expected = self.iso_next_slot.get(handle)
@@ -275,10 +285,10 @@ class LeEmuController(EmuController):
                 if host_late * 1000 > HOST_LATE_MS:
                     count = self.iso_late[handle] = self.iso_late.get(handle, 0) + 1
                     if count <= LATE_LOG_MAX or count % 100 == 0:
-                        log.warning('late SDU: CIS 0x%04X seq %d reached the controller %.1f ms after its SDU '
+                        log.warning('late SDU: %s 0x%04X seq %d reached the controller %.1f ms after its SDU '
                                     'interval began (not counting %.1f ms this emulation stalled); '
-                                    '%d late SDU(s) on this CIS so far', handle,
-                                    packet.packet_sequence_number or 0, host_late * 1000, stalled * 1000, count)
+                                    '%d late SDU(s) on this %s so far', kind, handle,
+                                    packet.packet_sequence_number or 0, host_late * 1000, stalled * 1000, count, kind)
         self.iso_next_slot[handle] = n + 1
         slot = self.iso_t0 + n * interval
         time_stamp = (n * interval_us) & 0xFFFFFFFF
@@ -292,10 +302,9 @@ class LeEmuController(EmuController):
                 pending.remove(entry[0])
             fired = loop.time()
             self.iso_completion_stall[handle] = self.stalled(slot, fired) if fired - slot > STALL_S else 0.0
-            peer, peer_link = self._peer_cis(link)
-            if peer is not None and peer_link is not None:
+            for peer, peer_handle in receivers():
                 peer.send_hci_packet(hci.HCI_IsoDataPacket(
-                    connection_handle=peer_link.handle,
+                    connection_handle=peer_handle,
                     pb_flag=0b10,
                     data_total_length=8 + len(data),
                     time_stamp=time_stamp,
@@ -304,7 +313,7 @@ class LeEmuController(EmuController):
                     packet_status_flag=0,
                     iso_sdu_fragment=data,
                 ))
-            completed()
+            self.iso_completed(handle)
             self.iso_count += 1
 
         timer = loop.call_at(slot, deliver)

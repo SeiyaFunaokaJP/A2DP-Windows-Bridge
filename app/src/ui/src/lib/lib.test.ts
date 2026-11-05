@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { setLanguage, t } from "../i18n";
-import { sampleProfile } from "../ipc/mock";
+import { sampleProfile, sampleSettings, XM5_SBC } from "../ipc/mock";
 import type { LogLine } from "../ipc/types";
 import {
   abrCarries,
   AUTO_ORDER,
+  autoBitDepth,
   autoOrder,
   autoPick,
+  autoSampleRate,
   bitDepths,
   bitrateNoteKey,
+  capsForSettings,
+  sbcCapsForSettings,
   capsOf,
   CARD_ORDER,
   cardOrder,
@@ -25,6 +29,7 @@ import {
   fixedKbpsText,
   offeredQualities,
   offeredSampleRates,
+  onlyChoice,
   qualityIgnored,
   qualityKbps,
   qualityTag,
@@ -274,7 +279,7 @@ describe("profiles", () => {
   });
 
   it("offers 192 kHz for LHDC V5 only, and no quality under its ABR", () => {
-    expect(sampleRates("lhdcv5")).toEqual([0, 44100, 48000, 88200, 96000, 192000]);
+    expect(sampleRates("lhdcv5")).toEqual([0, 44100, 48000, 96000, 192000]);
     expect(sampleRates("ldac")).not.toContain(192000);
     const p = { ...sampleProfile(), codec: "lhdcv5", sample_rate: 192000 };
     expect(fitToCodec(p).sample_rate).toBe(192000);
@@ -304,7 +309,8 @@ describe("profiles", () => {
     expect(offeredBitDepths("lhdcv5", lhdc)).toEqual([0, 16]);
     // Not known: everything; 88.2 kHz runs as 96 kHz on LHDC V5
     expect(offeredSampleRates("lhdcv5", null)).toEqual(sampleRates("lhdcv5"));
-    expect(offeredSampleRates("lhdcv5", { ...lhdc!, sample_rates: [48000, 96000] })).toEqual([0, 48000, 88200, 96000]);
+    // No 88.2 kHz standing in for 96 kHz (issue #86: Moto buds+)
+    expect(offeredSampleRates("lhdcv5", { ...lhdc!, sample_rates: [48000, 96000] })).toEqual([0, 48000, 96000]);
     // AAC's High at the device's largest bit rate
     expect(qualityKbps("aac", "hq", 0, capsOf(caps, "aac")!.max_bitrate)).toBe("131");
     expect(qualityKbps("aac", "hq", 0, 320000)).toBe("256");
@@ -323,6 +329,24 @@ describe("profiles", () => {
       ["mq", "400"],
     ]);
     expect(offeredQualities("lhdcv5", 48000, 500000, "sq").map((q) => q.id)).toEqual(["hq", "sq", "mq"]);
+    // Developer mode's override: every codec's maximum goes (issue #237:
+    // LHDC V5 400 kbps listed), the SBC bitpool's too but not its minimum
+    const listed = [
+      { codec: "lhdcv5", sample_rates: [48000], bit_depths: [24], max_bitrate: 400000 },
+      { codec: "aac", sample_rates: [48000], bit_depths: [], max_bitrate: 262144 },
+      { codec: "ldac", sample_rates: [48000], bit_depths: [], max_bitrate: 0 },
+    ];
+    const dev = (on: boolean, developer_mode = true) => ({
+      developer_mode,
+      dev_overrides: { ...sampleSettings().dev_overrides, ignore_sink_max: on },
+    });
+    expect(capsForSettings(listed, dev(false))).toBe(listed);
+    expect(capsForSettings(listed, dev(true, false))).toBe(listed);
+    expect(capsForSettings(listed, dev(true)).map((c) => c.max_bitrate)).toEqual([0, 0, 0]);
+    const sbc = { ...XM5_SBC, min_bitpool: 10, max_bitpool: 39 };
+    expect(sbcCapsForSettings(sbc, dev(false))).toBe(sbc);
+    expect(sbcCapsForSettings(null, dev(true))).toBeNull();
+    expect(sbcCapsForSettings(sbc, dev(true))).toEqual({ ...sbc, max_bitpool: 255 });
     // aptX Adaptive's 96 kHz only when the device lists it (issue #86: a
     // Bose QC Ultra, 0x51, does not; an EarFun Air Pro 4+ does), also
     // while not known
@@ -331,6 +355,13 @@ describe("profiles", () => {
     expect(offeredSampleRates("aptxad", aptxad([48000, 96000]))).toEqual([0, 48000, 96000]);
     expect(offeredSampleRates("aptxad", null)).toEqual([0, 48000]);
     expect(offeredSampleRates("aptxad", aptxad([]))).toEqual([0, 48000]);
+    // One value to take: fixed, no Auto to choose beside it
+    expect(onlyChoice(offeredSampleRates("aptxad", aptxad([48000])), 0, 0)).toBe(48000);
+    expect(onlyChoice(offeredSampleRates("aptxad", aptxad([48000])), 48000, 0)).toBe(48000);
+    expect(onlyChoice(offeredSampleRates("aptxad", aptxad([48000, 96000])), 0, 0)).toBeUndefined();
+    // A kept value the device did not list keeps the list, to move off it
+    expect(onlyChoice([0, 48000], 96000, 0)).toBeUndefined();
+    expect(onlyChoice(["", "loudness"], "", "")).toBe("loudness");
   });
 
   it("says why the bit rate is below the profile's", () => {
@@ -536,7 +567,7 @@ describe("profile list", () => {
     expect(tag({ codec: "ldac", quality: "sq", sample_rate: 44100 })).toBe("Medium (606 kbps)");
     expect(tag({ codec: "ldac", quality: "mq", sample_rate: 88200 })).toBe("Low (303 kbps)");
     expect(tag({ codec: "lhdcv5", quality: "sq", sample_rate: 44100 })).toBe("Medium (480 kbps)");
-    expect(tag({ codec: "lhdcv5", quality: "sq", sample_rate: 88200 })).toBe("Medium (500 kbps)");
+    expect(tag({ codec: "lhdcv5", quality: "sq", sample_rate: 96000 })).toBe("Medium (500 kbps)");
     // LHDC V5's Medium-High is back (issue #203); a quality a codec does
     // not offer is High
     expect(tag({ codec: "lhdcv5", quality: "mhq" })).toBe("Medium-High (900 kbps)");
@@ -635,5 +666,26 @@ describe("A device's codec order (issue #86 round 8)", () => {
     expect(effectiveCodec("opus", earfun, true, cardOrder(["sbcxq", "sbc", "aptxad", "aac", "aptx"]))).toBe("sbcxq");
     // FastStream first: never Auto's pick nor a fallback
     expect(effectiveCodec("ldac", ["sbc", "faststream"], true, cardOrder(["faststream"]))).toBe("sbc");
+  });
+});
+
+describe("Auto's value shown beside Auto (issue #86)", () => {
+  const caps = (codec: string, sample_rates: number[], bit_depths: number[] = []) => ({
+    codec,
+    sample_rates,
+    bit_depths,
+    max_bitrate: 0,
+  });
+  it("is 48 kHz unless the device lacks it", () => {
+    expect(autoSampleRate("aac", null)).toBe(48000);
+    expect(autoSampleRate("aac", caps("aac", [44100]))).toBe(44100);
+    expect(autoSampleRate("ldac", caps("ldac", [44100, 48000, 96000]))).toBe(48000);
+    expect(autoSampleRate("sbc", caps("sbc", [44100]))).toBe(48000);
+  });
+  it("is 24-bit where the codec carries it", () => {
+    expect(autoBitDepth("ldac", null)).toBe(24);
+    expect(autoBitDepth("aac", null)).toBe(16);
+    expect(autoBitDepth("lhdcv5", caps("lhdcv5", [48000], [16]))).toBe(16);
+    expect(autoBitDepth("lhdcv5", caps("lhdcv5", [48000], [16, 24]))).toBe(24);
   });
 });

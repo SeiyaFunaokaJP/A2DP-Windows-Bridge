@@ -14,6 +14,7 @@
 mod apps;
 mod devices;
 mod format;
+mod gaps;
 mod loopback;
 mod mixer;
 mod silence;
@@ -75,6 +76,13 @@ pub trait Sink: Send + 'static {
     /// playing (only with fill_silence). Separate so the caller can tell real
     /// audio from fill (AVRCP playback status uses "audio arrives = playing").
     fn silence(&mut self, frames: usize, format: Format);
+    /// Windows reported a gap in the captured audio (a data discontinuity,
+    /// not the expected ones right after the start), before the packet that
+    /// follows it. `lost_frames`: how much audio the gap took, when the
+    /// device position tells (None: not known).
+    fn discontinuity(&mut self, lost_frames: Option<u64>) {
+        let _ = lost_frames;
+    }
 }
 
 /// Why a running capture ended on its own (see [`Running::ended`])
@@ -158,6 +166,8 @@ pub(crate) struct Shared {
     frames: AtomicU64,
     silence_frames: AtomicU64,
     discontinuities: AtomicU64,
+    /// Frames lost in those discontinuities, where the device position told
+    lost_frames: AtomicU64,
     /// Of `silence_frames`: what the silence fill added because no packet
     /// came (not the packets the engine flagged as silent)
     filled_frames: AtomicU64,
@@ -325,6 +335,12 @@ impl Running {
     /// these from the capture thread; here the owner reads and logs them.
     pub fn discontinuities(&self) -> u64 {
         self.shared.discontinuities.load(Ordering::Relaxed)
+    }
+
+    /// Frames lost in [`Running::discontinuities`], from the device
+    /// position (only the ones where it is reliable)
+    pub fn lost_frames(&self) -> u64 {
+        self.shared.lost_frames.load(Ordering::Relaxed)
     }
 
     /// Of [`Running::silence_frames`]: the silence the fill added because

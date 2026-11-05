@@ -33,13 +33,16 @@ from bumble.a2dp import (
 )
 from bumble.avdtp import (
     AVDTP_AUDIO_MEDIA_TYPE,
+    AVDTP_DELAY_REPORTING_SERVICE_CATEGORY,
     AVDTP_MEDIA_CODEC_SERVICE_CATEGORY,
     AVDTP_UNSUPPORTED_CONFIGURATION_ERROR,
+    DelayReport_Command,
     Discover_Response,
     EndPointInfo,
     Listener,
     MediaCodecCapabilities,
     Protocol,
+    ServiceCapabilities,
     Set_Configuration_Reject,
 )
 from bumble.controller import Controller
@@ -118,6 +121,48 @@ class EmuController(Controller):
     # Seconds between an HCI Disconnect and its Disconnection Complete: the
     # link stays up meanwhile, as with headphones that take their time
     disconnect_delay = 0
+
+    # Link details BlueCaster reads, none of which Bumble answers: link quality,
+    # supervision timeout and the remote version as a controller has them,
+    # the failed contact counter refused as unknown (the unsupported path)
+    supported_commands = Controller.supported_commands | {
+        hci.HCI_READ_LINK_QUALITY_COMMAND,
+        hci.HCI_READ_LINK_SUPERVISION_TIMEOUT_COMMAND,
+        hci.HCI_READ_FAILED_CONTACT_COUNTER_COMMAND,
+    }
+    REMOTE_VERSION = (12, 0x0094, 0x2209)  # Bluetooth 5.3, Airoha
+    # Leave Read Remote Version without any answer, as Bumble itself does
+    silent_remote_version = False
+
+    def _complete(self, command, data):
+        self.send_hci_packet(hci.HCI_Command_Complete_Event(
+            num_hci_command_packets=1,
+            command_opcode=command.op_code,
+            return_parameters=hci.HCI_GenericReturnParameters(data),
+        ))
+
+    def on_hci_read_link_quality_command(self, command):
+        self._complete(command, bytes([0]) + bytes(command.parameters[:2]) + bytes([230]))
+
+    def on_hci_read_link_supervision_timeout_command(self, command):
+        self._complete(command, bytes([0]) + bytes(command.parameters[:2]) + (0x7D00).to_bytes(2, 'little'))
+
+    def on_hci_read_failed_contact_counter_command(self, command):
+        self._complete(command, bytes([hci.HCI_ErrorCode.UNKNOWN_HCI_COMMAND_ERROR]))
+
+    def on_hci_read_remote_version_information_command(self, command):
+        if self.silent_remote_version:
+            return None
+        handle = command.connection_handle
+        if self.find_classic_connection_by_handle(handle) is None:
+            self._send_hci_command_status(hci.HCI_ErrorCode.UNKNOWN_CONNECTION_IDENTIFIER_ERROR, command.op_code)
+            return None
+        self._send_hci_command_status(hci.HCI_COMMAND_STATUS_PENDING, command.op_code)
+        version, company, subversion = self.REMOTE_VERSION
+        self.send_hci_packet(hci.HCI_Read_Remote_Version_Information_Complete_Event(
+            status=hci.HCI_ErrorCode.SUCCESS, connection_handle=handle,
+            version=version, manufacturer_name=company, subversion=subversion))
+        return None
 
     def on_hci_read_afh_channel_map_command(self, command):
         # Bumble does not answer it, and BTstack then sends no other command
@@ -426,16 +471,19 @@ class OppoEarbuds:
     Hi-Res, also when the read reported it on already (set from a phone, as
     issue #237's earbuds). drop: the earbuds end the link at the write.
     product: what they report. no_change: the write is taken, and the limit
-    stays. spatial: spatial audio is on."""
+    stays. spatial: spatial audio is on. no_write: the capabilities list
+    no feature write."""
 
     PRODUCT = 0x068C10
     # Writing features and reading the codec, and with codec_write the codec
     CAPABILITIES = 1 << 7 | 1 << 17
 
-    def __init__(self, device, hi_res, drop, product, no_change, spatial, codec_write):
+    def __init__(self, device, hi_res, drop, product, no_change, spatial, codec_write, no_write):
         self.hi_res, self.drop, self.no_change = int(hi_res), drop, no_change
         self.spatial, self.product = int(spatial), product or self.PRODUCT
         self.capabilities = self.CAPABILITIES | (1 << 37 if codec_write else 0)
+        if no_write:
+            self.capabilities &= ~(1 << 7)
         self.unlimited = False
         self.connection = None
         device.on('connection', self.on_connection)
@@ -505,6 +553,7 @@ async def main(args):
         public_address=BLUECASTER_ADDRESS,
     )
     bluecaster_controller.disconnect_delay = args.disconnect_delay
+    bluecaster_controller.silent_remote_version = args.silent_remote_version
     if args.dual_mode:
         bluecaster_controller.lmp_features = DUAL_MODE_FEATURES
     sink_controller = EmuController('SINK', link=link, public_address=SINK_ADDRESS)
@@ -512,7 +561,7 @@ async def main(args):
     host = Host(sink_controller, AsyncPipeSink(sink_controller))
     if args.capture:
         host.snooper = PacketLoggerSnooper(args.capture)
-    device = Device(name='BlueCaster Test Sink', address=SINK_ADDRESS, host=host)
+    device = Device(name=args.name, address=SINK_ADDRESS, host=host)
     device.classic_enabled = True
     device.class_of_device = 0x240404  # Audio / Video, wearable headset
     device.sdp_service_records = {
@@ -525,13 +574,29 @@ async def main(args):
     oppo = None
     if args.oppo:
         oppo = OppoEarbuds(device, args.oppo == 'on', args.oppo_drop, args.oppo_product, args.oppo_no_change,
-                           args.oppo_spatial, args.oppo_codec_write)
+                           args.oppo_spatial, args.oppo_codec_write, args.oppo_no_write)
     await device.power_on()
     await device.set_discoverable(True)
     await device.set_connectable(True)
 
+    def same_codec(a, b):
+        """Capabilities of the same codec: type, and vendor and codec ID"""
+        if a.media_codec_type != b.media_codec_type:
+            return False
+        ids = lambda c: (getattr(c.media_codec_information, 'vendor_id', None),
+                         getattr(c.media_codec_information, 'codec_id', None))
+        return ids(a) == ids(b)
+
+    # The codec and configuration BlueCaster set last: headphones turned back on
+    # with --opens-stream set up that stream themselves
+    last_configuration = {}
+
+    def remember_configuration(name, sink):
+        last_configuration.update(name=name, configuration=list(sink.configuration))
+
     def on_avdtp_connection(server):
         log.info('AVDTP connection')
+        on_avdtp_connection.sinks = {}
         for _ in range(args.extra_seps):
             # A codec BlueCaster does not know, discovered before the real ones
             server.add_sink(MediaCodecCapabilities(
@@ -550,8 +615,32 @@ async def main(args):
             if not args.codecs and name == 'aptxad':
                 continue
             sink = server.add_sink(capabilities)
+            sink.on('configuration', lambda sink=sink, name=name: remember_configuration(name, sink))
+            if args.delay_report is not None:
+                # Headphones with Delay Reporting: listed as a service
+                # capability, and the playout delay sent once the stream is
+                # open (AVDTP 8.19; in 1/10 ms)
+                sink.capabilities.append(ServiceCapabilities(AVDTP_DELAY_REPORTING_SERVICE_CATEGORY))
+
+                async def send_delay_report(sink, server=server):
+                    stream = sink.stream
+                    if stream is None:
+                        print('delay report: no stream', flush=True)
+                        return
+                    delay = round(args.delay_report * 10)
+                    print(f'delay report: sending {delay / 10:.1f} ms to SEID {stream.remote_endpoint.seid}', flush=True)
+                    await server.send_command(DelayReport_Command(acp_seid=stream.remote_endpoint.seid, delay=delay))
+                    print(f'delay report sent ({delay / 10:.1f} ms)', flush=True)
+
+                def report_delay(sink=sink):
+                    task = asyncio.ensure_future(send_delay_report(sink))
+                    task.add_done_callback(
+                        lambda t: print(f'delay report failed: {t.exception()!r}', flush=True) if t.exception() else None)
+
+                sink.on('open', report_delay)
             if name == 'sbc' and args.sbc_reject_dual:
                 refuse_dual_channel(sink)
+            on_avdtp_connection.sinks[name] = sink
             if name in args.in_use:
                 # As a multipoint headset streaming this codec to another
                 # device: listed by Discover with in_use = 1
@@ -587,6 +676,29 @@ async def main(args):
             listener.set_server(connection, protocol)
             on_avdtp_connection(protocol)
             print('A2DP opened', flush=True)
+            if args.opens_stream:
+                await open_last_stream(protocol)
+
+    async def open_last_stream(protocol):
+        """Configure and open the stream BlueCaster set up last, at once, as
+        headphones resuming it do: BTstack then discovers no capabilities."""
+        name = last_configuration.get('name')
+        sink = on_avdtp_connection.sinks.get(name)
+        if sink is None:
+            print('no earlier stream to open', flush=True)
+            return
+        codec = next(c for c in last_configuration['configuration'] if c.service_category == AVDTP_MEDIA_CODEC_SERVICE_CATEGORY)
+        for endpoint in await protocol.discover_remote_endpoints():
+            caps = next((c for c in endpoint.capabilities if c.service_category == AVDTP_MEDIA_CODEC_SERVICE_CATEGORY), None)
+            if caps and same_codec(caps, codec):
+                break
+        else:
+            print(f'BlueCaster has no {name} endpoint', flush=True)
+            return
+        sink.configuration = last_configuration['configuration']
+        stream = await protocol.create_stream(sink, endpoint)
+        await stream.open()
+        print(f'stream opened ({name})', flush=True)
 
     def on_connection(connection):
         log.info('ACL connection from %s', connection.peer_address)
@@ -609,8 +721,14 @@ if __name__ == '__main__':
     parser.add_argument('--turn-off-after', type=float, metavar='S',
                         help='S seconds after the first connection, end the link as when turned off, then page BlueCaster')
     parser.add_argument('--opens-a2dp', action='store_true', help='with --turn-off-after, open A2DP after paging')
+    parser.add_argument('--opens-stream', action='store_true',
+                        help='with --opens-a2dp, also configure and open the last stream')
     parser.add_argument('--disconnect-delay', type=float, default=0, metavar='S',
                         help="seconds until an HCI Disconnect from BlueCaster takes effect")
+    parser.add_argument('--silent-remote-version', action='store_true',
+                        help='never answer Read Remote Version Information (no Command Status either)')
+    parser.add_argument('--name', default='BlueCaster Test Sink',
+                        help='the Bluetooth name, as an inquiry or a name request gets it')
     parser.add_argument('--no-eir-name', action='store_true',
                         help='answer inquiries without the name in the EIR (BlueCaster asks for it)')
     parser.add_argument('--dual-mode', action='store_true',
@@ -619,6 +737,8 @@ if __name__ == '__main__':
                         help='report the SEP of these codecs as in use by another device (multipoint)')
     parser.add_argument('--codecs', nargs='+', choices=CODEC_NAMES, metavar='CODEC',
                         help='offer only these codecs (default: all)')
+    parser.add_argument('--delay-report', type=float, metavar='MS',
+                        help='list Delay Reporting on every codec and report this playout delay once a stream opens')
     parser.add_argument('--extra-seps', type=int, default=0, metavar='N',
                         help='list N more sink SEPs (an unknown vendor codec) before the codecs')
     parser.add_argument('--sbc-no-dual', action='store_true',
@@ -650,5 +770,6 @@ if __name__ == '__main__':
     parser.add_argument('--oppo-no-change', action='store_true', help='take writes and keep the limit')
     parser.add_argument('--oppo-spatial', action='store_true', help='report spatial audio on')
     parser.add_argument('--oppo-codec-write', action='store_true', help='advertise the codec write')
+    parser.add_argument('--oppo-no-write', action='store_true', help='advertise no feature write')
     bumble.logging.setup_basic_logging(parser.parse_known_args()[0].log_level)
     asyncio.run(main(parser.parse_args()))

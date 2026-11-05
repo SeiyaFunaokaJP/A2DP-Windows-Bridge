@@ -180,6 +180,28 @@ pub struct AdapterState {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub other_radio: Option<OtherRadio>,
+    /// A firmware loader's progress while the adapter starts (Intel's
+    /// download), then how it ended; None before any ran
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub loader: Option<LoaderStatus>,
+}
+
+/// Where a firmware loader is (AdapterState::loader)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct LoaderStatus {
+    /// "Intel"
+    pub vendor: String,
+    /// The step running ("Secure Send"), or how it ended ("firmware
+    /// running already", the error): technical, for developer mode
+    pub step: String,
+    /// Percent of the running step, when known
+    #[ts(optional = nullable)]
+    pub percent: Option<u8>,
+    /// Finished: true when the adapter could start; None while it runs
+    #[ts(optional = nullable)]
+    pub ok: Option<bool>,
 }
 
 /// A radio of Windows' own Bluetooth
@@ -271,6 +293,10 @@ pub struct StreamInfo {
     /// The device's maximum bit rate lowered the profile's (LHDC V5)
     #[serde(default)]
     pub bitrate_capped: bool,
+    /// OPPO earbuds turned Hi-Res on for this connection, after one
+    /// reconnect for it
+    #[serde(default)]
+    pub hi_res_set: bool,
     /// Where the audio comes from
     #[serde(default)]
     pub source: Option<SourceInfo>,
@@ -586,6 +612,47 @@ pub struct DevOverrides {
     pub aac_no_afterburner: bool,
     pub aac_latm_v0: bool,
     pub force_codec: bool,
+    /// Auto-select uses each codec's own settings
+    pub auto_codec_settings: bool,
+    /// Rate and bit depth on Auto follow the captured output's format
+    pub match_source: bool,
+    /// Every codec ignores the maximum bit rate the device lists
+    pub ignore_sink_max: bool,
+    /// Longest a media packet waits in the send queue before it is dropped
+    /// (ms, 50..=2000); 0 = the default (350). Applies to the next stream
+    #[ts(type = "number")]
+    pub queue_max_wait_ms: u32,
+}
+
+/// Developer mode's override of one vendor's protocol
+/// (bluecaster_core::vendor::Override)
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default)]
+pub struct VendorOverride {
+    pub mode: VendorMode,
+    /// Its options turned on (VendorInfo.options)
+    pub options: Vec<String>,
+}
+
+/// When earbuds are spoken to over their vendor's protocol: by their name,
+/// always, or never
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum VendorMode {
+    #[default]
+    Auto,
+    Always,
+    Never,
+}
+
+/// A vendor whose earbuds BlueCaster speaks to over their own protocol
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+pub struct VendorInfo {
+    /// Key of its overrides (Settings.dev_vendors)
+    pub id: String,
+    pub name: String,
+    /// Developer mode's switches of its own (the UI labels them)
+    pub options: Vec<String>,
 }
 
 /// Developer mode's logging (bluecaster_core::settings::DevLog), in force while
@@ -657,12 +724,20 @@ pub struct Settings {
     /// starts the profile in use again.
     #[serde(default)]
     pub mute_output: bool,
+    /// Developer > Volume Mixer (off by default): the mixer screen, the
+    /// flyout's app list and mute_output take effect only with it on
+    #[serde(default)]
+    pub volume_mixer: bool,
     /// Developer mode: receiver test, HCI capture, debug details
     pub developer_mode: bool,
     /// Developer mode: overrides of the codec and media path, in force
     /// while developer_mode is on (read when the next stream is set up)
     #[serde(default)]
     pub dev_overrides: DevOverrides,
+    /// Developer mode: when each vendor's own protocol is used, and its
+    /// options, by vendor id (Snapshot.vendors); absent: the default
+    #[serde(default)]
+    pub dev_vendors: std::collections::BTreeMap<String, VendorOverride>,
     /// Developer mode: log retention, the daily size cap, verbose logging
     /// that stays on, the stream health line every interval
     #[serde(default)]
@@ -764,6 +839,9 @@ pub struct Snapshot {
     /// yet (diag.crashes_seen), newest first
     #[serde(default)]
     pub crashes: Vec<CrashReport>,
+    /// The vendors with protocols of their own (developer mode's overrides)
+    #[serde(default)]
+    pub vendors: Vec<VendorInfo>,
 }
 
 /// A crash report (logs\crash\<process>-<stamp>.txt): a panic or a crash
@@ -793,6 +871,44 @@ pub struct VerboseState {
     /// Milliseconds since 1970 (UTC)
     #[ts(type = "number")]
     pub until_ms: u64,
+}
+
+/// A chip probe's report (adapter.probe)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct ProbeResult {
+    /// The JSON report in logs\probe
+    pub path: String,
+    /// "Intel, Bluetooth 5.3 (HCI 12), LMP subversion 0x3102, 8 of 8
+    /// commands answered"
+    pub summary: String,
+}
+
+/// A chip script checked before it runs (adapter.check_script)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct ScriptCheck {
+    /// Lines that cannot be read ("line 3: ..."); empty: it can run
+    pub errors: Vec<String>,
+    /// Lines not known to only read ("line 2: hci fc05 ff"): the script runs
+    /// only with allow_writes
+    pub writes: Vec<String>,
+    /// Lines the adapter's vendor never takes from a script
+    pub denied: Vec<String>,
+}
+
+/// A chip script's run (adapter.run_script)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct ScriptResult {
+    /// The JSON report in logs\probe
+    pub path: String,
+    /// "9 of 9 lines done" or where it stopped
+    pub summary: String,
+    /// One per line run: "line 1: hci 1001  3 ms  0e0c..."
+    pub lines: Vec<String>,
+    /// Events that answered no line, in hex
+    pub other_events: Vec<String>,
 }
 
 /// A diagnostic bundle (diag.bundle)
@@ -866,13 +982,15 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub avg_packet_bytes: Option<f64>,
-    /// The ACL packet type that size takes on an EDR 3 Mbps link; None
-    /// while nothing is sent
+    /// The ACL packet type that size takes: on the fastest packet types the
+    /// remote device's features allow, on an EDR 3 Mbps link while they are
+    /// not known (AclPacket.from_features); None while nothing is sent
     #[ts(optional = nullable)]
     #[serde(default)]
     pub acl_packet: Option<AclPacket>,
-    /// Share of the EDR 3 Mbps link's usable rate (2178 kbps: 1021 bytes
-    /// every 6 slots) the stream takes, L2CAP headers included
+    /// Share of the link's usable rate the stream takes, L2CAP headers
+    /// included: the largest packet the remote device allows and its reply
+    /// slot (EDR 3 Mbps: 2178 kbps, 1021 bytes every 6 slots)
     #[ts(optional = nullable)]
     #[serde(default)]
     pub bandwidth_share: Option<f64>,
@@ -884,6 +1002,17 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub queue_ms: Option<u32>,
+    /// The playout delay the device reported (AVDTP Delay Reporting), in
+    /// ms: from a packet's arrival until it is heard. None while the
+    /// device has not reported one (not every device does)
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub sink_delay_ms: Option<f64>,
+    /// The encoder's own time over the last interval (A2DP or LE Audio).
+    /// None while nothing was encoded.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub encode: Option<Box<EncodeLoad>>,
     /// Capture rate of the stream (frames per second; 0 while not
     /// streaming): capture drops in ms = frames * 1000 / this
     #[ts(optional = nullable)]
@@ -901,6 +1030,154 @@ pub struct LinkSample {
     #[ts(optional = nullable)]
     #[serde(default)]
     pub iso: Option<IsoCounters>,
+    /// The most ACL packets of the A2DP link the controller held over the
+    /// last interval: handed to it and not yet sent. Audio waits there
+    /// after the send queue (queue_ms). For everyone. None while not
+    /// streaming A2DP.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub controller_backlog: Option<u32>,
+    /// controller_backlog in ms of audio, at the interval's ACL packet rate;
+    /// None while nothing is sent
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub controller_backlog_ms: Option<f64>,
+    /// The connected device's Bluetooth chip. For everyone. None without
+    /// an A2DP link or before its controller answered.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub remote_chip: Option<Box<RemoteChip>>,
+    /// The A2DP link's state and readings: developer mode only. None
+    /// without an A2DP link.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub link_details: Option<Box<LinkDetails>>,
+    /// Gaps Windows reported in the captured audio since the stream started
+    /// (its own glitches: neither the encoder falling behind, which is
+    /// capture_dropped, nor the radio)
+    #[ts(optional = nullable, type = "number | null")]
+    #[serde(default)]
+    pub capture_discontinuities: Option<u64>,
+    /// Captured frames lost in those gaps, where the capture could tell (at
+    /// source_rate, like capture_dropped)
+    #[ts(optional = nullable, type = "number | null")]
+    #[serde(default)]
+    pub capture_lost: Option<u64>,
+    /// The channels the link hops over: 10 bytes, bit n = Bluetooth
+    /// channel n (2402 + n MHz). Null while there is no reading.
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub afh_map: Option<Vec<u8>>,
+}
+
+/// The connected device's Bluetooth chip, as its controller reports it
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct RemoteChip {
+    /// Bluetooth SIG company identifier of the chip's maker
+    #[ts(optional = nullable)]
+    pub company_id: Option<u16>,
+    /// Its name ("Airoha"), or the ID in hex ("0x1234") when not listed
+    #[ts(optional = nullable)]
+    pub company: Option<String>,
+    /// Bluetooth core version of the chip ("5.3"); None for an LMP version
+    /// the table does not know
+    #[ts(optional = nullable)]
+    pub version: Option<String>,
+    #[ts(optional = nullable)]
+    pub lmp_version: Option<u8>,
+    /// The maker's firmware / chip revision number
+    #[ts(optional = nullable)]
+    pub lmp_subversion: Option<u16>,
+    /// What the chip supports; None before its features were read
+    #[ts(optional = nullable)]
+    pub features: Option<RemoteChipFeatures>,
+}
+
+/// Packet types the remote chip supports
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct RemoteChipFeatures {
+    /// EDR 2 Mbps / 3 Mbps
+    pub edr_2m: bool,
+    pub edr_3m: bool,
+    /// Basic rate 3- / 5-slot packets
+    pub three_slot: bool,
+    pub five_slot: bool,
+    /// EDR 3- / 5-slot packets
+    pub edr_three_slot: bool,
+    pub edr_five_slot: bool,
+    /// The largest packet type these allow ("3-DH5", "2-DH5", "DH3")
+    pub largest_packet: String,
+}
+
+/// Link role of this adapter
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkRole {
+    Central,
+    Peripheral,
+}
+
+/// Power mode of the link
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkMode {
+    Active,
+    Hold,
+    Sniff,
+    Park,
+}
+
+/// The A2DP link's state and readings (developer mode). None: not known,
+/// or the controller does not support reading it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+
+pub struct LinkDetails {
+    #[ts(optional = nullable)]
+    pub role: Option<LinkRole>,
+    /// Role changes since the stream started
+    pub role_changes: u32,
+    #[ts(optional = nullable)]
+    pub mode: Option<LinkMode>,
+    /// While in sniff mode
+    #[ts(optional = nullable)]
+    pub sniff_interval_ms: Option<f64>,
+    /// Times the link went into sniff mode since the stream started
+    pub sniff_entries: u32,
+    /// Encryption key size in bytes (16 is the most)
+    #[ts(optional = nullable)]
+    pub encryption_key_size: Option<u8>,
+    /// How long without a packet from the device before the link counts
+    /// as lost
+    #[ts(optional = nullable)]
+    pub supervision_timeout_ms: Option<f64>,
+    /// The controller's failed contact counter as last read: packets in a
+    /// row it gave up on, back to 0 when one gets through
+    #[ts(optional = nullable)]
+    pub failed_contacts: Option<u16>,
+    /// Rises of that counter since the stream started (None while it is not
+    /// read)
+    #[ts(optional = nullable, type = "number | null")]
+    pub failed_contacts_stream: Option<u64>,
+    /// Rises a second between its last two readings
+    #[ts(optional = nullable)]
+    pub failed_contacts_per_second: Option<f64>,
+    /// Link quality, 0..255: chip specific, higher is better
+    #[ts(optional = nullable)]
+    pub link_quality: Option<u8>,
+}
+
+/// The encoder's time over one link sample's interval
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS, Default)]
+
+pub struct EncodeLoad {
+    /// Time in the encoder per time of audio encoded (0.01 = 1 %)
+    pub load: f64,
+    /// Average and longest encoder call (one codec frame; LE Audio: one
+    /// SDU set), in microseconds
+    pub avg_us: f64,
+    pub max_us: f64,
 }
 
 /// An LE Audio stream's send counters (since the stream was set up; a
@@ -931,11 +1208,16 @@ pub struct IsoCounters {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 
 pub struct AclPacket {
-    /// "3-DH1", "3-DH3", "3-DH5"
+    /// "3-DH1", "3-DH3", "3-DH5" ("2-DH5", "DH5" on a device without EDR
+    /// 3 Mbps)
     pub name: String,
     /// Slots per media packet with the reply slot (several 3-DH5 packets
     /// for one larger than 1021 bytes)
     pub slots: u32,
+    /// From the remote device's features; false: EDR 3 Mbps assumed
+    #[ts(optional = nullable)]
+    #[serde(default)]
+    pub from_features: Option<bool>,
 }
 
 /// Media counters of the core (cumulative, never reset)
@@ -955,6 +1237,15 @@ pub struct LinkTotals {
     pub capture_frames: u64,
     #[ts(type = "number")]
     pub capture_dropped: u64,
+    /// Gaps Windows reported in the captured audio (its own glitches), and
+    /// the frames lost in them where the capture could tell (at the capture
+    /// rate, like capture_dropped). 0 from a core before these.
+    #[ts(type = "number")]
+    #[serde(default)]
+    pub capture_discontinuities: u64,
+    #[ts(type = "number")]
+    #[serde(default)]
+    pub capture_lost: u64,
 }
 
 impl LinkTotals {
@@ -966,6 +1257,8 @@ impl LinkTotals {
             dropped: self.dropped.saturating_sub(base.dropped),
             capture_frames: self.capture_frames.saturating_sub(base.capture_frames),
             capture_dropped: self.capture_dropped.saturating_sub(base.capture_dropped),
+            capture_discontinuities: self.capture_discontinuities.saturating_sub(base.capture_discontinuities),
+            capture_lost: self.capture_lost.saturating_sub(base.capture_lost),
         }
     }
 }
@@ -1107,6 +1400,33 @@ pub enum Method {
         #[serde(default)]
         codec_fallback: Option<bool>,
     },
+    /// Developer mode: broadcasts (Auracast source) for any LE Audio
+    /// receiver nearby, instead of streaming to a device; the active
+    /// profile stays. `name`: the Broadcast Name (4-32 bytes); `code`: the
+    /// Broadcast Code (4-16 bytes; none or empty: open); `quality`: "hq"
+    /// (48 kHz) or "sq" (24 kHz); `mono`: one channel instead of left and
+    /// right; `source` / `source_id` / `source_name` as for
+    /// stream.start_custom ("app" fails with error.le_audio_capture). Error
+    /// developer.off while developer mode is off; a name or code out of
+    /// range fails the stream (error.auracast).
+    #[serde(rename = "stream.start_broadcast")]
+    StreamStartBroadcast {
+        name: String,
+        #[ts(optional = nullable)]
+        #[serde(default)]
+        code: Option<String>,
+        quality: String,
+        #[ts(optional = nullable)]
+        #[serde(default)]
+        mono: Option<bool>,
+        source: String,
+        #[ts(optional = nullable)]
+        #[serde(default)]
+        source_id: Option<String>,
+        #[ts(optional = nullable)]
+        #[serde(default)]
+        source_name: Option<String>,
+    },
     /// AVRCP absolute volume 0..127
     #[serde(rename = "stream.set_volume")]
     StreamSetVolume { volume: u8 },
@@ -1117,6 +1437,32 @@ pub enum Method {
     /// Ends a running scan early: device.scan answers with what it found
     #[serde(rename = "device.scan_stop")]
     DeviceScanStop,
+    /// -> string[]: the addresses ("XX:XX:XX:XX:XX:XX") of the devices
+    /// paired in Windows' own Bluetooth, on any of its radios (adding one
+    /// here may conflict with it, issue #86)
+    #[serde(rename = "device.windows_paired")]
+    DeviceWindowsPaired,
+    /// -> DevicePairing: what BlueCaster keeps of a classic device's pairing
+    /// (developer mode only)
+    #[serde(rename = "device.pairing")]
+    DevicePairing { address: String },
+    /// -> ServiceList: the services a classic device lists, asked over the
+    /// connection BlueCaster has to it, else the list from its last connection
+    /// since the core started (developer mode only)
+    #[serde(rename = "device.services")]
+    DeviceServices { address: String },
+    /// -> string[]: the addresses of the classic devices Windows' Bluetooth
+    /// paired through the adapter with the Bluetooth address `adapter`
+    /// (what device.import_windows_pairings can take over; no
+    /// administrator prompt, no running radio needed)
+    #[serde(rename = "device.windows_paired_through")]
+    DeviceWindowsPairedThrough { adapter: String },
+    /// -> WindowsImport: takes over the link keys Windows' Bluetooth keeps
+    /// for the adapter with the Bluetooth address `adapter`, so the devices
+    /// it paired with that adapter connect without pairing again, and saves
+    /// the audio ones (an administrator prompt)
+    #[serde(rename = "device.import_windows_pairings")]
+    DeviceImportWindowsPairings { adapter: String },
     /// Removes a saved device; `le_audio` true: its LE Audio entry (absent
     /// or false: the classic one)
     #[serde(rename = "device.forget")]
@@ -1136,6 +1482,10 @@ pub enum Method {
         #[serde(default)]
         le_audio: Option<bool>,
     },
+    /// Forgets what a classic device offered (and that OPPO earbuds were
+    /// asked for Hi-Res): its next connection reads it again
+    #[serde(rename = "device.forget_codecs")]
+    DeviceForgetCodecs { address: String },
     /// Adds or replaces a profile (`original_name`: the one renamed)
     #[serde(rename = "profile.save")]
     ProfileSave { profile: Box<Profile>, original_name: Option<String> },
@@ -1158,6 +1508,18 @@ pub enum Method {
     /// Restarts the Bluetooth stack
     #[serde(rename = "adapter.restart")]
     AdapterRestart,
+    /// Developer mode: the chip probe (read commands only) on this WinUSB
+    /// adapter; the stack stops first -> ProbeResult
+    #[serde(rename = "adapter.probe")]
+    AdapterProbe { instance_id: String },
+    /// Developer mode: reads a chip script for this adapter -> ScriptCheck
+    #[serde(rename = "adapter.check_script")]
+    AdapterCheckScript { instance_id: String, script: String },
+    /// Developer mode: runs a chip script on this WinUSB adapter; one with
+    /// lines that may change the chip only with allow_writes, never one
+    /// with denied lines -> ScriptResult
+    #[serde(rename = "adapter.run_script")]
+    AdapterRunScript { instance_id: String, script: String, allow_writes: bool },
     /// -> FirmwareFile[]: the Realtek firmware pairs in the settings folder
     #[serde(rename = "adapter.firmware_files")]
     AdapterFirmwareFiles,
@@ -1198,6 +1560,11 @@ pub enum Method {
     /// masked unless `mask` is false. Without parameters as before.
     #[serde(rename = "diag.info")]
     DiagInfo(Option<DiagInfoParams>),
+    /// -> WifiAccessPoint[]: a fresh Wi-Fi scan, access points on every
+    /// band, loudest first (a few seconds). Errors "wifi.none" (no Wi-Fi) and
+    /// "wifi.location" (Windows' location setting keeps the list), "wifi.off".
+    #[serde(rename = "diag.wifi_scan")]
+    DiagWifiScan,
     /// -> FlowView: the connection flow as the core followed it (every log
     /// line, also while no window was open)
     #[serde(rename = "diag.flow")]
@@ -1343,6 +1710,21 @@ pub struct SettingsApplied {
 
 pub struct DiagInfo {
     pub text: String,
+}
+
+/// An access point a Wi-Fi scan heard
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct WifiAccessPoint {
+    /// Empty for a hidden network
+    pub ssid: String,
+    /// The channel number on its band (1-14 on 2.4 GHz)
+    pub channel: u8,
+    /// Center frequency: below 2500 is 2.4 GHz, below 5925 is 5 GHz, else
+    /// 6 GHz
+    pub mhz: u32,
+    /// dBm
+    pub rssi: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, Default)]
@@ -1526,6 +1908,63 @@ pub struct ReceiverState {
     pub sent: Option<LinkTotals>,
     /// LinkCounters.stream_starts: a change means `sent` starts again
     pub stream_starts: u32,
+}
+
+/// device.pairing's result
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct DevicePairing {
+    /// The link key BlueCaster keeps, None when it has none (not paired)
+    pub link_key: Option<LinkKeyInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct LinkKeyInfo {
+    /// 32 hex digits, in the order of HCI's Link Key Notification (the
+    /// order BlueZ and Windows keep it in too)
+    pub key: String,
+    /// HCI's link key type (4: unauthenticated P-192, 5: authenticated
+    /// P-192, 7 and 8: their P-256 forms). A key taken from Windows, which
+    /// keeps no type, has 4.
+    pub key_type: u8,
+}
+
+/// One service record of device.services
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct DeviceService {
+    /// Its service class UUIDs, 128-bit form in lowercase
+    pub uuids: Vec<String>,
+    /// The name the device gives it
+    pub name: Option<String>,
+}
+
+/// device.services' result
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct ServiceList {
+    pub services: Vec<DeviceService>,
+    /// Not connected now: the list from its last connection
+    pub from_last_connection: bool,
+}
+
+/// device.import_windows_pairings' result
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct WindowsImport {
+    /// Windows has keys for the adapter (false: it never paired a device
+    /// with it)
+    pub adapter_found: bool,
+    /// The addresses whose keys were taken
+    pub imported: Vec<String>,
+    /// The addresses BlueCaster has a key for already: it stays (the device
+    /// was paired with BlueCaster after Windows, Windows' key is an old one)
+    pub kept: Vec<String>,
+    /// The audio devices among `imported` that were added to the saved
+    /// devices, with Windows' names
+    #[serde(default)]
+    pub added: Vec<String>,
 }
 
 /// rfcomm.open's result
@@ -1774,6 +2213,7 @@ mod tests {
             v1_running: false,
             verbose: None,
             crashes: Vec::new(),
+            vendors: Vec::new(),
         })
         .unwrap();
         snap.as_object_mut().unwrap().remove("le_scanning");
@@ -1824,11 +2264,35 @@ mod tests {
 
     #[test]
     fn totals_since_a_baseline() {
-        let now = LinkTotals { packets: 10, bytes: 1000, dropped: 2, capture_frames: 480, capture_dropped: 0 };
-        let base = LinkTotals { packets: 4, bytes: 400, dropped: 3, capture_frames: 0, capture_dropped: 0 };
+        let now = LinkTotals {
+            packets: 10,
+            bytes: 1000,
+            dropped: 2,
+            capture_frames: 480,
+            capture_dropped: 0,
+            capture_discontinuities: 3,
+            capture_lost: 960,
+        };
+        let base = LinkTotals {
+            packets: 4,
+            bytes: 400,
+            dropped: 3,
+            capture_frames: 0,
+            capture_dropped: 0,
+            capture_discontinuities: 1,
+            capture_lost: 0,
+        };
         assert_eq!(
             now.since(&base),
-            LinkTotals { packets: 6, bytes: 600, dropped: 0, capture_frames: 480, capture_dropped: 0 }
+            LinkTotals {
+                packets: 6,
+                bytes: 600,
+                dropped: 0,
+                capture_frames: 480,
+                capture_dropped: 0,
+                capture_discontinuities: 2,
+                capture_lost: 960,
+            }
         );
     }
 }

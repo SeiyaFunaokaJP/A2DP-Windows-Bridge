@@ -12,6 +12,7 @@ mod cli;
 mod crashes;
 mod driver;
 mod logging;
+mod pairing;
 mod quit;
 mod resident;
 mod rfcomm;
@@ -187,6 +188,7 @@ pub(crate) fn diag_text(state: &state::CoreState, mask: bool) -> String {
         requested_in_use: i.requested_in_use,
         abr: i.abr,
         bitrate_capped: i.bitrate_capped,
+        hi_res_set: i.hi_res_set,
         source: core_source(i.source.as_ref()),
         details: i.details.clone().map(|d| Box::new(core_codec_details(*d))),
     });
@@ -219,6 +221,7 @@ pub(crate) fn diag_text(state: &state::CoreState, mask: bool) -> String {
         adapter_addresses: &adapter_addresses,
         le_audio: le_audio.as_ref(),
         logging: Some(&logging_line(&state.config_dir())),
+        clients: &server::clients(),
     })
 }
 

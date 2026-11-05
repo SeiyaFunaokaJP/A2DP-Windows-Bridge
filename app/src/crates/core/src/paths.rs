@@ -10,7 +10,7 @@
 //!   pairing\    link_keys.txt  le_audio_bonds.tlv   (the secrets: never in a bundle)
 //!   adapters\   adapter_caps.json  driver\<instance id>.json
 //!   firmware\   *.bin *.hcd *.sfi *.ddc
-//!   logs\       <YYYY-MM-DD>\core.log ui.log driver.log  hci\  crash\  bundles\  verbose.json
+//!   logs\       <YYYY-MM-DD>\core.log ui.log driver.log  hci\  crash\  probe\  bundles\  verbose.json
 //!   backup\     v1\  v2\  profiles-before-codecs.json
 //! ```
 //!
@@ -288,6 +288,11 @@ pub fn recorder_tmp_file(config: &Path, stamp: &str) -> PathBuf {
 /// Crash reports (win_sys::crash)
 pub fn crash_dir(config: &Path) -> PathBuf {
     log_dir(config).join("crash")
+}
+
+/// Chip probe reports (crate::probe_report)
+pub fn probe_dir(config: &Path) -> PathBuf {
+    log_dir(config).join("probe")
 }
 
 /// Diagnostic bundles (.zip)

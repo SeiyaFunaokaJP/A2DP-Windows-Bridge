@@ -13,6 +13,8 @@ import { createStore } from "solid-js/store";
 import { t } from "../i18n";
 import type { Profile } from "../ipc/types";
 import {
+  autoBitDepth,
+  autoSampleRate,
   capsOf,
   carryToCodec,
   fixedBitDepth,
@@ -24,6 +26,7 @@ import {
   offeredBitDepths,
   offeredQualities,
   offeredSampleRates,
+  onlyChoice,
   qualityIgnored,
   type CodecCaps,
   type CodecSpec,
@@ -302,8 +305,14 @@ export function CodecSettings(props: {
   caps?: readonly CodecCaps[];
   /** Offers the SBC frame setup, which only counts then */
   developer?: boolean;
+  /** Developer mode: Auto follows the PC's output format (no value beside
+   *  Auto then) */
+  matchSource?: boolean;
   /** Who listed what is offered, once it did */
   deviceName?: string;
+  /** Forgets what the device listed (LHDC V5: OPPO earbuds are then asked
+   *  for Hi-Res again, issue #237) */
+  onForgetReport?: () => void;
   onChange: (values: CodecChoice) => void;
   onClose: () => void;
 }) {
@@ -390,22 +399,44 @@ export function CodecSettings(props: {
     const offered = offeredBitDepths(v.codec, caps());
     return offered.includes(v.bit_depth) ? offered : [...offered, v.bit_depth];
   };
+  // One rate or bit depth the device takes: a fixed value, not Auto and that
+  // value to choose between
+  const onlyRate = () => onlyChoice(offeredSampleRates(v.codec, caps()), v.sample_rate, 0);
+  const onlyDepth = () =>
+    depths().length > 1 ? onlyChoice(offeredBitDepths(v.codec, caps()), v.bit_depth, 0) : fixedBitDepth(v.codec);
   // The frame setup: Auto, then what the device listed (the value chosen
-  // stays, marked, when it did not list it: it falls back when connecting)
-  const sbcChoice = <T extends string | number>(
+  // stays, marked, when it did not list it: it falls back when connecting);
+  // one value listed is shown fixed, as the rate and bit depth are
+  const sbcField = <K extends "sbc_blocks" | "sbc_subbands" | "sbc_allocation" | "sbc_channel_mode">(
+    title: string,
+    key: K,
     field: "blocks" | "subbands" | "allocations" | "channel_modes",
-    values: T[],
-    current: T,
-    label: (v: T) => string,
-  ) => [
-    { value: (typeof current === "number" ? 0 : "") as T, label: t("codec.auto") },
-    ...values
-      .filter((x) => x === current || sbcOffered(props.sbcCaps, field, x))
-      .map((x) => ({
-        value: x,
-        label: sbcOffered(props.sbcCaps, field, x) ? label(x) : t("ui.profile.sbc_not_offered", label(x)),
-      })),
-  ];
+    values: CodecChoice[K][],
+    label: (v: CodecChoice[K]) => string,
+    // What Auto takes (core: SbcParams' defaults), shown beside it (issue #86)
+    auto: CodecChoice[K],
+  ) => {
+    const none = (typeof v[key] === "number" ? 0 : "") as CodecChoice[K];
+    const only = () => onlyChoice(values.filter((x) => sbcOffered(props.sbcCaps, field, x)), v[key], none);
+    const options = () => [
+      { value: none, label: t("codec.auto_value", label(auto)) },
+      ...values
+        .filter((x) => x === v[key] || sbcOffered(props.sbcCaps, field, x))
+        .map((x) => ({
+          value: x,
+          label: sbcOffered(props.sbcCaps, field, x) ? label(x) : t("ui.profile.sbc_not_offered", label(x)),
+        })),
+    ];
+    return (
+      <Field label={title} stacked>
+        {(id) => (
+          <Show when={only() === undefined} fallback={<input id={id} class="input readonly" readOnly value={label(only()!)} />}>
+            <Select id={id} value={v[key]} options={options()} onChange={(x) => set(key, x)} />
+          </Show>
+        )}
+      </Field>
+    );
+  };
   // What streams: outside developer mode the frame setup kept is not used
   const streamed = (): CodecChoice =>
     props.developer ? v : { ...v, sbc_blocks: 0, sbc_subbands: 0, sbc_allocation: "", sbc_channel_mode: "" };
@@ -470,43 +501,70 @@ export function CodecSettings(props: {
             </Field>
           </Show>
         </Show>
-        <Field label={t("connection.sample_rate")} hint={t("tooltip.sample_rate")}>
-          {(id, described) => (
-            <Select
-              id={id}
-              describedBy={described}
-              value={v.sample_rate}
-              options={rates().map((r) => {
-                const label = r === 0 ? t("codec.auto") : `${r} Hz`;
-                const listed = offeredSampleRates(v.codec, caps()).includes(r);
-                return { value: r, label: listed ? label : t("ui.profile.sbc_not_offered", label) };
-              })}
-              onChange={(x) => set("sample_rate", x)}
-            />
-          )}
-        </Field>
-        <Field label={t("connection.bit_depth")} hint={t("tooltip.bit_depth")}>
-          {(id, described) => (
-            <Select
-              id={id}
-              describedBy={described}
-              value={v.bit_depth}
-              disabled={depths().length === 1}
-              options={depths().map((b) => ({
-                value: b,
-                label:
-                  b === 0
-                    ? depths().length > 1
-                      ? t("codec.auto")
-                      : t(`bitdepth.${fixedBitDepth(v.codec)}`)
-                    : offeredBitDepths(v.codec, caps()).includes(b)
-                      ? t(`bitdepth.${b}`)
-                      : t("ui.profile.sbc_not_offered", t(`bitdepth.${b}`)),
-              }))}
-              onChange={(x) => set("bit_depth", x)}
-            />
-          )}
-        </Field>
+        {/* One rate the device takes: shown as a value, without Auto */}
+        <Show
+          when={onlyRate() === undefined}
+          fallback={
+            <Field label={t("connection.sample_rate")}>
+              {(id) => <input id={id} class="input readonly" readOnly value={`${onlyRate()} Hz`} />}
+            </Field>
+          }
+        >
+          <Field label={t("connection.sample_rate")} hint={t("tooltip.sample_rate")}>
+            {(id, described) => (
+              <Select
+                id={id}
+                describedBy={described}
+                value={v.sample_rate}
+                options={rates().map((r) => {
+                  // Auto with the rate it streams at (issue #86)
+                  const label =
+                    r === 0
+                      ? props.matchSource
+                        ? t("codec.auto")
+                        : t("codec.auto_value", `${autoSampleRate(v.codec, caps())} Hz`)
+                      : `${r} Hz`;
+                  const listed = offeredSampleRates(v.codec, caps()).includes(r);
+                  return { value: r, label: listed ? label : t("ui.profile.sbc_not_offered", label) };
+                })}
+                onChange={(x) => set("sample_rate", x)}
+              />
+            )}
+          </Field>
+        </Show>
+        {/* One bit depth (SBC, AAC, aptX, Opus: 16-bit; aptX Adaptive:
+            24-bit; or the one the device lists): shown as a value, not as a
+            list to open (issue #86) */}
+        <Show
+          when={onlyDepth() === undefined}
+          fallback={
+            <Field label={t("connection.bit_depth")}>
+              {(id) => <input id={id} class="input readonly" readOnly value={t(`bitdepth.${onlyDepth()}`)} />}
+            </Field>
+          }
+        >
+          <Field label={t("connection.bit_depth")} hint={t("tooltip.bit_depth")}>
+            {(id, described) => (
+              <Select
+                id={id}
+                describedBy={described}
+                value={v.bit_depth}
+                options={depths().map((b) => ({
+                  value: b,
+                  label:
+                    b === 0
+                      ? props.matchSource
+                        ? t("codec.auto")
+                        : t("codec.auto_value", t(`bitdepth.${autoBitDepth(v.codec, caps())}`))
+                      : offeredBitDepths(v.codec, caps()).includes(b)
+                        ? t(`bitdepth.${b}`)
+                        : t("ui.profile.sbc_not_offered", t(`bitdepth.${b}`)),
+                }))}
+                onChange={(x) => set("bit_depth", x)}
+              />
+            )}
+          </Field>
+        </Show>
         <Show when={spec().abr}>
           <Toggle label={t("connection.abr")} hint={t("tooltip.abr")} checked={v.abr} onChange={(x) => set("abr", x)} />
         </Show>
@@ -545,50 +603,13 @@ export function CodecSettings(props: {
           <Show when={props.developer}>
             <fieldset class="sbc-frame">
               <legend class="field-label">{t("ui.profile.sbc_frame")}</legend>
-              <Field label={t("ui.diag.cd_blocks")} stacked>
-                {(id) => (
-                  <Select
-                    id={id}
-                    value={v.sbc_blocks}
-                    options={sbcChoice("blocks", SBC_BLOCKS, v.sbc_blocks, String)}
-                    onChange={(x) => set("sbc_blocks", x)}
-                  />
-                )}
-              </Field>
-              <Field label={t("ui.diag.cd_subbands")} stacked>
-                {(id) => (
-                  <Select
-                    id={id}
-                    value={v.sbc_subbands}
-                    options={sbcChoice("subbands", SBC_SUBBANDS, v.sbc_subbands, String)}
-                    onChange={(x) => set("sbc_subbands", x)}
-                  />
-                )}
-              </Field>
-              <Field label={t("ui.diag.cd_allocation")} stacked>
-                {(id) => (
-                  <Select
-                    id={id}
-                    value={v.sbc_allocation}
-                    options={sbcChoice("allocations", SBC_ALLOCATIONS, v.sbc_allocation, (a) => t(`ui.diag.cd_alloc.${a}`))}
-                    onChange={(x) => set("sbc_allocation", x)}
-                  />
-                )}
-              </Field>
+              {sbcField(t("ui.diag.cd_blocks"), "sbc_blocks", "blocks", SBC_BLOCKS, String, 16)}
+              {sbcField(t("ui.diag.cd_subbands"), "sbc_subbands", "subbands", SBC_SUBBANDS, String, 8)}
+              {sbcField(t("ui.diag.cd_allocation"), "sbc_allocation", "allocations", SBC_ALLOCATIONS, (a) => t(`ui.diag.cd_alloc.${a}`), "loudness")}
               {/* SBC XQ is dual channel by definition */}
               <Show when={v.codec === "sbc"}>
-                <Field label={t("ui.diag.cd_channel_mode")} stacked>
-                  {(id) => (
-                    <Select
-                      id={id}
-                      value={v.sbc_channel_mode}
-                      options={sbcChoice("channel_modes", SBC_CHANNEL_MODES, v.sbc_channel_mode, (m) => t(`ui.diag.cd_mode.${m}`))}
-                      onChange={(x) => set("sbc_channel_mode", x)}
-                    />
-                  )}
-                </Field>
+                {sbcField(t("ui.diag.cd_channel_mode"), "sbc_channel_mode", "channel_modes", SBC_CHANNEL_MODES, (m) => t(`ui.diag.cd_mode.${m}`), "joint_stereo")}
               </Show>
-              <p class="hint">{t(v.codec === "sbc" ? "ui.profile.sbc_frame_hint" : "ui.profile.sbc_frame_hint_xq")}</p>
             </fieldset>
           </Show>
           {/* Fixed for each codec, unless chosen above (issue #86) */}
@@ -597,6 +618,15 @@ export function CodecSettings(props: {
               {(id) => <input id={id} class="input readonly" readOnly value={t(`ui.diag.cd_mode.${sbcMode()}`)} />}
             </Field>
           </Show>
+        </Show>
+        <Show when={v.codec === "lhdcv5" && listed() && props.onForgetReport}>
+          {(forget) => (
+            <div>
+              <Button icon="arrow_reset" onClick={() => forget()()}>
+                {t("ui.profile.forget_report")}
+              </Button>
+            </div>
+          )}
         </Show>
       </div>
     </Dialog>

@@ -66,6 +66,137 @@ pub trait HciBackend: Send {
     /// it). Off again at every open. Transports that tell packet types
     /// apart and have no reset on close (H4) ignore it.
     fn set_bootloader(&mut self, _on: bool) {}
+    /// A control transfer on the device's default pipe, for a chip loader
+    /// (vendor registers, string descriptors): IN gives the bytes read, OUT
+    /// none. Transports without one (H4) refuse it.
+    fn control(&mut self, _request: &ControlRequest) -> Result<Vec<u8>, String> {
+        Err("not a USB transport".into())
+    }
+    /// The open device's USB descriptors, for a chip report
+    fn usb_descriptors(&mut self) -> Option<UsbDescriptors> {
+        None
+    }
+}
+
+/// bmRequestType's type bits
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlKind {
+    Standard,
+    Class,
+    Vendor,
+}
+
+/// bmRequestType's recipient bits
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlRecipient {
+    Device,
+    Interface,
+    Endpoint,
+    Other,
+}
+
+/// The data stage: IN with the length to read, or OUT with the bytes
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ControlData {
+    In(u16),
+    Out(Vec<u8>),
+}
+
+/// A USB control transfer ([`HciBackend::control`])
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControlRequest {
+    pub kind: ControlKind,
+    pub recipient: ControlRecipient,
+    pub request: u8,
+    pub value: u16,
+    pub index: u16,
+    pub data: ControlData,
+}
+
+impl ControlRequest {
+    /// GET_DESCRIPTOR of a string (USB 2.0 9.4.3), US English
+    pub fn string_descriptor(index: u8) -> ControlRequest {
+        ControlRequest {
+            kind: ControlKind::Standard,
+            recipient: ControlRecipient::Device,
+            request: 0x06,
+            value: 0x0300 | index as u16,
+            index: 0x0409,
+            data: ControlData::In(255),
+        }
+    }
+
+    /// GET_DESCRIPTOR of the device descriptor (USB 2.0 9.4.3)
+    pub fn device_descriptor() -> ControlRequest {
+        ControlRequest {
+            kind: ControlKind::Standard,
+            recipient: ControlRecipient::Device,
+            request: 0x06,
+            value: 0x0100,
+            index: 0,
+            data: ControlData::In(18),
+        }
+    }
+
+    /// The 8-byte SETUP packet: bmRequestType, bRequest, wValue, wIndex,
+    /// wLength (little endian)
+    pub fn setup_packet(&self) -> [u8; 8] {
+        let (dir, len) = match &self.data {
+            ControlData::In(n) => (0x80, *n),
+            ControlData::Out(d) => (0x00, d.len() as u16),
+        };
+        let kind = match self.kind {
+            ControlKind::Standard => 0,
+            ControlKind::Class => 1,
+            ControlKind::Vendor => 2,
+        };
+        let recipient = match self.recipient {
+            ControlRecipient::Device => 0,
+            ControlRecipient::Interface => 1,
+            ControlRecipient::Endpoint => 2,
+            ControlRecipient::Other => 3,
+        };
+        let [v0, v1] = self.value.to_le_bytes();
+        let [i0, i1] = self.index.to_le_bytes();
+        let [l0, l1] = len.to_le_bytes();
+        [dir | kind << 5 | recipient, self.request, v0, v1, i0, i1, l0, l1]
+    }
+
+    /// The SETUP packet's fields for a log line: "IN vendor/device 0x63
+    /// value 0x0000 index 0x0000 length 4"
+    pub fn describe(&self) -> String {
+        let (dir, len) = match &self.data {
+            ControlData::In(n) => ("IN", *n as usize),
+            ControlData::Out(d) => ("OUT", d.len()),
+        };
+        let kind = match self.kind {
+            ControlKind::Standard => "standard",
+            ControlKind::Class => "class",
+            ControlKind::Vendor => "vendor",
+        };
+        let recipient = match self.recipient {
+            ControlRecipient::Device => "device",
+            ControlRecipient::Interface => "interface",
+            ControlRecipient::Endpoint => "endpoint",
+            ControlRecipient::Other => "other",
+        };
+        format!(
+            "{dir} {kind}/{recipient} 0x{:02X} value 0x{:04X} index 0x{:04X} length {len}",
+            self.request, self.value, self.index
+        )
+    }
+}
+
+/// A USB device's descriptors as the OS keeps them
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UsbDescriptors {
+    /// The device descriptor (18 bytes)
+    pub device: Vec<u8>,
+    /// Each configuration descriptor with its interfaces and endpoints
+    pub configurations: Vec<Vec<u8>>,
+    /// One line per interface setting: "interface 0 alt 0 class E0/01/01:
+    /// 0x81 interrupt 16, 0x02 bulk 64, 0x82 bulk 64"
+    pub summary: Vec<String>,
 }
 
 /// The way back from a backend's I/O threads into BTstack. Belongs to one
@@ -327,6 +458,18 @@ pub(crate) fn send_raw(packet_type: u8, packet: &[u8]) -> bool {
     let ok = BACKEND.with(|b| b.borrow_mut().as_mut().is_some_and(|b| b.send(packet_type, packet)));
     tracing::trace!(target: "hci", "raw send type 0x{packet_type:02X}, {} bytes: {ok}", packet.len());
     ok
+}
+
+/// A control transfer for a chip loader ([`HciBackend::control`])
+pub(crate) fn control(request: &ControlRequest) -> Result<Vec<u8>, String> {
+    BACKEND.with(|b| match b.borrow_mut().as_mut() {
+        Some(b) => b.control(request),
+        None => Err("no transport".into()),
+    })
+}
+
+pub(crate) fn usb_descriptors() -> Option<UsbDescriptors> {
+    BACKEND.with(|b| b.borrow_mut().as_mut().and_then(|b| b.usb_descriptors()))
 }
 
 pub(crate) fn set_bootloader(on: bool) {

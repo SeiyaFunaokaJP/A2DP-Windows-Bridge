@@ -2,7 +2,7 @@
 // ring, the Connect / Disconnect button, volume, codec badge, link quality
 // and the error panel with its fix.
 
-import { createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
+import { createMemo, createResource, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
 import { errorText, useApp, type AppContext } from "../app/context";
 import { t, tm } from "../i18n";
 import { bitrateNoteKey, codecLabelKey } from "../lib/codecs";
@@ -386,6 +386,8 @@ const QUALITY_DROP_SAMPLES = 40;
 const QUALITY_QUEUE_SAMPLES = 16;
 /** Milliseconds in the send queue that mean the radio fell behind */
 export const QUALITY_QUEUE_BACKLOG_MS = 150;
+/** Share of the radio's time above which dropouts become likely */
+export const QUALITY_AIRTIME_MAX = 0.8;
 
 /** Link quality from the last samples: what reaches the headphones (packet
  *  drops, the send queue backing up, air time) sets the bars. Not RSSI:
@@ -393,37 +395,47 @@ export const QUALITY_QUEUE_BACKLOG_MS = 150;
  *  headphones' power control moves it by 10-20 dB on a link that delivers
  *  everything. Audio the PC itself lost at capture says nothing about the
  *  radio (and counts frames, not packets): on a link that is fine, pcBusy. */
+/** What lowered the quality (Diagnostics names them) */
+export type QualityCause = "drops" | "queue" | "airtime";
+
 export function linkQuality(
   samples: readonly LinkSample[],
-): { level: QualityLevel; status: "good" | "warn" | "bad"; pcBusy: boolean } | null {
+): { level: QualityLevel; status: "good" | "warn" | "bad"; pcBusy: boolean; causes: QualityCause[] } | null {
   if (samples.length === 0) return null;
   const last = samples[samples.length - 1];
   if (last.bytes_per_second === 0 && last.rssi === null) return null;
   const caps: QualityLevel[] = [4];
+  const causes: QualityCause[] = [];
+  const cap = (level: QualityLevel, cause: QualityCause) => {
+    caps.push(level);
+    causes.push(cause);
+  };
   const old = samples[Math.max(0, samples.length - QUALITY_DROP_SAMPLES)];
   const dropped = last.dropped - old.dropped;
-  if (dropped > 5) caps.push(1);
-  else if (dropped > 0) caps.push(2);
+  if (dropped > 5) cap(1, "drops");
+  else if (dropped > 0) cap(2, "drops");
   const backlog = Math.max(...samples.slice(-QUALITY_QUEUE_SAMPLES).map((s) => s.queue_ms ?? 0));
-  if (backlog >= QUALITY_QUEUE_BACKLOG_MS) caps.push(2);
-  else if (backlog >= QUALITY_QUEUE_BACKLOG_MS / 2) caps.push(3);
-  if (last.airtime > 0.8) caps.push(2);
+  if (backlog >= QUALITY_QUEUE_BACKLOG_MS) cap(2, "queue");
+  else if (backlog >= QUALITY_QUEUE_BACKLOG_MS / 2) cap(3, "queue");
+  if (last.airtime > QUALITY_AIRTIME_MAX) cap(2, "airtime");
   const level = Math.min(...caps) as QualityLevel;
   const linkGood = level >= 3;
   const pcBusy = linkGood && last.capture_dropped > old.capture_dropped;
-  return { level, status: pcBusy ? "warn" : linkGood ? "good" : level === 2 ? "warn" : "bad", pcBusy };
+  return { level, status: pcBusy ? "warn" : linkGood ? "good" : level === 2 ? "warn" : "bad", pcBusy, causes };
+}
+
+/** The quality's label (the indicator's) */
+export function qualityLabel(q: ReturnType<typeof linkQuality>): string {
+  if (!q) return t("ui.quality.unknown");
+  if (q.pcBusy) return t("ui.quality.pc_busy");
+  return q.status === "good" ? t("ui.quality.good") : q.status === "warn" ? t("ui.quality.fair") : t("ui.quality.poor");
 }
 
 export function QualityIndicator() {
   const { core } = useApp();
   // No link to rate unless it streams, whatever the last samples said
   const q = createMemo(() => (core.state.snap?.stream.state === "streaming" ? linkQuality(core.link()) : null));
-  const label = () => {
-    const v = q();
-    if (!v) return t("ui.quality.unknown");
-    if (v.pcBusy) return t("ui.quality.pc_busy");
-    return v.status === "good" ? t("ui.quality.good") : v.status === "warn" ? t("ui.quality.fair") : t("ui.quality.poor");
-  };
+  const label = () => qualityLabel(q());
   return (
     <span class={`quality ${q() ? `st-${q()!.status}` : ""}`} title={`${t("quality.title")}: ${label()}`}>
       <span class="bars" aria-hidden="true">
@@ -489,6 +501,12 @@ const PROFILE_KEYS = [
 /** The adapter BlueCaster would use but cannot: not on WinUSB */
 export function adapterNeedingDriver(snap: Snapshot): AdapterInfo | null {
   return snap.adapter.adapters.find((a) => a.driver !== "winusb") ?? null;
+}
+
+/** The adapters' drivers, to tell when one changed: a kept request error
+ *  ("no adapter on WinUSB") is out of date then */
+export function adapterDrivers(snap: Snapshot): string {
+  return snap.adapter.adapters.map((a) => `${a.instance_id}=${a.driver}`).join("|");
 }
 
 /** The next step for an error: a code from a request, and/or the message key */
@@ -728,6 +746,21 @@ export function ErrorPanel(props: { code?: string | null; message: Msg; title?: 
 export function WinusbDialog(props: { adapter: AdapterInfo | null; mode: "assign" | "restore"; onClose: (done: boolean) => void }) {
   const app = useApp();
   const [busy, setBusy] = createSignal(false);
+  // Restore: saved devices Windows has paired too. A pairing in BlueCaster
+  // gave the device a new key, so Windows' old one fails (BTHUSB event 16)
+  // until the device is paired in Windows again. Read per adapter: Windows'
+  // own list needs a radio of its own running, which an adapter on WinUSB
+  // is not (BluetoothFindFirstDevice fails, the list came back empty).
+  const [windowsPaired] = createResource(
+    () => (props.adapter && props.mode === "restore" ? props.adapter.address : null),
+    (adapter) => app.core.request("device.windows_paired_through", { adapter }).catch(() => [] as string[]),
+  );
+  const repair = () => {
+    const paired = new Set((windowsPaired() ?? []).map((a) => a.toUpperCase()));
+    return (app.core.state.snap?.devices ?? [])
+      .filter((d) => d.saved && !d.le_audio && paired.has(d.address.toUpperCase()))
+      .map((d) => d.name || d.address);
+  };
   const go = async () => {
     const a = props.adapter;
     if (!a) return;
@@ -769,6 +802,9 @@ export function WinusbDialog(props: { adapter: AdapterInfo | null; mode: "assign
         <span class="muted"> · {props.adapter?.device_name}</span>
       </p>
       <p>{props.mode === "assign" ? t("ui.adapter.assign_explain") : t("ui.adapter.restore_explain")}</p>
+      <Show when={props.mode === "restore" && repair().length > 0}>
+        <Banner kind="warn">{t("ui.adapter.restore_repair", repair().join(", "))}</Banner>
+      </Show>
       <p class="muted">{t("ui.adapter.uac_note")}</p>
     </Dialog>
   );

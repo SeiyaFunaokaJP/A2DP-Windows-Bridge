@@ -8,6 +8,7 @@ import {
   createUniqueId,
   For,
   onCleanup,
+  onMount,
   Show,
   splitProps,
   untrack,
@@ -51,6 +52,82 @@ export function IconButton(props: JSX.ButtonHTMLAttributes<HTMLButtonElement> & 
     <button type="button" class={`btn btn-icon ${own.class ?? ""}`} aria-label={own.label} title={own.label} {...rest}>
       <Icon name={own.icon} />
     </button>
+  );
+}
+
+/** A page's tabs (WAI-ARIA tabs pattern: arrow keys, Home, End). Tabs that
+ *  do not fit scroll with the arrows beside them, not a scrollbar; the
+ *  arrows are for the mouse, the keys already bring a tab into view. */
+export function TabBar<T extends string>(props: {
+  label: string;
+  tabs: { id: T; label: string; icon: IconName }[];
+  current: T;
+  onSelect: (id: T) => void;
+}) {
+  let list: HTMLDivElement | undefined;
+  const [canLeft, setCanLeft] = createSignal(false);
+  const [canRight, setCanRight] = createSignal(false);
+  const measure = () => {
+    if (!list) return;
+    setCanLeft(list.scrollLeft > 1);
+    setCanRight(list.scrollLeft + list.clientWidth < list.scrollWidth - 1);
+  };
+  const scroll = (dir: -1 | 1) => list?.scrollBy({ left: dir * list.clientWidth * 0.7, behavior: "smooth" });
+  onMount(() => {
+    measure();
+    if (typeof ResizeObserver === "undefined" || !list) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(list);
+    onCleanup(() => ro.disconnect());
+  });
+  const onKey = (e: KeyboardEvent) => {
+    const tabs = props.tabs;
+    const i = tabs.findIndex((x) => x.id === props.current);
+    let n = -1;
+    if (e.key === "ArrowRight") n = (i + 1) % tabs.length;
+    else if (e.key === "ArrowLeft") n = (i - 1 + tabs.length) % tabs.length;
+    else if (e.key === "Home") n = 0;
+    else if (e.key === "End") n = tabs.length - 1;
+    if (n < 0) return;
+    e.preventDefault();
+    props.onSelect(tabs[n].id);
+    document.getElementById(`tab-${tabs[n].id}`)?.focus();
+  };
+  const arrow = (dir: -1 | 1) => (
+    <button
+      type="button"
+      class={`tabs-scroll ${dir < 0 ? "left" : "right"}`}
+      tabindex={-1}
+      aria-hidden="true"
+      onClick={() => scroll(dir)}
+    >
+      <Icon name="chevron_right" />
+    </button>
+  );
+  return (
+    <div class="tabs-bar">
+      <Show when={canLeft()}>{arrow(-1)}</Show>
+      <div class="tabs" role="tablist" aria-label={props.label} onKeyDown={onKey} onScroll={measure} ref={list}>
+        <For each={props.tabs}>
+          {(x) => (
+            <button
+              type="button"
+              role="tab"
+              id={`tab-${x.id}`}
+              class="tab"
+              aria-selected={props.current === x.id}
+              aria-controls={`panel-${x.id}`}
+              tabindex={props.current === x.id ? 0 : -1}
+              onClick={() => props.onSelect(x.id)}
+            >
+              <Icon name={x.icon} />
+              {x.label}
+            </button>
+          )}
+        </For>
+      </div>
+      <Show when={canRight()}>{arrow(1)}</Show>
+    </div>
   );
 }
 

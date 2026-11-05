@@ -1,7 +1,10 @@
-// Developer (shown while developer mode is on): the peer receiver test,
+// Developer (shown while developer mode is on): the chip tools (ChipTools),
+// the peer receiver test, an Auracast broadcast (Auracast),
 // overrides of the codec and the media path for finding out why a sink stays
 // silent (issue #87; read when the next stream is set up), each saved
-// device's max media packet size (issue #86), and how the core
+// device's max media packet size (issue #86), when vendors' own protocols
+// are used (issue #237: kept by vendor id, the vendors as the core lists
+// them, so a new vendor needs only its option labels here), and how the core
 // logs: retention, the daily size cap, verbose logging that stays on, the
 // stream health line every interval (issue #84) and marker lines.
 
@@ -9,16 +12,18 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { unwrap } from "solid-js/store";
 import { useApp } from "../app/context";
 import { saveSettings } from "../app/settings";
-import { Banner, Button, Field, Section, Select, Toggle } from "../components/controls";
-import { Icon } from "../components/Icon";
+import { Banner, Button, Field, Section, Select, TabBar, Toggle } from "../components/controls";
 import type { IconName } from "../components/icons";
 import { t } from "../i18n";
-import type { DevLog, DevOverrides, LogLevel } from "../ipc/types";
+import type { DevLog, DevOverrides, LogLevel, VendorInfo, VendorMode, VendorOverride } from "../ipc/types";
 import { PACKET_DEFAULT, PACKET_MAX, PACKET_MIN } from "../lib/codecs";
 import { audioEntries, entryByKey, normalizeProfile, profilesOf } from "../lib/profile";
+import { Auracast } from "./Auracast";
+import { ChipTools } from "./ChipTools";
 import { ReceiverTest } from "./ReceiverTest";
 
-type Tab = "receiver" | "overrides" | "logging";
+// The app's own settings apart from the codec and media path (issue #86)
+type Tab = "app" | "receiver" | "auracast" | "overrides" | "vendors" | "logging" | "chip";
 
 const NO_OVERRIDES: DevOverrides = {
   rtp_marker: false,
@@ -29,60 +34,75 @@ const NO_OVERRIDES: DevOverrides = {
   aac_no_afterburner: false,
   aac_latm_v0: false,
   force_codec: false,
+  auto_codec_settings: false,
+  match_source: false,
+  ignore_sink_max: false,
+  queue_max_wait_ms: 0,
 };
 
 export function Developer() {
   const app = useApp();
   const { core } = app;
-  const [tab, setTab] = createSignal<Tab>("overrides");
+  const [tab, setTab] = createSignal<Tab>("app");
   const settings = () => core.state.snap!.settings;
+  /** Every setting of this screen at its default (developer mode stays on) */
+  const allDefault = () => {
+    const s = settings();
+    return (
+      !s.volume_mixer &&
+      JSON.stringify(s.dev_overrides) === JSON.stringify(NO_OVERRIDES) &&
+      !vendorsActive(s.dev_vendors) &&
+      JSON.stringify(s.dev_log) === JSON.stringify(DEFAULT_LOG)
+    );
+  };
+  const resetAll = () =>
+    void saveSettings(app, {
+      volume_mixer: false,
+      dev_overrides: { ...NO_OVERRIDES },
+      dev_vendors: {},
+      dev_log: { ...DEFAULT_LOG },
+    });
   const tabs = (): { id: Tab; label: string; icon: IconName }[] => [
-    { id: "overrides", label: t("ui.dev.overrides"), icon: "wrench" },
+    { id: "app", label: t("ui.dev.app_settings"), icon: "settings" },
+    { id: "overrides", label: t("ui.dev.codec_settings"), icon: "wrench" },
+    { id: "vendors", label: t("ui.dev.vendors"), icon: "headphones" },
     { id: "logging", label: t("ui.dev.logging"), icon: "record" },
     { id: "receiver", label: t("receiver.title"), icon: "beaker" },
+    { id: "auracast", label: t("ui.dev.auracast"), icon: "pulse" },
+    { id: "chip", label: t("ui.dev.chip"), icon: "usb_stick" },
   ];
-
-  const onTabKey = (e: KeyboardEvent) => {
-    const list = tabs();
-    const i = list.findIndex((x) => x.id === tab());
-    let n = -1;
-    if (e.key === "ArrowRight") n = (i + 1) % list.length;
-    else if (e.key === "ArrowLeft") n = (i - 1 + list.length) % list.length;
-    else if (e.key === "Home") n = 0;
-    else if (e.key === "End") n = list.length - 1;
-    if (n < 0) return;
-    e.preventDefault();
-    setTab(list[n].id);
-    document.getElementById(`tab-${list[n].id}`)?.focus();
-  };
 
   return (
     <div class="page developer">
       <header class="page-head">
         <h1>{t("ui.nav.developer")}</h1>
       </header>
-      <div class="tabs" role="tablist" aria-label={t("ui.nav.developer")} onKeyDown={onTabKey}>
-        <For each={tabs()}>
-          {(x) => (
-            <button
-              type="button"
-              role="tab"
-              id={`tab-${x.id}`}
-              class="tab"
-              aria-selected={tab() === x.id}
-              aria-controls={`panel-${x.id}`}
-              tabindex={tab() === x.id ? 0 : -1}
-              onClick={() => setTab(x.id)}
-            >
-              <Icon name={x.icon} />
-              {x.label}
-            </button>
-          )}
-        </For>
-      </div>
+      <TabBar label={t("ui.nav.developer")} tabs={tabs()} current={tab()} onSelect={setTab} />
       <div class="tab-panel" role="tabpanel" id={`panel-${tab()}`} aria-labelledby={`tab-${tab()}`}>
+        <Show when={tab() === "app"}>
+          <Section title={t("ui.nav.mixer")}>
+            <Toggle
+              label={t("ui.dev.volume_mixer")}
+              hint={t("ui.dev.volume_mixer_hint")}
+              checked={settings().volume_mixer}
+              onChange={(v) => void saveSettings(app, { volume_mixer: v })}
+            />
+          </Section>
+          <div>
+            <Button icon="arrow_reset" disabled={allDefault()} onClick={resetAll}>
+              {t("ui.dev.reset_all")}
+            </Button>
+          </div>
+        </Show>
         <Show when={tab() === "overrides"}>
           <Overrides value={settings().dev_overrides} save={(dev_overrides) => saveSettings(app, { dev_overrides })} />
+        </Show>
+        <Show when={tab() === "vendors"}>
+          <Vendors
+            vendors={core.state.snap!.vendors}
+            value={settings().dev_vendors}
+            save={(dev_vendors) => saveSettings(app, { dev_vendors })}
+          />
         </Show>
         <Show when={tab() === "logging"}>
           <Logging value={settings().dev_log} save={(dev_log) => saveSettings(app, { dev_log })} />
@@ -90,6 +110,74 @@ export function Developer() {
         <Show when={tab() === "receiver"}>
           <ReceiverTest />
         </Show>
+        <Show when={tab() === "auracast"}>
+          <Auracast />
+        </Show>
+        <Show when={tab() === "chip"}>
+          <ChipTools />
+        </Show>
+      </div>
+    </div>
+  );
+}
+
+const NO_VENDOR: VendorOverride = { mode: "auto", options: [] };
+const VENDOR_MODES: VendorMode[] = ["auto", "always", "never"];
+
+/** Whether vendor overrides are on (defaults left in the map count as off) */
+export function vendorsActive(value: Partial<Record<string, VendorOverride>>): boolean {
+  return Object.values(value).some((o) => !!o && (o.mode !== "auto" || o.options.length > 0));
+}
+
+/** Each vendor's protocol: by the device's name, always or never, and its
+ *  own options, one section a vendor */
+function Vendors(props: {
+  vendors: VendorInfo[];
+  value: Partial<Record<string, VendorOverride>>;
+  save: (v: Record<string, VendorOverride>) => Promise<boolean>;
+}) {
+  const of = (id: string) => props.value[id] ?? NO_VENDOR;
+  const set = (id: string, patch: Partial<VendorOverride>) => {
+    const next: Record<string, VendorOverride> = {};
+    for (const [k, v] of Object.entries(props.value)) if (v) next[k] = v;
+    next[id] = { ...of(id), ...patch };
+    void props.save(next);
+  };
+  const active = () => vendorsActive(props.value);
+  return (
+    <div>
+      <Banner kind={active() ? "warn" : "info"} title={active() ? t("ui.dev.active") : t("ui.dev.vendors_intro")} />
+      <For each={props.vendors}>
+        {(v) => (
+          <Section title={v.name}>
+            <Field label={t("ui.dev.vendor_mode")}>
+              {(id) => (
+                <Select
+                  id={id}
+                  value={of(v.id).mode}
+                  options={VENDOR_MODES.map((m) => ({ value: m, label: t(`ui.dev.vendor_mode.${m}`) }))}
+                  onChange={(mode) => set(v.id, { mode })}
+                />
+              )}
+            </Field>
+            <For each={v.options}>
+              {(o) => (
+                <Toggle
+                  label={t(`ui.dev.vendor_option.${v.id}.${o}`)}
+                  checked={of(v.id).options.includes(o)}
+                  onChange={(on) =>
+                    set(v.id, { options: on ? [...of(v.id).options, o] : of(v.id).options.filter((x) => x !== o) })
+                  }
+                />
+              )}
+            </For>
+          </Section>
+        )}
+      </For>
+      <div>
+        <Button icon="arrow_reset" disabled={!active()} onClick={() => void props.save({})}>
+          {t("ui.dev.reset")}
+        </Button>
       </div>
     </div>
   );
@@ -103,6 +191,11 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
     const n = Math.round(Number(text));
     set({ aac_bitrate_kbps: Number.isFinite(n) && n > 0 ? Math.min(Math.max(n, 32), 512) : 0 });
   };
+  // The send queue limit too; empty = the default
+  const commitQueueWait = (text: string) => {
+    const n = Math.round(Number(text));
+    set({ queue_max_wait_ms: Number.isFinite(n) && n > 0 ? Math.min(Math.max(n, 50), 2000) : 0 });
+  };
   return (
     <div>
       <Banner kind={active() ? "warn" : "info"} title={active() ? t("ui.dev.active") : t("ui.dev.intro")} />
@@ -113,15 +206,25 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
           checked={props.value.force_codec}
           onChange={(v) => set({ force_codec: v })}
         />
+        <Toggle
+          label={t("ui.dev.auto_codec_settings")}
+          hint={t("ui.dev.auto_codec_settings_hint")}
+          checked={props.value.auto_codec_settings}
+          onChange={(v) => set({ auto_codec_settings: v })}
+        />
+        <Toggle
+          label={t("ui.dev.match_source")}
+          hint={t("ui.dev.match_source_hint")}
+          checked={props.value.match_source}
+          onChange={(v) => set({ match_source: v })}
+        />
+        <Toggle
+          label={t("ui.dev.ignore_sink_max")}
+          checked={props.value.ignore_sink_max}
+          onChange={(v) => set({ ignore_sink_max: v })}
+        />
       </Section>
-      <Section
-        title={t("ui.dev.section_media")}
-        actions={
-          <Button icon="arrow_reset" disabled={!active()} onClick={() => void props.save({ ...NO_OVERRIDES })}>
-            {t("ui.dev.reset")}
-          </Button>
-        }
-      >
+      <Section title={t("ui.dev.section_media")}>
         <Toggle
           label={t("ui.dev.rtp_marker")}
           checked={props.value.rtp_marker}
@@ -133,6 +236,22 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
           checked={props.value.packet_dump}
           onChange={(v) => set({ packet_dump: v })}
         />
+        <Field label={t("ui.dev.queue_wait")} hint={t("ui.dev.queue_wait_hint")}>
+          {(id, describedBy) => (
+            <input
+              id={id}
+              class="input"
+              type="number"
+              min="0"
+              max="2000"
+              step="10"
+              aria-describedby={describedBy}
+              value={props.value.queue_max_wait_ms || ""}
+              placeholder={t("ui.dev.queue_wait_auto")}
+              onChange={(e) => commitQueueWait(e.currentTarget.value)}
+            />
+          )}
+        </Field>
       </Section>
       <PacketSizes />
       <Section title="AAC">

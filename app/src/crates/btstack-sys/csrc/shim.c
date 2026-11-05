@@ -37,6 +37,7 @@
 #include "classic/a2dp_source.h"
 #include "classic/avdtp.h"
 #include "classic/avdtp_sink.h"
+#include "classic/avdtp_source.h"
 #include "classic/avdtp_util.h"
 #include "classic/avrcp.h"
 #include "classic/avrcp_controller.h"
@@ -194,6 +195,17 @@ void bluecaster_transport_packet_sent(void) {
     if (transport_packet_handler) transport_packet_handler(HCI_EVENT_PACKET, sent, sizeof(sent));
 }
 
+/* A command the controller never answered: a Command Status of our own, as if
+ * from the controller, gives hci.c its command slot back. hci.c keeps no
+ * other state for a command once sent (handle_command_status_event only sets
+ * num_cmd_packets for opcodes it does not track), so this is safe for
+ * commands it does not wait on itself; the caller passes only its own link
+ * reads. Its own buffer: the transport's may be in use further up. */
+void bluecaster_hci_command_status_inject(uint16_t opcode, uint8_t status) {
+    uint8_t event[6] = {HCI_EVENT_COMMAND_STATUS, 4, status, 1, (uint8_t)(opcode & 0xff), (uint8_t)(opcode >> 8)};
+    if (transport_packet_handler) transport_packet_handler(HCI_EVENT_PACKET, event, sizeof(event));
+}
+
 void bluecaster_hci_init(int async) {
     transport_packet_handler = NULL;
     hci_init(bluecaster_transport_instance(async), NULL);
@@ -287,6 +299,7 @@ enum {
     SOURCE_HFP = 10,
     SOURCE_RFCOMM = 11,
     SOURCE_SDP_CLIENT = 12,
+    SOURCE_SDP_SERVICES = 13,
 };
 
 static void handler_hci(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { bluecaster_rs_on_packet(SOURCE_HCI, t, c, p, s); }
@@ -302,6 +315,7 @@ static void handler_hfp(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { bluecas
 static void handler_iso(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { bluecaster_rs_on_packet(SOURCE_ISO, t, c, p, s); }
 static void handler_rfcomm(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { bluecaster_rs_on_packet(SOURCE_RFCOMM, t, c, p, s); }
 static void handler_sdp_client(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { bluecaster_rs_on_packet(SOURCE_SDP_CLIENT, t, c, p, s); }
+static void handler_sdp_services(uint8_t t, uint16_t c, uint8_t *p, uint16_t s) { bluecaster_rs_on_packet(SOURCE_SDP_SERVICES, t, c, p, s); }
 
 static btstack_packet_callback_registration_t hci_event_registration;
 
@@ -475,15 +489,73 @@ uint8_t bluecaster_sdp_query_rfcomm(const uint8_t *addr, const uint8_t *uuid128)
     return ERROR_CODE_SUCCESS;
 }
 
+/* The services a device lists (developer mode): every record with L2CAP in
+ * its protocols, attributes ServiceClassIDList and ServiceName. Queued like
+ * the RFCOMM query above; the results (SDP_EVENT_QUERY_ATTRIBUTE_VALUE per
+ * byte, then SDP_EVENT_QUERY_COMPLETE) go to SOURCE_SDP_SERVICES. */
+static btstack_context_callback_registration_t sdp_services_request;
+static btstack_context_callback_registration_t sdp_services_kick;
+static int sdp_services_wanted;
+static int sdp_services_listed;
+static bd_addr_t sdp_services_addr;
+/* Own buffers: the SDP client reads them while the query runs */
+static const uint8_t sdp_services_pattern[] = {0x35, 0x03, 0x19, 0x01, 0x00};
+static const uint8_t sdp_services_attributes[] = {0x35, 0x06, 0x09, 0x00, 0x01, 0x09, 0x01, 0x00};
+
+static void sdp_services_start(void *context) {
+    (void)context;
+    sdp_services_listed = 0;
+    if (!sdp_services_wanted) return;
+    sdp_services_wanted = 0;
+    uint8_t status = sdp_client_query(&handler_sdp_services, sdp_services_addr, sdp_services_pattern,
+                                      sdp_services_attributes);
+    if (status != ERROR_CODE_SUCCESS) {
+        uint8_t event[3] = {SDP_EVENT_QUERY_COMPLETE, 1, status};
+        handler_sdp_services(HCI_EVENT_PACKET, 0, event, sizeof(event));
+    }
+}
+
+uint8_t bluecaster_sdp_query_services(const uint8_t *addr) {
+    if (sdp_services_wanted) return ERROR_CODE_COMMAND_DISALLOWED;
+    memcpy(sdp_services_addr, addr, 6);
+    sdp_services_wanted = 1;
+    if (!sdp_services_listed) {
+        sdp_services_listed = 1;
+        sdp_services_request.callback = &sdp_services_start;
+        uint8_t status = sdp_client_register_query_callback(&sdp_services_request);
+        if (status != ERROR_CODE_SUCCESS) {
+            sdp_services_listed = 0;
+            sdp_services_wanted = 0;
+            return status;
+        }
+    } else if (sdp_client_ready()) {
+        sdp_services_kick.callback = &sdp_rfcomm_kicked;
+        (void)sdp_client_register_query_callback(&sdp_services_kick);
+    }
+    return ERROR_CODE_SUCCESS;
+}
+
+/* sdp_client_deinit, and a services query asked for in this run is
+ * forgotten (the next run may ask again) */
+void bluecaster_sdp_client_deinit(void) {
+    sdp_client_deinit();
+    sdp_services_wanted = 0;
+}
+
 /* ======================================================================== */
 /* GAP, SDP records, stream endpoints                                       */
 /* ======================================================================== */
 
-void bluecaster_gap_setup(uint32_t class_of_device, uint16_t page_timeout) {
+/* BTstack keeps the pointer: the name lives here (HCI's 248 bytes + NUL) */
+static char local_name[249];
+
+void bluecaster_gap_setup(uint32_t class_of_device, uint16_t page_timeout, const char *name) {
     /* SSP: Just Works (no display, no keyboard), General Bonding without MITM */
     gap_ssp_set_io_capability(SSP_IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
     gap_ssp_set_authentication_requirement(SSP_IO_AUTHREQ_MITM_PROTECTION_NOT_REQUIRED_GENERAL_BONDING);
-    gap_set_local_name("BlueCaster");  /* BTstack keeps the pointer: a literal */
+    strncpy(local_name, (name && name[0]) ? name : "BlueCaster", sizeof(local_name) - 1);
+    local_name[sizeof(local_name) - 1] = 0;
+    gap_set_local_name(local_name);
     gap_set_class_of_device(class_of_device);
     gap_set_allow_role_switch(true);
     gap_set_default_link_policy_settings(0x0005);  /* role switch + sniff */
@@ -531,7 +603,11 @@ uint8_t bluecaster_create_stream_endpoint(int slot, uint8_t media_codec_type, co
     avdtp_stream_endpoint_t *ep = a2dp_source_create_stream_endpoint(
         AVDTP_AUDIO, (avdtp_media_codec_type_t)media_codec_type, endpoint_caps[slot], caps_len,
         endpoint_config[slot], config_len);
-    return ep ? avdtp_local_seid(ep) : 0;
+    if (!ep) return 0;
+    /* Delay Reporting: a sink that lists it sends its playout delay
+       (A2DP_SUBEVENT_SIGNALING_DELAY_REPORT) once the stream is configured */
+    avdtp_source_register_delay_reporting_category(avdtp_local_seid(ep));
+    return avdtp_local_seid(ep);
 }
 
 /* ======================================================================== */
@@ -636,6 +712,50 @@ uint8_t bluecaster_cmd_read_rssi(uint16_t con_handle) {
     return hci_send_cmd(&hci_read_rssi, con_handle);
 }
 
+/* Link diagnostics: polled with RSSI (failed contacts, link quality) or read
+   once per connection (remote version, supervision timeout) */
+uint8_t bluecaster_cmd_read_failed_contact_counter(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_failed_contact_counter, con_handle);
+}
+
+uint8_t bluecaster_cmd_read_link_quality(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_link_quality, con_handle);
+}
+
+uint8_t bluecaster_cmd_read_remote_version(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_remote_version_information, con_handle);
+}
+
+uint8_t bluecaster_cmd_read_link_supervision_timeout(uint16_t con_handle) {
+    return hci_send_cmd(&hci_read_link_supervision_timeout, con_handle);
+}
+
+/* What BTstack holds of a link; -1 when it has no such connection */
+int bluecaster_acl_packets_in_controller(uint16_t con_handle) {
+    hci_connection_t *c = hci_connection_for_handle(con_handle);
+    return c ? (int)c->num_packets_sent : -1;
+}
+
+int bluecaster_acl_role(uint16_t con_handle) {
+    hci_role_t r = gap_get_role(con_handle);
+    return r == HCI_ROLE_INVALID ? -1 : (int)r;
+}
+
+int bluecaster_acl_encryption_key_size(uint16_t con_handle) {
+    if (hci_connection_for_handle(con_handle) == NULL) return -1;
+    return gap_encryption_key_size(con_handle);
+}
+
+/* BTstack's own remote features query: once per link, nothing is sent when it
+   has them already; the answer comes as its HCI event */
+void bluecaster_remote_features_query(uint16_t con_handle) {
+    hci_remote_features_query(con_handle);
+}
+
+uint16_t bluecaster_max_acl_data_packet_length(void) {
+    return hci_max_acl_data_packet_length();
+}
+
 uint8_t bluecaster_cmd_read_bd_addr(void) {
     return hci_send_cmd(&hci_read_bd_addr);
 }
@@ -648,6 +768,15 @@ uint8_t bluecaster_cmd_create_connection_cancel(const uint8_t *addr) {
     bd_addr_t a;
     memcpy(a, addr, 6);
     return hci_send_cmd(&hci_create_connection_cancel, a);
+}
+
+/* A remote name request to a connected device: GAP's queue leaves it unsent
+   while the link is up (seen in the emulator), so it goes out directly. Page
+   settings do not matter over a link: R1, no clock offset */
+uint8_t bluecaster_cmd_remote_name_request(const uint8_t *addr) {
+    bd_addr_t a;
+    memcpy(a, addr, 6);
+    return hci_send_cmd(&hci_remote_name_request, a, 1, 0, 0);
 }
 
 uint8_t bluecaster_cmd_remote_name_request_cancel(const uint8_t *addr) {
@@ -734,6 +863,26 @@ static void cig_slots_reset(void) {
     memset(cig_slots, 0, sizeof(cig_slots));
 }
 
+/* ---- Broadcast storage (Auracast source): one extended + periodic
+ * advertising set and one BIG. BTstack keeps pointers to the advertising
+ * data, the set and the BIG parameters until the set is removed / the BIG
+ * terminated. ---- */
+
+#define BLUECASTER_ADV_DATA_MAX 251
+static le_advertising_set_t bc_adv_set;
+static uint8_t bc_adv_data[BLUECASTER_ADV_DATA_MAX];
+static uint8_t bc_pa_data[BLUECASTER_ADV_DATA_MAX];
+static int bc_adv_in_use;
+static uint8_t bc_adv_handle;
+static le_audio_big_t bc_big;
+static le_audio_big_params_t bc_big_params;
+static int bc_big_in_use;
+
+static void broadcast_reset(void) {
+    bc_adv_in_use = 0;
+    bc_big_in_use = 0;
+}
+
 /* ---- Housekeeping on HCI events (registered by bluecaster_le_init) ---- */
 
 static btstack_packet_callback_registration_t le_hci_registration;
@@ -753,10 +902,18 @@ static void le_hci_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
         /* A CIG that could not be created is not kept by hci.c */
         if (size >= 5 && packet[2] == GAP_SUBEVENT_CIG_CREATED && packet[3] != ERROR_CODE_SUCCESS)
             cig_slot_release(packet[4]);
+        /* Nor a BIG that failed or ended */
+        if (size >= 5 && packet[2] == GAP_SUBEVENT_BIG_CREATED && packet[3] != ERROR_CODE_SUCCESS)
+            bc_big_in_use = 0;
+        if (size >= 4 && packet[2] == GAP_SUBEVENT_BIG_TERMINATED) bc_big_in_use = 0;
         break;
     case BTSTACK_EVENT_STATE:
-        /* HCI reset its state (power off): no CIG is kept */
-        if (size >= 3 && packet[2] == HCI_STATE_OFF) cig_slots_reset();
+        /* HCI reset its state (power off): no CIG, BIG or advertising set is
+         * kept */
+        if (size >= 3 && packet[2] == HCI_STATE_OFF) {
+            cig_slots_reset();
+            broadcast_reset();
+        }
         break;
     default:
         break;
@@ -804,6 +961,7 @@ static int utf8_to_ansi_path(const char *in, char *out, int out_size) {
 int bluecaster_le_init(const char *tlv_path) {
     le_slots_reset();
     cig_slots_reset();
+    broadcast_reset();
     int path_ok = utf8_to_ansi_path(tlv_path, le_tlv_path, (int)sizeof(le_tlv_path));
     if (!path_ok) strcpy(le_tlv_path, "NUL");
     memset(&le_tlv_context, 0, sizeof(le_tlv_context));
@@ -848,6 +1006,7 @@ void bluecaster_le_deinit(int att_server_started) {
         le_tlv_open = 0;
     }
     cig_slots_reset();
+    broadcast_reset();
 }
 
 /* ---- GAP ---- */
@@ -1083,4 +1242,95 @@ uint8_t bluecaster_iso_send(uint16_t cis_handle, uint16_t sequence_number, const
     little_endian_store_16(buffer, 6, len);
     if (len > 0) memcpy(buffer + 8, sdu, len);
     return hci_send_iso_packet_buffer((uint16_t)(8u + len));
+}
+
+/* ---- Broadcast (Auracast source) ---- */
+
+/* Extended advertising (non-connectable, non-scannable) with `adv` and
+ * periodic advertising with `pa` (the BASE), both started. Intervals in
+ * 0.625 ms (extended) and 1.25 ms (periodic) units. */
+uint8_t bluecaster_broadcast_advertise(uint8_t sid, uint16_t adv_interval_min, uint16_t adv_interval_max,
+                                   uint16_t pa_interval_min, uint16_t pa_interval_max, const uint8_t *adv,
+                                   uint16_t adv_len, const uint8_t *pa, uint16_t pa_len, uint8_t *out_handle) {
+    if (bc_adv_in_use) return ERROR_CODE_COMMAND_DISALLOWED;
+    if (adv_len > BLUECASTER_ADV_DATA_MAX || pa_len > BLUECASTER_ADV_DATA_MAX)
+        return ERROR_CODE_INVALID_HCI_COMMAND_PARAMETERS;
+    memcpy(bc_adv_data, adv, adv_len);
+    memcpy(bc_pa_data, pa, pa_len);
+    le_extended_advertising_parameters_t params;
+    memset(&params, 0, sizeof(params));
+    params.advertising_event_properties = 0; /* non-connectable, non-scannable, undirected */
+    params.primary_advertising_interval_min = adv_interval_min;
+    params.primary_advertising_interval_max = adv_interval_max;
+    params.primary_advertising_channel_map = 7;
+    params.own_address_type = BD_ADDR_TYPE_LE_PUBLIC;
+    params.advertising_tx_power = 127;    /* no preference */
+    params.primary_advertising_phy = 1;   /* LE 1M */
+    params.secondary_advertising_phy = 2; /* LE 2M */
+    params.advertising_sid = sid;
+    bd_addr_t local;
+    gap_local_bd_addr(local);
+    int random = btstack_is_null_bd_addr(local);
+    if (random) params.own_address_type = BD_ADDR_TYPE_LE_RANDOM;
+    uint8_t status = gap_extended_advertising_setup(&bc_adv_set, &params, &bc_adv_handle);
+    if (status != ERROR_CODE_SUCCESS) return status;
+    bc_adv_in_use = 1;
+    if (random) {
+        /* A static random address (top bits 0b11) */
+        bd_addr_t addr = {0xC2, 0xA2, 0xD0, 0x00, 0x00, 0x01};
+        gap_extended_advertising_set_random_address(bc_adv_handle, addr);
+    }
+    gap_extended_advertising_set_adv_data(bc_adv_handle, adv_len, bc_adv_data);
+    le_periodic_advertising_parameters_t pa_params;
+    pa_params.periodic_advertising_interval_min = pa_interval_min;
+    pa_params.periodic_advertising_interval_max = pa_interval_max;
+    pa_params.periodic_advertising_properties = 0;
+    gap_periodic_advertising_set_params(bc_adv_handle, &pa_params);
+    gap_periodic_advertising_set_data(bc_adv_handle, pa_len, bc_pa_data);
+    gap_periodic_advertising_start(bc_adv_handle, 0);
+    status = gap_extended_advertising_start(bc_adv_handle, 0, 0);
+    *out_handle = bc_adv_handle;
+    return status;
+}
+
+/* Stops periodic and extended advertising and removes the set */
+uint8_t bluecaster_broadcast_advertise_stop(void) {
+    if (!bc_adv_in_use) return ERROR_CODE_SUCCESS;
+    gap_periodic_advertising_stop(bc_adv_handle);
+    gap_extended_advertising_stop(bc_adv_handle);
+    uint8_t status = gap_extended_advertising_remove(bc_adv_handle);
+    bc_adv_in_use = 0;
+    return status;
+}
+
+/* LE Create BIG on the advertising set (GAP_SUBEVENT_BIG_CREATED follows,
+ * after BTstack set up the ISO data paths). `code`: 16 bytes, or NULL for
+ * an unencrypted BIG. */
+uint8_t bluecaster_big_create(uint8_t big_handle, uint8_t num_bis, uint32_t sdu_interval_us, uint16_t max_sdu,
+                          uint16_t max_transport_latency_ms, uint8_t rtn, uint8_t phy, uint8_t framing,
+                          const uint8_t *code) {
+    if (!bc_adv_in_use || bc_big_in_use) return ERROR_CODE_COMMAND_DISALLOWED;
+    if (num_bis == 0 || num_bis > MAX_NR_BIS) return ERROR_CODE_INVALID_HCI_COMMAND_PARAMETERS;
+    memset(&bc_big_params, 0, sizeof(bc_big_params));
+    bc_big_params.big_handle = big_handle;
+    bc_big_params.advertising_handle = bc_adv_handle;
+    bc_big_params.num_bis = num_bis;
+    bc_big_params.sdu_interval_us = sdu_interval_us;
+    bc_big_params.max_sdu = max_sdu;
+    bc_big_params.max_transport_latency_ms = max_transport_latency_ms;
+    bc_big_params.rtn = rtn;
+    bc_big_params.phy = phy;
+    bc_big_params.packing = 0; /* sequential */
+    bc_big_params.framing = framing;
+    bc_big_params.encryption = code != NULL;
+    if (code != NULL) memcpy(bc_big_params.broadcast_code, code, 16);
+    uint8_t status = gap_big_create(&bc_big, &bc_big_params);
+    if (status == ERROR_CODE_SUCCESS) bc_big_in_use = 1;
+    return status;
+}
+
+/* LE Terminate BIG (GAP_SUBEVENT_BIG_TERMINATED follows) */
+uint8_t bluecaster_big_terminate(uint8_t big_handle) {
+    if (!bc_big_in_use) return ERROR_CODE_COMMAND_DISALLOWED;
+    return gap_big_terminate(big_handle);
 }

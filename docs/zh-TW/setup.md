@@ -18,23 +18,23 @@ nav_order: 1
 
 ## 必要條件
 
-- **Windows 10 (22H2) / 11** (x64)
+- **Windows 10 (22H2) / 11** (x64 或 ARM64)
 - **供 BlueCaster 使用的 USB 藍牙介面卡**：建議使用另外的介面卡；USB 類型的內建介面卡也可以，但期間 Windows 將無法使用自己的藍牙（參見[步驟 2](#winusb)）
 
 BlueCaster 會自行為介面卡指派 WinUSB 驅動程式，不再需要 [Zadig](https://zadig.akeo.ie/)（Zadig 仍可使用，請參閱 [改用 Zadig](#zadig)）。
 
 ## 安裝 BlueCaster
 
-每個 [發行版本](https://github.com/SeiyaFunaokaJP/BlueCaster/releases/latest) 都提供兩種形式，內含相同的檔案：
+每個 [發行版本](https://github.com/SeiyaFunaokaJP/BlueCaster/releases) 都提供兩種形式，內含相同的檔案：
 
-- **安裝程式**（`BlueCaster-<version>-win64-setup.exe`）：不需系統管理員權限即可為目前使用者安裝，會新增「開始」功能表項目（**BlueCaster**）與解除安裝程式，並在缺少 Microsoft Edge WebView2 Runtime 時一併安裝（Windows 11 已內建）。更新可從應用程式內自行安裝（**設定 > 更新 > 立即更新**）
-- **免安裝版**（`BlueCaster-<version>-win64-portable.zip`）：解壓縮到任意位置後執行 `bluecaster.exe`。請將三個程式（`bluecaster.exe`、`bluecaster-core.exe`、`bluecaster-driver.exe`）放在一起。免安裝版只會通知有更新；需要已安裝 WebView2 Runtime
+- **安裝程式**（`BlueCaster-<version>-win64-setup.exe`，ARM64 版為 `-arm64-setup.exe`）：不需系統管理員權限即可為目前使用者安裝，會新增「開始」功能表項目（**BlueCaster**）與解除安裝程式，並在缺少 Microsoft Edge WebView2 Runtime 時一併安裝（Windows 11 已內建）。更新可從應用程式內自行安裝（**設定 > 更新 > 立即更新**）
+- **免安裝版**（`BlueCaster-<version>-win64-portable.zip`，ARM64 版為 `-arm64-portable.zip`）：解壓縮到任意位置後執行 `bluecaster.exe`。請將三個程式（`bluecaster.exe`、`bluecaster-core.exe`、`bluecaster-driver.exe`）放在一起。免安裝版只會通知有更新；需要已安裝 WebView2 Runtime
 
-兩者都將設定、設定檔、連結金鑰與韌體儲存在 `%APPDATA%\BlueCaster`，因此可以互相切換。解除安裝時會保留該資料夾。 程式位於 `%LOCALAPPDATA%\BlueCaster\`，授權文字在其中的 `licenses\` 資料夾。
+兩者都將設定、設定檔、連結金鑰與韌體儲存在 `%APPDATA%\BlueCaster`，因此可以互相切換。除非您關閉 **刪除使用者資料**，否則解除安裝時會刪除該資料夾（無訊息解除安裝會保留它）。 程式位於 `%LOCALAPPDATA%\BlueCaster\`，授權文字在其中的 `licenses\` 資料夾。
 
 ### 從 v1 升級 {#from-v1}
 
-直接在 v1 上執行 v2 安裝程式即可。若 v1 正在執行，安裝程式會要求您將其關閉，接著解除安裝 v1 並保留設定資料夾：設定檔、與耳機的配對以及韌體檔案都會沿用，耳機不需要重新配對。已（透過 Zadig）安裝 WinUSB 的介面卡會維持原狀。若先前開啟了 **隨 Windows 啟動**，現在會改為啟動 v2。
+直接在 v1 上執行 v2 安裝程式即可。其 **準備安裝** 頁面會說明將先解除安裝哪些舊版本（v1，或 2.0.0 至 2.0.2-beta.5）。若 v1 正在執行，安裝程式會要求您將其關閉，接著解除安裝 v1 並保留設定資料夾：設定檔、與耳機的配對以及韌體檔案都會沿用，耳機不需要重新配對。已（透過 Zadig）安裝 WinUSB 的介面卡會維持原狀。若先前開啟了 **隨 Windows 啟動**，現在會改為啟動 v2。
 
 v2 首次啟動時，會先將 v1 的設定複製到 `%APPDATA%\BlueCaster\backup\v1\`，再讀取這些設定。
 
@@ -48,12 +48,12 @@ BlueCaster 3.0.0 是 A2DP Windows Bridge 的新名稱。直接在已安裝的 2.
 
 ## 步驟 1：首次執行設定 {#first-run}
 
-插入 USB 藍牙介面卡並啟動 BlueCaster。若尚未建立任何設定檔，或沒有任何介面卡使用 WinUSB，BlueCaster 會開啟 **設定 BlueCaster**，共四個步驟：
+插入 USB 藍牙介面卡並啟動 BlueCaster。若尚未有任何音訊裝置，或沒有任何介面卡使用 WinUSB，BlueCaster 會開啟 **設定精靈**，共四個步驟：
 
-1. **選擇介面卡**：列出找到的 USB 藍牙介面卡。若找不到您的介面卡，請插入後按 **重新整理**。綠色的 **支援** 或紅色的 **不支援** 表示 BlueCaster 能否使用該介面卡；不支援的介面卡會列出，但無法選擇
-2. **驅動程式與韌體**：**替換為 WinUSB 驅動程式**（請參閱 [步驟 2](#winusb)），Realtek 介面卡還需要韌體檔案（請參閱 [韌體](#firmware)）
-3. **尋找音訊裝置**：掃描會自動開始。將音訊裝置切換到配對模式，然後按旁邊的 **連線**（或輸入其位址後按 **使用**）：BlueCaster 會建立它的設定檔（「*名稱* | Auto」，裝置支援的最佳編解碼器）並連線，該裝置隨後顯示在清單上方。按 **新增裝置** 會中斷它並繼續掃描，以新增另一台裝置；它仍會保留，選錯的裝置可在此刪除。已安裝 VB-Cable 時，新裝置會擷取它；未安裝時，此步驟會說明其用途，之後 BlueCaster 首次發現它時，使用 System Loopback 的裝置會切換一次
-4. **一般設定**：主題、**啟動**、**通知** 與更新檢查，與「設定」中的控制項相同，會立即儲存（請參閱 [步驟 3](#headphones)）
+1. **選擇介面卡**：列出找到的 USB 藍牙介面卡。若找不到您的介面卡，請插入後按 **重新整理**。綠色的 **支援**、橘色的 **實驗性** 或紅色的 **不支援** 表示 BlueCaster 能否使用該介面卡；不支援的介面卡會列出，但無法選擇
+2. **驅動程式與韌體**：此步驟會列出將要進行的操作，**準備此介面卡** 會執行這些操作：將介面卡的驅動程式替換為 WinUSB（Windows 會要求系統管理員權限，請參閱 [步驟 2](#winusb)），並下載介面卡所需的 Realtek 韌體檔案（請參閱 [韌體](#firmware)）。BlueCaster 無法下載的韌體，請手動放到韌體資料夾
+3. **尋找音訊裝置**：掃描會自動開始。將音訊裝置切換到配對模式，然後按旁邊的 **連線**（或輸入其位址後按 **使用**）：BlueCaster 會以它支援的最佳編解碼器（自動）儲存它並連線。該裝置隨後顯示在 **已配對的裝置** 之下，並以圓點標示其狀態，掃描也會停止。按 **新增裝置** 會中斷它並繼續掃描，以新增另一台裝置；它仍會保留，選錯的裝置可在此移除。Windows 曾透過此介面卡配對裝置時，會顯示 **匯入 Windows 的配對**（請參閱 [步驟 3](#headphones)）。已安裝 VB-Cable 時，新裝置會擷取它；未安裝時，此步驟會說明為何需要它，並提供 **下載 VB-Cable**；之後 BlueCaster 首次發現它時，使用 System Loopback 的裝置會切換到它。該裝置的編解碼器之後可在 **編解碼器** 畫面變更
+4. **一般設定**：主題、**啟動**、**通知** 與更新檢查，與「設定」中的控制項相同，會立即儲存。首次設定會開啟 **隨 Windows 啟動** 與 **在系統匣中啟動**
 
 **稍後設定** 會略過其餘步驟；可從 **設定 > 執行設定精靈** 再次開啟。
 
@@ -61,7 +61,7 @@ BlueCaster 3.0.0 是 A2DP Windows Bridge 的新名稱。直接在已安裝的 2.
 
 BlueCaster 透過 WinUSB（Windows 內建的通用 USB 驅動程式）直接與 USB 藍牙介面卡通訊。建議使用 **專用的介面卡** -- 這樣內建藍牙仍可照常用於 Windows 的一般藍牙功能。
 
-1. 開啟 **介面卡** 畫面（或設定精靈的 **驅動程式與韌體** 步驟）
+1. 開啟 **介面卡** 畫面（設定精靈的 **驅動程式與韌體** 步驟會以 **準備此介面卡** 完成步驟 2 到 4）
 2. 介面卡的 **驅動程式** 顯示為 **原始驅動程式**（或 **無驅動程式**），即 Windows 或製造商安裝的驅動程式，WinUSB 會取代它。按一下 **替換為 WinUSB 驅動程式**
 3. 閱讀確認訊息後繼續：Windows 會要求系統管理員權限（UAC）
 4. 驅動程式現在會顯示為 **WinUSB 驅動程式**
@@ -71,7 +71,7 @@ BlueCaster 透過 WinUSB（Windows 內建的通用 USB 驅動程式）直接與 
 {: .warning }
 指派 WinUSB 期間，Windows 本身的藍牙將不再辨識此介面卡：透過它與 Windows 配對的裝置，在還原驅動程式之前都無法使用。一般周邊裝置（鍵盤、滑鼠等）請使用內建藍牙。屬於 USB 裝置的內建介面卡（許多筆電上的 Realtek 介面卡）也可以交給 BlueCaster 使用，但在還原其驅動程式之前，**電腦將完全無法使用 Windows 藍牙**（藍牙設定、滑鼠、鍵盤、其他音訊裝置）。
 
-同一畫面上的 **還原原始驅動程式** 會將介面卡交還給 Windows：Windows 會重新選擇自己的驅動程式（通常是其藍牙驅動程式），介面卡即可搭配 Windows 的藍牙使用。在重新指派 WinUSB 之前，BlueCaster 無法透過它串流。解除安裝程式也會提供同樣的操作：若 BlueCaster 曾為介面卡指派 WinUSB，它會詢問是否將其交還給 Windows（只要求一次系統管理員權限）。更新時以及無訊息解除安裝（`/S`）時會保留 WinUSB。
+同一畫面上的 **還原原始驅動程式** 會將介面卡交還給 Windows：Windows 會重新選擇自己的驅動程式（通常是其藍牙驅動程式），介面卡即可搭配 Windows 的藍牙使用。在重新指派 WinUSB 之前，BlueCaster 無法透過它串流。Windows 一次只使用一個藍牙介面卡：若另一個介面卡正在使用中，BlueCaster 會在還原後提示，此介面卡要等您在裝置管理員中停用那個介面卡，並重新插拔此介面卡後，才能在 Windows 中使用。BlueCaster 重新配對過的耳機會有新的金鑰，因此 Windows 原本的配對可能會失敗：對話方塊會列出 Windows 也已配對的耳機；若其中有無法連線的，請在 Windows 設定中將其移除後重新配對。解除安裝程式也會提供同樣的操作：解除安裝精靈的其中一頁有 **還原原本的藍牙驅動程式**（BlueCaster 曾為介面卡指派 WinUSB 時；只要求一次系統管理員權限）與 **刪除使用者資料**（`%APPDATA%\BlueCaster` 中的設定、編解碼器、配對與韌體，以及視窗記住的內容，例如 **僅顯示支援的編解碼器**），兩者預設皆為開啟。更新時以及無訊息解除安裝（`/S`）時會保留 WinUSB。
 
 ### 改用 Zadig {#zadig}
 
@@ -100,9 +100,11 @@ BlueCaster 透過 WinUSB（Windows 內建的通用 USB 驅動程式）直接與 
 
 ## 步驟 3：尋找耳機 {#headphones}
 
-**掃描裝置**（位於設定精靈與 **音訊裝置** 畫面中）會以 USB 介面卡尋找附近的裝置，約需 10 秒。請先將耳機切換到配對模式。BlueCaster 曾經配對過的裝置會標示為 **已配對**。
+**掃描裝置**（位於 **音訊裝置** 畫面）會以 USB 介面卡尋找附近的裝置 30 秒，裝置一有回應就會列出。在設定精靈中，掃描會自動開始，並持續到有裝置連線（**新增裝置** 會中斷它並繼續掃描）、按下 **停止掃描** 或關閉設定精靈為止。請先將耳機切換到配對模式。BlueCaster 曾經配對過的裝置會標示為 **已配對**。
 
 若掃描找不到耳機，請在 **手動:** 欄位輸入藍牙位址，然後按一下 **使用**。輸入或貼上的位址會即時格式化：`AA:BB:CC:DD:EE:FF`、`aa-bb-cc-dd-ee-ff`、`AABBCCDDEEFF` 與 `AA BB CC DD EE FF` 都會變成 `AA:BB:CC:DD:EE:FF`。
+
+Windows 在此介面卡取得 WinUSB 之前透過它配對的耳機，可以沿用該配對：**匯入 Windows 的配對**（位於 **音訊裝置** 畫面與設定精靈中，有這類裝置時才會顯示）會接手該配對，讓耳機不必進入配對模式即可連線。Windows 會要求系統管理員權限。
 
 **從 Windows 設定**（若耳機曾與電腦內建的藍牙配對）：
 1. 開啟 **設定 > 藍牙與裝置**
@@ -125,9 +127,9 @@ bluecaster-core.exe --cli --scan
 
 ### 在應用程式中（下載引導）
 
-**介面卡** 畫面（以及設定精靈的 **驅動程式與韌體** 步驟）會顯示介面卡的韌體狀態：**韌體正常**、**不需要韌體檔案**，或 **找不到韌體** 並列出所需的檔案名稱。使用 **開啟下載頁面** 按鈕在瀏覽器中開啟 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 頁面，再使用 **開啟設定資料夾** 開啟目的資料夾。下載所需的 `.bin` 檔案並放到設定資料夾中。
+**介面卡** 畫面（以及設定精靈的 **驅動程式與韌體** 步驟）會顯示介面卡的韌體狀態：**韌體正常**、**不需要 Realtek 檔案**，或 **找不到韌體** 並列出所需的檔案名稱。使用 **開啟下載頁面** 按鈕在瀏覽器中開啟 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 頁面，再使用 **開啟韌體資料夾** 開啟目的資料夾。下載所需的 `.bin` 檔案並放到韌體資料夾中。
 
-對於 **藍牙晶片** 清單中的晶片，**下載韌體** 可以代勞：確認後，BlueCaster 會從 linux-firmware (kernel.org) 下載檔案，逐一以預期的 SHA-256 驗證，並儲存到設定資料夾。linux-firmware 中沒有 config 檔案的晶片會得到一個空的 `_config.bin`（晶片會使用自身的設定）。這些檔案不屬於 BlueCaster，只在您要求時才會下載。
+對於 **藍牙晶片** 清單中的晶片，**下載韌體** 可以代勞：確認後，BlueCaster 會從 linux-firmware (kernel.org) 下載檔案，逐一以預期的 SHA-256 驗證，並儲存到韌體資料夾。linux-firmware 中沒有 config 檔案的晶片會得到一個空的 `_config.bin`（晶片會使用自身的設定）。這些檔案不屬於 BlueCaster，只在您要求時才會下載。
 
 BlueCaster 會偵測介面卡的晶片組，並顯示需要哪些韌體檔案。
 
@@ -141,15 +143,15 @@ BlueCaster 會偵測介面卡的晶片組，並顯示需要哪些韌體檔案。
 |:-------|:--------|
 | **自動**（預設） | 每次啟動 BlueCaster 時依偵測到的介面卡決定。已知的 Realtek 介面卡會套用其晶片；其他介面卡則不執行 Realtek 初始化 |
 | **非 Realtek** | 一律不執行 Realtek 初始化。若「自動」無法辨識您的 Intel、Broadcom、CSR 或其他介面卡，請選擇此項 |
-| **RTL8761BU**、**RTL8822CU**、... | 指定的 Realtek 晶片。適用於「自動」無法辨識的 Realtek 介面卡（以自有 VID:PID 銷售的 OEM 產品）。狀態列會顯示其 `.bin` 檔案是否已在設定資料夾中 |
-| **Custom** | 使用設定資料夾中的 `custom_fw.bin` 與 `custom_config.bin` |
+| **RTL8761BU**、**RTL8822CU**、... | 指定的 Realtek 晶片。適用於「自動」無法辨識的 Realtek 介面卡（以自有 VID:PID 銷售的 OEM 產品）。狀態列會顯示其 `.bin` 檔案是否已在韌體資料夾中 |
+| **Custom** | 使用韌體資料夾中的 `custom_fw.bin` 與 `custom_config.bin` |
 
 請勿為非 Realtek 介面卡選擇 Realtek 晶片或 Custom：BlueCaster 會嘗試將 Realtek 韌體上傳到該介面卡，可能導致介面卡無法啟動。
 
 ### 手動下載
 
 1. 從 [linux-firmware/rtl_bt](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) 下載適用於您晶片組的韌體與設定 `.bin` 檔案（例如 `rtl8761bu_fw.bin` 與 `rtl8761bu_config.bin`）
-2. 將兩個檔案放到 BlueCaster 設定資料夾（`%APPDATA%\BlueCaster\firmware`，也可從 **設定 > 設定資料夾** 開啟）
+2. 將兩個檔案放到 BlueCaster 韌體資料夾（`%APPDATA%\BlueCaster\firmware`，也可從 **開啟韌體資料夾** 開啟）
 
 {: .note }
 這些韌體檔案是透過 linux-firmware 專案發佈的 Realtek 專有二進位檔，並未包含在本儲存庫中。再散布條款請參閱 [WHENCE](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/WHENCE)。
@@ -158,13 +160,15 @@ BlueCaster 會偵測介面卡的晶片組，並顯示需要哪些韌體檔案。
 
 ## 建議的介面卡 {#adapters}
 
+實際與 BlueCaster 搭配使用過的介面卡與耳機，以及編解碼器與回報：[已驗證的硬體](../hardware)（英文）。
+
 | 晶片組 | 產品範例 | 備註 |
 |:--------|:-----------------|:------|
 | Realtek | TP-Link UB500, RTL8761BU | 需要下載韌體（見上文）。測試最完整 |
 | CSR | 一般的 CSR8510 接收器 | 隨插即用，不需要韌體 |
-| Broadcom | ASUS BT400 (BCM20702) | *實驗性。* 回報廠商類別 `FF/01/01` 而非藍牙類別 `E0/01/01` 的介面卡（BCM20702 OEM 接收器）也能偵測。以 ROM 韌體運作；若設定資料夾中有選用的 PatchRAM `.hcd`（例如 `BCM20702A1-0b05-17cb.hcd`），會在啟動時上傳 |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *實驗性。* 處於 bootloader 模式時（例如冷開機後），設定資料夾中需要 linux-firmware `intel/` 內對應的 `ibt-*.sfi` + `ibt-*.ddc`，所需檔名會寫在記錄裡（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上測試過 |
-| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | 不支援：需要 BlueCaster 沒有的韌體載入程式 |
+| Broadcom | ASUS BT400 (BCM20702) | *實驗性。* 回報廠商類別 `FF/01/01` 而非藍牙類別 `E0/01/01` 的介面卡（BCM20702 OEM 接收器）也能偵測。以 ROM 韌體運作；若韌體資料夾中有選用的 PatchRAM `.hcd`（例如 `BCM20702A1-0b05-17cb.hcd`），會在啟動時上傳 |
+| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *實驗性。* 處於 bootloader 模式時（例如冷開機後），韌體資料夾中需要 linux-firmware `intel/` 內對應的 `ibt-*.sfi` + `ibt-*.ddc`，所需檔名會寫在記錄裡（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上測試過 |
+| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | 不支援：需要 BlueCaster 沒有的韌體載入程式（[協助加入支援](chip-support)） |
 
 USB 藍牙 5.0 以上的介面卡通常最適合 LDAC 等高位元率轉碼器。
 
