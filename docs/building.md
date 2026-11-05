@@ -23,6 +23,7 @@ english_only: true
 - **Node.js** 22 and **pnpm** for the UI (`corepack enable` provides pnpm)
 - **Git** (for the submodules)
 - **PowerShell 7** (`pwsh`) for `build.ps1` / `build.bat` (`winget install Microsoft.PowerShell`)
+- **Python 3.11 or later** for the checks (`tools/check_lang.py`) and the [emulator test](#emu)
 - For ARM64 builds: the Visual Studio components "MSVC v143 - VS 2022 C++ ARM64 build tools" and, on an x64 PC, "C++ Clang Compiler for Windows" (rustls' `ring` assembles its ARM64 code with clang; `installer/build-release.ps1` finds Visual Studio's clang itself), and `rustup target add aarch64-pc-windows-msvc`
 
 ## Quick Build
@@ -35,7 +36,7 @@ pwsh ./build.ps1
 
 Or double-click `build.bat` in Explorer: it runs `build.ps1` and waits for a key at the end (`build.bat -Test` passes the switches on). `build.ps1` first checks that Rust, Node.js, pnpm and the submodules are there, runs `pnpm install` when `node_modules` is missing, builds the window's page and then the three programs into `target/release/`: `a2dpwb-core.exe` (the resident core: Bluetooth, audio, tray), `a2dpwb.exe` (the window) and `a2dpwb-driver.exe` (the elevated helper that assigns / restores the WinUSB driver). Keep the three in one folder; `a2dpwb-core.exe --cli` streams without the window.
 
-Switches: `-Debug` (dev profile, `target/debug/`), `-Test` (then the checks under Tests), `-Decoder` (also the decoder tool), `-Emu` (also the [emulator test](#emu)), `-Release -Arch x64|arm64` (only the release script, see Release Packages).
+Switches: `-Debug` (dev profile, `target/debug/`), `-Test` (then the checks under Tests), `-Decoder` (also the decoder tool), `-Emu` (also the [emulator test](#emu); `-Emu -Codecs sbc,ldac` tests only these codecs), `-Release -Arch x64|arm64` (only the release script, see Release Packages).
 
 **Step by step** (what `build.ps1` does; the window's page must be built before `a2dpwb.exe`, which embeds it):
 
@@ -101,7 +102,7 @@ python tools/check_lang.py
 pwsh installer/build-release.ps1 -Arch x64
 ```
 
-writes the installer (`A2DPWB-<version>-win64-setup.exe`), the portable zip and the updater manifest to `target/dist`. It needs Inno Setup 7.1.0 (`winget install JRSoftware.InnoSetup.7 --version 7.1.0`). Signing the in-app updates and the other details are in `installer/README.md`.
+writes the installer (`A2DPWB-<version>-win64-setup.exe`), the portable zip, the symbols zip (`.pdb` files, for crash dumps) and the updater manifest to `target/dist`. It needs Inno Setup 7.1.0 (`winget install JRSoftware.InnoSetup.7 --version 7.1.0`). Signing the in-app updates and the other details are in `installer/README.md`.
 
 ## Testing Without Hardware (tools/emu) {#emu}
 
@@ -133,6 +134,7 @@ A codec passes when all of these hold:
 | `--codecs sbc aac ...` | Test only these codecs (`sbc sbcxq aac aptx aptxhd aptxll ldac lhdcv5 faststream opus opus05`) or negotiation cases (sample rates, low bitpools, SBC frame setups, aptX Adaptive, ...; `-h` lists them); default: all |
 | `--le-audio [case ...]` | Run the LE Audio (experimental) cases instead (default: all of them) |
 | `--scan [case ...]` | Run the device scan cases instead (`eir`, `name-request`) |
+| `--link [case ...]` | Run the link cases instead (`disconnect`, `device-link`, `device-a2dp`, `device-stream`, `restart-on-link`) |
 | `--duration <s>` | Seconds of streaming per codec (default 5) |
 | `--max-packet <bytes>` | Passed to A2DPWB (max media packet size, see [Usage](usage)) |
 | `--a2dpwb <exe>` | The core to test (default `target/release/a2dpwb-core.exe`) |

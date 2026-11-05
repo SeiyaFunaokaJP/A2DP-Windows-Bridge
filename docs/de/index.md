@@ -26,16 +26,16 @@ Streamt das Systemaudio über **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, apt
 |:------|:--------|:-----------|:---------|:-------|
 | LHDC V5 | 400/500/900/1000 kbps, ABR 160--400 kbps | 44,1/48/96/192 kHz | 16/24 Bit | -- |
 | LDAC | 330/660/990 kbps | 44,1--96 kHz | 16/24/32 Bit | ~200 ms |
-| aptX Adaptive | 265--427 kbps (96 kHz: 255--646) | 48/96 kHz | 24 Bit | -- |
-| Opus 🧪 | 128/192/256 kbps | 48 kHz | 16 Bit | -- |
+| aptX Adaptive | 265/427 kbps (96 kHz: 646) | 48/96 kHz | 24 Bit | -- |
+| Opus 🧪 | 256 kbps | 48 kHz | 16 Bit | -- |
 | aptX HD 🧪 | 576 kbps | 44,1/48 kHz | 24 Bit | ~150 ms |
 | aptX | 352/384 kbps | 44,1/48 kHz | 16 Bit | -- |
 | aptX Low Latency 🧪 | 352 kbps | 44,1/48 kHz | 16 Bit | ~32 ms |
-| AAC | 128/192/256 kbps | 44,1/48 kHz | 16 Bit | ~150 ms |
+| AAC | bis 256 kbps | 44,1/48 kHz | 16 Bit | ~150 ms |
 | SBC XQ | ca. 385/505/552 kbps | 44,1/48 kHz | 16 Bit | ~150 ms |
 | SBC | bis ca. 345 kbps | 44,1/48 kHz | 16 Bit | ~150 ms |
 | FastStream 🧪 | 198/216 kbps | 44,1/48 kHz | 16 Bit | -- |
-| Opus 05 🧪 | 128/192/256 kbps | 48 kHz | 16 Bit | -- |
+| Opus 05 🧪 | 256 kbps | 48 kHz | 16 Bit | -- |
 | LC3 (LE Audio) 🧪 | 32--124 kbps pro Kanal | 16/24/32/48 kHz | 16 Bit | ~140 ms |
 | LC3 Low Latency (LE Audio GMAP) 🧪 | 64--96 kbps pro Kanal | 32/48 kHz | 16 Bit | ~30 ms |
 
@@ -63,10 +63,10 @@ Streamt das Systemaudio über **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, apt
 **aptX HD und aptX Low Latency sind experimentell.** Sie folgen den Implementierungen von Android / PipeWire und bestehen Round-Trip-Tests (Kodieren/Dekodieren), wurden aber noch nicht mit echten Kopfhörern geprüft. Die Latenzwerte in dieser Tabelle sind typische Angaben, nicht mit A2DPWB gemessen.
 
 {: .warning }
-**Zu LHDC V5.** Verwendet wird eine C-Portierung des LHDC-V5-Encoders, den Google in Android 17 aufgenommen hat (AOSP, Apache-2.0); die Portierung wurde bitgenau gegen den Rust-Encoder aus AOSP geprüft, und die A2DP-Signalisierung folgt Androids `a2dp_vendor_lhdcv5`. Ein Nutzer hat LHDC V5 unter v1.1.1-beta.1 mit echten LHDC-V5-Kopfhörern bei 1000 kbps / 192 kHz bestätigt ([#50](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/50)); v2 verwendet denselben Encoder. Unterstützt wird nur verlustbehaftetes LHDC V5: Für LHDC V2/V3 (ältere Kopfhörer) und den verlustfreien Modus „LHDC-RAW“ gibt es keinen Open-Source-Encoder. Im Modus Automatisch steht LHDC V5 hinter LDAC und der aptX-Familie und vor AAC / SBC.
+**Zu LHDC V5.** Verwendet wird eine C-Portierung des LHDC-V5-Encoders, den Google in Android 17 aufgenommen hat (AOSP, Apache-2.0); die Portierung wurde bitgenau gegen den Rust-Encoder aus AOSP geprüft, und die A2DP-Signalisierung folgt Androids `a2dp_vendor_lhdcv5`. Ein Nutzer hat LHDC V5 unter v1.1.1-beta.1 mit echten LHDC-V5-Kopfhörern bei 1000 kbps / 192 kHz bestätigt ([#50](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/50)); v2 verwendet denselben Encoder. Unterstützt wird nur verlustbehaftetes LHDC V5: Für LHDC V2/V3 (ältere Kopfhörer) und den verlustfreien Modus „LHDC-RAW“ gibt es keinen Open-Source-Encoder. Im Modus Automatisch steht LHDC V5 an erster Stelle, vor LDAC.
 
 {: .warning }
-**Opus ist experimentell.** Es handelt sich um den A2DP-Opus-Hersteller-Codec von Android (Android 13+, Vendor ID 0x000000E0 Google): 48 kHz, 20-ms-Frames, 256 kbps Stereo, wie Android es anfordert (Standard 192, Mobil 128 kbps), kodiert mit libopus 1.5.2. Opus besteht den End-to-End-Test gegen eine virtuelle Senke, wurde aber noch nicht mit echten Opus-Kopfhörern geprüft. Im Modus Automatisch steht Opus hinter LHDC V5 und vor AAC / SBC.
+**Opus ist experimentell.** Es handelt sich um den A2DP-Opus-Hersteller-Codec von Android (Android 13+, Vendor ID 0x000000E0 Google): 48 kHz, 20-ms-Frames, 256 kbps Stereo, wie Android es anfordert (Standard 192, Mobil 128 kbps), kodiert mit libopus 1.5.2. Opus besteht den End-to-End-Test gegen eine virtuelle Senke, wurde aber noch nicht mit echten Opus-Kopfhörern geprüft. Im Modus Automatisch steht Opus hinter aptX Adaptive und vor aptX HD.
 
 {: .warning }
 **Opus 05 ist experimentell und nicht an echter Hardware geprüft.** Es ist der eigene A2DP-Opus-Hersteller-Codec von PipeWire (Vendor ID 0x000005F1, Codec 0x1005; PipeWire `opus_05`), den nur PipeWire implementiert; der Empfänger muss also ein PC sein, auf dem PipeWire als A2DP-Senke läuft. A2DPWB sendet nur die Stereo-Musikrichtung (kein 5.1 / 7.1, kein Rückkanal): 48 kHz, 10-ms-Frames (20 ms, wenn die Senke nur diese kann), derselbe libopus-Encoder und dieselben Bitraten wie bei Opus, begrenzt auf das Limit der Senke. Automatisch wählt es nie; wählen Sie es unter **Codecs** oder mit `-c opus05`. Es besteht den End-to-End-Test gegen eine virtuelle Senke, die die Fähigkeiten von PipeWire anbietet, wurde aber nicht mit einem echten PipeWire-Empfänger ausprobiert. PipeWire als A2DP-Senke dekodiert Opus 05 seit 0.3.57 und das Opus von Android (`opus_g`) seit 1.2.0: Ubuntu 24.04 LTS liefert PipeWire 1.0.5 (nur Opus 05), Ubuntu 25.10 (1.4.7) und 26.04 LTS (1.6.2) liefern beide; beides ist mit A2DPWB noch nicht geprüft.
@@ -75,10 +75,10 @@ Streamt das Systemaudio über **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, apt
 **SBC XQ** wurde mit einem Sony WH-1000XM4 überprüft (Dual Channel, Bitpool 43 bei 48 kHz, 552 kbps). Empfänger, die die Konfiguration ablehnen, werden mit normalem SBC neu verbunden. **FastStream ist experimentell:** Es besteht den End-to-End-Test gegen eine virtuelle Senke, wurde aber noch nicht mit echten FastStream-Kopfhörern ausprobiert. Nur die Musikrichtung; Automatisch wählt es nie.
 
 {: .note }
-**Nur klassisches aptX nötig?** Windows 10 unterstützt klassisches aptX bereits im integrierten Bluetooth-Stack (nicht aptX HD, aptX LL oder aptX Adaptive), dafür wird A2DPWB also nicht benötigt. A2DPWB ist vor allem für LDAC, aptX HD und aptX Low Latency nützlich.
+**Nur klassisches aptX nötig?** Windows 10 unterstützt klassisches aptX bereits im integrierten Bluetooth-Stack (nicht aptX HD, aptX LL oder aptX Adaptive), dafür wird A2DPWB also nicht benötigt. A2DPWB ist vor allem für LHDC V5, LDAC, aptX Adaptive, aptX HD und aptX Low Latency nützlich.
 
 {: .note }
-**Zu aptX Adaptive.** Kodiert wird mit dem MIT-lizenzierten, rein in Rust geschriebenen Encoder von [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux), dessen Tabellen seine Autoren aus ausgelieferten Qualcomm-Binärdateien und Funkmitschnitten rekonstruiert haben. 48 kHz Stereo (Anforderungen von 44,1 kHz werden mit 48 kHz aufgenommen), 24 Bit: Hoch 427 kbps, Standard 364, Mobil 318 und Niedrige Latenz 265 kbps bei R1-Senken (R2-Senken haben eine eigene Tabelle), ABR in Hoch. 96 kHz (Hoch 646 kbps, Standard 340, Mobil 255), wenn Sie in seinen Einstellungen 96 kHz wählen und die Kopfhörer eine R2-Senke sind, die 96 kHz meldet; nicht in Niedrige Latenz, sonst 48 kHz. Auch 96 kHz ist mit echten Kopfhörern bestätigt ([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)); Automatisch streamt 48 kHz. Automatisch wählt es nach LHDC V5 und LDAC; oder wählen Sie es unter **Codecs** oder mit `-c aptxad`. Ein Nutzer hat es mit einem EarFun Air Pro 4+ bei 48 kHz unter 2.0.2-beta.6 bestätigt, so stabil wie klassisches aptX ([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)); das Originalprojekt meldet, dass es unter Linux mit Bose QuietComfort Ultra (1. Generation) und B&W Px7 S2e funktioniert. Siehe [aptX-Familie und aptX Adaptive](usage#aptx-compatibility).
+**Zu aptX Adaptive.** Kodiert wird mit dem MIT-lizenzierten, rein in Rust geschriebenen Encoder von [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux), dessen Tabellen seine Autoren aus ausgelieferten Qualcomm-Binärdateien und Funkmitschnitten rekonstruiert haben. 48 kHz Stereo (Anforderungen von 44,1 kHz werden mit 48 kHz aufgenommen), 24 Bit: Hoch 427 kbps oder Niedrige Latenz 265 kbps (R2-Senken: 270), ABR in Hoch. 96 kHz (Hoch, 646 kbps) wird verwendet, wenn Sie es in seinen Einstellungen wählen, sofern die Kopfhörer eine R2-Senke sind, die 96 kHz meldet, und nie in Niedrige Latenz; Automatisch streamt 48 kHz. Automatisch wählt es nach LHDC V5 und LDAC; oder wählen Sie es unter **Codecs** oder mit `-c aptxad`. Ein Nutzer hat es mit einem EarFun Air Pro 4+ bei 48 kHz unter 2.0.2-beta.6 bestätigt, so stabil wie klassisches aptX, und seitdem auch 96 kHz mit echten Kopfhörern ([#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)); das Originalprojekt meldet, dass es unter Linux mit Bose QuietComfort Ultra (1. Generation) und B&W Px7 S2e funktioniert. Siehe [aptX-Familie und aptX Adaptive](usage#aptx-compatibility).
 
 ## Plattformunterstützung {#platform-support}
 
@@ -117,7 +117,7 @@ A2DPWB nimmt das Audio über WASAPI auf und bietet drei Modi:
 
 Im Modus **Virtuelles Gerät** kann A2DPWB das Windows-Standardwiedergabegerät auf das ausgewählte virtuelle Gerät umstellen (**Bei Verbindung als Windows-Standardausgabe festlegen**) und nimmt dann dessen Loopback-Ausgabe auf. Apps, die auf dem virtuellen Gerät ausgeben, werden über Bluetooth gestreamt. Endet das Streaming, wird das vorherige Standardgerät wiederhergestellt.
 
-System-Loopback nimmt dem Standardwiedergabegerät das Audio nicht weg: Es wird dort und zusätzlich über Bluetooth wiedergegeben. Siehe [Aufnahmemodi](usage#capture-modes).
+System-Loopback nimmt dem Standardwiedergabegerät das Audio nicht weg: Es wird dort und zusätzlich über Bluetooth wiedergegeben. Lässt sich das ausgewählte virtuelle Gerät nicht öffnen, sendet die Verbindung stattdessen das Systemaudio und weist darauf hin. Siehe [Aufnahmemodi](usage#capture-modes).
 
 ## Funktionsweise
 
@@ -143,14 +143,14 @@ A2DPWB umgeht den Bluetooth-Stack von Windows vollständig. Es kommuniziert übe
 
 ## Funktionen
 
-- **Mehrere Codecs**: LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, aptX Low Latency, AAC, SBC und (experimentell) Opus / Opus 05 mit automatischer Aushandlung
+- **Mehrere Codecs**: LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, aptX Low Latency, AAC, SBC XQ, SBC und (experimentell) Opus / Opus 05 / FastStream mit automatischer Aushandlung
 - **LE Audio (experimentell)**: LC3 an LE-Audio-Kopfhörer und -Ohrhörer (BAP Unicast, beide Ohrhörer eines Paars, Headset-Lautstärke, Medientasten, GMAP mit niedriger Latenz). Benötigt einen Adapter mit isochronen Bluetooth-5.2-Kanälen; nur mit dem Bluetooth-Emulator getestet, noch nicht mit echten LE-Audio-Kopfhörern ([Verwendung](usage#le-audio))
 - **Drei Aufnahmemodi**: System-Loopback, Umleitung über ein virtuelles Audiogerät oder die Ausgabe einer einzelnen Anwendung
 - **Fenster, Infobereich und CLI**: ein Fenster für Einrichtung und Diagnose, ein Flyout und ein Menü im Infobereich für das alltägliche Verbinden sowie eine Kommandozeile (siehe [Verwendung](usage))
-- **WinUSB in der App**: weist dem Adapter den WinUSB-Treiber zu und stellt den ursprünglichen Treiber wieder her, Zadig ist nicht nötig (siehe [Einrichtung](setup#winusb))
-- **Einrichtung beim ersten Start**: Adapter, Treiber und Firmware, Kopfhörer, erste Verbindung
-- **ABR**: Adaptive Bitrate für instabile Verbindungen (LDAC, LHDC V5 und aptX Adaptive)
-- **Automatische Neuverbindung**: Verbindet sich nach einem Abbruch erneut (bis zu 10 Versuche) sowie nachdem der PC aus dem Energiesparmodus zurückkehrt
+- **WinUSB in der App**: weist dem Adapter den WinUSB-Treiber zu und stellt den ursprünglichen Treiber wieder her, Zadig ist nicht nötig (siehe [Einrichtung](setup#winusb)); Kopfhörer, die Windows über den Adapter gekoppelt hat, verbinden sich ohne erneutes Koppeln
+- **Einrichtung beim ersten Start**: Adapter, Treiber und Firmware, Kopfhörer, erste Verbindung, allgemeine Einstellungen
+- **ABR**: Adaptive Bitrate für instabile Verbindungen (LDAC, LHDC V5 und aptX Adaptive; adaptiver Bitpool für SBC und SBC XQ)
+- **Automatische Neuverbindung**: Verbindet sich nach einem Verbindungsverlust erneut (3 Versuche; 10, wenn der Adapter neu starten muss) sowie nachdem der PC aus dem Energiesparmodus zurückkehrt; **Automatisch wieder verbinden** unter **Audiogeräte** schaltet das ab
 - **Verbindungsqualität und AFH**: Zeigt, was gesendet wird, den RSSI und die genutzten Kanäle; teilt dem Adapter mit, welche Wi-Fi-Kanäle zu meiden sind (siehe [Verwendung](usage#link-quality))
 - **Kopfhörersteuerung (AVRCP)**: Lautstärkeregler, synchron mit den Kopfhörern und der Windows-Lautstärke; deren Tasten für Wiedergabe/Pause, Weiter und Zurück steuern die Wiedergabe auf dem PC (siehe [Verwendung](usage#headphone-buttons))
 - **Einstellungen pro Gerät**: ein Codec (mit eigenen Einstellungen) und eine Ausgabequelle für jedes Audiogerät, nebeneinander auf Start und über den Infobereich verbindbar

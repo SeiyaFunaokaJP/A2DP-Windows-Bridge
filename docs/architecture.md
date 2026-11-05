@@ -38,7 +38,7 @@ A2DPWB runs as up to three programs:
 |:--------|:-----|:-----|
 | `a2dpwb-core.exe` | While A2DPWB is running (started by the window, the Start menu or **Start with Windows**) | Bluetooth, audio capture and encoding, profiles and settings, the tray icon and its menu, the IPC server. `--cli` runs the same core from a console instead |
 | `a2dpwb.exe` | Only while a window is open (exits 3 minutes after the last one was closed) | The main window and the tray flyout (Tauri 2, SolidJS + TypeScript). Holds no state of its own |
-| `a2dpwb-driver.exe` | For one driver change, with administrator rights (UAC) | Assigns WinUSB to an adapter or restores its previous driver, then exits |
+| `a2dpwb-driver.exe` | For one driver change or key import, with administrator rights (UAC) | Assigns WinUSB to an adapter or restores its previous driver, or reads the link keys Windows' Bluetooth keeps for an adapter (`windows-keys`), then exits |
 
 ```mermaid
 ---
@@ -57,7 +57,7 @@ flowchart TB
         enc --> bt["BTstack: HCI / L2CAP / AVDTP / A2DP / AVRCP"]
     end
     ui <-->|"per-user named pipe"| ctl
-    svc -.->|"UAC, only to change the driver"| drv["a2dpwb-driver.exe (elevated): assign / restore WinUSB"]
+    svc -.->|"UAC, only to change the driver or import Windows' keys"| drv["a2dpwb-driver.exe (elevated): assign / restore WinUSB, read Windows' link keys"]
     src --> cap
     bt -->|"WinUSB (nusb)"| usb["USB Bluetooth adapter (WinUSB driver)"]
     drv -.->|SetupAPI| usb
@@ -134,29 +134,31 @@ sequenceDiagram
 The USB transport keeps the recovery steps that real adapters needed in
 v1: the event and ACL pipes are reset when the adapter is opened, a failed
 event read is retried, HCI commands time out, and closing the adapter sends
-HCI Reset, so the next session finds an idle controller.
+HCI Reset (not to a controller still in its bootloader), so the next
+session finds an idle controller.
 
 ## Crate Structure
 
 One Cargo workspace (`Cargo.toml` at the repository root) in five layers;
 each layer depends only on the layers below it. Libraries are in
 `app/src/crates/`, the programs in `app/src/core`, `app/src/ui` and
-`app/src/driver`. Only the `*-sys` crates and `win-sys` may contain `unsafe`
+`app/src/driver`; the vendored `aptx-adaptive` is a path dependency of
+`codec`, kept out of the workspace. Only the `*-sys` crates and `win-sys` may contain `unsafe`
 code; all other crates have `#![forbid(unsafe_code)]`.
 
 | Layer | Crate | Does |
 |:------|:------|:-----|
 | 1. FFI | `btstack-sys` | Builds BTstack with `cc` (MSVC), hand-written FFI declarations and safe wrappers, `btstack_config.h`. BTstack may only be called on its run loop thread: the `!Send` `Stack` token enforces it |
 | 1. FFI | `ldac-sys`, `openaptx-sys`, `fdkaac-sys`, `lhdcv5-sys`, `opus-sys`, `lc3-sys` | Build the C encoders and expose them; one crate per library, so each license stays separate |
-| 1. FFI | `win-sys` | Win32 APIs without a Rust library: MMCSS, the default audio device (IPolicyConfig), the WLAN API (AFH), power notifications, the Run key, media keys, the pipe's DACL, elevation, and the WinUSB driver assignment (SetupAPI) |
+| 1. FFI | `win-sys` | Win32 APIs without a Rust library: MMCSS, the default audio device (IPolicyConfig), the WLAN API (AFH), power notifications, the Run key, media keys, the pipe's DACL, elevation, the WinUSB driver assignment (SetupAPI), and Windows' own Bluetooth (its radios, paired devices and link keys) |
 | 2. Parts | `hci-transport` | HCI over USB ("H2") with `nusb`, and H4 over TCP to a virtual controller (`tools/emu`) |
 | 2. Parts | `aptx-adaptive` | The aptX Adaptive encoder in Rust (vendored from AKS-Logic/aptx-adaptive-linux, MIT) |
 | 2. Parts | `codec` | The `Encoder` trait, the SBC encoder (Rust port of Bluedroid's), safe wrappers of the C encoders, Codec Information parsing and the codec choice |
-| 2. Parts | `audio-capture` | WASAPI capture (`wasapi` crate): system loopback, virtual device, one application (process loopback); device and app lists, test tone |
-| 3. Engine | `bt-host` | Runs BTstack on its own thread, driven by commands and typed events: GAP, A2DP Source, AVRCP, SDP, RFCOMM channels for the passthrough (`rfcomm.*`), link keys, AFH, firmware loading, HCI capture (`.pklg`), LE Audio (`le/`) |
+| 2. Parts | `audio-capture` | WASAPI capture (`wasapi` crate): system loopback, virtual device, one application (process loopback); device and app lists, test tone, per-app volume (Volume Mixer) |
+| 3. Engine | `bt-host` | Runs BTstack on its own thread, driven by commands and typed events: GAP, A2DP Source, AVRCP, SDP, RFCOMM channels for the passthrough (`rfcomm.*`), link keys, a device's SDP services, AFH, firmware loading and chip loaders (`bringup`), the chip probe and chip scripts, HCI capture (`.pklg`), LE Audio (`le/`) |
 | 2. Parts | `le-audio` | LE Audio (experimental): the logic without BTstack or Windows (assigned numbers, LTV, PACS / ASCS PDUs, presets, the CSIP / VCP / MCP / CCP models) |
 | 3. Engine | `pipeline` | PCM rings, format conversion, downmix, encoding, media payloads, pacing, ABR |
-| 4. Core | `a2dpwb-core` (directory `core`) | The state machine, reconnects, sleep / resume, profiles, settings and the v1 migration, volume sync, update check, the receiver test client, statistics |
+| 4. Core | `a2dpwb-core` (directory `core`) | The state machine, reconnects, sleep / resume, profiles, settings and the v1 migration, volume sync, the output mute, update check, Realtek firmware download, the receiver test client, statistics, vendor protocols (`vendor/`) |
 | 4. Core | `ipc` | The protocol types shared by core and window (serde; TypeScript types generated with `ts-rs`) and the pipe framing |
 | 5. Programs | `a2dpwb-core-exe` (`app/src/core`) | `a2dpwb-core.exe`: core, tray (`tray-icon` on a `tao` event loop), IPC server, `--cli` |
 | 5. Programs | `a2dpwb-ui` (`app/src/ui`) | `a2dpwb.exe`: Tauri 2; the Rust side is an IPC client, the page is SolidJS + TypeScript + Vite |
@@ -184,8 +186,8 @@ flowchart TD
 |:-------|:---------|:-----|
 | capture | MMCSS "Audio" | Reads WASAPI; fills silent stretches with silence |
 | encode | MMCSS "Pro Audio" | Converts to what the encoder takes, encodes whole encoder blocks (the rest waits for the next round), packs frames into media payloads, in rounds of about 10 ms so packets go out evenly |
-| bt-runloop | -- | BTstack's run loop; sends a queued packet whenever L2CAP can send |
-| USB | -- | WinUSB transfers: three reads in flight on each IN pipe (events, ACL data), a writer for commands and ACL data |
+| bt-runloop | -- | BTstack's run loop; sends a queued packet whenever L2CAP can send. The send queue (64 packets) drops a packet that waited 350 ms, oldest first, on every packet queued |
+| USB | -- | WinUSB transfers: three reads in flight on each IN pipe (events, ACL data), a writer for commands and one for ACL data (up to 8 transfers in flight) |
 | core | Normal | State machine, IPC (tokio; the RFCOMM passthrough's queues per connection), settings, statistics (4 Hz), update check |
 
 Once a stream runs, the audio path allocates no memory and takes no lock.
@@ -237,8 +239,9 @@ stateDiagram-v2
     Error --> Connecting: Start again
 ```
 
-A failed connection is tried up to 3 times, a lost one is reconnected up to
-10 times. When the PC goes to sleep, the core stops BTstack without counting
+A failed connection is tried up to 3 times. A lost link is reconnected up to
+3 times, or up to 10 times after the stack was restarted (sleep, an adapter
+that stopped working). When the PC goes to sleep, the core stops BTstack without counting
 the lost link as a failure and reconnects after the PC resumes.
 
 ## Driver Assignment {#driver-assignment}
@@ -313,7 +316,9 @@ result. Listing adapters and their driver needs no elevation.
 - Register stream endpoints: vendor codecs (LDAC, aptX HD, aptX, aptX LL,
   LHDC V5, FastStream, Opus, Opus 05, aptX Adaptive) plus SBC (also used by
   SBC XQ) and AAC: 11 in all (BTstack's `MAX_NR_AVDTP_STREAM_ENDPOINTS`)
-- Register SDP records (A2DP Source, AVRCP Controller, AVRCP Target)
+- Register SDP records (A2DP Source, AVRCP Controller, AVRCP Target; HFP
+  Audio Gateway, for the battery level only, while that experimental setting
+  is on)
 - Manage SSP pairing (Just Works, General Bonding; link keys persisted)
 - Tear down a half-open connection after a connect timeout so retries work
 - Retry a failed connection (up to 3 attempts) and tell the causes apart (no
@@ -323,7 +328,14 @@ result. Listing adapters and their driver needs no elevation.
 - AVRCP absolute volume and the headphones' buttons
 - AFH host channel classification and RSSI / AFH readings for the link quality
   view
-- Firmware loading for Realtek, Intel and Broadcom chipsets
+- Firmware loading: Realtek and Broadcom through BTstack's chipset drivers,
+  Intel (legacy and TLV bootloaders) in Rust on the common chip loader
+  interface (`bringup`), whose progress the Adapters screen shows while the
+  adapter starts
+- Developer mode: the chip probe (what an adapter answers to standard read
+  commands, a JSON report in `logs\probe\`), chip scripts (requests written
+  as text, run on a WinUSB adapter), and the SDP services a connected
+  device lists
 - HCI capture (`.pklg`), including the connection setup when it starts mid-connection
 
 **Key BTstack APIs used**:
@@ -346,6 +358,37 @@ Captures audio in real time using the Windows Audio Session API.
   pipeline converts it for the encoder)
 - In Application mode, waits for the application and picks it up again when
   it is restarted
+- Sets an app's volume and mute on the default output, as Windows' volume
+  mixer does (`mixer`): a session's volume reaches loopback capture, also
+  while the core mutes that output during a System Loopback stream
+  (`a2dpwb-core::mute_output`)
+
+### Vendor protocols (`a2dpwb-core::vendor`)
+
+Some earbuds offer a codec or bit rate only after their own app switched a
+mode over their own RFCOMM service. One module per vendor does that over the
+link A2DPWB has, for earbuds told apart by the name they give:
+
+- **Huawei / Honor**: a profile that asks for LDAC of earbuds that do not
+  list it sets their "sound quality first" mode, then connects again;
+  earbuds that had the mode off get it back when no LDAC came of it. Never
+  for Auto
+- **OPPO**: when LHDC V5 streams (chosen or by Auto), the earbuds are asked
+  for Hi-Res once, with one new connection to read what they then list; the
+  record of it is kept with the device's codecs (`device_codecs.json`) until
+  `device.forget_codecs` clears it
+
+Developer mode's Vendors tab overrides when each is used (Auto by name,
+Always, Never) and offers the vendor's own options.
+
+### Pairings (`link_keys`, `win-sys::bt_keys`)
+
+Link keys are kept in `link_keys.txt`. Where devices are added, the core can
+take over the keys Windows' Bluetooth kept for the adapter A2DPWB now uses:
+`a2dpwb-driver.exe windows-keys` reads them (one UAC prompt), a key A2DPWB
+already has is kept, and the audio devices among them are saved with
+Windows' names. Developer mode shows a device's link key and the SDP
+services it lists.
 
 ### Audio Encoders
 
@@ -437,8 +480,8 @@ classic aptX, Opus and AAC (issue #86's order), below LHDC V5 and LDAC.
 ## Settings and Files
 
 Everything is kept in the settings folder, `%APPDATA%\A2DPWB` (or the
-folder named by the `A2DPWB_CONFIG_DIR` environment variable), in the same
-formats as v1:
+folder named by the `A2DPWB_CONFIG_DIR` environment variable); the files v1
+had keep v1's formats:
 
 | File | Contents |
 |:-----|:---------|
@@ -446,11 +489,14 @@ formats as v1:
 | `profiles.json` | Profiles |
 | `devices.txt`, `link_keys.txt` | Known devices and their link keys: headphones paired with v1 reconnect without pairing again |
 | `le_audio_devices.txt`, `le_audio_bonds.tlv`, `le_audio_csip.txt` | LE Audio (experimental): the LE Audio entries of the device list, LE bonds (with the GATT server's persistent CCC values) and coordinated sets |
-| `*.bin`, `*.hcd`, `ibt-*` | Firmware files |
+| `device_codecs.json` | What each classic device offered when it last connected (and whether OPPO earbuds were asked for Hi-Res) |
+| `adapter_caps.json` | What a stack learnt about each adapter (LE Audio support, address, HCI version, Windows' name for it) |
+| `firmware\` | Firmware files (`*.bin`, `*.hcd`, `ibt-*`; Intel's also in `firmware\intel\`, as linux-firmware lays them out); files earlier versions kept loose in the settings folder are moved there |
 | `profiles-before-codecs.json` | `profiles.json` as it was before the Codecs screen folded several profiles of a device into one (written once) |
 | `hci_<date>_<time>.pklg` | HCI captures |
 | `logs\a2dpwb-core.<date>.log`, `logs\a2dpwb-ui.<date>.log`, `logs\a2dpwb-driver.log` | The logs of the core and the window, one file per day (UTC), the last 7 kept, and of the driver helper; not masked |
 | `logs\hci\` | The HCI flight recorder's captures, written when a stream fails or a connection is lost (the newest 10) |
+| `logs\probe\` | Chip probe and chip script reports (the newest 10) |
 | `logs\crash\` | Crash reports: a minidump and a text file per crash (the newest 5 per program) |
 | `logs\bundles\` | Diagnostic bundles (the newest 3) |
 | `driver\` | The previous driver of each adapter WinUSB was assigned to |
@@ -476,7 +522,7 @@ formats as v1:
   Broadcom are experimental. Realtek adapters require firmware upload at startup,
   Intel adapters in bootloader mode too
 - **Pairing**: Uses SSP Just Works with General Bonding. Link keys are persisted
-  to a local file
+  to a local file, or taken over from Windows' Bluetooth for the adapter
 - **Second adapter recommended**: Keep built-in Bluetooth for Windows, use
   dedicated USB adapter for A2DPWB
 - Some Bluetooth adapters' firmware limits achievable bitrate

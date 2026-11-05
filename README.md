@@ -41,18 +41,18 @@ Windows 10 / 11 load only kernel drivers signed through Microsoft, which needs a
 
 ## Setup
 
-1. **Install**: run `A2DPWB-<version>-win64-setup.exe` (per user, no administrator rights), or extract the portable zip and run `a2dpwb.exe`. Installing over v1 removes v1 and keeps its settings, pairings and firmware.
+1. **Install**: run `A2DPWB-<version>-win64-setup.exe` (`-arm64-setup.exe` on ARM64; per user, no administrator rights), or extract the portable zip and run `a2dpwb.exe`. Installing over v1 removes v1 and keeps its settings, pairings and firmware.
 2. **Plug in the adapter** (or use the built-in one, see the warning below).
-3. **Follow the first-run setup**: choose the adapter, **Assign WinUSB** (Windows asks for administrator permission), add the firmware files for Realtek adapters, then press **Connect** next to your audio device: A2DPWB picks the best settings for it and connects.
+3. **Follow the first-run setup**: choose the adapter, press **Set up this adapter** (it assigns WinUSB, Windows asks for administrator permission, and downloads the firmware files Realtek adapters need), then press **Connect** next to your audio device: A2DPWB picks the best settings for it and connects.
 4. **Connect** from **Home**, or from the tray icon.
 
 > **Warning:** While WinUSB is assigned, Windows' own Bluetooth no longer sees the adapter. A built-in adapter can be used too, but **the PC then has no Windows Bluetooth at all** until the driver is restored, so a separate USB adapter is recommended. **Adapters > Restore original driver** gives the adapter back to Windows at any time, and the uninstaller offers it too.
 
-**Realtek adapters** need firmware files such as `rtl8761bu_fw.bin` and `rtl8761bu_config.bin` from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (proprietary, not included). The **Adapter** screen shows which files are needed; **Download Firmware** fetches them from kernel.org into the firmware folder after you confirm, or open the download page and the firmware folder to do it by hand. See the [Setup guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/setup).
+**Realtek adapters** need firmware files such as `rtl8761bu_fw.bin` and `rtl8761bu_config.bin` from [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt) (proprietary, not included). The **Adapters** screen shows which files are needed; **Download Firmware** fetches them from kernel.org into the firmware folder after you confirm, or open the download page and the firmware folder to do it by hand. See the [Setup guide](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/setup).
 
 ## Usage
 
-The resident core streams and owns the tray icon; the window only shows its state, so closing it does not stop the audio. **Left-click** the tray icon for the flyout, **right-click** it for the menu (your devices, **Disconnect**, **Exit**).
+The resident core streams and owns the tray icon; the window only shows its state, so closing it does not stop the audio. **Left-click** the tray icon for the flyout, **right-click** it for the menu (**Open A2DP Windows Bridge**, your devices, **Disconnect**, **Exit**).
 
 The core also runs from the command line (quit A2DPWB first: only one program can use the adapter):
 
@@ -70,7 +70,7 @@ The sample rate is 48 kHz unless you choose another in a codec's settings on **C
 - **Codecs**: LHDC V5, LDAC, aptX Adaptive, experimental Opus, the rest of the aptX family, AAC and SBC XQ / SBC, with automatic choice and ABR (LHDC V5, LDAC, aptX Adaptive; adaptive bitpool for SBC / SBC XQ)
 - **Capture**: all system audio, a virtual audio device (e.g. VB-CABLE), or one application
 - **Resident core with tray**: streams with the window closed; reconnects after link loss and after sleep
-- **WinUSB in the app**: assigns and restores the adapter's driver, no Zadig needed
+- **WinUSB in the app**: assigns and restores the adapter's driver, no Zadig needed; headphones Windows paired through the adapter connect without pairing again
 - **Headphone controls**: volume sync and play / pause / next / previous (AVRCP)
 - **Diagnostics**: link quality, AFH (avoids your Wi-Fi channels), connection flow, log, HCI capture
 - **Updates**: daily check, in-app update of the installed version

@@ -71,9 +71,9 @@ Mehrere Stotterer, die nach Funk klangen, waren die App. 2.0.1 sendete Audio sch
 
 | Was Sie sehen | Was es bedeutet | Deutet auf |
 |:--|:--|:--|
-| **Signal** deutlich unter 0 (etwa -25 dB oder weniger) | Das Signal der Kopfhörer erreicht den Adapter weit unter dessen idealem Bereich. Es ist kein absoluter Pegel: 0 ist ideal, -30 liegt 30 dB darunter, -30 kann also noch spielen, hat aber keine Reserve | Funk: Entfernung, Ihr Kopf und Körper, Platzierung des Adapters |
+| **Signal zum Idealwert** deutlich unter 0 (etwa -25 dB oder weniger) | Das Signal der Kopfhörer erreicht den Adapter weit unter dessen idealem Bereich. Es ist kein absoluter Pegel: 0 ist ideal, -30 liegt 30 dB darunter, -30 kann also noch spielen, hat aber keine Reserve | Funk: Entfernung, Ihr Kopf und Körper, Platzierung des Adapters |
 | **Sendewarteschlange** voll, **vor dem Senden verworfene Pakete** steigen, Bitrate unter der des Codecs | Pakete haben zu lange auf den Funk gewartet; die Verbindung kann diese Bitrate gerade nicht tragen | Funk oder Störungen, oder eine zu hohe Bitrate |
-| **Genutzte AFH-Kanäle** springen oder bleiben bei 79, während Pakete verloren gehen | Der Adapter markiert Kanäle wegen Fehlern darauf als schlecht; bei 79 hat er aufgegeben, sie zu unterscheiden | Störungen: Wi-Fi, andere Empfänger, ein zweiter Bluetooth-Adapter |
+| **Frequenzsprungverfahren (AFH)** springt oder bleiben bei 79, während Pakete verloren gehen | Der Adapter markiert Kanäle wegen Fehlern darauf als schlecht; bei 79 hat er aufgegeben, sie zu unterscheiden | Störungen: Wi-Fi, andere Empfänger, ein zweiter Bluetooth-Adapter |
 | **Bei Aufnahme verworfenes Audio** steigt, Start meldet **PC ausgelastet** | Der PC hat das Audio nicht rechtzeitig geliefert | Der PC: Auslastung, das Aufnahmegerät, ein virtuelles Kabel |
 | Alles flach und leer, aber Stille oder Stottern | Die Verbindung ist in Ordnung und auf dem PC geht nichts verloren | Die App oder der Decoder der Kopfhörer: melden Sie es mit dem Diagnosepaket |
 
@@ -84,7 +84,7 @@ Die Empfangsseite ist vom PC aus nicht zu sehen. Um zu messen, was tatsächlich 
 Manche Berichte wie „es gibt mir nur 400 kbps“ oder „LDAC fehlt“ haben gar nichts mit der Verbindung zu tun: Die Kopfhörer teilen A2DPWB mit, welche Codecs und Bitraten sie annehmen, und A2DPWB hält sich daran, wie Android auch. Die Protokollzeile `remote supports ...` zeigt, was sie angeboten haben.
 
 - **Huawei FreeBuds** bieten einem PC LDAC erst an, nachdem ihre App AI Life „Klangqualität bevorzugen“ eingestellt hat, mit ausgeschalteter Mehrfachverbindung; sonst führen sie nur SBC und AAC auf. Seit 2.0.2 fordert A2DPWB diesen Modus selbst an, wenn LDAC bei ausgeschaltetem Automatisch wählen gewählt ist.
-- **LHDC-V5-Kopfhörer** melden eine maximale Bitrate. Im 96-kHz-Modus ihrer App führte ein Paar 400 kbps auf, in deren 192-kHz-Modus 1000 kbps. OPPO Enco Free4 melden einem PC 400 kbps und 48 kHz, egal was die App sagt; 2.0.2 fordert bei ihnen Hi-Res über ihr eigenes Protokoll an, auf echten Ohrhörern noch nicht bestätigt.
+- **LHDC-V5-Kopfhörer** melden eine maximale Bitrate. Im 96-kHz-Modus ihrer App führte ein Paar 400 kbps auf, in deren 192-kHz-Modus 1000 kbps. OPPO Enco Free4 und Enco X4 melden einem PC 400 kbps und 48 kHz, egal was die App sagt; 2.0.2 fordert bei OPPO-Ohrhörern Hi-Res über ihr eigenes Protokoll an, wenn LHDC V5 bei ausgeschaltetem ABR streamt, und verbindet sich dafür einmal neu; auf echten Ohrhörern noch nicht bestätigt.
 - **ABR** hält LHDC V5 bei 400 kbps oder darunter, wie unter Android.
 - Ein Codec, den die Kopfhörer **für ein anderes Gerät bereithalten**, fehlt, solange dieses Gerät verbunden ist ([Codec fehlt, während die Kopfhörer mit einem anderen Gerät verbunden sind](usage#sep-in-use)).
 
@@ -121,7 +121,7 @@ Was auffällt:
 Haben die Prüfungen oben es nicht gefunden, öffnen Sie einen [Fehlerbericht](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) und haken Sie ab, was Sie versucht haben. Was einen Funkbericht schnell klärt:
 
 1. **Diagnose > Problem melden**, **Ausführliche Protokollierung** auf **Detailliert (debug)**, dann das Problem nachstellen.
-2. Das **Diagnosepaket** (**Diagnosepaket > Speichern…**, dann **Auf GitHub melden**). Es enthält die Zeilen zum Zustand des Streams (Sendewarteschlange, verworfene Pakete, Signal, AFH-Kanäle im Zeitverlauf) und die HCI-Aufzeichnung einer fehlgeschlagenen Verbindung, die zeigen, wo die Pakete stehen blieben.
+2. Das **Diagnosepaket** (**Diagnosepaket > Speichern…** mit eingeschaltetem **HCI-Mitschnitte einschließen**, dann **Auf GitHub melden**). Es enthält die Zeilen zum Zustand des Streams (Sendewarteschlange, verworfene Pakete, Signal, AFH-Kanäle im Zeitverlauf) und die HCI-Aufzeichnung einer fehlgeschlagenen Verbindung, die zeigen, wo die Pakete stehen blieben.
 3. Ein **Screenshot der Verbindungsqualität**, während es passiert.
 4. Ob es auch mit **SBC oder AAC** und bei einer **niedrigeren Bitrate** auftritt.
 5. Ihre Antworten auf die Fragen des Formulars zu Doppelverbindung, einem weiteren Bluetooth-Adapter und Wi-Fi.
