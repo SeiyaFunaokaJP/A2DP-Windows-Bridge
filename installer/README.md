@@ -239,7 +239,8 @@ Steps, in order:
    `@contributors`, and the new documentation URL. As a pre-release it reaches the beta channel
    (every 2.0.2-beta.x copy) at once and 2.0.1 copies not at all. After a few days without
    upgrade reports, `gh release edit v3.0.0 --prerelease=false --latest` brings it to 2.0.1 users.
-   Any later 2.0.x release must be created with `--latest=false`.
+   2.0.2-beta.18 was the last 2.0.x release (decided 2026-11-06); should one ever be needed
+   after all, create it with `--latest=false`.
 8. **Afterwards**: pin the "A2DP Windows Bridge is now BlueCaster" issue, add the pointer to the
    old release notes, post the compatibility note in #194 (EncoDeck), and note in CLAUDE.md and
    the memory notes that the remote is `BlueCaster` now.
