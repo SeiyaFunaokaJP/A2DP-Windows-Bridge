@@ -20,7 +20,7 @@ body:
     id: adapter
     attributes:
       label: Adapter
-      description: Product name, and where it came from (built into a laptop: the laptop's model).
+      description: "Product name, and where it came from (built into a laptop: the laptop's model)."
       placeholder: e.g. built into a Lenovo IdeaPad 5 (AMD)
     validations:
       required: true
