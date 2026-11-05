@@ -2,7 +2,6 @@
 title: Verified Hardware
 layout: default
 nav_order: 3.5
-english_only: true
 ---
 
 # Verified Hardware

@@ -2,7 +2,6 @@
 title: Licenses
 layout: default
 nav_order: 6
-english_only: true
 ---
 
 # Licenses

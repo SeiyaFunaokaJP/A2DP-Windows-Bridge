@@ -2,7 +2,7 @@
 title: Ajouter la prise en charge d'une puce
 layout: default
 parent: Accueil
-nav_order: 3
+nav_order: 3.5
 ---
 
 # Ajouter la prise en charge d'une puce
@@ -26,7 +26,7 @@ La conception qui sous-tend tout cela, et ce qui reste ouvert, se trouvent dans 
 
 - L'adaptateur, branché sur un PC sous Windows 10 / 11
 - A2DP Windows Bridge 2.0.2 ou ultérieur (les étapes ci-dessous ne demandent que l'application)
-- Pour écrire le chargeur : un environnement de compilation comme dans [Building](../building), et [USBPcap](https://desowin.org/usbpcap/) avec [Wireshark](https://www.wireshark.org/) pour enregistrer ce que fait le pilote de Windows
+- Pour écrire le chargeur : un environnement de compilation comme dans [Building](building), et [USBPcap](https://desowin.org/usbpcap/) avec [Wireshark](https://www.wireshark.org/) pour enregistrer ce que fait le pilote de Windows
 
 ## Étape 1 : confier l'adaptateur à A2DP Windows Bridge
 
@@ -235,7 +235,7 @@ Conservez les fins de ligne de chaque fichier : certains fichiers source utilise
 **Documentation** :
 
 13. Le tableau des puces de `docs/setup.md` et `docs/*/setup.md` (toutes les langues) : une ligne comme celle d'Intel, avec les puces couvertes, les fichiers de firmware et leur emplacement (le dossier du firmware : `%APPDATA%\A2DPWB\firmware`, ou son sous-dossier `<vendor>` ; les lignes plus anciennes disent encore « config folder ») et *Experimental.* Nommez les boutons de la fenêtre comme les nomme le `app/lang/*.json` de chaque langue (`ui.nav.adapter` pour l'écran **Adaptateur**, `firmware.open_folder` pour le bouton qui ouvre ce dossier). Tout le fabricant : retirez-le de la ligne « Not supported ». Certaines puces : gardez-y le fabricant et nommez les puces toujours non prises en charge. Ajoutez le fabricant à la phrase en tête de la section Firmware ("Intel and Broadcom adapters (experimental) may need firmware files of their own")
-14. [Verified Hardware](../hardware) (`docs/hardware.md`) une fois que quelqu'un l'a utilisé, et l'introduction de cette page (`docs/chip-support.md`, toutes les langues), qui nomme les fabricants sans chargeur (certaines puces : « the other <vendor> chips »)
+14. [Verified Hardware](hardware) (`docs/hardware.md`) une fois que quelqu'un l'a utilisé, et l'introduction de cette page (`docs/chip-support.md`, toutes les langues), qui nomme les fabricants sans chargeur (certaines puces : « the other <vendor> chips »)
 
 ## Étape 7 : l'essayer sur l'adaptateur
 
@@ -254,7 +254,7 @@ Diffusez ensuite un moment vers un casque avec la fenêtre, et vérifiez que **R
 
 ## Étape 8 : ouvrir la pull request
 
-Avant de l'ouvrir, lancez ces commandes dans l'ordre (voir [Building](../building) pour l'installation). D'abord l'interface, dans `app\src\ui` : elle vérifie la modification de l'étape 6 (point 12), et l'espace de travail Rust comprend le crate de la fenêtre, qui a besoin de l'interface compilée :
+Avant de l'ouvrir, lancez ces commandes dans l'ordre (voir [Building](building) pour l'installation). D'abord l'interface, dans `app\src\ui` : elle vérifie la modification de l'étape 6 (point 12), et l'espace de travail Rust comprend le crate de la fenêtre, qui a besoin de l'interface compilée :
 
 ```bat
 pnpm install

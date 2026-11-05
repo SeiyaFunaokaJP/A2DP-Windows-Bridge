@@ -228,7 +228,7 @@ a2dpwb-core.exe --cli --scan
 | `--script <file>`, `--allow-writes` | 在适配器上运行芯片脚本，保存其报告并退出；`--allow-writes` 允许运行可能更改芯片的行（请参阅[添加芯片支持](chip-support#chip-scripts)） |
 | `-h` | 显示帮助 |
 
-用于开发和测试的选项还有：`--hci-tcp <host:port>`（通过 TCP 使用虚拟控制器，代替 WinUSB 适配器）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 的测试音代替捕获的音频）、`--duration <s>`（运行指定秒数后停止）、`--sessions <n>`（连续串流 n 次，相当于在应用中断开连接 / 连接）、`--restart`（与 `--sessions` 一起使用：每次之间重新启动 Bluetooth）、`--restart-on-link`（链路一建立就重新开始会话，与连接期间更改设置时一样）、`--wait-off`（耳机关机不会结束运行）和 `--hci-capture <file.pklg>`（对整个运行过程进行 HCI 捕获）；请参阅[构建](../building#emu)。LE Audio 的选项由 `-h` 列出（请参阅 [LE Audio](#le-audio)）。`--services` 在开始串流后列出设备通过 SDP 提供的服务。
+用于开发和测试的选项还有：`--hci-tcp <host:port>`（通过 TCP 使用虚拟控制器，代替 WinUSB 适配器）、`--test-tone`（以左 1 kHz / 右 1.5 kHz 的测试音代替捕获的音频）、`--duration <s>`（运行指定秒数后停止）、`--sessions <n>`（连续串流 n 次，相当于在应用中断开连接 / 连接）、`--restart`（与 `--sessions` 一起使用：每次之间重新启动 Bluetooth）、`--restart-on-link`（链路一建立就重新开始会话，与连接期间更改设置时一样）、`--wait-off`（耳机关机不会结束运行）和 `--hci-capture <file.pklg>`（对整个运行过程进行 HCI 捕获）；请参阅[构建](building#emu)。LE Audio 的选项由 `-h` 列出（请参阅 [LE Audio](#le-audio)）。`--services` 在开始串流后列出设备通过 SDP 提供的服务。
 
 不带 `--cli` 时，`a2dpwb-core.exe` 就是常驻程序：它也会启动窗口，但使用 `--background` 时除外（只显示托盘图标，开启**在托盘中启动**时供**随 Windows 启动**使用）。`a2dpwb-core.exe --quit` 会请求正在运行的 A2DPWB 停止串流并退出（安装程序会使用它）。
 
@@ -364,7 +364,7 @@ A2DPWB 支持三种使用 [libopenaptx](https://github.com/pali/libopenaptx) 编
 {: .note }
 **aptX Adaptive 已在 48 kHz 下用真实耳机确认：** 有用户在 2.0.2-beta.6 上将它串流到 EarFun Air Pro 4+，没有断音或卡顿，与经典 aptX 一样稳定（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）。它还通过了单元测试、上游的逐位一致性测试套件，以及针对虚拟 Bluetooth 接收端的端到端测试（`tools/emu`，检查 RTP 标头、数据包大小和帧类型；由于没有开源解码器，不对音频进行解码）。上游报告它在 Linux / PipeWire 上可用于 Bose QuietComfort Ultra（第 1 代）和 B&W Px7 S2e，48 kHz，高音质和低延迟均可。96 kHz（高，646 kbps）也已用真实耳机确认（[#86](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/86)）：在编解码器的设置中选择它时（CLI `--rate 96000`），如果耳机是列出 96 kHz 的 R2 接收端（设置只在这种情况下提供它），就会使用 96 kHz，低延迟下从不使用。“自动”（包括自动选择）以 48 kHz 串流。[欢迎反馈](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/11)。
 
-编码器是 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 的纯 Rust aptX Adaptive 编码器（MIT）。上游称其为净室重新实现，其中的数值表是根据合法获得的 Qualcomm 已出货二进制文件和空中抓包重建的；不包含任何 Qualcomm 代码、SDK 或二进制文件（请参阅[许可证](../licenses)）。
+编码器是 [AKS-Logic/aptx-adaptive-linux](https://github.com/AKS-Logic/aptx-adaptive-linux) 的纯 Rust aptX Adaptive 编码器（MIT）。上游称其为净室重新实现，其中的数值表是根据合法获得的 Qualcomm 已出货二进制文件和空中抓包重建的；不包含任何 Qualcomm 代码、SDK 或二进制文件（请参阅[许可证](licenses)）。
 
 - **选择方式**：耳机既不提供 LHDC V5 也不提供 LDAC 时，“自动”会选择它。也可以在**编解码器**页面选择 **aptX Adaptive**，或使用 `-c aptxad`。
 - **格式**：48 kHz 立体声、24-bit；选择 96 kHz 时，对列出 96 kHz 的设备（aptX Adaptive R2）以高音质使用 96 kHz；请求 44.1 kHz 时以 48 kHz 捕获。
@@ -413,7 +413,7 @@ capability discovery complete (LDAC=false ... , 1 of 6 audio sink SEP(s) in use)
 
 Sony 耳机（例如 WH-1000XM4）在开启**同时连接 2 台设备**（多点连接）时不提供 LDAC：请在 Sony Sound Connect 应用中将其关闭，然后重新连接。部分型号（例如 WH-1000XM6）支持 LDAC 与多点连接同时使用。
 
-耳机自带的应用（电量、降噪、EQ）需要一条到耳机的独立链路，来自手机或这台电脑的内置蓝牙。应用连接期间，耳机处于双设备连接状态，A2DPWB 切换编码可能变慢或失败。切换编码前请断开手机或关闭该应用。[EncoDeck](../works-with) 改为通过 A2DPWB 自己的链路控制耳机，不会增加第二条连接。
+耳机自带的应用（电量、降噪、EQ）需要一条到耳机的独立链路，来自手机或这台电脑的内置蓝牙。应用连接期间，耳机处于双设备连接状态，A2DPWB 切换编码可能变慢或失败。切换编码前请断开手机或关闭该应用。[EncoDeck](works-with) 改为通过 A2DPWB 自己的链路控制耳机，不会增加第二条连接。
 
 ### 采样率
 
@@ -450,7 +450,7 @@ capability discovery complete (LDAC=false aptX HD=false aptX LL=false aptX=true 
 
 可以在连接前开始捕获，也可以在串流过程中开始。如果在连接期间开始捕获，A2DPWB 会先写入它记住的连接建立数据包（L2CAP 信道建立和 AVDTP 信令，包括编解码器协商），因此该文件仍然可以分析。“诊断”会在记录期间和停止后显示文件路径。
 
-可以用 Wireshark 打开捕获文件，或使用开发者工具 `a2dpwb_decode`（需从源代码构建，请参阅[构建](../building)）进行检查：
+可以用 Wireshark 打开捕获文件，或使用开发者工具 `a2dpwb_decode`（需从源代码构建，请参阅[构建](building)）进行检查：
 
 ```
 a2dpwb_decode "%APPDATA%\A2DPWB\hci_20260925_120000.pklg" -o C:\temp\check
