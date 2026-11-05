@@ -2,7 +2,7 @@
 title: Coupures et problèmes de connexion
 layout: default
 parent: Accueil
-nav_order: 3
+nav_order: 2.4
 ---
 
 # Coupures et problèmes de connexion

@@ -152,7 +152,7 @@ Estos archivos de firmware son binarios propietarios de Realtek distribuidos a t
 
 ## Adaptadores recomendados {#adapters}
 
-Qué adaptadores y auriculares se han usado realmente con A2DPWB, con los códecs y los informes: [Hardware verificado](../hardware).
+Qué adaptadores y auriculares se han usado realmente con A2DPWB, con los códecs y los informes: [Hardware verificado](hardware).
 
 | Chipset | Productos de ejemplo | Notas |
 |:--------|:-----------------|:------|

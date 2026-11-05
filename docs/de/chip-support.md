@@ -2,7 +2,7 @@
 title: Unterstützung für Chips hinzufügen
 layout: default
 parent: Startseite
-nav_order: 3
+nav_order: 3.5
 ---
 
 # Unterstützung für Chips hinzufügen
@@ -26,7 +26,7 @@ Das Konzept dahinter und die offenen Punkte stehen in der [Entwicklernotiz](../c
 
 - Den Adapter, angeschlossen an einen PC mit Windows 10 / 11
 - A2DP Windows Bridge 2.0.2 oder neuer (für die folgenden Schritte genügt die App)
-- Um den Loader zu schreiben: eine Build-Umgebung wie unter [Bauen](../building) beschrieben sowie [USBPcap](https://desowin.org/usbpcap/) mit [Wireshark](https://www.wireshark.org/), um mitzuschneiden, was der Windows-eigene Treiber tut
+- Um den Loader zu schreiben: eine Build-Umgebung wie unter [Bauen](building) beschrieben sowie [USBPcap](https://desowin.org/usbpcap/) mit [Wireshark](https://www.wireshark.org/), um mitzuschneiden, was der Windows-eigene Treiber tut
 
 ## Schritt 1: Den Adapter an A2DP Windows Bridge übergeben
 
@@ -235,7 +235,7 @@ Behalten Sie die Zeilenenden jeder Datei bei: Manche Quelldateien verwenden CRLF
 **Dokumentation**:
 
 13. Die Chiptabelle in `docs/setup.md` und `docs/*/setup.md` (alle Sprachen): eine Zeile wie die von Intel, mit den abgedeckten Chips, den Firmwaredateien und wohin sie gehören (der Firmware-Ordner: `%APPDATA%\A2DPWB\firmware` oder sein Unterordner `<vendor>`; ältere Zeilen sagen noch „config folder“) und *Experimental.* Nennen Sie die Schaltflächen des Fensters so, wie die jeweilige `app/lang/*.json` sie hat (`ui.nav.adapter` für die Seite Adapter, `firmware.open_folder` für die Schaltfläche, die diesen Ordner öffnet). Ganzer Hersteller: aus der Zeile „Not supported“ entfernen. Einige Chips: den Hersteller dort lassen und die weiterhin nicht unterstützten Chips nennen. Ergänzen Sie den Hersteller im Satz am Anfang des Abschnitts Firmware („Intel and Broadcom adapters (experimental) may need firmware files of their own“)
-14. [Getestete Hardware](../hardware) (`docs/hardware.md`), sobald jemand ihn verwendet hat, und die Einleitung dieser Seite (`docs/chip-support.md`, alle Sprachen), die die Hersteller ohne Loader nennt (einige Chips: „the other <vendor> chips“)
+14. [Getestete Hardware](hardware) (`docs/hardware.md`), sobald jemand ihn verwendet hat, und die Einleitung dieser Seite (`docs/chip-support.md`, alle Sprachen), die die Hersteller ohne Loader nennt (einige Chips: „the other <vendor> chips“)
 
 ## Schritt 7: Am Adapter ausprobieren
 
@@ -254,7 +254,7 @@ Streamen Sie danach eine Weile über das Fenster an Kopfhörer und prüfen Sie, 
 
 ## Schritt 8: Den Pull Request eröffnen
 
-Führen Sie vorher Folgendes der Reihe nach aus (die Einrichtung steht unter [Bauen](../building)). Zuerst die UI, in `app\src\ui`: Sie prüft die Änderung aus Schritt 6 (Punkt 12), und der Rust-Workspace enthält die Crate des Fensters, die die gebaute UI braucht:
+Führen Sie vorher Folgendes der Reihe nach aus (die Einrichtung steht unter [Bauen](building)). Zuerst die UI, in `app\src\ui`: Sie prüft die Änderung aus Schritt 6 (Punkt 12), und der Rust-Workspace enthält die Crate des Fensters, die die gebaute UI braucht:
 
 ```bat
 pnpm install

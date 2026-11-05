@@ -152,7 +152,7 @@ Ces fichiers de firmware sont des binaires propriétaires de Realtek distribués
 
 ## Adaptateurs recommandés {#adapters}
 
-Quels adaptateurs et casques ont réellement été utilisés avec A2DPWB, avec les codecs et les rapports : [Matériel vérifié](../hardware) (anglais).
+Quels adaptateurs et casques ont réellement été utilisés avec A2DPWB, avec les codecs et les rapports : [Matériel vérifié](hardware).
 
 | Puce | Exemples de produits | Remarques |
 |:--------|:-----------------|:------|
