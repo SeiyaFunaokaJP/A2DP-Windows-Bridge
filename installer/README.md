@@ -178,3 +178,73 @@ $env:BLUECASTER_CONFIG_DIR = "$env:TEMP\bluecaster-test"; $env:BLUECASTER_INSTAN
 target\release\bluecaster-core.exe --background
 target\release\bluecaster-core.exe --quit
 ```
+
+## 3.0.0, the rename release: runbook
+
+What the old app does with a v3 release (read from 2.0.x's `update.rs` and the Tauri updater):
+
+- A 2.0.2-beta.x copy has "include pre-releases" on by default. It takes the highest version of
+  the last 20 releases, drafts skipped, tags that are not a version (`le-audio-preview`) skipped.
+  Any published `v3.0.0*` is offered to it at once, pre-release or not.
+- A 2.0.1 copy (the only stable 2.x release, "Latest") reads `/releases/latest`, which never
+  returns a pre-release. It sees 3.0.0 only once the release is marked Latest.
+- The redirects after the repository rename are followed (ureq and reqwest both follow 301s), and
+  the manifest URL is checked against the old prefix, which the redirect keeps. **Never create a
+  repository under the old name**: the redirects die and 2.0.x cannot update any more.
+- `latest.json` is read by platform key (`windows-x86_64`, `windows-aarch64`; 2.0.1 tries
+  `windows-x86_64-nsis` first and falls back). The signature covers the file and the version
+  (`--app-version`), with the unchanged key. The setup is started with `/UPDATE /SILENT /NORESTART`
+  (2.0.1 and older betas: `/P /UPDATE /R /ARGS`), which `BlueCaster.iss` handles.
+- There is no manifest URL override in 2.0.x, so an in-app test needs the trick in step 6.
+
+Steps, in order:
+
+1. **Bump**: `version = "3.0.0"` in `Cargo.toml` and `app/src/ui/package.json`, then
+   `cargo update --workspace --offline` (the release script and CI build `--locked`). PR, CI green.
+2. **Setups by hand**, on test machines or VMs, each followed by the checks below: the v3 setup
+   over 2.0.2-beta.18 (Inno), over 2.0.1 (NSIS), over v1.1.1, and over 2.0.x while it streams.
+   Checks: `%APPDATA%\BlueCaster` has `pairing\`, `devices\`, `profiles.json`, `firmware\` and
+   `backup\v2\`; `%APPDATA%\A2DPWB` is gone; the Run value is `BlueCaster` (and still disabled in
+   Task Manager if it was); the old entry in Apps is gone; the adapter is still on WinUSB;
+   uninstalling leaves no Run value, shortcuts or Uninstall entry.
+3. **Rename the repository** (Settings → Rename → `BlueCaster`) and, the same minute, merge the PR
+   that brings `docs/_config.yml` (`baseurl: /BlueCaster`) and `.github/` to `main`: Pages and the
+   issue forms are served from `main`, and the old Pages URLs are not redirected (the links in
+   2.0.x and in old release notes break; a user site `SeiyaFunaokaJP.github.io` with redirect
+   stubs under `A2DP-Windows-Bridge/` is the only way to catch them, optional). Verify:
+   `curl -sI https://api.github.com/repos/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/latest` → 301,
+   `curl -sIL https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/download/v2.0.2-beta.18/latest.json` → 200,
+   and that `https://seiyafunaokajp.github.io/BlueCaster/` renders with its CSS. Then
+   `git remote set-url origin https://github.com/SeiyaFunaokaJP/BlueCaster.git` in every checkout.
+4. **Build** x64, then arm64 into the same `-OutDir`, with `TAURI_SIGNING_PRIVATE_KEY`,
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` and `BLUECASTER_UPDATER_PUBKEY` set. `latest.json` must
+   list both platforms and version 3.0.0; `licenses\README.txt` in the zip must name the commit
+   without "local changes".
+5. **Defender and VirusTotal** on both setups and both portable zips; silent install, wait 80 s,
+   `Get-MpThreatDetection`.
+6. **In-app upgrade test that reaches nobody**: create a release under a tag that is not a version,
+   e.g. `upgrade-test-3.0.0`, with `--prerelease --latest=false` (both update checks skip such
+   tags, and a pre-release never becomes `/releases/latest`); upload the setups, `.sig` files and
+   a copy of `latest.json` whose URLs point at that tag (the signature covers the file and the
+   version only). On a PC with 2.0.2-beta.18, start `a2dpwb.exe` with
+   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` and run
+   `window.__TAURI_INTERNALS__.invoke('update_install', {manifestUrl: '<that latest.json URL>'})`
+   in the page (the manifest prefix check passes through the redirect). Repeat on a 2.0.1 VM and
+   on arm64. Then run the checks of step 2, and delete that release and its tag.
+7. **Publish** `gh release create v3.0.0 <files> latest.json --target <built sha> --prerelease`.
+   The notes: the `<!-- in-app -->` block first (the new name, replaced automatically, settings
+   kept, install over 2.0.x without uninstalling it first (its uninstaller offers to delete the
+   settings), the pinned taskbar icon and window state start afresh, headphones may still show
+   "A2DPWB" until paired again), then the #239 false-positive line, the changes with
+   `@contributors`, and the new documentation URL. As a pre-release it reaches the beta channel
+   (every 2.0.2-beta.x copy) at once and 2.0.1 copies not at all. After a few days without
+   upgrade reports, `gh release edit v3.0.0 --prerelease=false --latest` brings it to 2.0.1 users.
+   2.0.2-beta.18 was the last 2.0.x release (decided 2026-11-06); should one ever be needed
+   after all, create it with `--latest=false`.
+8. **Afterwards**: pin the "A2DP Windows Bridge is now BlueCaster" issue, add the pointer to the
+   old release notes, post the compatibility note in #194 (EncoDeck), and note in CLAUDE.md and
+   the memory notes that the remote is `BlueCaster` now.
+
+The compatibility code (old AppId, mutex, pipe name, Run value, settings folder, environment
+variables: `crates/core/src/compat.rs`) can go 6–12 months after 3.0.0; the old pipe name and the
+old mutex go together, announced in the release notes one release ahead (#194).

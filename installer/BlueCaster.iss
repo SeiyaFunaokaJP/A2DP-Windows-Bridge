@@ -513,6 +513,9 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags
 const
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
   RunValue = 'BlueCaster';
+  { Task Manager's Startup tab keeps enabled/disabled per Run value here
+    (REG_BINARY, first byte 2 = enabled, 3 = disabled) }
+  StartupApprovedKey = 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run';
   { This installation's registration (Setup's key for AppId) }
   UninstKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{{#AppGuid}}_is1';
   LanguageKey = 'Software\BlueCaster';
@@ -548,8 +551,12 @@ var
     2.0.x of this setup (OldV2Guid) }
   OldV1, OldNsis, OldV2: Boolean;
   { The Run value A2DPWB points at a 2.0.x core (or this one): it becomes
-    BlueCaster }
-  TakeOverOldRun: Boolean;
+    BlueCaster. OldRun: its command line as read; StartupApproved: Task
+    Manager's enabled/disabled state of it (StartupApprovedKey), carried
+    over too }
+  TakeOverOldRun, HasStartupApproved: Boolean;
+  OldRun: String;
+  StartupApproved: AnsiString;
   { The language chosen before (an app language code, AppLanguage), read
     before 2.0.x's uninstaller deletes it; whether this Setup was given one
     (AskLanguage, /LANG=) }
@@ -1173,6 +1180,10 @@ begin
   if TakeOverOldRun then begin
     Log('The Run value ' + OldRunValue + ' (' + OldRun + ') becomes ' + RunValue);
     RunWasSet := True;
+    { Disabled in Task Manager's Startup tab stays disabled }
+    HasStartupApproved := RegQueryBinaryValue(HKCU, StartupApprovedKey, OldRunValue, StartupApproved);
+    if HasStartupApproved then
+      Log('Its Task Manager startup state is carried over');
   end;
   if not KeepV1 then begin
     { v1's (A2DPWB.exe, value A2DPWB), read before v1's uninstaller deletes it }
@@ -1204,16 +1215,21 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Code: Integer;
-  OldRun: String;
+  Cur: String;
 begin
   if CurStep <> ssPostInstall then
     Exit;
   if RunWasSet then
     RegWriteStringValue(HKCU, RunKey, RunValue, '"' + ExpandConstant('{app}\{#CoreExe}') + '" --background');
-  { 2.0.x's value, unless its uninstaller deleted it already; read again:
-    only while it still starts one of ours }
-  if TakeOverOldRun and RegQueryStringValue(HKCU, RunKey, OldRunValue, OldRun) and OldRunIsOurs(OldRun) then
+  { 2.0.x's value, unless its uninstaller deleted it already or it was
+    changed meanwhile (it is compared, not judged again: the keys
+    OldRunIsOurs reads are gone by now for the NSIS one) }
+  if TakeOverOldRun and RegQueryStringValue(HKCU, RunKey, OldRunValue, Cur) and (Cur = OldRun) then
     RegDeleteValue(HKCU, RunKey, OldRunValue);
+  if HasStartupApproved and not RegValueExists(HKCU, StartupApprovedKey, RunValue) then begin
+    RegWriteBinaryValue(HKCU, StartupApprovedKey, RunValue, StartupApproved);
+    RegDeleteValue(HKCU, StartupApprovedKey, OldRunValue);
+  end;
   { 2.0.x's language (now in LanguageKey), unless its uninstaller deleted it }
   RegDeleteValue(HKCU, OldLanguageKey, 'SetupLanguage');
   RegDeleteKeyIfEmpty(HKCU, OldLanguageKey);

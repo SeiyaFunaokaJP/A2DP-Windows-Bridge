@@ -30,7 +30,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 /// compiled here as well: this process does not link the core's crate)
 #[path = "../../../crates/core/src/paths.rs"]
 #[allow(dead_code)]
-mod paths;
+pub(crate) mod paths;
 
 /// The core prunes by the retention setting; this is only a ceiling (the
 /// setting's maximum), so a longer retention set while this process runs

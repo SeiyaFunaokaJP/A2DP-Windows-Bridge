@@ -32,7 +32,10 @@ fn main() {
         win_sys::console::attach_parent();
     }
     // The command line logs to the console only; the resident process to
-    // daily files in the settings folder
+    // daily files in the settings folder. The folder of 2.0.x is moved only
+    // once no 2.0.x core or v1 writes to it any more (resident::run stops
+    // them, then calls config_dir again)
+    bluecaster_core::paths::set_old_app_check(old_app_runs);
     let config = bluecaster_core::paths::config_dir();
     // Developer mode's logging from the first line (the settings are read
     // again, with their log lines, when the service starts)
@@ -48,6 +51,12 @@ fn main() {
     drop(log);
     std::process::exit(code);
 }
+/// A 2.0.x core or v1 runs (paths::set_old_app_check)
+fn old_app_runs() -> bool {
+    use win_sys::single_instance::{V1_MUTEX_NAME, is_held};
+    is_held(&ipc::old_core_mutex_name()) || is_held(V1_MUTEX_NAME)
+}
+
 fn core_state(s: ipc::StreamState) -> bluecaster_core::StreamState {
     use bluecaster_core::StreamState as S;
     match s {

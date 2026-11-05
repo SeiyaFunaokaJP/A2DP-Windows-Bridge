@@ -25,6 +25,29 @@ pub const VALUE_NAME: &str = "BlueCaster";
 /// and leaves any other program's alone. Can be removed 6–12 months after
 /// 3.0.0.
 pub const OLD_VALUE_NAME: &str = "A2DPWB";
+/// Task Manager's Startup tab keeps enabled/disabled per Run value name
+/// here (REG_BINARY; first byte 2 = enabled, 3 = disabled; no value =
+/// enabled)
+pub const STARTUP_APPROVED_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+/// Carries Task Manager's enabled/disabled state of the Run value `old`
+/// over to `new` (unless `new` has one already) and drops the old one: a
+/// user who disabled "A2DPWB" there keeps it disabled under the new name.
+/// Ok(true) if there was one.
+pub fn carry_startup_approved(old: &str, new: &str) -> windows::core::Result<bool> {
+    let Some(key) = RegKey::open_hkcu(STARTUP_APPROVED_KEY, KEY_QUERY_VALUE | KEY_SET_VALUE)? else {
+        return Ok(false);
+    };
+    let Some((ty, data)) = key.query(old)? else {
+        return Ok(false);
+    };
+    if key.query(new)?.is_none() {
+        key.set(new, ty, &data)?;
+    }
+    key.delete_value(old)?;
+    tracing::debug!("autostart: Task Manager startup state of {old} carried over to {new}");
+    Ok(true)
+}
 
 /// The command line registered under `value_name`, or None if there is none
 pub fn get(value_name: &str) -> windows::core::Result<Option<String>> {
@@ -229,7 +252,7 @@ mod tests {
     /// Writes only under a throwaway HKCU key, deleted afterwards
     #[test]
     fn set_get_remove_roundtrip() {
-        let subkey = format!(r"Software\A2DPWB_test_autostart_{}", std::process::id());
+        let subkey = format!(r"Software\BlueCaster_test_autostart_{}", std::process::id());
         let name = "BlueCaster_test";
         assert_eq!(get_in(&subkey, name).unwrap(), None);
         assert!(!remove_in(&subkey, name).unwrap());

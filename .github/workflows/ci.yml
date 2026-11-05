@@ -72,9 +72,9 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
       - name: No unsafe outside the FFI crates
         shell: pwsh
         run: |
@@ -144,7 +144,7 @@ jobs:
           cmake -S tools/a2dp_decode -B build/a2dp_decode -A x64
           cmake --build build/a2dp_decode --config Release
       - name: bluecaster-core.exe
-        run: cargo build --release -p bluecaster-core-exe
+        run: cargo build --release --locked -p bluecaster-core-exe
       - name: run_test.py
         run: >
           tools/emu/.venv/Scripts/python.exe tools/emu/run_test.py

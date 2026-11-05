@@ -379,14 +379,14 @@ pub fn run(args: &[String]) -> i32 {
 
     let (tx, rx) = mpsc::channel();
     let capture = HciCapture::new();
+    // Now that the 2.0.x core and v1 have been stopped: moves their folder
+    // if the first call (main, before the log) had to leave it
+    let config_dir = bluecaster_core::paths::config_dir();
+    if let Some(note) = bluecaster_core::paths::take_folder_note() {
+        tracing::info!("{note}");
+    }
     let service = Arc::new(Service::new(
-        ServiceOptions {
-            config_dir: bluecaster_core::paths::config_dir(),
-            hci_tcp: None,
-            capture,
-            afh: None,
-            usb: Default::default(),
-        },
+        ServiceOptions { config_dir, hci_tcp: None, capture, afh: None, usb: Default::default() },
         tx,
     ));
     let state = {

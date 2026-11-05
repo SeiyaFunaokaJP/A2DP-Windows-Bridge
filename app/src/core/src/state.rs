@@ -1034,8 +1034,7 @@ enum AutostartFix {
     Remove,
 }
 
-/// The core's program name before 3.0.0 (2.0.x), in an old Run value
-const OLD_CORE_EXE: &str = "a2dpwb-core.exe";
+use bluecaster_core::compat::OLD_CORE_EXE;
 
 /// The Run value's program is named `name` (any folder, any case)
 fn runs(command: Option<&str>, name: &str) -> bool {
@@ -2023,6 +2022,14 @@ impl CoreState {
             tracing::info!("old start with Windows entry {OLD_VALUE_NAME} removed: was {}", old.unwrap_or_default());
             if let Err(e) = win_sys::autostart::remove(OLD_VALUE_NAME) {
                 tracing::warn!("cannot remove the old start with Windows entry {OLD_VALUE_NAME}: {e}");
+            }
+            // Disabled in Task Manager's Startup tab stays disabled
+            match win_sys::autostart::carry_startup_approved(OLD_VALUE_NAME, VALUE_NAME) {
+                Ok(true) => {
+                    tracing::info!("Task Manager's startup state of {OLD_VALUE_NAME} carried over to {VALUE_NAME}")
+                }
+                Ok(false) => {}
+                Err(e) => tracing::warn!("cannot carry over Task Manager's startup state of {OLD_VALUE_NAME}: {e}"),
             }
         }
     }
