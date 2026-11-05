@@ -3201,24 +3201,42 @@ html.win-flyout body {
   width: 100%;
   min-width: 0;
 }
+/* The message on its own line at full width, the buttons below: beside
+   them it was squeezed to a few letters */
 .fly-error {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--s2);
   padding: var(--s2);
   border: 1px solid color-mix(in srgb, var(--bad) 55%, transparent);
   border-radius: var(--r);
   font-size: var(--fs-12);
 }
-.fly-error > .icon {
+.fly-error-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+.fly-error-msg > .icon {
+  flex: none;
+  margin-top: 0.1em;
   color: var(--bad-text);
 }
 .fly-error-text {
   flex: 1;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fly-error-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+/* The fix first, copy and report at the end */
+.fly-error-actions > .btn:not(.btn-icon) {
+  order: -1;
+  margin-inline-end: auto;
+  min-width: 0;
 }
 /* "Open app" beside Connect, as tall as it (issue #86) */
 .fly-actions {

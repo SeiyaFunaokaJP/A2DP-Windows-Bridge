@@ -147,8 +147,12 @@ export function Flyout() {
           const fix = () => fixFor(e().code, e().message.key);
           return (
             <div class="fly-error" role="alert">
-              <Icon name="error_circle" />
-              <span class="fly-error-text">{tm(e().message)}</span>
+              {/* The message has the width to itself, the buttons go below it */}
+              <div class="fly-error-msg">
+                <Icon name="error_circle" />
+                <span class="fly-error-text">{tm(e().message)}</span>
+              </div>
+              <div class="fly-error-actions">
               <IconButton
                 icon="copy"
                 label={t("ui.error.copy_hint")}
@@ -182,6 +186,7 @@ export function Flyout() {
                   </Button>
                 )}
               </Show>
+              </div>
             </div>
           );
         }}
