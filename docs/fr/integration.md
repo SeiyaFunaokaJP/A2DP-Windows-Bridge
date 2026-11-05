@@ -133,7 +133,7 @@ Disponible quand `welcome.features` contient `"rfcomm"` (2.0.2-beta.10 et ultér
 - **Fonctionnalités.** Vérifiez `welcome.features` avant d'utiliser un ajout. Les cœurs antérieurs à 2.0.2-beta.10 omettent ce champ.
 - **Requêtes inconnues.** Une requête que le cœur ne peut pas lire (méthode inconnue, paramètres incorrects) reçoit l'erreur `ipc.bad_request` ; la connexion reste ouverte. Les cœurs antérieurs à 2.0.2-beta.10 ferment plutôt la connexion. Toute autre trame illisible la ferme.
 - **Nouveaux champs.** Le cœur ajoute au fil du temps des champs à l'état et aux événements. Ignorez les champs que vous ne connaissez pas ; ne rejetez pas un message à cause d'eux.
-- **Changement de nom en 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)) : le canal devient `\\.\pipe\bcfw-<SID>`. Le cœur continue d'écouter aussi sur `\\.\pipe\a2dpwb-<SID>`, avec le même protocole, pendant au moins 6 mois après la 3.0.0 ; sa suppression sera d'abord annoncée dans les notes de version. Essayez d'abord `bcfw-<SID>`, puis revenez à `a2dpwb-<SID>`. Le mutex du cœur change de nom sans période de transition de ce genre.
+- **Changement de nom en 3.0.0** ([#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)) : le canal devient `\\.\pipe\bluecaster-<SID>`. Le cœur continue d'écouter aussi sur `\\.\pipe\a2dpwb-<SID>`, avec le même protocole, pendant au moins 6 mois après la 3.0.0 ; sa suppression sera d'abord annoncée dans les notes de version. Essayez d'abord `bluecaster-<SID>`, puis revenez à `a2dpwb-<SID>`. Le mutex du cœur devient `Local\BlueCaster_Core` ; il conserve aussi `Local\A2DPWB_v2_Core` pendant la même période, et les deux retraits sont annoncés ensemble.
 
 ## Exemple {#example}
 
