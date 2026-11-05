@@ -133,7 +133,7 @@ A2DPWB 窗口使用、工具应谨慎使用的方法：`profile.save` / `profile
 - **功能。** 使用新增内容之前，请检查 `welcome.features`。2.0.2-beta.10 之前的核心不包含该字段。
 - **未知请求。** 核心无法读取的请求（未知方法、错误的参数）会以错误 `ipc.bad_request` 应答；连接保持打开。2.0.2-beta.10 之前的核心则会关闭连接。其他任何无法读取的帧都会关闭连接。
 - **新字段。** 核心会随时间向状态和事件中添加字段。请忽略不认识的字段；不要因此拒绝消息。
-- **3.0.0 中的改名**（[#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)）：管道将改为 `\\.\pipe\bcfw-<SID>`。在 3.0.0 之后至少 6 个月内，核心仍会以相同的协议同时在 `\\.\pipe\a2dpwb-<SID>` 上监听；移除前会先在发布说明中公布。请先尝试 `bcfw-<SID>`，失败时再回退到 `a2dpwb-<SID>`。核心的互斥体会改名，但没有这样的过渡期。
+- **3.0.0 中的改名**（[#193](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/193)）：管道将改为 `\\.\pipe\bluecaster-<SID>`。在 3.0.0 之后至少 6 个月内，核心仍会以相同的协议同时在 `\\.\pipe\a2dpwb-<SID>` 上监听；移除前会先在发布说明中公布。请先尝试 `bluecaster-<SID>`，失败时再回退到 `a2dpwb-<SID>`。核心的互斥体改为 `Local\BlueCaster_Core`，同一期间也继续持有 `Local\A2DPWB_v2_Core`，两者的移除会一起公告。
 
 ## 示例 {#example}
 
