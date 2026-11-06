@@ -1226,8 +1226,10 @@ begin
     OldRunIsOurs reads are gone by now for the NSIS one) }
   if TakeOverOldRun and RegQueryStringValue(HKCU, RunKey, OldRunValue, Cur) and (Cur = OldRun) then
     RegDeleteValue(HKCU, RunKey, OldRunValue);
-  if HasStartupApproved and not RegValueExists(HKCU, StartupApprovedKey, RunValue) then begin
-    RegWriteBinaryValue(HKCU, StartupApprovedKey, RunValue, StartupApproved);
+  if HasStartupApproved then begin
+    if not RegValueExists(HKCU, StartupApprovedKey, RunValue) then
+      RegWriteBinaryValue(HKCU, StartupApprovedKey, RunValue, StartupApproved);
+    { The old state is of no use once its Run value is gone }
     RegDeleteValue(HKCU, StartupApprovedKey, OldRunValue);
   end;
   { 2.0.x's language (now in LanguageKey), unless its uninstaller deleted it }
@@ -1434,8 +1436,10 @@ begin
           DelTree(ExpandConstant('{localappdata}\io.github.seiyafunaokajp.a2dpwb'), True, True, True);
         end;
         if RegQueryStringValue(HKCU, RunKey, RunValue, Cmd) and
-           (Pos(Lowercase(ExpandConstant('{app}\{#CoreExe}')), Lowercase(Cmd)) > 0) then
+           (Pos(Lowercase(ExpandConstant('{app}\{#CoreExe}')), Lowercase(Cmd)) > 0) then begin
           RegDeleteValue(HKCU, RunKey, RunValue);
+          RegDeleteValue(HKCU, StartupApprovedKey, RunValue);
+        end;
       end;
   end;
 end;
