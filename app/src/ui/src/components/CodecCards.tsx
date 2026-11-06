@@ -619,11 +619,12 @@ export function CodecSettings(props: {
             </Field>
           </Show>
         </Show>
-        <Show when={v.codec === "lhdcv5" && listed() && props.onForgetReport}>
+        {/* OPPO's Hi-Res request: niche, so developer mode (issue #86) */}
+        <Show when={v.codec === "lhdcv5" && listed() && props.developer && props.onForgetReport}>
           {(forget) => (
             <div>
               <Button icon="arrow_reset" onClick={() => forget()()}>
-                {t("ui.profile.forget_report")}
+                {t("ui.profile.ask_hi_res_again")}
               </Button>
             </div>
           )}

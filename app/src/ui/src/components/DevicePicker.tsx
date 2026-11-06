@@ -23,7 +23,7 @@ import {
 } from "../lib/profile";
 import { Button, Dialog, Field, IconButton } from "./controls";
 import { Icon } from "./Icon";
-import { PairingDialog, type PairingPart } from "./PairingDialog";
+import { PairingDialog } from "./PairingDialog";
 
 /** How long a scan looks for devices (issue #86: 10 s found too few) */
 export const SCAN_SECONDS = 30;
@@ -259,9 +259,9 @@ export function DevicePicker(props: {
       setWindowsPaired({ name: name || address, go });
     } else go();
   };
-  // Developer mode: a saved classic device's services and pairing key, each
-  // from a button of its own (issue #86: a tag that opens them goes unseen)
-  const [pairingOf, setPairingOf] = createSignal<{ device: Device; part: PairingPart } | null>(null);
+  // Developer mode: a saved classic device's services and pairing key, from
+  // its Services tag (issue #86)
+  const [pairingOf, setPairingOf] = createSignal<Device | null>(null);
   const forget = async () => {
     const d = forgetting();
     if (!d || busy()) return;
@@ -303,6 +303,11 @@ export function DevicePicker(props: {
           <span class="mono muted">{d.address}</span>
         </span>
         <span class="tags">
+          <Show when={d.saved && !props.savedOnly && snap().settings.developer_mode && !d.le_audio}>
+            <button type="button" class="tag tag-button" onClick={() => setPairingOf(d)}>
+              {t("ui.pairing.services")}
+            </button>
+          </Show>
           <Show when={d.saved}>
             <span class="tag">{t("device.tag_saved")}</span>
           </Show>
@@ -357,14 +362,6 @@ export function DevicePicker(props: {
         </Show>
         <Show when={d.saved && !props.savedOnly}>
           <span class="inline device-row-actions">
-            <Show when={snap().settings.developer_mode && !d.le_audio}>
-              <Button kind="subtle" icon="people_list" onClick={() => setPairingOf({ device: d, part: "services" })}>
-                {t("ui.pairing.services")}
-              </Button>
-              <Button kind="subtle" icon="shield" onClick={() => setPairingOf({ device: d, part: "key" })}>
-                {t("ui.pairing.key_title")}
-              </Button>
-            </Show>
             <IconButton
               icon="edit"
               label={`${t("device.edit_name")}: ${label()}`}
@@ -617,8 +614,7 @@ export function DevicePicker(props: {
         </Field>
       </Dialog>
       <PairingDialog
-        device={pairingOf()?.device ?? null}
-        part={pairingOf()?.part ?? "services"}
+        device={pairingOf()}
         onClose={() => setPairingOf(null)}
       />
       <Dialog
