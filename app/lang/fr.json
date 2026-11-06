@@ -524,7 +524,7 @@
   "ui.profile.codecs_unknown": "Les codecs pris en charge par l'appareil audio sont connus après sa première connexion.",
   "ui.profile.codec_settings": "Réglages de %s",
   "ui.profile.codec_settings_device": "Selon %s.",
-  "ui.profile.forget_report": "Oublier les données",
+  "ui.profile.ask_hi_res_again": "Redemander le Hi-Res",
   "ui.profile.le_audio_unsupported": "Cet adaptateur Bluetooth ne peut pas diffuser en LE Audio (pas de canaux isochrones).",
   "ui.profile.le_audio_unchecked": "Pas encore connu : vérifié la première fois que cet adaptateur est utilisé.",
   "ui.profile.format_differs": "Le codec diffuse en %s et la source de sortie joue en %s : le son est converti, ce qui peut réduire sa qualité.",

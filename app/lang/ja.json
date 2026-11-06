@@ -524,7 +524,7 @@
   "ui.profile.codecs_unknown": "オーディオデバイスが対応するコーデックは、最初の接続後にわかります。",
   "ui.profile.codec_settings": "%s の設定",
   "ui.profile.codec_settings_device": "%s の報告による値です。",
-  "ui.profile.forget_report": "報告を削除",
+  "ui.profile.ask_hi_res_again": "Hi-Res をもう一度要求",
   "ui.profile.le_audio_unsupported": "この Bluetooth アダプターは LE Audio のストリーミングに対応していません（アイソクロナスチャネルなし）。",
   "ui.profile.le_audio_unchecked": "まだ不明です。このアダプターを最初に使うときに確認します。",
   "ui.profile.format_differs": "コーデックは %s、出力ソースは %s のため、音声が変換されます。音質が下がることがあります。",

@@ -664,16 +664,20 @@ async function codecSettings(where: HTMLElement, label: string) {
 }
 
 describe("codec settings", () => {
-  it("LHDC V5 forgets what the device reported (issue #237)", async () => {
-    const { calls } = start("#/codecs", "capped");
+  it("LHDC V5 asks for Hi-Res again in developer mode only (issues #237, #86)", async () => {
+    const { calls, core } = start("#/codecs", "capped");
     const moto = await section("moto buds+");
-    const dialog = await codecSettings(moto, "codec.lhdc_v5");
+    let dialog = await codecSettings(moto, "codec.lhdc_v5");
+    expect(within(dialog).queryByRole("button", { name: t("ui.profile.ask_hi_res_again") })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: t("modal.close") }));
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    dialog = await codecSettings(moto, "codec.lhdc_v5");
     expect(within(dialog).getByText(t("ui.profile.codec_settings_device", "moto buds+"))).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: t("ui.profile.forget_report") }));
+    fireEvent.click(within(dialog).getByRole("button", { name: t("ui.profile.ask_hi_res_again") }));
     await waitFor(() => expect(calls.some((c) => c.method === "device.forget_codecs")).toBe(true));
     expect(calls.find((c) => c.method === "device.forget_codecs")?.params).toEqual({ address: "34:1C:F0:AA:BB:CC" });
     // Nothing reported any more: the button goes with the note
-    await waitFor(() => expect(within(dialog).queryByRole("button", { name: t("ui.profile.forget_report") })).toBeNull());
+    await waitFor(() => expect(within(dialog).queryByRole("button", { name: t("ui.profile.ask_hi_res_again") })).toBeNull());
     expect(within(dialog).queryByText(t("ui.profile.codec_settings_device", "moto buds+"))).toBeNull();
   });
 
@@ -681,7 +685,7 @@ describe("codec settings", () => {
     start("#/codecs", "capped");
     const moto = await section("moto buds+");
     const dialog = await codecSettings(moto, "codec.aac");
-    expect(within(dialog).queryByRole("button", { name: t("ui.profile.forget_report") })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: t("ui.profile.ask_hi_res_again") })).toBeNull();
   });
 
   it("LHDC V5 offers 192 kHz and greys out the quality while ABR is on", async () => {

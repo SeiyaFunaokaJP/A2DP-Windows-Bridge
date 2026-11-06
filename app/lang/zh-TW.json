@@ -524,7 +524,7 @@
   "ui.profile.codecs_unknown": "音訊裝置支援哪些編解碼器將在首次連線後得知。",
   "ui.profile.codec_settings": "%s 設定",
   "ui.profile.codec_settings_device": "由 %s 回報。",
-  "ui.profile.forget_report": "清除回報",
+  "ui.profile.ask_hi_res_again": "重新要求 Hi-Res",
   "ui.profile.le_audio_unsupported": "此藍牙介面卡無法傳輸 LE Audio（無等時通道）。",
   "ui.profile.le_audio_unchecked": "尚不清楚: 第一次使用此介面卡時會檢查。",
   "ui.profile.format_differs": "編解碼器為 %s，輸出來源為 %s，因此聲音會被轉換，音質可能下降。",

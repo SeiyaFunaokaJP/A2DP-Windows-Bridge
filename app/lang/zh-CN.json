@@ -524,7 +524,7 @@
   "ui.profile.codecs_unknown": "音频设备支持哪些编解码器将在首次连接后得知。",
   "ui.profile.codec_settings": "%s 设置",
   "ui.profile.codec_settings_device": "由 %s 报告。",
-  "ui.profile.forget_report": "清除报告",
+  "ui.profile.ask_hi_res_again": "重新请求 Hi-Res",
   "ui.profile.le_audio_unsupported": "此蓝牙适配器无法传输 LE Audio（无等时通道）。",
   "ui.profile.le_audio_unchecked": "尚不清楚：首次使用此适配器时会进行检查。",
   "ui.profile.format_differs": "编解码器为 %s，输出源为 %s，因此声音会被转换，音质可能下降。",

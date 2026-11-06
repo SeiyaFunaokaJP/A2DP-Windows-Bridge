@@ -524,7 +524,7 @@
   "ui.profile.codecs_unknown": "Welche Codecs das Audiogerät unterstützt, ist nach seiner ersten Verbindung bekannt.",
   "ui.profile.codec_settings": "Einstellungen für %s",
   "ui.profile.codec_settings_device": "Laut Angabe von %s.",
-  "ui.profile.forget_report": "Angaben vergessen",
+  "ui.profile.ask_hi_res_again": "Erneut nach Hi-Res fragen",
   "ui.profile.le_audio_unsupported": "Dieser Bluetooth-Adapter kann kein LE Audio streamen (keine isochronen Kanäle).",
   "ui.profile.le_audio_unchecked": "Noch nicht bekannt: wird geprüft, wenn dieser Adapter zum ersten Mal verwendet wird.",
   "ui.profile.format_differs": "Der Codec streamt mit %s, die Ausgabequelle spielt mit %s: Der Ton wird umgewandelt, was die Qualität mindern kann.",
