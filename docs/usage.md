@@ -188,7 +188,7 @@ bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c lhdcv5 -a
 bluecaster-core.exe --cli -d AA:BB:CC:DD:EE:FF -c aptxad -a
 ```
 
-ABR automatically lowers the bitrate when the Bluetooth connection is unstable, and raises it when conditions improve. LDAC moves between its quality modes; LHDC V5 follows Android's policy and stays between 160 and 400 kbps; aptX Adaptive steps between its levels in High (see [aptX Adaptive](#aptx-adaptive)). In the window, ABR is in a codec's settings (**...** on its card on **Codecs**).
+ABR automatically lowers the bitrate when the Bluetooth connection is unstable, and raises it when conditions improve. LDAC moves between its quality modes; LHDC V5 follows Android's policy and stays between 160 and 400 kbps; aptX Adaptive steps between its levels in High (see [aptX Adaptive](#aptx-adaptive)); SBC and SBC XQ lower the bitpool by 2 and raise it by 1 each second. A bitpool the connection backed up at is tried again only after 10 s, and twice as long each time it backs up there again (up to 2 minutes), so a device that copes one step lower settles there; a minute without trouble at it makes it a first time again. In the window, ABR is in a codec's settings (**...** on its card on **Codecs**).
 
 ### Device Discovery
 
