@@ -415,7 +415,7 @@
   "ui.dev.queue_wait_hint": "50 to 2000; empty = 350. Older audio is dropped. Applies to the next stream.",
   "ui.dev.queue_wait_auto": "350",
   "ui.dev.encode_at_send": "Encode at send time",
-  "ui.dev.encode_at_send_hint": "With ABR on, audio held up by a stall goes out at the lowered bit rate. Applies to the next stream.\nFor SBC, SBC XQ, LDAC, LHDC V5 and aptX Adaptive.",
+  "ui.dev.encode_at_send_hint": "With ABR on, audio held up by a stall goes out at the lowered bit rate.\nFor SBC, SBC XQ, LDAC, LHDC V5, aptX Adaptive.",
   "ui.dev.aac_config_bitrate0": "Bit rate 0 in the configuration",
   "ui.dev.aac_config_bitrate0_hint": "Sends 0 (unknown) as the bit rate when it configures the audio device.",
   "ui.dev.aac_latm_v0": "Old LATM format (2.0.2 and before)",
