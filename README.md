@@ -1,4 +1,4 @@
-# BlueCaster
+# BlueCaster (formerly A2DP-Windows-Bridge)
 
 Advanced Bluetooth Audio Transmitter for Windows, with the codecs Windows lacks: LDAC, aptX HD, aptX Low Latency, LHDC V5 and more, through a USB Bluetooth adapter it takes over in WinUSB mode — no kernel driver or test signing required.
 
