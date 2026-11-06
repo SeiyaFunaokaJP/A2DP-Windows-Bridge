@@ -1000,17 +1000,14 @@ option {
   user-select: all;
 }
 .pairing-services {
-  margin: var(--s2) 0 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: var(--s2);
+  margin-top: var(--s2);
+  font-size: var(--fs-14);
 }
-.pairing-services li {
-  display: flex;
-  flex-direction: column;
+.pairing-services td {
+  vertical-align: top;
 }
 .pairing-services .mono {
+  display: block;
   font-size: var(--fs-12);
   overflow-wrap: anywhere;
 }

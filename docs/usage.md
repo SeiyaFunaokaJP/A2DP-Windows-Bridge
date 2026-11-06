@@ -109,13 +109,13 @@ Shown while **Settings > Developer mode** is on; most users never need it. It is
 | Startup | **Start with Windows** and **Start in the tray** (see [Start with Windows](#autostart)), **Minimize to System Tray** and **Open the tray window from** (see [Tray and Flyout](#tray)) |
 | Notifications | **Notify when a device connects** (the device, its battery, the codec and what it runs with; on by default), **Notify when the battery is low**: **Below 20%** (the default), **Below 10%**, **Below 5%** or **Never**, once per connection (again only after the battery was back 5 points above) |
 | Updates | **Check for Updates**, **Check for Updates on Startup**, **Include Pre-releases in Update Checks** (also offer beta releases), **Update now** (see [Updates](#updates)) |
-| Advanced | **Developer mode** (adds the [Developer](#developer) screen, the SBC **Frame setup** in the codec settings, **Services** and **Pairing key** on **Audio Devices** (see [Pairing Shared with Windows and Linux](#shared-pairing)), **Read chip info** on **Adapters**, and more details to the log; no restart needed), **Settings folder** with **Open Settings Folder**, **Run setup** |
+| Advanced | **Developer mode** (adds the [Developer](#developer) screen, the SBC **Frame setup** in the codec settings, the **Services** tag on **Audio Devices** (see [Services and Pairing Keys](#shared-pairing)), **Read chip info** on **Adapters**, and more details to the log; no restart needed), **Settings folder** with **Open Settings Folder**, **Run setup** |
 
 **Quit BlueCaster** is at the bottom. The version, the licenses and **Third-party licenses** are on the **About** screen.
 
 ### First-Run Setup
 
-The first start (no audio device yet, or no adapter with WinUSB) opens the **Setup Wizard**: choose the adapter, driver and firmware, find your audio devices (Connect saves the device with the best settings for it and connects; **Import pairings from Windows** shows here too, see [Pairing Shared with Windows and Linux](#shared-pairing)), then **General Settings**: theme, **Start with Windows** and **Start in the tray** (a first setup turns both on), notifications and **Check for Updates on Startup**. See [Setup](setup#first-run). **Settings > Run setup** opens it again.
+The first start (no audio device yet, or no adapter with WinUSB) opens the **Setup Wizard**: choose the adapter, driver and firmware, find your audio devices (Connect saves the device with the best settings for it and connects; **Import pairings from Windows** shows here too, see [Services and Pairing Keys](#shared-pairing)), then **General Settings**: theme, **Start with Windows** and **Start in the tray** (a first setup turns both on), notifications and **Check for Updates on Startup**. See [Setup](setup#first-run). **Settings > Run setup** opens it again.
 
 ## Tray and Flyout {#tray}
 
@@ -534,12 +534,12 @@ Both sides count the packets of a stream from its first packet, so the packets s
 
 The receiver's adapter is not available to its own Bluetooth stack while the tool runs. Discovery uses a UDP broadcast on port 51201, so both PCs must be on the same network segment (otherwise enter the address). See `tools/linux_sink/README.md` for all options and the statistics protocol.
 
-## Pairing Shared with Windows and Linux {#shared-pairing}
+## Services and Pairing Keys {#shared-pairing}
 
-In developer mode, a saved classic device has two more buttons on **Audio Devices**:
+In developer mode, a saved classic device has a **Services** tag on **Audio Devices**. It opens:
 
-- **Services**: the services the device lists, named as Windows' Bluetooth Services list names them (the Bluetooth name, with the device's own in quotes such as *Serial Port 'GAIA'*; **Unknown service** for a vendor's), each with its UUIDs. Asked while the device is connected; when it is not, the list from its last connection since BlueCaster started is shown
-- **Pairing key**: the link key BlueCaster keeps for the device, and its type. **Copy key** copies it; **Copy for Linux** copies BlueZ's whole `info` file (name, trusted, the services when known, the link key): save it as `/var/lib/bluetooth/<adapter>/<device>/info` on Linux on the same PC and restart Bluetooth there, so it uses the pairing with the same adapter. There are no LE keys: BlueCaster pairs devices over classic Bluetooth. Anyone with the key can pose as the device: do not share it
+- the services the device lists, as a table of **Name** (the Bluetooth name, else the device's own; **Unknown service** for a vendor's that has neither) and **GUID**. Asked while the device is connected; when it is not, the list from its last connection since BlueCaster started is shown
+- below them, **Pairing key**: the link key BlueCaster keeps for the device, and its type. **Copy key** copies it, for example to give another system on the same PC the same pairing with the same adapter. A device paired over classic Bluetooth has no LE keys (Long Term Key, Identity Resolving Key). Anyone with the key can pose as the device: do not share it
 
 **Import pairings from Windows**, on **Audio Devices** and in the setup's device step (an adapter on WinUSB; shown while Windows paired a device through it that BlueCaster has not saved), takes over the link keys Windows' Bluetooth kept for that adapter before it was given WinUSB: headphones paired with Windows through it then connect to BlueCaster without pairing again. Windows asks for administrator permission, since only the system may read those keys. A device BlueCaster already has a key for keeps its own (it was paired with BlueCaster later, so Windows' key is the old one). Keys Windows made with another adapter, such as the PC's built-in Bluetooth, do not work: a pairing belongs to the adapter's address. Windows does not keep a key's type, so an imported key gets type 4. LE devices are not imported. Headphones it imports are added to the saved devices with the names Windows knows, ready to connect.
 
