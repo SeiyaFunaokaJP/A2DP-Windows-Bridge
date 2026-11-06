@@ -564,21 +564,36 @@ function AfhSection() {
       title={t("receiver.afh")}
       actions={
         <div class="afh-control">
-          <Segmented
-            label={t("receiver.afh")}
-            value={manual() ? "manual" : mode()}
-            options={[
-              { value: "auto", label: t("receiver.afh_auto") },
-              { value: "off", label: t("receiver.afh_off") },
-              { value: "manual", label: t("receiver.afh_manual") },
-              ...(developer() ? [{ value: "blend", label: t("receiver.afh_blend") }] : []),
-            ]}
-            onChange={(v) => {
-              setManual(v === "manual");
-              if (v === "manual") saveChannels();
-              else void saveSettings(app, { afh: v === "blend" ? "blend-medium" : v });
-            }}
-          />
+          <div class="afh-row">
+            <Segmented
+              label={t("receiver.afh")}
+              value={manual() ? "manual" : mode()}
+              options={[
+                { value: "auto", label: t("receiver.afh_auto") },
+                { value: "off", label: t("receiver.afh_off") },
+                { value: "manual", label: t("receiver.afh_manual") },
+                ...(developer() ? [{ value: "blend", label: t("receiver.afh_blend") }] : []),
+              ]}
+              onChange={(v) => {
+                setManual(v === "manual");
+                if (v === "manual") saveChannels();
+                else void saveSettings(app, { afh: v === "blend" ? "blend-medium" : v });
+              }}
+            />
+            <input
+              class="input mono afh-channels"
+              placeholder={manual() ? "6,11" : ""}
+              value={shown()}
+              readOnly={!manual()}
+              aria-label={t("receiver.afh_channels")}
+              aria-describedby="afh-channels-err"
+              aria-invalid={bad() ? "true" : undefined}
+              onInput={(e) => setChannels(e.currentTarget.value)}
+              onBlur={() => manual() && saveChannels()}
+              onKeyDown={(e) => manual() && e.key === "Enter" && saveChannels()}
+            />
+          </div>
+          {/* The strength on a row of its own, below the mode (issue #86) */}
           <Show when={!manual() && mode() === "blend"}>
             <Segmented
               label={t("receiver.afh_strictness")}
@@ -591,18 +606,6 @@ function AfhSection() {
               onChange={(v) => void saveSettings(app, { afh: `blend-${v}` })}
             />
           </Show>
-          <input
-            class="input mono afh-channels"
-            placeholder={manual() ? "6,11" : ""}
-            value={shown()}
-            readOnly={!manual()}
-            aria-label={t("receiver.afh_channels")}
-            aria-describedby="afh-channels-err"
-            aria-invalid={bad() ? "true" : undefined}
-            onInput={(e) => setChannels(e.currentTarget.value)}
-            onBlur={() => manual() && saveChannels()}
-            onKeyDown={(e) => manual() && e.key === "Enter" && saveChannels()}
-          />
         </div>
       }
     >
