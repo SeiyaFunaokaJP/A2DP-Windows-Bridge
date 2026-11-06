@@ -347,6 +347,7 @@
   "vbcable.download": "Download VB-Cable",
   "capture.mode": "Output Source",
   "capture.loopback": "System Loopback",
+  "capture.loopback_device": "System Loopback: %s",
   "capture.virtual": "Virtual Device",
   "capture.auto_switch": "Set as Windows default output while connected",
   "capture.mute_output": "Mute Windows default output while connected",

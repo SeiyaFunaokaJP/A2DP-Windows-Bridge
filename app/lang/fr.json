@@ -347,6 +347,7 @@
   "vbcable.download": "Télécharger VB-Cable",
   "capture.mode": "Source de sortie",
   "capture.loopback": "Bouclage système",
+  "capture.loopback_device": "Bouclage système : %s",
   "capture.virtual": "Périphérique virtuel",
   "capture.auto_switch": "Définir comme sortie par défaut de Windows pendant la connexion",
   "capture.mute_output": "Couper le son de la sortie par défaut de Windows pendant la connexion",

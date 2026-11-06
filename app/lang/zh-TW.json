@@ -347,6 +347,7 @@
   "vbcable.download": "下載 VB-Cable",
   "capture.mode": "輸出來源",
   "capture.loopback": "系統回送",
+  "capture.loopback_device": "系統回送: %s",
   "capture.virtual": "虛擬裝置",
   "capture.auto_switch": "連線時設為 Windows 預設輸出",
   "capture.mute_output": "連線時將 Windows 預設輸出靜音",

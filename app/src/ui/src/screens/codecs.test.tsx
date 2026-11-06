@@ -1074,7 +1074,10 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     expect(within(virtual).getByRole("option", { name: "CABLE Input (VB-Audio Virtual Cable)" })).toBeInTheDocument();
     const apps = await within(select).findByRole("group", { name: t("capture.app") });
     expect(within(apps).getByRole("option", { name: "Spotify" })).toBeInTheDocument();
-    expect(within(select).getByRole("option", { name: t("capture.loopback") })).toBeInTheDocument();
+    // With the default output it records (issue #86)
+    expect(
+      within(select).getByRole("option", { name: t("capture.loopback_device", "Speakers (Realtek(R) Audio)") }),
+    ).toBeInTheDocument();
     // What the source does, below it, with no info button (issue #86)
     expect(within(entry).queryByRole("button", { name: t("ui.more_info", t("capture.mode")) })).toBeNull();
     expect(within(entry).getByText(t("capture.hint_loopback"))).toBeInTheDocument();

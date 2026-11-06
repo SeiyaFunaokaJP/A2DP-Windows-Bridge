@@ -347,6 +347,7 @@
   "vbcable.download": "下载 VB-Cable",
   "capture.mode": "输出源",
   "capture.loopback": "系统环回",
+  "capture.loopback_device": "系统环回: %s",
   "capture.virtual": "虚拟设备",
   "capture.auto_switch": "连接期间设为 Windows 默认输出设备",
   "capture.mute_output": "连接期间将 Windows 默认输出设备静音",

@@ -347,6 +347,7 @@
   "vbcable.download": "VB-Cableをダウンロード",
   "capture.mode": "出力ソース",
   "capture.loopback": "システムループバック",
+  "capture.loopback_device": "システムループバック: %s",
   "capture.virtual": "仮想デバイス",
   "capture.auto_switch": "接続中は Windows の既定の出力にする",
   "capture.mute_output": "接続中は Windows の既定の出力をミュートする",

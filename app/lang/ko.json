@@ -347,6 +347,7 @@
   "vbcable.download": "VB-Cable 다운로드",
   "capture.mode": "출력 소스",
   "capture.loopback": "시스템 루프백",
+  "capture.loopback_device": "시스템 루프백: %s",
   "capture.virtual": "가상 장치",
   "capture.auto_switch": "연결 중 Windows 기본 출력으로 설정",
   "capture.mute_output": "연결 중 Windows 기본 출력 음소거",
