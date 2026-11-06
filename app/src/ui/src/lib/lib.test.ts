@@ -10,6 +10,9 @@ import {
   autoPick,
   autoSampleRate,
   bitDepths,
+  matchedBitDepth,
+  matchedSampleRate,
+  nearestRate,
   bitrateNoteKey,
   capsForSettings,
   sbcCapsForSettings,
@@ -687,5 +690,23 @@ describe("Auto's value shown beside Auto (issue #86)", () => {
     expect(autoBitDepth("aac", null)).toBe(16);
     expect(autoBitDepth("lhdcv5", caps("lhdcv5", [48000], [16]))).toBe(16);
     expect(autoBitDepth("lhdcv5", caps("lhdcv5", [48000], [16, 24]))).toBe(24);
+  });
+  it("matching the PC, is the listed rate nearest the PC's, its family first (as caps.rs)", () => {
+    expect(nearestRate([44100, 48000, 88200, 96000], 192000)).toBe(96000);
+    expect(nearestRate([44100, 48000, 88200, 96000], 176400)).toBe(88200);
+    expect(nearestRate([44100, 48000, 96000], 88200)).toBe(44100);
+    expect(nearestRate([16000, 32000, 48000], 44100)).toBe(48000);
+    expect(nearestRate([44100], 96000)).toBe(44100);
+    expect(nearestRate([48000, 96000], 32000)).toBe(48000);
+    expect(nearestRate([], 96000)).toBe(96000);
+    expect(matchedSampleRate("ldac", caps("ldac", [44100, 48000, 96000]), 192000)).toBe(96000);
+    expect(matchedSampleRate("aac", caps("aac", [44100, 48000]), 96000)).toBe(48000);
+    expect(matchedSampleRate("aptx", caps("aptx", [44100, 48000]), 88200)).toBe(44100);
+  });
+  it("matching the PC, is 16-bit from a 16-bit output", () => {
+    expect(matchedBitDepth("ldac", null, 16)).toBe(16);
+    expect(matchedBitDepth("ldac", null, 32)).toBe(24);
+    expect(matchedBitDepth("aptxad", null, 16)).toBe(24);
+    expect(matchedBitDepth("lhdcv5", caps("lhdcv5", [48000], [16]), 24)).toBe(16);
   });
 });

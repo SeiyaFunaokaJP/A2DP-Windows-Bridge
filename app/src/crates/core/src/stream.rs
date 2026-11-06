@@ -1521,14 +1521,21 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // (44.1 kHz, say). Not the highest it lists nor the Windows mix rate
     // (issue #86: 96 kHz brought latency and trouble with no audible gain,
     // and Windows mixes at 48 kHz); 96 kHz when chosen. WASAPI resamples.
-    // Developer mode: Auto follows the captured output's format instead
+    // Developer mode: Auto follows the captured output's format instead, as
+    // near as the rates the device lists for the codec go
     let mix = (codec::dev::overrides().match_source && (req.sample_rate.is_none() || req.bit_depth.is_none()))
         .then(|| source_mix(&req.source))
         .flatten();
-    if let Some(m) = mix {
-        tracing::info!("codec: matching the source (developer mode): {} Hz, {}-bit", m.rate, m.bits);
+    let matched = mix.map(|m| remote.match_sample_rate(kind, m.rate));
+    if let (Some(m), Some(r)) = (mix, matched) {
+        tracing::info!(
+            "codec: matching the source (developer mode): {} Hz, {}-bit; {r} Hz of {:?} listed",
+            m.rate,
+            m.bits,
+            remote.listed_sample_rates(kind)
+        );
     }
-    let mut preferred = req.sample_rate.or(mix.map(|m| m.rate)).unwrap_or(AUTO_SAMPLE_RATE);
+    let mut preferred = req.sample_rate.or(matched).unwrap_or(AUTO_SAMPLE_RATE);
     tracing::debug!(
         "capture rate: {preferred} Hz preferred ({})",
         if req.sample_rate.is_some() {
