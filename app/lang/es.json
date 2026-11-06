@@ -404,7 +404,7 @@
   "ui.dev.auto_codec_settings": "Usar los ajustes de cada códec al elegir el códec automáticamente",
   "ui.dev.auto_codec_settings_hint": "Con la selección automática activada, el códec elegido se conecta con los ajustes del … de su tarjeta.",
   "ui.dev.match_source": "Igualar la frecuencia y la profundidad de bits a la salida del PC",
-  "ui.dev.match_source_hint": "Si la frecuencia o la profundidad de bits de un códec está en Automático, sigue el formato de la salida en Windows.",
+  "ui.dev.match_source_hint": "Si la frecuencia o los bits de un códec están en Automático, siguen la salida del PC según admitan los auriculares.",
   "ui.dev.ignore_sink_max": "Ignorar la tasa de bits máxima del dispositivo",
   "ui.dev.volume_mixer": "Usar el mezclador de volumen",
   "ui.dev.volume_mixer_hint": "No recomendado: puede no coincidir con los controles de volumen de Windows. Usa VB-Cable.",
