@@ -46,6 +46,9 @@ fn main() {
         crash_dir: Some(bluecaster_core::paths::crash_dir(&config)),
         dev,
     });
+    if let Some(note) = bluecaster_core::paths::take_folder_note() {
+        tracing::info!("{note}");
+    }
     let code = if cli_mode { cli::run(&args) } else { resident::run(&args) };
     // process::exit skips destructors: flush the log first
     drop(log);
