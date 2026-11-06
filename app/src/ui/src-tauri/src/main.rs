@@ -28,9 +28,11 @@ fn main() {
     let _log = logging::init();
     let flyout = std::env::args().any(|a| a == "--flyout");
     let quick_settings = std::env::args().any(|a| a == "--quick-settings");
+    // (not when a core of this version runs already: it holds their
+    // mutexes itself, and has dealt with their folder)
     fn old_app_runs() -> bool {
         use win_sys::single_instance::{V1_MUTEX_NAME, is_held};
-        is_held(&ipc::old_core_mutex_name()) || is_held(V1_MUTEX_NAME)
+        !is_held(&ipc::core_mutex_name()) && (is_held(&ipc::old_core_mutex_name()) || is_held(V1_MUTEX_NAME))
     }
     tracing::info!(
         "bluecaster {} starting{} (WebView2 {})",
