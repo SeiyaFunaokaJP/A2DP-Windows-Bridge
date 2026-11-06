@@ -1051,11 +1051,7 @@ option {
   display: grid;
   /* Wide enough for the codec's details unwrapped, ABR included (issue #86) */
   grid-template-columns: 15rem 1fr;
-  /* One row exactly the window's height: with an auto row, a tall
-     navigation (many devices' status blocks, whose 50% then has nothing
-     fixed to refer to) grew the row past the window, and the content's
-     scroll area with it, so its end and its scrollbar's lower part were
-     cut off */
+  /* The window's height, so a tall navigation can't push the content's end out */
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
 }
@@ -1067,8 +1063,7 @@ option {
   background: var(--bg-nav);
   border-right: 1px solid var(--border);
   min-width: 0;
-  /* A window too low for the whole navigation scrolls it (a thin bar: the
-     collapsed rail is narrow) */
+  /* Only when even one device block doesn't fit */
   min-height: 0;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -1125,15 +1120,17 @@ option {
   white-space: nowrap;
 }
 
-/* One block per device (issue #86); many devices scroll */
+/* One block per device (issue #86); many devices scroll, and a low window
+   shrinks them first, so the navigation needs no second scrollbar */
 .status-pills {
   display: flex;
   flex-direction: column;
   gap: var(--s2);
   max-height: 50%;
   overflow-y: auto;
-  min-height: 0;
-  flex: none;
+  scrollbar-width: thin;
+  min-height: 2.25rem;
+  flex: 0 1 auto;
 }
 .status-pill {
   display: flex;
