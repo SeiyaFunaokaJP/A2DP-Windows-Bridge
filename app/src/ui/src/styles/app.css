@@ -1051,6 +1051,8 @@ option {
   display: grid;
   /* Wide enough for the codec's details unwrapped, ABR included (issue #86) */
   grid-template-columns: 15rem 1fr;
+  /* The window's height, so a tall navigation can't push the content's end out */
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
 }
 .nav {
@@ -1061,6 +1063,10 @@ option {
   background: var(--bg-nav);
   border-right: 1px solid var(--border);
   min-width: 0;
+  /* Only when even one device block doesn't fit */
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .nav-top {
   display: flex;
@@ -1114,15 +1120,17 @@ option {
   white-space: nowrap;
 }
 
-/* One block per device (issue #86); many devices scroll */
+/* One block per device (issue #86); many devices scroll, and a low window
+   shrinks them first, so the navigation needs no second scrollbar */
 .status-pills {
   display: flex;
   flex-direction: column;
   gap: var(--s2);
   max-height: 50%;
   overflow-y: auto;
-  min-height: 0;
-  flex: none;
+  scrollbar-width: thin;
+  min-height: 2.25rem;
+  flex: 0 1 auto;
 }
 .status-pill {
   display: flex;
