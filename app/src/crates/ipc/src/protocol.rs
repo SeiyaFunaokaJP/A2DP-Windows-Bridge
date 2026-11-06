@@ -622,6 +622,9 @@ pub struct DevOverrides {
     /// (ms, 50..=2000); 0 = the default (350). Applies to the next stream
     #[ts(type = "number")]
     pub queue_max_wait_ms: u32,
+    /// Audio waits unencoded while the send queue is backed up (ABR then
+    /// lowers its bit rate too). Applies to the next stream
+    pub encode_at_send: bool,
 }
 
 /// Developer mode's override of one vendor's protocol

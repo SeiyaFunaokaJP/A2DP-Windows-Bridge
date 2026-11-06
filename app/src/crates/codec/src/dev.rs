@@ -44,6 +44,9 @@ pub struct DevOverrides {
     /// in ms (QUEUE_WAIT_MIN..=QUEUE_WAIT_MAX); 0 = the default (350 ms).
     /// Takes effect when the next stream starts
     pub queue_max_wait_ms: u32,
+    /// Audio waits unencoded while the send queue is backed up, so it goes
+    /// out at the bit rate ABR has lowered to meanwhile (issue #279)
+    pub encode_at_send: bool,
 }
 
 /// Range of [`DevOverrides::queue_max_wait_ms`] (ms)
@@ -69,6 +72,7 @@ static CURRENT: RwLock<DevOverrides> = RwLock::new(DevOverrides {
     match_source: false,
     ignore_sink_max: false,
     queue_max_wait_ms: 0,
+    encode_at_send: false,
 });
 
 /// The overrides in force

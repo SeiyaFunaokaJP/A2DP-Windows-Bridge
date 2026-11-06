@@ -181,7 +181,11 @@ fn link_sample(
         }),
         bandwidth_share: air.map(|a| a.bandwidth_share),
         queue_capacity: iso.is_none().then_some(bt_host::stats::MEDIA_QUEUE_PACKETS as u32),
-        queue_ms: iso.is_none().then(|| stats.queue_wait_ms.load(Ordering::Relaxed)),
+        // With the audio held back unencoded (developer mode), which waits
+        // for the radio as well
+        queue_ms: iso
+            .is_none()
+            .then(|| stats.queue_wait_ms.load(Ordering::Relaxed) + stats.held_ms.load(Ordering::Relaxed)),
         encode,
         sink_delay_ms: if iso.is_some() { None } else { stats.sink_delay().map(|d| d.as_secs_f64() * 1000.0) },
         source_rate: Some(source_rate),

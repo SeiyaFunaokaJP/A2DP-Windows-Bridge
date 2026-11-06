@@ -41,6 +41,10 @@ pub struct LinkStats {
     /// Longest a packet may wait in the send queue (ms; 0 =
     /// [`MEDIA_QUEUE_MAX_WAIT`]): core sets it when a stream starts
     pub queue_max_wait_ms: AtomicU32,
+    /// Audio the encode thread holds back unencoded while the send queue is
+    /// backed up (ms; developer mode's encode at send time, 0 otherwise).
+    /// It waits for the radio as much as queue_wait_ms does.
+    pub held_ms: AtomicU32,
     /// The playout delay the sink last reported (AVDTP Delay Report), in
     /// 100 us units plus one; 0 = none reported for this stream
     pub sink_delay: AtomicU32,

@@ -1222,6 +1222,10 @@ fn start_pipeline(
     host: &BtHost,
 ) -> (Pipeline, CaptureInput) {
     let abr = encoder.abr_active();
+    let hold = codec::dev::overrides().encode_at_send;
+    if hold {
+        tracing::info!("encode at send time: audio waits unencoded while the send queue is backed up (developer mode)");
+    }
     Pipeline::start(
         PipelineConfig {
             encoder,
@@ -1230,6 +1234,7 @@ fn start_pipeline(
             mtu,
             abr,
             buffer: BufferPreset::Standard,
+            hold,
             // Volume 0, or Windows' mute key under the output mute
             mute: Some(Box::new({
                 let zero = host.volume_is_zero();
