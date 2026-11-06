@@ -54,10 +54,12 @@ fn main() {
     drop(log);
     std::process::exit(code);
 }
-/// A 2.0.x core or v1 runs (paths::set_old_app_check)
+/// A 2.0.x core or v1 runs (paths::set_old_app_check). Not when a core of
+/// this version runs already: it holds their mutexes itself, and has dealt
+/// with their folder.
 fn old_app_runs() -> bool {
     use win_sys::single_instance::{V1_MUTEX_NAME, is_held};
-    is_held(&ipc::old_core_mutex_name()) || is_held(V1_MUTEX_NAME)
+    !is_held(&ipc::core_mutex_name()) && (is_held(&ipc::old_core_mutex_name()) || is_held(V1_MUTEX_NAME))
 }
 
 fn core_state(s: ipc::StreamState) -> bluecaster_core::StreamState {
