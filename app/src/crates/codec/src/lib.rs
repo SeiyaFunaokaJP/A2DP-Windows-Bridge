@@ -14,6 +14,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod abr;
 pub mod caps;
 pub mod dev;
 pub mod sbc;
