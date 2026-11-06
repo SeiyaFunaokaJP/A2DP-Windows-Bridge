@@ -415,7 +415,7 @@
   "ui.dev.queue_wait_hint": "50 à 2000 ; vide = 350. L'audio plus ancien est abandonné. S'applique au prochain flux.",
   "ui.dev.queue_wait_auto": "350",
   "ui.dev.encode_at_send": "Encoder à l'envoi",
-  "ui.dev.encode_at_send_hint": "Avec l'ABR, l'audio retenu par une coupure part au débit réduit. S'applique au prochain flux.\nPour SBC, SBC XQ, LDAC, LHDC V5 et aptX Adaptive.",
+  "ui.dev.encode_at_send_hint": "Avec l'ABR, l'audio retenu par une coupure part au débit réduit.\nPour SBC, SBC XQ, LDAC, LHDC V5 et aptX Adaptive.",
   "ui.dev.aac_config_bitrate0": "Débit 0 dans la configuration",
   "ui.dev.aac_config_bitrate0_hint": "Envoie 0 (inconnu) comme débit lors de la configuration de l'appareil audio.",
   "ui.dev.aac_latm_v0": "Ancien format LATM (2.0.2 et avant)",
