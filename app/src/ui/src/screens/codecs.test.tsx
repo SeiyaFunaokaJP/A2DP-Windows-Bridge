@@ -759,6 +759,25 @@ describe("codec settings", () => {
 });
 
 describe("codec settings within what the device lists (issue #86: moto buds+)", () => {
+  it("matching the PC's output, Auto shows the listed rate nearest it (developer mode)", async () => {
+    const { core } = start("#/codecs", "capped");
+    // The default output at 44.1 kHz / 16-bit
+    const call = mock!.call.bind(mock!);
+    mock!.call = async (method, params) => {
+      const r = await call(method, params);
+      if (method !== "audio.devices") return r;
+      return (r as { is_default: boolean }[]).map((d) => (d.is_default ? { ...d, mix_rate: 44100, mix_bits: 16 } : d));
+    };
+    const moto = await section("moto buds+");
+    const settings = core.state.snap!.settings;
+    await core.request("settings.set", {
+      settings: { ...settings, developer_mode: true, dev_overrides: { ...settings.dev_overrides, match_source: true } },
+    });
+    const dialog = await codecSettings(moto, "codec.lhdc_v5");
+    const rate = within(dialog).getByLabelText(t("connection.sample_rate"));
+    await waitFor(() => expect(within(rate).getAllByRole("option")[0]).toHaveTextContent(t("codec.auto_value", "44100 Hz")));
+  });
+
   it("LHDC V5 offers only the rates the device lists", async () => {
     start("#/codecs", "capped");
     const dialog = await codecSettings(await section("moto buds+"), "codec.lhdc_v5");

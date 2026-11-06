@@ -967,6 +967,13 @@ impl RemoteCaps {
         }
     }
 
+    /// The rate `kind` streams at to match the PC's `source` rate, from
+    /// those the sink lists (developer mode's match_source): see
+    /// [`nearest_rate`]
+    pub fn match_sample_rate(&self, kind: CodecKind, source: u32) -> u32 {
+        nearest_rate(&self.listed_sample_rates(kind), source)
+    }
+
     /// The bit depths the sink lists for `kind` (LHDC V5 only; empty for
     /// the others: no choice, or the sink does not say)
     pub fn listed_bit_depths(&self, kind: CodecKind) -> Vec<u32> {
@@ -1499,6 +1506,20 @@ impl RemoteCaps {
     }
 }
 
+/// Of `listed` (lowest first), the rate nearest the PC's `source` rate:
+/// `source` itself, else one of its family (44.1 kHz multiples or not: no
+/// fractional resampling), the highest below it, else the lowest above it;
+/// else from the other family the lowest above it (nothing lost), else the
+/// highest below it. `source` when none is listed (the encoder's own picker
+/// decides)
+pub fn nearest_rate(listed: &[u32], source: u32) -> u32 {
+    let family = |r: u32| r.is_multiple_of(11025);
+    let (same, other): (Vec<u32>, Vec<u32>) = listed.iter().partition(|&&r| family(r) == family(source));
+    let below = |rates: &[u32]| rates.iter().rev().find(|&&r| r <= source).copied();
+    let above = |rates: &[u32]| rates.iter().find(|&&r| r >= source).copied();
+    below(&same).or_else(|| above(&same)).or_else(|| above(&other)).or_else(|| below(&other)).unwrap_or(source)
+}
+
 fn aptx_freq_bits(kind: CodecKind, remote_caps: u8, sample_rate: u32) -> Result<u8, ConfigError> {
     let freq = match sample_rate {
         44100 => APTX_FREQ_44100,
@@ -1955,6 +1976,25 @@ mod tests {
         assert_eq!(a.object_type_names(), vec!["MPEG-2 AAC-LC", "MPEG-4 HE-AAC"]);
         assert_eq!(a.sample_rates(), vec![44100, 48000, 96000]);
         assert_eq!(a.channel_counts(), vec![1, 2]);
+    }
+
+    #[test]
+    fn nearest_rate_keeps_the_family() {
+        let ldac = [44100, 48000, 88200, 96000];
+        assert_eq!(nearest_rate(&ldac, 48000), 48000);
+        assert_eq!(nearest_rate(&ldac, 192000), 96000);
+        assert_eq!(nearest_rate(&ldac, 176400), 88200);
+        // 44.1 kHz family first, even when 48 kHz is closer
+        let lhdc = [44100, 48000, 96000];
+        assert_eq!(nearest_rate(&lhdc, 88200), 44100);
+        assert_eq!(nearest_rate(&lhdc, 192000), 96000);
+        // No rate of its family: the lowest above, else the highest below
+        assert_eq!(nearest_rate(&[48000], 44100), 48000);
+        assert_eq!(nearest_rate(&[44100], 96000), 44100);
+        assert_eq!(nearest_rate(&[16000, 32000, 48000], 44100), 48000);
+        // Below every listed rate of its family
+        assert_eq!(nearest_rate(&[48000, 96000], 32000), 48000);
+        assert_eq!(nearest_rate(&[], 96000), 96000);
     }
 
     #[test]
