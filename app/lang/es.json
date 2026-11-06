@@ -413,6 +413,8 @@
   "ui.dev.queue_wait": "Límite de la cola de envío (ms)",
   "ui.dev.queue_wait_hint": "50 a 2000; vacío = 350. El audio más antiguo se descarta. Se aplica al siguiente stream.",
   "ui.dev.queue_wait_auto": "350",
+  "ui.dev.encode_at_send": "Codificar al enviar",
+  "ui.dev.encode_at_send_hint": "Con ABR, el audio retenido por un corte sale con la tasa de bits reducida. Se aplica al siguiente stream.",
   "ui.dev.aac_config_bitrate0": "Tasa de bits 0 en la configuración",
   "ui.dev.aac_config_bitrate0_hint": "Envía 0 (desconocida) como tasa de bits al configurar el dispositivo de audio.",
   "ui.dev.aac_latm_v0": "Formato LATM antiguo (2.0.2 y anteriores)",

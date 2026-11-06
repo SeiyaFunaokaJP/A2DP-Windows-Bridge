@@ -183,6 +183,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
       match_source: false,
       ignore_sink_max: false,
       queue_max_wait_ms: 0,
+      encode_at_send: false,
     },
     dev_vendors: {},
     dev_log: { keep_days: 7, day_cap_mb: 100, always_verbose: null, health_every_interval: false },

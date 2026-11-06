@@ -150,6 +150,9 @@ NEGOTIATION = {
     # up, so the bitpool stays at the ceiling; every frame within the range
     'sbc-abr': ('sbc', [], 'sbc', ['-a']),
     'sbcxq-abr': ('sbcxq', [], 'sbcxq', ['-a', '--rate', '44100']),
+    # Developer mode's encode at send time (DEV_SETTINGS), with ABR and without
+    'sbcxq-abr-hold': ('sbcxq', [], 'sbcxq', ['-a', '--rate', '44100']),
+    'ldac-hold': ('ldac', [], 'ldac', []),
     'faststream-44k': ('faststream', [], 'faststream', ['--rate', '44100']),
     # Auto never takes FastStream, even over SBC
     'auto-not-faststream': ('auto', ['--codecs', 'sbc', 'faststream', '--sbc-no-dual'], 'sbc', []),
@@ -264,6 +267,8 @@ NEGOTIATION = {
 # The settings.json a case starts with (developer mode)
 DEV_SETTINGS = {
     'force-ldac': {'debug_mode': True, 'dev_overrides': {'force_codec': True}},
+    'sbcxq-abr-hold': {'debug_mode': True, 'dev_overrides': {'encode_at_send': True}},
+    'ldac-hold': {'debug_mode': True, 'dev_overrides': {'encode_at_send': True}},
     'oppo-always': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'always'}}},
     'oppo-never': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'never'}}},
     'oppo-every-connection': {'debug_mode': True, 'dev_vendors': {'oppo': {'options': ['every_connection']}}},
@@ -274,6 +279,8 @@ ENCODED_1000, ENCODED_400 = 'encoder ready: LHDC V5 1000 kbps', 'encoder ready: 
 # What these cases' logs must, and must not, have: name -> (log, text, whether
 # it is there, or how many times)
 LOG_CHECKS = {
+    'sbcxq-abr-hold': [('bluecaster.log', 'encode at send time', True)],
+    'ldac-hold': [('bluecaster.log', 'encode at send time', True)],
     'huawei-ldac': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, False),
                     ('bluecaster.log', 'Emulated phone', False)],
     'huawei-no-mode': [('sink.log', 'Huawei control: 2BA2', False)],

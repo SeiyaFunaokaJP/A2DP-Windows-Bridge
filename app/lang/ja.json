@@ -413,6 +413,8 @@
   "ui.dev.queue_wait": "送信キューの上限 (ms)",
   "ui.dev.queue_wait_hint": "50～2000。空欄なら 350。これより古い音声は捨てます。次のストリームから適用。",
   "ui.dev.queue_wait_auto": "350",
+  "ui.dev.encode_at_send": "送信時にエンコード",
+  "ui.dev.encode_at_send_hint": "ABR がオンなら、途切れで待たされた音声も下げたビットレートで送ります。次のストリームから適用。",
   "ui.dev.aac_config_bitrate0": "設定のビットレートを 0 にする",
   "ui.dev.aac_config_bitrate0_hint": "オーディオデバイスへの設定で、ビットレートに 0（不明）を送ります。",
   "ui.dev.aac_latm_v0": "旧 LATM 形式（2.0.2 以前）",

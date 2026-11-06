@@ -413,6 +413,8 @@
   "ui.dev.queue_wait": "发送队列上限 (ms)",
   "ui.dev.queue_wait_hint": "50 到 2000；留空为 350。更早的音频会被丢弃。下次串流时生效。",
   "ui.dev.queue_wait_auto": "350",
+  "ui.dev.encode_at_send": "发送时编码",
+  "ui.dev.encode_at_send_hint": "开启 ABR 时，卡顿期间积压的音频也以降低后的码率发送。下次串流时生效。",
   "ui.dev.aac_config_bitrate0": "配置中的比特率为 0",
   "ui.dev.aac_config_bitrate0_hint": "配置音频设备时将比特率发送为 0（未知）。",
   "ui.dev.aac_latm_v0": "旧 LATM 格式（2.0.2 及更早）",
