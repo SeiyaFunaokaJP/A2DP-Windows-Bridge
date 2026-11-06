@@ -20,6 +20,8 @@ import {
   fixedBitDepth,
   fixedKbpsText,
   codecSpec,
+  matchedBitDepth,
+  matchedSampleRate,
   BITPOOL_MAX,
   BITPOOL_MAX_XQ,
   BITPOOL_MIN,
@@ -305,9 +307,11 @@ export function CodecSettings(props: {
   caps?: readonly CodecCaps[];
   /** Offers the SBC frame setup, which only counts then */
   developer?: boolean;
-  /** Developer mode: Auto follows the PC's output format (no value beside
-   *  Auto then) */
+  /** Developer mode: Auto follows the PC's output format, as far as the
+   *  device lists it (no value beside Auto while the format is not known) */
   matchSource?: boolean;
+  /** The format Windows plays the profile's source in (null: not known) */
+  sourceFormat?: { rate: number; bits: number } | null;
   /** Who listed what is offered, once it did */
   deviceName?: string;
   /** Forgets what the device listed (LHDC V5: OPPO earbuds are then asked
@@ -398,6 +402,22 @@ export function CodecSettings(props: {
   const depths = () => {
     const offered = offeredBitDepths(v.codec, caps());
     return offered.includes(v.bit_depth) ? offered : [...offered, v.bit_depth];
+  };
+  // Auto with the value it streams at (issue #86); matching the PC's output,
+  // the value only once its format is known
+  const autoRateLabel = () => {
+    if (!props.matchSource) return t("codec.auto_value", `${autoSampleRate(v.codec, caps())} Hz`);
+    const f = props.sourceFormat;
+    return f ? t("codec.auto_value", `${matchedSampleRate(v.codec, caps(), f.rate)} Hz`) : t("codec.auto");
+  };
+  const autoDepthLabel = () => {
+    const f = props.sourceFormat;
+    const bits = !props.matchSource
+      ? autoBitDepth(v.codec, caps())
+      : f
+        ? matchedBitDepth(v.codec, caps(), f.bits)
+        : 0;
+    return bits ? t("codec.auto_value", t(`bitdepth.${bits}`)) : t("codec.auto");
   };
   // One rate or bit depth the device takes: a fixed value, not Auto and that
   // value to choose between
@@ -518,12 +538,7 @@ export function CodecSettings(props: {
                 value={v.sample_rate}
                 options={rates().map((r) => {
                   // Auto with the rate it streams at (issue #86)
-                  const label =
-                    r === 0
-                      ? props.matchSource
-                        ? t("codec.auto")
-                        : t("codec.auto_value", `${autoSampleRate(v.codec, caps())} Hz`)
-                      : `${r} Hz`;
+                  const label = r === 0 ? autoRateLabel() : `${r} Hz`;
                   const listed = offeredSampleRates(v.codec, caps()).includes(r);
                   return { value: r, label: listed ? label : t("ui.profile.sbc_not_offered", label) };
                 })}
@@ -553,9 +568,7 @@ export function CodecSettings(props: {
                   value: b,
                   label:
                     b === 0
-                      ? props.matchSource
-                        ? t("codec.auto")
-                        : t("codec.auto_value", t(`bitdepth.${autoBitDepth(v.codec, caps())}`))
+                      ? autoDepthLabel()
                       : offeredBitDepths(v.codec, caps()).includes(b)
                         ? t(`bitdepth.${b}`)
                         : t("ui.profile.sbc_not_offered", t(`bitdepth.${b}`)),
@@ -619,11 +632,12 @@ export function CodecSettings(props: {
             </Field>
           </Show>
         </Show>
-        <Show when={v.codec === "lhdcv5" && listed() && props.onForgetReport}>
+        {/* OPPO's Hi-Res request: niche, so developer mode (issue #86) */}
+        <Show when={v.codec === "lhdcv5" && listed() && props.developer && props.onForgetReport}>
           {(forget) => (
             <div>
               <Button icon="arrow_reset" onClick={() => forget()()}>
-                {t("ui.profile.forget_report")}
+                {t("ui.profile.ask_hi_res_again")}
               </Button>
             </div>
           )}

@@ -30,38 +30,36 @@ async function open(hash: string, developer: boolean) {
 }
 
 describe("device pairing", () => {
-  it("has no services or key buttons without developer mode", async () => {
+  it("has no Services tag without developer mode", async () => {
     await open("#/devices", false);
     await screen.findAllByText(t("device.tag_saved"));
     expect(screen.queryByRole("button", { name: t("ui.pairing.services") })).toBeNull();
-    expect(screen.queryByRole("button", { name: t("ui.pairing.key_title") })).toBeNull();
     // The tag is a tag, not a button (issue #86)
     expect(screen.queryByRole("button", { name: t("device.tag_saved") })).toBeNull();
   });
 
-  it("lists the services as Windows names them (issue #86)", async () => {
+  it("lists the services as a table, the key below them (issue #86)", async () => {
     const { calls } = await open("#/devices", true);
-    const [button] = await screen.findAllByRole("button", { name: t("ui.pairing.services") });
-    fireEvent.click(button);
+    const [tag] = await screen.findAllByRole("button", { name: t("ui.pairing.services") });
+    expect(tag).toHaveClass("tag");
+    fireEvent.click(tag);
     const dialog = await screen.findByRole("dialog", { name: t("ui.pairing.services") });
-    expect(await within(dialog).findByText("Audio Sink")).toBeInTheDocument();
-    expect(within(dialog).getByText("A/V Remote Control")).toBeInTheDocument();
-    // The SIG name with the device's own, and one known to neither
-    expect(within(dialog).getByText("Serial Port 'GAIA'")).toBeInTheDocument();
-    expect(within(dialog).getByText(t("ui.pairing.unknown_service"))).toBeInTheDocument();
-    expect(within(dialog).queryByText("00112233445566778899AABBCCDDEEFF")).toBeNull();
-    expect(calls.filter((c) => c.method === "device.services")).toHaveLength(1);
-  });
-
-  it("shows the key and copies BlueZ' whole info file", async () => {
-    await open("#/devices", true);
-    const [button] = await screen.findAllByRole("button", { name: t("ui.pairing.key_title") });
-    fireEvent.click(button);
-    const dialog = await screen.findByRole("dialog", { name: t("ui.pairing.key_title") });
+    const table = await within(dialog).findByRole("table");
+    expect(within(table).getByRole("columnheader", { name: t("ui.pairing.col_name") })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: t("ui.pairing.col_guid") })).toBeInTheDocument();
+    expect(within(table).getByText("Audio Sink")).toBeInTheDocument();
+    expect(within(table).getByText("A/V Remote Control")).toBeInTheDocument();
+    // One name: the SIG's, not the device's beside it; one known to neither
+    expect(within(table).getByText("Serial Port")).toBeInTheDocument();
+    expect(within(table).queryByText(/GAIA/)).toBeNull();
+    expect(within(table).getByText(t("ui.pairing.unknown_service"))).toBeInTheDocument();
+    // The key in the same dialog, with no Linux file
     expect(await within(dialog).findByText("00112233445566778899AABBCCDDEEFF")).toBeInTheDocument();
     expect(within(dialog).getByText(t("ui.pairing.key_type", 4))).toBeInTheDocument();
     expect(within(dialog).getByText(t("ui.pairing.no_le_keys"))).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: t("ui.pairing.copy_linux") })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: t("ui.pairing.copy_key") })).toBeInTheDocument();
+    expect(within(dialog).getAllByRole("button").map((b) => b.textContent)).not.toContain("Copy for Linux");
+    expect(calls.filter((c) => c.method === "device.services")).toHaveLength(1);
   });
 
   it("imports Windows' pairings on Audio Devices, without developer mode (issue #86)", async () => {
