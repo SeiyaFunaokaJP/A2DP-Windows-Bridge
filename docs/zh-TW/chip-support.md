@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # 加入晶片支援
 
-BlueCaster 會自行驅動藍牙介面卡（WinUSB），因此介面卡能運作之前，它必須做到廠商的 Windows 驅動程式所做的事：許多晶片每次啟動時都需要載入韌體。Realtek、Intel、Broadcom 與 CSR 介面卡目前可以使用，MediaTek MT7925、MT7922、MT7921 與 MT7902 則為實驗性支援；其他 MediaTek 晶片（MT7927 及較舊的晶片）與 Qualcomm（QCA61x4）則不行，因為還沒有人為它們寫出載入程式。`app/src/crates/bt-host/src/mediatek.rs`（MT79xx 的載入程式）是實際可用的載入程式，可作為支援其他 MediaTek 晶片的起點。
+BlueCaster 會自行驅動藍牙介面卡（WinUSB），因此介面卡能運作之前，它必須做到廠商的 Windows 驅動程式所做的事：許多晶片每次啟動時都需要載入韌體。Realtek、Intel、Broadcom 與 CSR 介面卡目前可以使用，MediaTek MT7925、MT7922、MT7921、MT7902 與 Qualcomm QCA61x4、QCA9377、WCN6855 則為實驗性支援；其他 MediaTek 晶片（MT7927 及較舊的晶片）與 Qualcomm 晶片（QCA6290、WCN785x）則不行，因為還沒有人為它們寫出載入程式。`app/src/crates/bt-host/src/mediatek.rs`（MT79xx 的載入程式）是實際可用的載入程式，可作為支援其他 MediaTek 晶片的起點。
 
 本頁說明如何加入一個載入程式。您需要一張採用該晶片的介面卡；維護者手上沒有這些介面卡。即使不寫程式碼也能幫忙：步驟 1 與 2 可產生其他貢獻者所需的回報。
 

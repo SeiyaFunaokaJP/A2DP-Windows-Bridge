@@ -122,7 +122,7 @@ The headphones start with **Auto** as the codec (**Codecs**) and the system audi
 
 ## Firmware (Realtek Adapters) {#firmware}
 
-Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) require proprietary firmware to operate. CSR adapters need no firmware. Intel, MediaTek MT79xx and Broadcom adapters (experimental) may need firmware files of their own: see [Recommended Adapters](#adapters).
+Realtek-based USB Bluetooth adapters (e.g., TP-Link UB500, RTL8761BU dongles) require proprietary firmware to operate. CSR adapters need no firmware. Intel, MediaTek MT79xx, Qualcomm and Broadcom adapters (experimental) may need firmware files of their own: see [Recommended Adapters](#adapters).
 
 ### In the App (Guided Download)
 
@@ -168,7 +168,8 @@ Which adapters and headphones have actually been used with BlueCaster, with the 
 | Broadcom | ASUS BT400 (BCM20702) | *Experimental.* Adapters that report the vendor class `FF/01/01` instead of Bluetooth `E0/01/01` (BCM20702 OEM dongles) are detected too. Runs on ROM firmware; an optional PatchRAM `.hcd` (e.g. `BCM20702A1-0b05-17cb.hcd`) in the firmware folder is uploaded at startup |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimental.* In bootloader mode (e.g. after a cold boot) needs the matching `ibt-*.sfi` + `ibt-*.ddc` from linux-firmware `intel/` in the firmware folder; the log names them (e.g. `ibt-0180-0041.sfi`). Only the AX211 has been tested so far |
 | MediaTek | MT7925, MT7922, MT7921, MT7902 (Wi-Fi cards such as the AMD RZ717, RZ616, RZ608) | *Experimental.* Needs the chip's `BT_RAM_CODE_MT*_hdr.bin` (e.g. `BT_RAM_CODE_MT7925_1_1_hdr.bin`), which BlueCaster reads from MediaTek's Windows Bluetooth driver when it is installed; otherwise put the file from linux-firmware `mediatek/` in the firmware folder; the log names it. Not yet tested on the hardware |
-| MediaTek, Qualcomm | Other MediaTek chips (MT7927), QCA61x4 | Not supported: need firmware loaders BlueCaster does not have ([help add one](chip-support)) |
+| Qualcomm | QCA61x4, QCA9377 (ROME), WCN6855 (FastConnect 6900) | *Experimental.* Needs the chip's rampatch and NVM (e.g. `AthrBT_0x00000302.dfu` and `ramps_0x00000302_48.dfu`), which BlueCaster reads from Qualcomm's Windows Bluetooth driver when it is installed; otherwise put the files from linux-firmware `qca/` (`rampatch_usb_*.bin`, `nvm_usb_*.bin`) in the firmware folder; the log names them. Not yet tested on the hardware |
+| MediaTek, Qualcomm | Other MediaTek chips (MT7927), other Qualcomm chips (QCA6290, WCN785x) | Not supported: need firmware loaders BlueCaster does not have ([help add one](chip-support)) |
 
 USB Bluetooth 5.0+ adapters generally work best for high-bitrate codecs like LDAC.
 

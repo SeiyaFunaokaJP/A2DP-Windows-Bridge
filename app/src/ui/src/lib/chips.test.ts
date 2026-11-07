@@ -179,6 +179,7 @@ describe("firmware state", () => {
     expect(vendorFirmwareUrl("Intel")).toBe(LINKS.firmwareIntel);
     expect(vendorFirmwareUrl("Broadcom")).toBe(LINKS.firmwareBroadcom);
     expect(vendorFirmwareUrl("MediaTek")).toBe(LINKS.firmwareMediaTek);
+    expect(vendorFirmwareUrl("Qualcomm")).toBe(LINKS.firmwareQualcomm);
     expect(vendorFirmwareUrl("CSR")).toBeNull();
     expect(firmwareUrl("Realtek")).toBe(LINKS.firmwareRealtek);
   });

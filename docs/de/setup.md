@@ -123,7 +123,7 @@ Die Kopfhörer beginnen mit **Automatisch** als Codec (**Codecs**) und dem Syste
 
 ## Firmware (Realtek-Adapter) {#firmware}
 
-USB-Bluetooth-Adapter mit Realtek-Chip (z. B. TP-Link UB500, RTL8761BU-Dongles) benötigen für den Betrieb eine proprietäre Firmware. CSR-Adapter benötigen keine Firmware. Intel-, MediaTek-MT79xx- und Broadcom-Adapter (experimentell) benötigen eventuell eigene Firmwaredateien: siehe [Empfohlene Adapter](#adapters).
+USB-Bluetooth-Adapter mit Realtek-Chip (z. B. TP-Link UB500, RTL8761BU-Dongles) benötigen für den Betrieb eine proprietäre Firmware. CSR-Adapter benötigen keine Firmware. Intel-, MediaTek-MT79xx-, Qualcomm- und Broadcom-Adapter (experimentell) benötigen eventuell eigene Firmwaredateien: siehe [Empfohlene Adapter](#adapters).
 
 ### In der App (geführter Download)
 
@@ -169,7 +169,8 @@ Welche Adapter und Kopfhörer tatsächlich mit BlueCaster verwendet wurden, mit 
 | Broadcom | ASUS BT400 (BCM20702) | *Experimentell.* Adapter, die statt der Bluetooth-Klasse `E0/01/01` die Herstellerklasse `FF/01/01` melden (OEM-Dongles mit BCM20702), werden ebenfalls erkannt. Läuft mit der ROM-Firmware; eine optionale PatchRAM-Datei `.hcd` (z. B. `BCM20702A1-0b05-17cb.hcd`) im Firmware-Ordner wird beim Start hochgeladen |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimentell.* Im Bootloader-Modus (z. B. nach einem Kaltstart) werden die passenden Dateien `ibt-*.sfi` + `ibt-*.ddc` aus linux-firmware `intel/` im Firmware-Ordner benötigt; das Protokoll nennt sie (z. B. `ibt-0180-0041.sfi`). Bisher nur mit dem AX211 getestet |
 | MediaTek | MT7925, MT7922, MT7921, MT7902 (Wi-Fi-Karten wie die AMD RZ717, RZ616, RZ608) | *Experimentell.* Benötigt die Datei `BT_RAM_CODE_MT*_hdr.bin` des Chips (z. B. `BT_RAM_CODE_MT7925_1_1_hdr.bin`), die BlueCaster aus dem Windows-Bluetooth-Treiber von MediaTek liest, wenn dieser installiert ist; andernfalls die Datei aus linux-firmware `mediatek/` in den Firmware-Ordner legen; das Protokoll nennt sie. Noch nicht auf der Hardware getestet |
-| MediaTek, Qualcomm | Andere MediaTek-Chips (MT7927), QCA61x4 | Nicht unterstützt: benötigen Firmware-Loader, die BlueCaster nicht hat ([beim Hinzufügen helfen](chip-support)) |
+| Qualcomm | QCA61x4, QCA9377 (ROME), WCN6855 (FastConnect 6900) | *Experimentell.* Benötigt Rampatch und NVM des Chips (z. B. `AthrBT_0x00000302.dfu` und `ramps_0x00000302_48.dfu`), die BlueCaster aus dem Windows-Bluetooth-Treiber von Qualcomm liest, wenn dieser installiert ist; andernfalls die Dateien aus linux-firmware `qca/` (`rampatch_usb_*.bin`, `nvm_usb_*.bin`) in den Firmware-Ordner legen; das Protokoll nennt sie. Noch nicht auf der Hardware getestet |
+| MediaTek, Qualcomm | Andere MediaTek-Chips (MT7927), andere Qualcomm-Chips (QCA6290, WCN785x) | Nicht unterstützt: benötigen Firmware-Loader, die BlueCaster nicht hat ([beim Hinzufügen helfen](chip-support)) |
 
 USB-Bluetooth-Adapter ab Version 5.0 eignen sich im Allgemeinen am besten für Codecs mit hoher Bitrate wie LDAC.
 
