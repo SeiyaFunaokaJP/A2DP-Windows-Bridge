@@ -125,7 +125,7 @@ earlier versions first, and the app takes their settings over at its first start
   uninstaller deletes it). An `A2DPWB` value that starts anything else stays. The uninstaller
   removes `BlueCaster` when it points at that installation.
 - The uninstall wizard has a page with two choices, both on by default:
-  - **Restore the original Bluetooth driver** (shown only when there are records): the core
+  - **Restore the original Bluetooth driver** (on when there are records): the core
     keeps one record per adapter it put on WinUSB in `%APPDATA%\BlueCaster\adapters\driver\` (the
     `assign` result, deleted by **Restore driver**; before 3.0.0 `driver\` in the settings folder,
     which the uninstaller still reads when it has the records); the uninstaller runs
@@ -133,6 +133,11 @@ earlier versions first, and the app takes their settings over at its first start
     the records of the adapters given back are deleted. An unplugged adapter keeps its record and
     the uninstaller points to Device Manager. An adapter that already had WinUSB (Zadig) when
     BlueCaster was asked to assign it is left alone.
+  - Without records, the same choice is shown **off** when Bluetooth adapters are on WinUSB
+    anyway (Zadig, v1, by hand): `bluecaster-driver.exe unrecorded --records <folder>` lists them
+    without a UAC prompt (exit code 0 when there is one; a Bluetooth class ID or an HCI interface
+    read through WinUSB, not any WinUSB device). Chosen, the uninstaller adds `--unrecorded` and
+    Windows chooses their driver. Off by default: an adapter may be on WinUSB for another program.
   - **Delete user data**: `%APPDATA%\BlueCaster` (settings, codecs, pairings, firmware; not a folder
     that `BLUECASTER_CONFIG_DIR` names) and the window's own data
     (`%LOCALAPPDATA%\io.github.seiyafunaokajp.bluecaster`), and what 2.0.x may have left of them

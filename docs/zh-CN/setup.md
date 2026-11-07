@@ -71,7 +71,7 @@ BlueCaster 通过 WinUSB（Windows 自带的通用 USB 驱动程序）直接与 
 {: .warning }
 分配 WinUSB 期间，Windows 自带的 Bluetooth 将不再识别该适配器：通过它与 Windows 配对的设备在恢复驱动程序之前都无法使用。键盘、鼠标等普通外设请使用内置 Bluetooth。属于 USB 设备的内置适配器（许多笔记本电脑上的 Realtek 适配器）也可以交给 BlueCaster 使用，但在恢复其驱动程序之前，**PC 将完全无法使用 Windows Bluetooth**（Bluetooth 设置、鼠标、键盘、其他音频设备）。
 
-同一页面上的**恢复原始驱动程序**会将适配器交还给 Windows：Windows 会重新为其选择自己的驱动程序（通常是其 Bluetooth 驱动程序），适配器即可配合 Windows 的 Bluetooth 使用。在重新分配 WinUSB 之前，BlueCaster 无法通过它串流。Windows 一次只运行一个 Bluetooth 适配器：如果另一个适配器正在使用中，BlueCaster 会在恢复后给出提示；只有在设备管理器中禁用那个适配器并重新插拔此适配器后，它才能在 Windows 中使用。BlueCaster 重新配对过的耳机使用的是新密钥，因此 Windows 原有的配对可能失效：对话框会列出 Windows 也配对过的设备；如果其中某台无法连接，请在 Windows 设置中删除它并重新配对。卸载程序也提供同样的操作：卸载向导的一个页面上有**恢复原来的蓝牙驱动程序**（当 BlueCaster 为适配器分配了 WinUSB 时；只请求一次管理员权限）和**删除用户数据**（`%APPDATA%\BlueCaster` 中的设置、编解码器、配对和固件，以及窗口记住的内容，例如**仅显示支持的编解码器**），两者默认都已开启。更新时以及静默卸载（`/S`）时会保留 WinUSB。
+同一页面上的**恢复原始驱动程序**会将适配器交还给 Windows：Windows 会重新为其选择自己的驱动程序（通常是其 Bluetooth 驱动程序），适配器即可配合 Windows 的 Bluetooth 使用。在重新分配 WinUSB 之前，BlueCaster 无法通过它串流。Windows 一次只运行一个 Bluetooth 适配器：如果另一个适配器正在使用中，BlueCaster 会在恢复后给出提示；只有在设备管理器中禁用那个适配器并重新插拔此适配器后，它才能在 Windows 中使用。BlueCaster 重新配对过的耳机使用的是新密钥，因此 Windows 原有的配对可能失效：对话框会列出 Windows 也配对过的设备；如果其中某台无法连接，请在 Windows 设置中删除它并重新配对。卸载程序也提供同样的操作：卸载向导的一个页面上有**恢复原来的蓝牙驱动程序**（当 BlueCaster 为适配器分配了 WinUSB 时；只请求一次管理员权限）和**删除用户数据**（`%APPDATA%\BlueCaster` 中的设置、编解码器、配对和固件，以及窗口记住的内容，例如**仅显示支持的编解码器**），两者默认都已开启。如果只有没有该记录的适配器（用 Zadig 或 v1 设置的）在使用 WinUSB，第一项会显示但默认关闭：选择后由 Windows 选择驱动程序。更新时以及静默卸载（`/S`）时会保留 WinUSB。
 
 ### 改用 Zadig {#zadig}
 
