@@ -53,6 +53,7 @@ describe("device pairing", () => {
     expect(within(table).getByText("Serial Port")).toBeInTheDocument();
     expect(within(table).queryByText(/GAIA/)).toBeNull();
     expect(within(table).getByText(t("ui.pairing.unknown_service"))).toBeInTheDocument();
+    expect(within(table).getByText("Google Fast Pair")).toBeInTheDocument();
     // The key in the same dialog, with no Linux file
     expect(await within(dialog).findByText("00112233445566778899AABBCCDDEEFF")).toBeInTheDocument();
     expect(within(dialog).getByText(t("ui.pairing.key_type", 4))).toBeInTheDocument();
@@ -89,17 +90,26 @@ describe("device pairing", () => {
     expect(within(dialog).queryByText(t("ui.pairing.le_keys_hint"))).toBeNull();
   });
 
-  it("reverses a key's byte order, and copies it as shown (issue #86)", async () => {
+  it("reverses every key's byte order with one switch (issue #86)", async () => {
     await open("#/devices", true);
+    mock!.leKeys = {
+      long_term_key: "0f0e0d0c0b0a09080706050403020100",
+      key_size: 16,
+      identity_resolving_key: null,
+      identity_address: "C0:11:22:33:44:55",
+      identity_random: true,
+    };
     const [tag] = await screen.findAllByRole("button", { name: t("ui.pairing.services") });
     fireEvent.click(tag);
     const dialog = await screen.findByRole("dialog", { name: t("ui.pairing.services") });
     await within(dialog).findByText("00112233445566778899AABBCCDDEEFF");
-    const [reverse] = within(dialog).getAllByRole("button", { name: t("ui.pairing.reverse_bytes") });
-    expect(reverse).toHaveAttribute("aria-pressed", "false");
+    expect(within(dialog).queryByRole("button", { name: t("ui.pairing.reverse_bytes") })).toBeNull();
+    const reverse = within(dialog).getByRole("switch", { name: t("ui.pairing.reverse_bytes") });
+    expect(reverse).not.toBeChecked();
     fireEvent.click(reverse);
+    expect(reverse).toBeChecked();
     expect(within(dialog).getByText("FFEEDDCCBBAA99887766554433221100")).toBeInTheDocument();
-    expect(reverse).toHaveAttribute("aria-pressed", "true");
+    expect(within(dialog).getByText("000102030405060708090A0B0C0D0E0F")).toBeInTheDocument();
     fireEvent.click(reverse);
     expect(within(dialog).getByText("00112233445566778899AABBCCDDEEFF")).toBeInTheDocument();
   });
