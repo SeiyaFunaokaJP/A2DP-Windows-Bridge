@@ -896,7 +896,7 @@
   "status.device_unreachable": "Desconectado (apagado o fuera de alcance)",
   "ui.profile.codec_supported": "Compatible",
   "ui.profile.codec_not_supported": "No compatible",
-  "ui.profile.codec_support_unknown": "Desconocido",
+  "ui.profile.codec_support_unknown": "Sin confirmar",
   "ui.profile.codecs_hide": "Mostrar solo los códecs compatibles",
   "ui.codecs.auto_select": "Seleccionar automáticamente el códec compatible de mayor calidad",
   "ui.codecs.auto_dialog_title": "¿Desactivar la selección automática?",

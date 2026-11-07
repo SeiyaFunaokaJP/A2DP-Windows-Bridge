@@ -896,7 +896,7 @@
   "status.device_unreachable": "Getrennt (ausgeschaltet oder außer Reichweite)",
   "ui.profile.codec_supported": "Unterstützt",
   "ui.profile.codec_not_supported": "Nicht unterstützt",
-  "ui.profile.codec_support_unknown": "Unbekannt",
+  "ui.profile.codec_support_unknown": "Unbestätigt",
   "ui.profile.codecs_hide": "Nur unterstützte Codecs anzeigen",
   "ui.codecs.auto_select": "Automatisch den unterstützten Codec mit der höchsten Qualität wählen",
   "ui.codecs.auto_dialog_title": "Automatische Auswahl ausschalten?",

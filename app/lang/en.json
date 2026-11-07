@@ -897,7 +897,7 @@
   "status.device_back": "The audio device is back on, connecting...",
   "ui.profile.codec_supported": "Supported",
   "ui.profile.codec_not_supported": "Unsupported",
-  "ui.profile.codec_support_unknown": "Unknown",
+  "ui.profile.codec_support_unknown": "Unconfirmed",
   "ui.profile.codecs_hide": "Show only supported codecs",
   "ui.codecs.auto_select": "Auto-select the codec with the highest quality",
   "ui.codecs.auto_dialog_title": "Disable Auto-select?",
