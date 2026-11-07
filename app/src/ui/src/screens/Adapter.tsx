@@ -19,7 +19,7 @@ import {
 } from "../lib/chips";
 import { baseName, chipReportUrl, LINKS, vendorFirmwareUrl } from "../lib/links";
 
-/** The adapters A2DPWB can use first (WinUSB), the ones without a driver
+/** The adapters BlueCaster can use first (WinUSB), the ones without a driver
  *  and then the ones it cannot use at all last */
 export function usableFirst(list: readonly AdapterInfo[]): AdapterInfo[] {
   const rank = (a: AdapterInfo) =>
@@ -56,7 +56,7 @@ export function adapterIds(a: Pick<AdapterInfo, "address" | "vid" | "pid" | "bt_
 }
 
 /** Why adapterIds lacks the address or the Bluetooth version: neither
- *  Windows' Bluetooth (it runs one radio only) nor A2DP Windows Bridge has
+ *  Windows' Bluetooth (it runs one radio only) nor BlueCaster has
  *  used the adapter yet (issue #86); undefined when both are known */
 export function adapterIdsHint(a: Pick<AdapterInfo, "address" | "bt_version">): string | undefined {
   return a.address && a.bt_version ? undefined : t("ui.adapter.ids_unknown");
@@ -68,7 +68,7 @@ export function adapterExperimental(a: Pick<AdapterInfo, "display_name">): boole
   return /\[experimental\]/i.test(a.display_name);
 }
 
-/** A2DPWB can stream through it: not a chip whose firmware loader it lacks
+/** BlueCaster can stream through it: not a chip whose firmware loader it lacks
  *  (MediaTek, Qualcomm). Those need their firmware loaded at every start
  *  before they answer as a Bluetooth controller, so they cannot work at all:
  *  neither WinUSB nor a firmware download is offered for them (issue #86).
@@ -105,7 +105,7 @@ export function Adapter() {
   const adapter = () => snap().adapter;
   // The order shown; the chip section goes with its adapter in it
   const sorted = () => usableFirst(adapter().adapters);
-  // The card the chip choice goes in; none for an adapter A2DPWB cannot
+  // The card the chip choice goes in; none for an adapter BlueCaster cannot
   // use, the choice then stands on its own below the cards
   const chipCard = () => {
     const i = chipTargetIndex(sorted());
@@ -113,7 +113,7 @@ export function Adapter() {
   };
   const [dialog, setDialog] = createSignal<{ adapter: AdapterInfo; mode: "assign" | "restore" } | null>(null);
   const [listing, setListing] = createSignal(false);
-  // Developer mode: WinUSB also for a chip A2DPWB cannot use yet, and the
+  // Developer mode: WinUSB also for a chip BlueCaster cannot use yet, and the
   // chip probe (read commands only) for whoever adds its loader
   const developer = () => snap().settings.developer_mode;
   const [probing, setProbing] = createSignal(false);
@@ -273,7 +273,7 @@ export function Adapter() {
                       when={a.driver === "winusb"}
                       fallback={
                         <>
-                          {/* One A2DPWB cannot use keeps its driver (issue #86) */}
+                          {/* One BlueCaster cannot use keeps its driver (issue #86) */}
                           <Button
                             kind="strong"
                             icon="shield"
@@ -564,21 +564,36 @@ function AfhSection() {
       title={t("receiver.afh")}
       actions={
         <div class="afh-control">
-          <Segmented
-            label={t("receiver.afh")}
-            value={manual() ? "manual" : mode()}
-            options={[
-              { value: "auto", label: t("receiver.afh_auto") },
-              { value: "off", label: t("receiver.afh_off") },
-              { value: "manual", label: t("receiver.afh_manual") },
-              ...(developer() ? [{ value: "blend", label: t("receiver.afh_blend") }] : []),
-            ]}
-            onChange={(v) => {
-              setManual(v === "manual");
-              if (v === "manual") saveChannels();
-              else void saveSettings(app, { afh: v === "blend" ? "blend-medium" : v });
-            }}
-          />
+          <div class="afh-row">
+            <Segmented
+              label={t("receiver.afh")}
+              value={manual() ? "manual" : mode()}
+              options={[
+                { value: "auto", label: t("receiver.afh_auto") },
+                { value: "off", label: t("receiver.afh_off") },
+                { value: "manual", label: t("receiver.afh_manual") },
+                ...(developer() ? [{ value: "blend", label: t("receiver.afh_blend") }] : []),
+              ]}
+              onChange={(v) => {
+                setManual(v === "manual");
+                if (v === "manual") saveChannels();
+                else void saveSettings(app, { afh: v === "blend" ? "blend-medium" : v });
+              }}
+            />
+            <input
+              class="input mono afh-channels"
+              placeholder={manual() ? "6,11" : ""}
+              value={shown()}
+              readOnly={!manual()}
+              aria-label={t("receiver.afh_channels")}
+              aria-describedby="afh-channels-err"
+              aria-invalid={bad() ? "true" : undefined}
+              onInput={(e) => setChannels(e.currentTarget.value)}
+              onBlur={() => manual() && saveChannels()}
+              onKeyDown={(e) => manual() && e.key === "Enter" && saveChannels()}
+            />
+          </div>
+          {/* The strength on a row of its own, below the mode (issue #86) */}
           <Show when={!manual() && mode() === "blend"}>
             <Segmented
               label={t("receiver.afh_strictness")}
@@ -591,18 +606,6 @@ function AfhSection() {
               onChange={(v) => void saveSettings(app, { afh: `blend-${v}` })}
             />
           </Show>
-          <input
-            class="input mono afh-channels"
-            placeholder={manual() ? "6,11" : ""}
-            value={shown()}
-            readOnly={!manual()}
-            aria-label={t("receiver.afh_channels")}
-            aria-describedby="afh-channels-err"
-            aria-invalid={bad() ? "true" : undefined}
-            onInput={(e) => setChannels(e.currentTarget.value)}
-            onBlur={() => manual() && saveChannels()}
-            onKeyDown={(e) => manual() && e.key === "Enter" && saveChannels()}
-          />
         </div>
       }
     >

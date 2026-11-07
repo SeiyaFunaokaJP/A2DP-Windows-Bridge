@@ -15,23 +15,23 @@ class Case:
     # or None to skip the tone check
     tones: tuple = STEREO_TONES
     sink_args: list = dataclasses.field(default_factory=list)    # extra emu arguments
-    a2dpwb_args: list = dataclasses.field(default_factory=list)  # extra A2DPWB arguments
+    bluecaster_args: list = dataclasses.field(default_factory=list)  # extra BlueCaster arguments
     tags: tuple = ()          # profiles exercised, e.g. ('csip',)
     streams: int = 1          # stream set-ups expected (2 when it is set up again)
     # A link goes down on purpose: the sinks may miss the SDUs in flight then,
     # so sent / received only need to match up to a few SDUs, not exactly
     lossy: bool = False
     duration: int = 0         # seconds of streaming (0: run_test.py --duration)
-    # A2DPWB is given only the first sink's address (-d), not the others
+    # BlueCaster is given only the first sink's address (-d), not the others
     # (--le-device): e.g. CSIP finds the other members of a set itself
     first_address_only: bool = False
-    # Underruns allowed (A2DPWB's jitter buffer ran empty while streaming and
+    # Underruns allowed (BlueCaster's jitter buffer ran empty while streaming and
     # it sent silence). The silence before the buffer first fills, at the
     # start and after a stream is set up again, is not an underrun.
     max_underruns: int = 0
     # Audio sent (SDU sets without that silence) at least this share of the
     # duration; None: 0.9, or 0.6 for lossy cases (the link is down a while)
     min_audio: float = None
-    # A2DPWB must not stream but exit with an error matching this regex
-    # (a2dpwb.log); nothing else is checked then
+    # BlueCaster must not stream but exit with an error matching this regex
+    # (bluecaster.log); nothing else is checked then
     expect_error: str = None

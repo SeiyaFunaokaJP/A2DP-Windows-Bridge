@@ -1,18 +1,18 @@
 name: Chip report
-description: An adapter A2DPWB cannot use yet (MediaTek, Qualcomm, …) — what its chip says, for whoever adds support
+description: An adapter BlueCaster cannot use yet (MediaTek, Qualcomm, …) — what its chip says, for whoever adds support
 labels: ["chip report"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks! This report is what a contributor needs to add support for your adapter's chip ([Adding Chip Support](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/chip-support)).
+        Thanks! This report is what a contributor needs to add support for your adapter's chip ([Adding Chip Support](https://seiyafunaokajp.github.io/BlueCaster/chip-support)).
         The window fills in most of it after **Read chip info** (Adapters screen, developer mode). Please attach the report file it showed in Explorer.
 
   - type: input
     id: version
     attributes:
-      label: A2DPWB version
-      placeholder: e.g. 2.0.3
+      label: BlueCaster version
+      placeholder: e.g. 3.0.0
     validations:
       required: true
 
@@ -29,7 +29,7 @@ body:
     id: chip
     attributes:
       label: What the probe read
-      description: The summary line A2DPWB showed.
+      description: The summary line BlueCaster showed.
       placeholder: e.g. MediaTek, USB 0E8D:0608, Bluetooth 5.2 (HCI 11), LMP subversion 0x1234, 10 of 11 requests answered
     validations:
       required: true
@@ -44,7 +44,7 @@ body:
     id: probe
     attributes:
       label: Probe report
-      description: Drag the probe-….json file here (the Explorer window A2DP Windows Bridge opened). It contains the adapter's Bluetooth address and name, nothing about your headphones.
+      description: Drag the probe-….json file here (the Explorer window BlueCaster opened). It contains the adapter's Bluetooth address and name, nothing about your headphones.
     validations:
       required: true
 

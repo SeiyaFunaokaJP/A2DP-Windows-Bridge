@@ -2,7 +2,7 @@
 //! stack init / deinit of the LE part, LE scan (extended scan fallback),
 //! connect with RPA / identity merge, SM LE Secure Connections Just Works
 //! bonding (a bond the device lost is deleted and pairing repeated once),
-//! bonds in <bond_dir>\le_audio_bonds.tlv, GATT discovery (included /
+//! bonds in le_audio_bonds.tlv (LeConfig::bonds_file), GATT discovery (included /
 //! secondary services too), PACS / ASCS reads, refusing a stream without
 //! ISO buffers ("adapter does not support LE Audio (no ISO buffers)"), the
 //! BAP stream, and the module dispatch.
@@ -905,7 +905,7 @@ impl<'a> LeCtx<'a> {
             }
         };
         if stray {
-            // A2DPWB never advertises: this is the connect of an attempt
+            // BlueCaster never advertises: this is the connect of an attempt
             // given up (timeout / cancel) that completed before the cancel
             // did. Nobody manages the link: drop it.
             if status == ERROR_CODE_SUCCESS {
@@ -1170,8 +1170,8 @@ impl<'a> LeCtx<'a> {
                 self.stack.sm_numeric_comparison_confirm(handle);
             }
             SM_EVENT_PASSKEY_INPUT_NUMBER => {
-                // No keyboard: such a device cannot pair with A2DPWB
-                tracing::warn!("LE Audio: {addr} asks for a passkey, which A2DPWB cannot enter");
+                // No keyboard: such a device cannot pair with BlueCaster
+                tracing::warn!("LE Audio: {addr} asks for a passkey, which BlueCaster cannot enter");
                 self.stack.sm_bonding_decline(handle);
             }
             SM_EVENT_PAIRING_STARTED => {
@@ -1709,8 +1709,14 @@ impl LeCore {
             return;
         }
         tracing::info!("LE Audio (experimental): initializing (SM, GATT client / server, ISO)");
-        let dir: PathBuf = self.config.as_ref().and_then(|c| c.bond_dir.clone()).unwrap_or_else(std::env::temp_dir);
-        let path = dir.join("le_audio_bonds.tlv");
+        let path: PathBuf = self
+            .config
+            .as_ref()
+            .and_then(|c| c.bonds_file.clone())
+            .unwrap_or_else(|| std::env::temp_dir().join("le_audio_bonds.tlv"));
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
         stack.le_init(&path.to_string_lossy());
         tracing::info!("LE Audio: bonds in {}", path.display());
 

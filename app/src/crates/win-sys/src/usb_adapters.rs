@@ -3,9 +3,9 @@
 //!
 //! Every present USB device (GUID_DEVINTERFACE_USB_DEVICE, the interface the
 //! hub registers for each device, whatever its driver) is listed with what
-//! decides whether A2DPWB can use it: VID:PID, the USB class from its
+//! decides whether BlueCaster can use it: VID:PID, the USB class from its
 //! compatible IDs, the driver that owns it (BTHUSB = Windows' Bluetooth,
-//! WINUSB = usable by A2DPWB, a vendor driver, or none) with the INF name
+//! WINUSB = usable by BlueCaster, a vendor driver, or none) with the INF name
 //! and version (to check a restore), and for a WinUSB device the class of
 //! interface 0 read through WinUSB (v1 is_bluetooth_class: E0/01/01, or
 //! the vendor class FF/01/01 with the HCI endpoints, as on the ASUS BT400).
@@ -134,7 +134,7 @@ impl UsbDevice {
     }
 
     /// WinUSB refused to open the device for the probe: another program
-    /// (v1, another A2DPWB) holds it
+    /// (v1, another BlueCaster) holds it
     pub fn in_use(&self) -> bool {
         matches!(&self.probe, Some(Err(e)) if e.starts_with("open failed (error 5)"))
     }
@@ -155,7 +155,7 @@ impl UsbDevice {
 /// All present USB devices (hubs included; filter with
 /// `looks_like_bluetooth` and the chip table). With `probe_winusb`, each
 /// WinUSB-bound device is opened for a moment to read interface 0; one in
-/// use by another program (v1, or a running A2DPWB) cannot be opened and
+/// use by another program (v1, or a running BlueCaster) cannot be opened and
 /// says so in `probe`, nothing else happens to it.
 ///
 /// A device whose function driver failed to start (Code 31, as a vendor

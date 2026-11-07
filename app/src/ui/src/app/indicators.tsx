@@ -1,6 +1,6 @@
 // What the main window shows above or beside every screen: a newer
 // release (the update check's result, not only on Settings), a crash of
-// A2DPWB itself and a running HCI capture (v1 put " - [HCI capture
+// BlueCaster itself and a running HCI capture (v1 put " - [HCI capture
 // running]" in the title bar).
 
 import { createEffect, createSignal, For, Show } from "solid-js";
@@ -48,7 +48,7 @@ export function crashHead(c: CrashReport): string {
   return `${t("ui.crash.title")}: ${c.process}, ${c.time}\n${c.reason}`;
 }
 
-/** A crash report of A2DPWB's own processes (a panic, a crash of the core
+/** A crash report of BlueCaster's own processes (a panic, a crash of the core
  *  or the window), until it is dismissed: its cause and backtrace go into
  *  the report with the diagnostic info */
 export function CrashNotice() {
@@ -89,7 +89,7 @@ export function CrashNotice() {
 }
 
 /** Kept per viewer: the version whose update dialog was answered "Later" */
-const UPDATE_LATER_KEY = "a2dpwb.update_later";
+const UPDATE_LATER_KEY = "bluecaster.update_later";
 
 /** A release's in-app notes as lines to show: list marks become bullets,
  *  Markdown emphasis and links plain text */

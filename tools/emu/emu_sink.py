@@ -1,17 +1,17 @@
-"""Virtual Bluetooth link with an A2DP test sink, for testing A2DPWB without hardware.
+"""Virtual Bluetooth link with an A2DP test sink, for testing BlueCaster without hardware.
 
 Runs two Bumble virtual controllers on one in-process link:
-  - controller "A2DPWB" is served as H4 over TCP; A2DPWB connects to it with
-    `a2dpwb-core.exe --cli --hci-tcp 127.0.0.1:<port>`
+  - controller "BlueCaster" is served as H4 over TCP; BlueCaster connects to it with
+    `bluecaster-core.exe --cli --hci-tcp 127.0.0.1:<port>`
   - controller "SINK" is driven by a Bumble host acting as an A2DP sink that
     offers SBC (SBC XQ capable), AAC, aptX, aptX HD, aptX LL, LDAC, LHDC V5,
     FastStream, Opus, Opus 05 and aptX Adaptive like a typical headset
 
 The sink's HCI traffic is written to a PacketLogger (.pklg) capture, so
-a2dpwb_decode --received can check what actually arrived at the sink.
+bluecaster_decode --received can check what actually arrived at the sink.
 
 Run with the Python of the tools/emu virtual environment (see setup_env.py).
-Prints "READY" once A2DPWB can connect; stops on SIGTERM / Ctrl+C.
+Prints "READY" once BlueCaster can connect; stops on SIGTERM / Ctrl+C.
 """
 
 import argparse
@@ -55,7 +55,7 @@ from bumble.snoop import Snooper
 from bumble.transport import open_transport
 from bumble.transport.common import AsyncPipeSink
 
-A2DPWB_ADDRESS = '00:A2:D0:00:00:01'
+BLUECASTER_ADDRESS = '00:A2:D0:00:00:01'
 SINK_ADDRESS = '00:A2:D0:00:00:02'
 
 log = logging.getLogger('emu_sink')
@@ -122,7 +122,7 @@ class EmuController(Controller):
     # link stays up meanwhile, as with headphones that take their time
     disconnect_delay = 0
 
-    # Link details A2DPWB reads, none of which Bumble answers: link quality,
+    # Link details BlueCaster reads, none of which Bumble answers: link quality,
     # supervision timeout and the remote version as a controller has them,
     # the failed contact counter refused as unknown (the unsupported path)
     supported_commands = Controller.supported_commands | {
@@ -281,7 +281,7 @@ class EmuController(Controller):
 
 
 class PacketLoggerSnooper(Snooper):
-    """Writes HCI packets in PacketLogger format (as A2DPWB's own capture)."""
+    """Writes HCI packets in PacketLogger format (as BlueCaster's own capture)."""
 
     def __init__(self, path):
         self.file = open(path, 'wb', buffering=0)  # unbuffered: survives being killed
@@ -448,11 +448,11 @@ class HuaweiEarbuds:
         elif command == 0x2B6C:
             dlc.write(huawei_packet(command, [(2, b'\x00')]))
         elif command == 0x2B31:
-            # The phone has a name and an address, which A2DPWB does not log
+            # The phone has a name and an address, which BlueCaster does not log
             dlc.write(huawei_packet(command, [(2, b'\x02'), (3, b'\x00'), (4, b'\xAA' * 6), (5, b'\x09'),
                                               (9, b'Emulated phone')]))
             dlc.write(huawei_packet(command, [(2, b'\x02'), (3, b'\x01'), (4, b'\xBB' * 6), (5, b'\x01'),
-                                              (9, b'A2DPWB')]))
+                                              (9, b'BlueCaster')]))
         elif command == 0x2BA2:
             self.mode = params[2]
             self.ldac = self.mode == 1 and not self.no_ldac
@@ -545,17 +545,17 @@ def refuse_dual_channel(sink):
 async def main(args):
     link = LocalLink()
     transport = await open_transport(f'tcp-server:127.0.0.1:{args.port}')
-    a2dpwb_controller = EmuController(
-        'A2DPWB',
+    bluecaster_controller = EmuController(
+        'BlueCaster',
         host_source=transport.source,
         host_sink=transport.sink,
         link=link,
-        public_address=A2DPWB_ADDRESS,
+        public_address=BLUECASTER_ADDRESS,
     )
-    a2dpwb_controller.disconnect_delay = args.disconnect_delay
-    a2dpwb_controller.silent_remote_version = args.silent_remote_version
+    bluecaster_controller.disconnect_delay = args.disconnect_delay
+    bluecaster_controller.silent_remote_version = args.silent_remote_version
     if args.dual_mode:
-        a2dpwb_controller.lmp_features = DUAL_MODE_FEATURES
+        bluecaster_controller.lmp_features = DUAL_MODE_FEATURES
     sink_controller = EmuController('SINK', link=link, public_address=SINK_ADDRESS)
     sink_controller.eir_name = not args.no_eir_name
     host = Host(sink_controller, AsyncPipeSink(sink_controller))
@@ -587,7 +587,7 @@ async def main(args):
                          getattr(c.media_codec_information, 'codec_id', None))
         return ids(a) == ids(b)
 
-    # The codec and configuration A2DPWB set last: headphones turned back on
+    # The codec and configuration BlueCaster set last: headphones turned back on
     # with --opens-stream set up that stream themselves
     last_configuration = {}
 
@@ -598,7 +598,7 @@ async def main(args):
         log.info('AVDTP connection')
         on_avdtp_connection.sinks = {}
         for _ in range(args.extra_seps):
-            # A codec A2DPWB does not know, discovered before the real ones
+            # A codec BlueCaster does not know, discovered before the real ones
             server.add_sink(MediaCodecCapabilities(
                 media_type=AVDTP_AUDIO_MEDIA_TYPE,
                 media_codec_type=A2DP_NON_A2DP_CODEC_TYPE,
@@ -652,7 +652,7 @@ async def main(args):
                     EndPointInfo(e.seid, e.in_use, e.media_type, e.tsep) for e in server.local_endpoints
                 ])
             server.on_discover_command = on_discover_command
-            # Media is checked from the HCI capture with a2dpwb_decode. Bumble
+            # Media is checked from the HCI capture with bluecaster_decode. Bumble
             # would parse every packet as RTP, but classic aptX / aptX LL carry
             # no RTP header, so the parser is bypassed.
             sink.on_avdtp_packet = lambda packet: None
@@ -667,7 +667,7 @@ async def main(args):
         print('turned off', flush=True)
         await connection.disconnect(hci.HCI_REMOTE_DEVICE_TERMINATED_CONNECTION_DUE_TO_POWER_OFF_ERROR)
         await asyncio.sleep(2)
-        connection = await device.connect(A2DPWB_ADDRESS, transport=BT_BR_EDR_TRANSPORT)
+        connection = await device.connect(BLUECASTER_ADDRESS, transport=BT_BR_EDR_TRANSPORT)
         print('turned on', flush=True)
         if args.opens_a2dp:
             await asyncio.sleep(0.5)
@@ -680,7 +680,7 @@ async def main(args):
                 await open_last_stream(protocol)
 
     async def open_last_stream(protocol):
-        """Configure and open the stream A2DPWB set up last, at once, as
+        """Configure and open the stream BlueCaster set up last, at once, as
         headphones resuming it do: BTstack then discovers no capabilities."""
         name = last_configuration.get('name')
         sink = on_avdtp_connection.sinks.get(name)
@@ -693,7 +693,7 @@ async def main(args):
             if caps and same_codec(caps, codec):
                 break
         else:
-            print(f'A2DPWB has no {name} endpoint', flush=True)
+            print(f'BlueCaster has no {name} endpoint', flush=True)
             return
         sink.configuration = last_configuration['configuration']
         stream = await protocol.create_stream(sink, endpoint)
@@ -715,24 +715,24 @@ async def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--port', type=int, default=9001, help='TCP port for A2DPWB (H4)')
+    parser.add_argument('--port', type=int, default=9001, help='TCP port for BlueCaster (H4)')
     parser.add_argument('--capture', help='PacketLogger capture of the sink HCI traffic')
     parser.add_argument('--log-level', default='WARNING')
     parser.add_argument('--turn-off-after', type=float, metavar='S',
-                        help='S seconds after the first connection, end the link as when turned off, then page A2DPWB')
+                        help='S seconds after the first connection, end the link as when turned off, then page BlueCaster')
     parser.add_argument('--opens-a2dp', action='store_true', help='with --turn-off-after, open A2DP after paging')
     parser.add_argument('--opens-stream', action='store_true',
                         help='with --opens-a2dp, also configure and open the last stream')
     parser.add_argument('--disconnect-delay', type=float, default=0, metavar='S',
-                        help="seconds until an HCI Disconnect from A2DPWB takes effect")
+                        help="seconds until an HCI Disconnect from BlueCaster takes effect")
     parser.add_argument('--silent-remote-version', action='store_true',
                         help='never answer Read Remote Version Information (no Command Status either)')
-    parser.add_argument('--name', default='A2DPWB Test Sink',
+    parser.add_argument('--name', default='BlueCaster Test Sink',
                         help='the Bluetooth name, as an inquiry or a name request gets it')
     parser.add_argument('--no-eir-name', action='store_true',
-                        help='answer inquiries without the name in the EIR (A2DPWB asks for it)')
+                        help='answer inquiries without the name in the EIR (BlueCaster asks for it)')
     parser.add_argument('--dual-mode', action='store_true',
-                        help="report BR/EDR support on A2DPWB's controller (BTstack inquires only then)")
+                        help="report BR/EDR support on BlueCaster's controller (BTstack inquires only then)")
     parser.add_argument('--in-use', nargs='*', default=[], choices=CODEC_NAMES, metavar='CODEC',
                         help='report the SEP of these codecs as in use by another device (multipoint)')
     parser.add_argument('--codecs', nargs='+', choices=CODEC_NAMES, metavar='CODEC',

@@ -501,6 +501,34 @@ export function autoBitDepth(codec: string, caps: CodecCaps | null): number {
   return 16;
 }
 
+/** Of `listed` (lowest first), the rate nearest the PC's `source` rate, as
+ *  the core picks it (caps.rs nearest_rate): itself, else its family (44.1
+ *  kHz multiples or not) below, then above; else the other family above,
+ *  then below */
+export function nearestRate(listed: readonly number[], source: number): number {
+  const family = (r: number) => r % 11025 === 0;
+  const same = listed.filter((r) => family(r) === family(source));
+  const other = listed.filter((r) => family(r) !== family(source));
+  const below = (rs: number[]) => rs.filter((r) => r <= source).at(-1);
+  const above = (rs: number[]) => rs.find((r) => r >= source);
+  return below(same) ?? above(same) ?? above(other) ?? below(other) ?? source;
+}
+
+/** The sample rate Auto streams `codec` at while it matches the PC's
+ *  output (developer mode), as the core picks it (stream.rs) */
+export function matchedSampleRate(codec: string, caps: CodecCaps | null, source: number): number {
+  return nearestRate(
+    offeredSampleRates(codec, caps).filter((r) => r > 0),
+    source,
+  );
+}
+
+/** The bit depth Auto streams `codec` with while it matches the PC's
+ *  output (developer mode): 16-bit from a 16-bit output, else Auto's */
+export function matchedBitDepth(codec: string, caps: CodecCaps | null, source: number): number {
+  return source <= 16 && codec !== "aptxad" ? 16 : autoBitDepth(codec, caps);
+}
+
 /** The bit depths the dialog offers: the codec's, as far as the device
  *  lists them (LHDC V5 says) */
 export function offeredBitDepths(codec: string, caps: CodecCaps | null): number[] {

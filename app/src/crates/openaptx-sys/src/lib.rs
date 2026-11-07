@@ -1,4 +1,4 @@
-//! libopenaptx 0.2.0: the aptX / aptX HD encoder (and decoder) A2DPWB uses
+//! libopenaptx 0.2.0: the aptX / aptX HD encoder (and decoder) BlueCaster uses
 //! for aptX, aptX HD and aptX Low Latency.
 //!
 //! # Licence
@@ -6,11 +6,11 @@
 //! libopenaptx is LGPL-2.1-or-later (Aurelien Jacobs, Pali Rohár; derived from
 //! FFmpeg). This crate builds it from the git submodule extern/libopenaptx as
 //! a static library of its own (`openaptx`) and keeps it apart from the rest
-//! of A2DPWB (Apache-2.0 OR MIT), so the LGPL obligations stay with this one
+//! of BlueCaster (Apache-2.0 OR MIT), so the LGPL obligations stay with this one
 //! crate: ship the LGPL text, give notice of the library, and let users relink
 //! with their own build of it (THIRD_PARTY_LICENSES.md, §2). The build stops on
 //! any version other than 0.2.0, because 0.2.1 and later are GPL-3.0-or-later.
-//! The Rust code in this crate is Apache-2.0 OR MIT like the rest of A2DPWB.
+//! The Rust code in this crate is Apache-2.0 OR MIT like the rest of BlueCaster.
 //!
 //! # Layout
 //!

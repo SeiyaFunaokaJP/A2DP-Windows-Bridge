@@ -17,9 +17,9 @@ body:
   - type: input
     id: version
     attributes:
-      label: A2DPWB version
-      description: Shown in Settings → About A2DPWB.
-      placeholder: e.g. 2.0.0
+      label: BlueCaster version
+      description: Shown in Settings → About BlueCaster.
+      placeholder: e.g. 3.0.0
 
   - type: textarea
     id: extra

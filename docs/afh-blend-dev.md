@@ -85,9 +85,9 @@ known to be good and where it is not.
 - **Sender**: the Windows PC with a build of this branch, the adapter
   under test (start with the UB500 / RTL8761BU of the 2026-10-17 test, then
   every other adapter at hand: Intel, Broadcom, CSR). A copy of the
-  settings folder via `A2DPWB_CONFIG_DIR`, never the real one.
+  settings folder via `BLUECASTER_CONFIG_DIR`, never the real one.
 - **Receiver**: `tools/linux_sink` on a Linux PC, as in
-  [Peer Receiver Test](usage#receiver). A2DPWB is the central, so the host
+  [Peer Receiver Test](usage#receiver). BlueCaster is the central, so the host
   classification applies as it does for headphones. Fixed positions, 3 m
   apart, same for every run; write down the receiver adapter.
 - **Codec**: LDAC 990 kbps (the most demanding) for all runs; one round
@@ -127,8 +127,8 @@ sudo sh run.sh --csv run-<scenario>-<policy>-<n>.csv          # Linux
 ```
 
 ```powershell
-$env:A2DPWB_LOG = "info,bt_host::afh=debug,a2dpwb_core::adapter=debug"
-a2dpwb-core.exe --cli --remote-sink auto -c ldac --test-tone --duration 600 --afh blend-medium
+$env:BLUECASTER_LOG = "info,bt_host::afh=debug,bluecaster_core::adapter=debug"
+bluecaster-core.exe --cli --remote-sink auto -c ldac --test-tone --duration 600 --afh blend-medium
 ```
 
 Scenarios (each with all policies):

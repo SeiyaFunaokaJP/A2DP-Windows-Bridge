@@ -1,4 +1,4 @@
-//! Audio sources for A2DPWB: WASAPI loopback of the default output device
+//! Audio sources for BlueCaster: WASAPI loopback of the default output device
 //! or a chosen one (virtual device mode), per-application loopback, and the
 //! test tone; plus the device list, endpoint volume and app list the UI and
 //! core need around them.

@@ -18,7 +18,7 @@ nav_order: 4
 
 ## 개요
 
-A2DP Windows Bridge(A2DPWB)는 Windows에서 LHDC V5, LDAC, aptX Adaptive, aptX HD,
+BlueCaster는 Windows에서 LHDC V5, LDAC, aptX Adaptive, aptX HD,
 aptX Low Latency, aptX, Opus, AAC, SBC XQ, SBC Bluetooth 오디오를 사용할 수 있게 합니다
 (LE 오디오를 통한 LC3도 실험적으로 지원). Windows 자체 Bluetooth 스택은 A2DP에서
 SBC, 기본 aptX, (Windows 11만) AAC만 지원합니다. 이 도구는 커널 드라이버 없이
@@ -26,19 +26,19 @@ SBC, 기본 aptX, (Windows 11만) AAC만 지원합니다. 이 도구는 커널 �
 
 **BTstack + WinUSB**를 사용하며, 완전히 사용자 모드에서 작동하므로 드라이버 서명이 필요 없습니다.
 
-A2DPWB 2.0은 Rust로 작성되었습니다. 대체할 수 없는 C 라이브러리(BTstack과
+BlueCaster 2.0은 Rust로 작성되었습니다. 대체할 수 없는 C 라이브러리(BTstack과
 코덱 인코더)는 소스에서 컴파일하여 작은 FFI 크레이트를 통해 호출하며, SBC 인코더를
 포함한 나머지는 모두 Rust입니다.
 
 ## 프로세스
 
-A2DPWB는 최대 세 개의 프로그램으로 실행됩니다.
+BlueCaster는 최대 세 개의 프로그램으로 실행됩니다.
 
 | 프로그램 | 실행 시점 | 역할 |
 |:---------|:----------|:-----|
-| `a2dpwb-core.exe` | A2DPWB가 실행 중인 동안 (창, 시작 메뉴 또는 **Windows 시작 시 실행**으로 시작) | Bluetooth, 오디오 캡처와 인코딩, 프로필과 설정, 트레이 아이콘과 그 메뉴, IPC 서버. `--cli`를 지정하면 같은 코어를 콘솔에서 실행 |
-| `a2dpwb.exe` | 창이 열려 있는 동안만 (마지막 창을 닫고 3분 후 종료) | 기본 창과 트레이 플라이아웃 (Tauri 2, SolidJS + TypeScript). 자체 상태를 갖지 않음 |
-| `a2dpwb-driver.exe` | 드라이버를 한 번 변경하거나 키를 가져올 때, 관리자 권한(UAC)으로 | 어댑터에 WinUSB를 할당하거나 이전 드라이버를 복원하거나, Windows의 Bluetooth가 어댑터용으로 보관한 링크 키를 읽은(`windows-keys`) 후 종료 |
+| `bluecaster-core.exe` | BlueCaster가 실행 중인 동안 (창, 시작 메뉴 또는 **Windows 시작 시 실행**으로 시작) | Bluetooth, 오디오 캡처와 인코딩, 프로필과 설정, 트레이 아이콘과 그 메뉴, IPC 서버. `--cli`를 지정하면 같은 코어를 콘솔에서 실행 |
+| `bluecaster.exe` | 창이 열려 있는 동안만 (마지막 창을 닫고 3분 후 종료) | 기본 창과 트레이 플라이아웃 (Tauri 2, SolidJS + TypeScript). 자체 상태를 갖지 않음 |
+| `bluecaster-driver.exe` | 드라이버를 한 번 변경하거나 키를 가져올 때, 관리자 권한(UAC)으로 | 어댑터에 WinUSB를 할당하거나 이전 드라이버를 복원하거나, Windows의 Bluetooth가 어댑터용으로 보관한 링크 키를 읽은(`windows-keys`) 후 종료 |
 
 ```mermaid
 ---
@@ -49,15 +49,15 @@ config:
 ---
 flowchart TB
     src["Windows 오디오: 시스템 루프백 / 가상 장치 / 한 응용 프로그램"]
-    ui["a2dpwb.exe: 창과 트레이 플라이아웃 (Tauri + SolidJS)"]
-    subgraph core["a2dpwb-core.exe (상주, 사용자 모드)"]
+    ui["bluecaster.exe: 창과 트레이 플라이아웃 (Tauri + SolidJS)"]
+    subgraph core["bluecaster-core.exe (상주, 사용자 모드)"]
         ctl["트레이 메뉴 / IPC 서버 / CLI (--cli)"] --> svc["코어 서비스: 연결 상태 머신, 코덱 선택, 프로필, 다시 연결"]
         svc --> cap["WASAPI 캡처"]
         cap -- PCM --> enc["인코더 파이프라인: LDAC / aptX 계열 / LHDC V5 / Opus / AAC / SBC"]
         enc --> bt["BTstack: HCI / L2CAP / AVDTP / A2DP / AVRCP"]
     end
     ui <-->|"사용자별 named pipe"| ctl
-    svc -.->|"UAC, 드라이버 변경이나 Windows 키 가져오기 때만"| drv["a2dpwb-driver.exe (관리자 권한): WinUSB 할당 / 복원, Windows 링크 키 읽기"]
+    svc -.->|"UAC, 드라이버 변경이나 Windows 키 가져오기 때만"| drv["bluecaster-driver.exe (관리자 권한): WinUSB 할당 / 복원, Windows 링크 키 읽기"]
     src --> cap
     bt -->|"WinUSB (nusb)"| usb["USB Bluetooth 어댑터 (WinUSB 드라이버)"]
     drv -.->|SetupAPI| usb
@@ -73,7 +73,7 @@ flowchart TB
 - **창은 표시만 합니다.** 창은 코어 상태의 스냅샷을 받은 다음 변경 사항을
   받습니다. 창을 닫거나 창이 비정상 종료되어도 오디오는 멈추지 않습니다.
   창을 닫으면 숨겨질 뿐이므로, 트레이에서 다시 열면 바로 표시됩니다.
-- **명령줄도 같은 코어를 사용합니다.** `a2dpwb-core.exe --cli`는 트레이와 IPC 없이
+- **명령줄도 같은 코어를 사용합니다.** `bluecaster-core.exe --cli`는 트레이와 IPC 없이
   코어 서비스를 실행합니다. 에뮬레이터 테스트도 이 방식으로 실행됩니다.
 
 ## 전송 계층: BTstack + WinUSB
@@ -108,7 +108,7 @@ BTstack이 HCI, L2CAP, AVDTP, A2DP를 사용자 모드에서 구현합니다.
 
 ```mermaid
 sequenceDiagram
-    participant App as A2DPWB (BTstack)
+    participant App as BlueCaster (BTstack)
     participant Ad as USB 어댑터
     participant Sink as 헤드폰
     App->>Ad: WinUSB로 열기, HCI reset / 초기화
@@ -153,11 +153,11 @@ Cargo 워크스페이스 하나(저장소 루트의 `Cargo.toml`)가 다섯 계�
 | 3. 엔진 | `bt-host` | BTstack을 자체 스레드에서 실행하며, 명령과 타입이 지정된 이벤트로 구동: GAP, A2DP Source, AVRCP, SDP, 패스스루용 RFCOMM 채널(`rfcomm.*`), 링크 키, 장치의 SDP 서비스, AFH, 펌웨어 로딩과 칩 로더(`bringup`), 칩 프로브와 칩 스크립트, HCI 캡처(`.pklg`), LE 오디오(`le/`) |
 | 2. 부품 | `le-audio` | LE 오디오(실험적): BTstack이나 Windows에 의존하지 않는 로직(할당 번호, LTV, PACS / ASCS PDU, 프리셋, CSIP / VCP / MCP / CCP 모델) |
 | 3. 엔진 | `pipeline` | PCM 링 버퍼, 형식 변환, 다운믹스, 인코딩, 미디어 페이로드, 전송 속도 조절, ABR |
-| 4. 코어 | `a2dpwb-core` (디렉터리 `core`) | 상태 머신, 다시 연결, 절전 / 복귀, 프로필, 설정과 v1 마이그레이션, 볼륨 동기화, 출력 음소거, 업데이트 확인, Realtek 펌웨어 다운로드, 수신기 테스트 클라이언트, 통계, 제조사 프로토콜(`vendor/`) |
+| 4. 코어 | `bluecaster-core` (디렉터리 `core`) | 상태 머신, 다시 연결, 절전 / 복귀, 프로필, 설정과 v1 마이그레이션, 볼륨 동기화, 출력 음소거, 업데이트 확인, Realtek 펌웨어 다운로드, 수신기 테스트 클라이언트, 통계, 제조사 프로토콜(`vendor/`) |
 | 4. 코어 | `ipc` | 코어와 창이 공유하는 프로토콜 타입(serde, `ts-rs`로 TypeScript 타입 생성)과 파이프 프레이밍 |
-| 5. 프로그램 | `a2dpwb-core-exe` (`app/src/core`) | `a2dpwb-core.exe`: 코어, 트레이(`tao` 이벤트 루프 위의 `tray-icon`), IPC 서버, `--cli` |
-| 5. 프로그램 | `a2dpwb-ui` (`app/src/ui`) | `a2dpwb.exe`: Tauri 2. Rust 쪽은 IPC 클라이언트이고, 페이지는 SolidJS + TypeScript + Vite |
-| 5. 프로그램 | `a2dpwb-driver` (`app/src/driver`) | `a2dpwb-driver.exe`: 관리자 권한으로 실행되는 도우미 |
+| 5. 프로그램 | `bluecaster-core-exe` (`app/src/core`) | `bluecaster-core.exe`: 코어, 트레이(`tao` 이벤트 루프 위의 `tray-icon`), IPC 서버, `--cli` |
+| 5. 프로그램 | `bluecaster-ui` (`app/src/ui`) | `bluecaster.exe`: Tauri 2. Rust 쪽은 IPC 클라이언트이고, 페이지는 SolidJS + TypeScript + Vite |
+| 5. 프로그램 | `bluecaster-driver` (`app/src/driver`) | `bluecaster-driver.exe`: 관리자 권한으로 실행되는 도우미 |
 
 ## 오디오 경로와 스레드
 
@@ -193,7 +193,7 @@ BTstack은 스레드 안전하지 않으므로, 다른 스레드는 BTstack에 �
 ## 코어와 IPC
 
 창은 사용자의 named pipe
-`\\.\pipe\a2dpwb-<user SID>`를 통해 코어와 통신하며, 이 파이프의 DACL은 해당 사용자만 허용합니다.
+`\\.\pipe\bluecaster-<user SID>`를 통해 코어와 통신하며, 이 파이프의 DACL은 해당 사용자만 허용합니다.
 메시지는 길이가 앞에 붙은 JSON 프레임입니다.
 
 1. 창이 `hello { protocol, client }`를 보냅니다. 프로토콜 버전이 다른 코어는
@@ -210,7 +210,9 @@ BTstack은 스레드 안전하지 않으므로, 다른 스레드는 BTstack에 �
    `receiver.*`, `rfcomm.*`, `app.*`입니다.
 
 다른 프로그램도 같은 파이프를 사용합니다. 필요한 내용은
-[연동 (IPC)](integration)에 있습니다.
+[연동 (IPC)](integration)에 있습니다. 3.0.0 이전 버전은 파이프 이름이
+`\\.\pipe\a2dpwb-<user SID>`였으며, 코어는 3.0.0 이후 최소 6개월 동안 그 이름도
+제공합니다.
 
 오류는 텍스트가 아니라 매개변수가 붙은 코드(예: `adapter.driver_missing`)입니다.
 창이 이를 번역하고 메시지 옆에 해결 방법을 제시합니다.
@@ -240,7 +242,7 @@ stateDiagram-v2
 ## 드라이버 할당 {#driver-assignment}
 
 Windows 8 이상에는 Microsoft가 서명한 WinUSB 드라이버(`winusb.inf`)가
-포함되어 있습니다. `a2dpwb-driver.exe`는 장치 관리자의 "드라이버 업데이트 >
+포함되어 있습니다. `bluecaster-driver.exe`는 장치 관리자의 "드라이버 업데이트 >
 직접 선택 > WinUsb Device"와 같은 작업을 SetupAPI로 수행합니다.
 
 1. 장치 인스턴스 ID로 어댑터를 엽니다.
@@ -332,7 +334,7 @@ Windows 8 이상에는 Microsoft가 서명한 WinUSB 드라이버(`winusb.inf`)�
 - `a2dp_source_stream_send_media_payload_rtp()` — 인코딩된 오디오를
   RTP 헤더와 함께 전송 (LDAC, aptX HD, AAC, SBC, SBC XQ, LHDC V5, Opus)
 - `a2dp_source_stream_send_media_packet()` — RTP 헤더 없이 원시 미디어
-  패킷 전송 (aptX, aptX LL, FastStream), 또는 A2DPWB 자체 RTP 헤더와 함께
+  패킷 전송 (aptX, aptX LL, FastStream), 또는 BlueCaster 자체 RTP 헤더와 함께
   전송 (aptX Adaptive)
 
 ### 오디오 캡처 (`audio-capture`)
@@ -346,13 +348,13 @@ Windows Audio Session API를 사용하여 오디오를 실시간으로 캡처합
   다시 캡처
 - Windows 볼륨 믹서처럼 기본 출력에서 앱의 볼륨과 음소거를 설정(`mixer`):
   세션 볼륨은 루프백 캡처에도 반영되며, System Loopback 스트림 중에 코어가 그 출력을
-  음소거하는 동안에도 마찬가지(`a2dpwb-core::mute_output`)
+  음소거하는 동안에도 마찬가지(`bluecaster-core::mute_output`)
 
-### 제조사 프로토콜 (`a2dpwb-core::vendor`)
+### 제조사 프로토콜 (`bluecaster-core::vendor`)
 
 일부 이어폰은 자체 앱이 자체 RFCOMM 서비스를 통해 모드를 바꾼 뒤에야 특정 코덱이나
 비트레이트를 제공합니다. 제조사마다 모듈 하나가, 이어폰이 알리는 이름으로 구분한
-이어폰에 대해 A2DPWB가 가진 링크를 통해 이 일을 합니다.
+이어폰에 대해 BlueCaster가 가진 링크를 통해 이 일을 합니다.
 
 - **Huawei / Honor**: LDAC을 알리지 않는 이어폰에 LDAC을 요청하는 프로필은 그
   이어폰의 "음질 우선" 모드를 설정한 다음 다시 연결합니다. 원래 그 모드가 꺼져 있던
@@ -368,8 +370,8 @@ Windows Audio Session API를 사용하여 오디오를 실시간으로 캡처합
 ### 페어링 (`link_keys`, `win-sys::bt_keys`)
 
 링크 키는 `link_keys.txt`에 보관됩니다. 장치를 추가하는 곳에서 코어는 Windows의
-Bluetooth가 A2DPWB가 지금 사용하는 어댑터용으로 보관한 키를 넘겨받을 수 있습니다.
-`a2dpwb-driver.exe windows-keys`가 이를 읽고(UAC 프롬프트 한 번), A2DPWB가 이미
+Bluetooth가 BlueCaster가 지금 사용하는 어댑터용으로 보관한 키를 넘겨받을 수 있습니다.
+`bluecaster-driver.exe windows-keys`가 이를 읽고(UAC 프롬프트 한 번), BlueCaster가 이미
 가진 키는 유지되며, 그중 오디오 장치는 Windows의 이름으로 저장됩니다. 개발자 모드에서는
 장치의 링크 키와 그 장치가 알리는 SDP 서비스를 보여 줍니다.
 
@@ -379,7 +381,7 @@ Bluetooth가 A2DPWB가 지금 사용하는 어댑터용으로 보관한 키를 �
 |---------|---------|---------|----------|
 | LHDC V5 | lhdcv5-enc (AOSP 인코더의 C 포팅) | 400/500/900/1000 kbps (낮음/중간/중상/높음), 싱크가 알리는 최대값 이하, ABR 160–400 kbps | 16/24비트, 5 ms 프레임, 2바이트 미디어 페이로드 헤더, RTP 헤더 |
 | LDAC | libldac (AOSP) | 330/660/990 kbps | 높음/중간/낮음 (HQ/SQ/MQ) 모드, ABR |
-| aptX Adaptive | aptx-adaptive (AKS-Logic/aptx-adaptive-linux의 순수 Rust 인코더, MIT) | 높음 427 kbps, 저지연 265 kbps (R2 싱크: 270). ABR은 364/318 (R2: 270/204)까지 낮춤 | 48 kHz 스테레오(선택한 경우 이를 알리는 R2 싱크에는 높음에서 96 kHz: 646/340/255 kbps), 24비트. 미디어 패킷당 코덱 패킷 하나, A2DPWB 자체 RTP 헤더. 높음에서 ABR. 자동은 LHDC V5와 LDAC 다음으로 선택 |
+| aptX Adaptive | aptx-adaptive (AKS-Logic/aptx-adaptive-linux의 순수 Rust 인코더, MIT) | 높음 427 kbps, 저지연 265 kbps (R2 싱크: 270). ABR은 364/318 (R2: 270/204)까지 낮춤 | 48 kHz 스테레오(선택한 경우 이를 알리는 R2 싱크에는 높음에서 96 kHz: 646/340/255 kbps), 24비트. 미디어 패킷당 코덱 패킷 하나, BlueCaster 자체 RTP 헤더. 높음에서 ABR. 자동은 LHDC V5와 LDAC 다음으로 선택 |
 | Opus | libopus 1.5.2 | 256 kbps (스테레오, 모노는 절반) | 실험적. Android의 A2DP Opus: 48 kHz, 20 ms 프레임(싱크가 10 ms만 지원하면 10 ms), 미디어 페이로드에 맞춘 상한이 있는 constrained VBR, 패킷당 프레임 하나, 1바이트 미디어 페이로드 헤더, RTP 헤더 |
 | aptX HD | libopenaptx | 576 kbps | 24비트 입력, 고정 비트레이트, RTP 헤더 |
 | aptX | libopenaptx | 352/384 kbps (44.1/48 kHz) | 16비트 스테레오, RTP 헤더 없음 |
@@ -420,28 +422,28 @@ AAC와 SBC는 A2DP 사양에 정의된 표준 A2DP 코덱 ID를 사용합니다.
 - **aptX HD**: 11바이트 (바이트 6은 aptX와 동일, 예약 바이트 4개 추가), 스테레오
   필수
 - **aptX LL**: 8바이트, 싱크가 확장("new caps") 플래그를 설정하면
-  17바이트. A2DPWB는 aptX LL 엔드포인트 하나를 등록하고, 싱크가 사용한
+  17바이트. BlueCaster는 aptX LL 엔드포인트 하나를 등록하고, 싱크가 사용한
   vendor ID로 스트림을 구성
 - **LHDC V5**: 11바이트 (Android `a2dp_vendor_lhdcv5_constants.h`): 바이트 6은
   샘플링 속도(0x20 44.1k, 0x10 48k, 0x04 96k, 0x01 192k), 바이트 7은 비트 심도
   (0x04 16-bit, 0x02 24-bit)와 싱크의 최소/최대 비트레이트 제한, 바이트 8은
   코덱 하위 버전(0x01 = V5 ver.1)과 0x10 = 5 ms 프레임, 바이트 9-10은
-  선택 기능(low latency, lossless, JAS, AR, META)이며 A2DPWB는 이 중 어느 것도
+  선택 기능(low latency, lossless, JAS, AR, META)이며 BlueCaster는 이 중 어느 것도
   제공하지 않음. 스테레오만 지원. 싱크의 비트레이트 제한은 Android와 마찬가지로
   구성에 그대로 반영되고 인코더에 적용됨. 미디어 패킷에는 2바이트 페이로드 헤더가
   포함됨: frame count << 2 (지연 비트 0)와 시퀀스 번호
 - **FastStream**: 8바이트 (PipeWire `a2dp_faststream_t`): 바이트 6은 방향
   (0x01 sink = 음악, 0x02 source = 음성), 바이트 7의 하위 니블은 sink 속도
-  (0x2 44.1k, 0x1 48k), 상위 니블은 source 속도(0x2 16k). A2DPWB는
+  (0x2 44.1k, 0x1 48k), 상위 니블은 source 속도(0x2 16k). BlueCaster는
   음악 방향만 제공하고 구성함
 - **Opus**: 7바이트 (Android `a2dp_vendor_opus_constants.h`): 바이트 6의 비트
   2..0은 채널 모드(0x01 모노, 0x02 스테레오, 0x04 듀얼 모노), 비트 4..3은
-  프레임 길이(0x08 10 ms, 0x10 20 ms), 비트 7은 48 kHz. A2DPWB는 모노와
+  프레임 길이(0x08 10 ms, 0x10 20 ms), 비트 7은 48 kHz. BlueCaster는 모노와
   스테레오, 10 ms와 20 ms를 제공하고, 20 ms 스테레오로 구성함(모노는 모노
   입력이고 싱크가 모노를 지원할 때만). 미디어 패킷에는 1바이트 페이로드 헤더
   (하위 4비트에 frame count 1) 뒤에 Opus 패킷 하나가 담김
 - **aptX Adaptive**: 40바이트. BTstack의 기능 이벤트는 싱크의 코덱 정보를
-  30바이트로 자르지만, A2DPWB가 사용하는 값은 모두 그 안에 있음.
+  30바이트로 자르지만, BlueCaster가 사용하는 값은 모두 그 안에 있음.
   SET_CONFIGURATION: 48 kHz, source type 2(호스트 인코더: 재생 타이밍은 싱크가
   직접 맞춤), 스테레오. R1 싱크에는 싱크 자신의 목표 지연 바이트를 돌려주되
   LL0은 80 ms 이상으로 올리고 HQ 지연이 0이면 200 ms로 바꿈. R2 싱크에는
@@ -451,7 +453,7 @@ AAC와 SBC는 A2DP 사양에 정의된 표준 A2DP 코덱 ID를 사용합니다.
 12바이트 RTP 헤더가 붙습니다. aptX, aptX LL, FastStream은 (Android 및
 PipeWire와 마찬가지로) RTP 헤더 **없이** 전송되므로, L2CAP MTU 전체를 aptX 프레임에 사용할 수 있습니다.
 
-**aptX Adaptive**는 미디어 패킷 하나에 코덱 패킷 하나를 A2DPWB 자체의
+**aptX Adaptive**는 미디어 패킷 하나에 코덱 패킷 하나를 BlueCaster 자체의
 12바이트 RTP 헤더 뒤에 담아 보냅니다(BTstack은 RTP 헤더를 붙이지 않음).
 페이로드 타입 96, 시퀀스 번호는 패킷마다 +1, 타임스탬프는 패킷의 채널당 샘플
 수(시계 값이 아님), SSRC는 싱크의 지연 모드(HQ 0x000000A3, LL 0x000000A1)입니다.
@@ -461,27 +463,35 @@ LL 패킷은 348바이트(10 ms)입니다. 자동은 이를 기본 aptX, Opus, A
 
 ## 설정과 파일
 
-모든 데이터는 설정 폴더 `%APPDATA%\A2DPWB`(또는 `A2DPWB_CONFIG_DIR` 환경
-변수로 지정한 폴더)에 저장되며, v1에도 있던 파일은 v1과 같은 형식을 유지합니다.
+모든 데이터는 설정 폴더 `%APPDATA%\BlueCaster`(또는 `BLUECASTER_CONFIG_DIR` 환경
+변수로 지정한 폴더)에 저장되며, v1과 2.0.x에도 있던 파일은 그 형식을 유지합니다
+(2.0.x는 `%APPDATA%\A2DPWB`를 사용했습니다. 3.0.0은 처음 시작할 때 그 폴더의
+이름을 바꾸고 파일을 아래 폴더로 나누어 옮깁니다).
 
-| 파일 | 내용 |
+| 경로 | 내용 |
 |:-----|:-----|
 | `settings.json` | 앱 설정 (`schema_version` 포함). 알 수 없는 키는 유지됨 |
 | `profiles.json` | 프로필 |
-| `devices.txt`, `link_keys.txt` | 알려진 장치와 그 링크 키: v1에서 페어링한 헤드폰은 다시 페어링하지 않고 다시 연결됨 |
-| `le_audio_devices.txt`, `le_audio_bonds.tlv`, `le_audio_csip.txt` | LE 오디오(실험적): 장치 목록의 LE 오디오 항목, LE 본딩 정보(GATT 서버가 유지하는 CCC 값 포함), 조정 세트 |
-| `device_codecs.json` | 각 클래식 장치가 마지막으로 연결했을 때 제공한 내용 (그리고 OPPO 이어폰에 Hi-Res를 요청했는지 여부) |
-| `adapter_caps.json` | 스택이 각 어댑터에 대해 알아낸 내용 (LE 오디오 지원, 주소, HCI 버전, Windows에서의 이름) |
+| `devices\devices.txt` | 알려진 장치 |
+| `devices\le_audio_devices.txt` | LE 오디오(실험적): 장치 목록의 LE 오디오 항목 |
+| `devices\device_codecs.json` | 각 클래식 장치가 마지막으로 연결했을 때 제공한 내용 (그리고 OPPO 이어폰에 Hi-Res를 요청했는지 여부) |
+| `pairing\link_keys.txt` | 링크 키: v1이나 2.0.x에서 페어링한 헤드폰은 다시 페어링하지 않고 다시 연결됨 |
+| `pairing\le_audio_bonds.tlv`, `pairing\le_audio_csip.txt` | LE 오디오(실험적): LE 본딩 정보(GATT 서버가 유지하는 CCC 값 포함)와 조정 세트 |
+| `adapters\adapter_caps.json` | 스택이 각 어댑터에 대해 알아낸 내용 (LE 오디오 지원, 주소, HCI 버전, Windows에서의 이름) |
+| `adapters\driver\<instance id>.json` | WinUSB를 할당한 각 어댑터의 이전 드라이버 |
 | `firmware\` | 펌웨어 파일 (`*.bin`, `*.hcd`, `ibt-*`. Intel 파일은 linux-firmware의 배치처럼 `firmware\intel\`에도 둠). 이전 버전이 설정 폴더에 그냥 두었던 파일은 이곳으로 옮겨짐 |
-| `profiles-before-codecs.json` | 코덱 화면이 한 장치의 여러 프로필을 하나로 합치기 전의 `profiles.json` (한 번만 기록됨) |
-| `hci_<date>_<time>.pklg` | HCI 캡처 |
-| `logs\a2dpwb-core.<date>.log`, `logs\a2dpwb-ui.<date>.log`, `logs\a2dpwb-driver.log` | 코어와 창의 로그(하루에 파일 하나, UTC, 최근 7개 유지)와 드라이버 도우미의 로그. 가려지지 않음 |
-| `logs\hci\` | 스트림이 실패하거나 연결이 끊겼을 때 기록되는 HCI 플라이트 레코더의 캡처 (최신 10개) |
+| `logs\<YYYY-MM-DD>\core.log`, `ui.log`, `driver.log` | 코어, 창, 드라이버 도우미의 로그. 하루에 폴더 하나(UTC). 가려지지 않음 |
+| `logs\hci\*.pklg` | HCI 캡처: 스트림이 실패하거나 연결이 끊겼을 때 기록되는 플라이트 레코더의 캡처(최신 10개)와 직접 시작한 캡처(`hci_<date>_<time>.pklg`) |
 | `logs\probe\` | 칩 프로브와 칩 스크립트 보고서 (최신 10개) |
-| `logs\crash\` | 충돌 보고서: 충돌마다 미니덤프와 텍스트 파일 (프로그램별 최신 5개) |
-| `logs\bundles\` | 진단 패키지 (최신 3개) |
-| `driver\` | WinUSB를 할당한 각 어댑터의 이전 드라이버 |
-| `backup-v1\` | v2를 처음 시작할 때 한 번 만드는 v1 설정 사본 |
+| `logs\crash\` | 충돌 보고서: 충돌마다 미니덤프(`*.dmp`)와 텍스트 파일 (프로그램별 최신 5개) |
+| `logs\bundles\*.zip` | 진단 패키지 (최신 3개) |
+| `backup\v1\` | v2를 처음 시작할 때 한 번 만드는 v1 설정 사본 |
+| `backup\v2\` | 3.0.0을 처음 시작할 때 한 번 만드는 2.0.x 설정과 페어링 사본 |
+| `backup\profiles-before-codecs.json` | 코덱 화면이 한 장치의 여러 프로필을 하나로 합치기 전의 `profiles.json` (한 번만 기록됨) |
+
+프로그램 폴더는 `%LOCALAPPDATA%\BlueCaster\`입니다. 세 프로그램, 제거 프로그램,
+`licenses\`(`licenses\README.txt`, `licenses\bluecaster\LICENSE...`,
+`licenses\third-party\...`)가 들어 있습니다. 펌웨어 다운로드 캐시는 `%TEMP%\bluecaster-cache`입니다.
 
 ## 빌드 시스템
 
@@ -489,11 +499,11 @@ LL 패킷은 348바이트(10 ms)입니다. 자동은 이를 기본 aptX, Opus, A
   `build.rs`에서 `extern/`의 git 서브모듈에 있는 C 라이브러리를 MSVC로 컴파일합니다.
   CMake로 빌드하는 것은 개발자 도구 `tools/a2dp_decode`뿐입니다
 - 창의 페이지는 **Vite**로 빌드하며(`app/src/ui`에서 `pnpm build`), Tauri가
-  `a2dpwb.exe`에 내장합니다
+  `bluecaster.exe`에 내장합니다
 - IPC 프로토콜의 TypeScript 타입은 Rust 타입에서 생성됩니다
   (`cargo test -p ipc export_bindings`)
 - 언어 파일(`app/lang/*.json`)은 창과 코어의 트레이 메뉴에서 사용됩니다
-- `installer/build-release.ps1`이 설치 프로그램(Inno Setup, `installer/A2DPWB.iss`),
+- `installer/build-release.ps1`이 설치 프로그램(Inno Setup, `installer/BlueCaster.iss`),
   포터블 zip, 업데이터 매니페스트를 만듭니다. [빌드](building)를 참조하십시오
 
 ## 중요 고려 사항
@@ -504,7 +514,7 @@ LL 패킷은 348바이트(10 ms)입니다. 자동은 이를 기본 aptX, Opus, A
 - **페어링**: General Bonding과 함께 SSP Just Works 사용. 링크 키는
   로컬 파일에 저장되거나, 그 어댑터에 대해 Windows의 Bluetooth로부터 넘겨받음
 - **두 번째 어댑터 권장**: 내장 Bluetooth는 Windows용으로 유지하고,
-  A2DPWB에는 전용 USB 어댑터 사용
+  BlueCaster에는 전용 USB 어댑터 사용
 - 일부 Bluetooth 어댑터는 펌웨어 때문에 달성 가능한 비트레이트가 제한됨
 - USB Bluetooth 5.0 이상 어댑터는 일반적으로 LDAC에서 잘 작동함
 - 자동 코덱 선택 우선순위(음질 순, issue #86): LHDC V5 > LDAC > aptX Adaptive > Opus > aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC (FastStream, Opus 05는 직접 선택한 경우에만). 장치가 제공하지 않는 코덱을 선택하면, 장치의 순서에서 장치가 제공하는 첫 코덱으로 대체됨

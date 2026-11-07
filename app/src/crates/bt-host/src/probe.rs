@@ -1,7 +1,7 @@
 //! Chip probe: what a controller answers to standard read requests,
 //! recorded byte for byte (docs/chip-support.md)
 //!
-//! For adapters A2DPWB cannot bring up yet (MediaTek, Qualcomm) and for
+//! For adapters BlueCaster cannot bring up yet (MediaTek, Qualcomm) and for
 //! reports of odd ones: whoever adds a loader sees what the chip says. The
 //! probe only reads: no HCI Reset (a bootloader may not take it), no vendor
 //! command. A step without an answer is recorded and the next one is sent;

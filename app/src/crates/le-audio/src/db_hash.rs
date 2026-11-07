@@ -283,7 +283,7 @@ mod tests {
             HashAttr { handle: 1, uuid: AttUuid::Uuid16(0x2800), value: vec![0x00, 0x18] },
             HashAttr { handle: 2, uuid: AttUuid::Uuid16(0x2803), value: vec![0x02, 0x03, 0x00, 0x00, 0x2A] },
             // a value: not hashed
-            HashAttr { handle: 3, uuid: AttUuid::Uuid16(0x2A00), value: b"A2DPWB".to_vec() },
+            HashAttr { handle: 3, uuid: AttUuid::Uuid16(0x2A00), value: b"BlueCaster".to_vec() },
             HashAttr { handle: 4, uuid: AttUuid::Uuid16(0x2902), value: vec![1, 0] },
             HashAttr { handle: 5, uuid: AttUuid::Uuid16(0x2900), value: vec![1, 0] },
             HashAttr { handle: 6, uuid: AttUuid::Uuid128([7; 16]), value: vec![1] },

@@ -2,15 +2,15 @@
 
 /**
  * A crash report (logs\crash\<process>-<stamp>.txt): a panic or a crash
- * of a2dpwb-core.exe or a2dpwb.exe
+ * of bluecaster-core.exe or bluecaster.exe
  */
 export type CrashReport = { 
 /**
- * "a2dpwb-core-20261022-012338-512": the file without .txt
+ * "bluecaster-core-20261022-012338-512": the file without .txt
  */
 name: string, 
 /**
- * "a2dpwb-core" or "a2dpwb-ui"
+ * "bluecaster-core" or "bluecaster-ui"
  */
 process: string, 
 /**

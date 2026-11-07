@@ -18,21 +18,21 @@ nav_order: 4
 
 ## 概述 {#overview}
 
-A2DP Windows Bridge (A2DPWB) 让 Windows 能够使用 LHDC V5、LDAC、aptX Adaptive、aptX HD、aptX Low Latency、aptX、Opus、AAC、SBC XQ 和 SBC 的 Bluetooth 音频（以及通过 LE Audio 使用 LC3，实验性）。Windows 自带的 Bluetooth 堆栈在 A2DP 上只支持 SBC、经典 aptX 以及（仅限 Windows 11）AAC——本工具无需内核驱动即可增加其他编解码器。
+BlueCaster 让 Windows 能够使用 LHDC V5、LDAC、aptX Adaptive、aptX HD、aptX Low Latency、aptX、Opus、AAC、SBC XQ 和 SBC 的 Bluetooth 音频（以及通过 LE Audio 使用 LC3，实验性）。Windows 自带的 Bluetooth 堆栈在 A2DP 上只支持 SBC、经典 aptX 以及（仅限 Windows 11）AAC——本工具无需内核驱动即可增加其他编解码器。
 
 使用 **BTstack + WinUSB**——完全在用户模式下运行，无需驱动签名。
 
-A2DPWB 2.0 使用 Rust 编写。无法替换的 C 库（BTstack 和各编解码器的编码器）从源代码编译，并通过小型 FFI crate 调用；其余部分（包括 SBC 编码器）均为 Rust。
+BlueCaster 2.0 使用 Rust 编写。无法替换的 C 库（BTstack 和各编解码器的编码器）从源代码编译，并通过小型 FFI crate 调用；其余部分（包括 SBC 编码器）均为 Rust。
 
 ## 进程 {#processes}
 
-A2DPWB 最多以三个程序运行：
+BlueCaster 最多以三个程序运行：
 
 | 程序 | 运行时机 | 职责 |
 |:--------|:-----|:-----|
-| `a2dpwb-core.exe` | A2DPWB 运行期间（由窗口、“开始”菜单或**随 Windows 启动**启动） | Bluetooth、音频捕获和编码、配置文件和设置、托盘图标及其菜单、IPC 服务器。`--cli` 则在控制台中运行同一个核心 |
-| `a2dpwb.exe` | 仅在有窗口打开时（最后一个窗口关闭 3 分钟后退出） | 主窗口和托盘浮出窗口（Tauri 2，SolidJS + TypeScript）。自身不保存任何状态 |
-| `a2dpwb-driver.exe` | 每次更改驱动程序或导入密钥时，以管理员权限（UAC）运行 | 为适配器分配 WinUSB 或恢复其之前的驱动程序，或读取 Windows 的 Bluetooth 为某个适配器保存的链接密钥（`windows-keys`），然后退出 |
+| `bluecaster-core.exe` | BlueCaster 运行期间（由窗口、“开始”菜单或**随 Windows 启动**启动） | Bluetooth、音频捕获和编码、配置文件和设置、托盘图标及其菜单、IPC 服务器。`--cli` 则在控制台中运行同一个核心 |
+| `bluecaster.exe` | 仅在有窗口打开时（最后一个窗口关闭 3 分钟后退出） | 主窗口和托盘浮出窗口（Tauri 2，SolidJS + TypeScript）。自身不保存任何状态 |
+| `bluecaster-driver.exe` | 每次更改驱动程序或导入密钥时，以管理员权限（UAC）运行 | 为适配器分配 WinUSB 或恢复其之前的驱动程序，或读取 Windows 的 Bluetooth 为某个适配器保存的链接密钥（`windows-keys`），然后退出 |
 
 ```mermaid
 ---
@@ -43,15 +43,15 @@ config:
 ---
 flowchart TB
     src["Windows 音频：系统环回 / 虚拟设备 / 单个应用"]
-    ui["a2dpwb.exe：窗口和托盘浮出窗口（Tauri + SolidJS）"]
-    subgraph core["a2dpwb-core.exe（常驻，用户模式）"]
+    ui["bluecaster.exe：窗口和托盘浮出窗口（Tauri + SolidJS）"]
+    subgraph core["bluecaster-core.exe（常驻，用户模式）"]
         ctl["托盘菜单 / IPC 服务器 / CLI（--cli）"] --> svc["核心服务：连接状态机、编解码器选择、配置文件、重新连接"]
         svc --> cap["WASAPI 捕获"]
         cap -- PCM --> enc["编码器流水线：LDAC / aptX 系列 / LHDC V5 / Opus / AAC / SBC"]
         enc --> bt["BTstack：HCI / L2CAP / AVDTP / A2DP / AVRCP"]
     end
     ui <-->|"每个用户的命名管道"| ctl
-    svc -.->|"UAC，仅用于更改驱动程序或导入 Windows 的密钥"| drv["a2dpwb-driver.exe（提升权限）：分配 / 恢复 WinUSB，读取 Windows 的链接密钥"]
+    svc -.->|"UAC，仅用于更改驱动程序或导入 Windows 的密钥"| drv["bluecaster-driver.exe（提升权限）：分配 / 恢复 WinUSB，读取 Windows 的链接密钥"]
     src --> cap
     bt -->|"WinUSB（nusb）"| usb["USB Bluetooth 适配器（WinUSB 驱动程序）"]
     drv -.->|SetupAPI| usb
@@ -61,7 +61,7 @@ flowchart TB
 - **核心不是 Windows 服务。** 它是已登录用户的普通进程，因为 WASAPI 环回捕获的是该用户会话的音频。每个会话的互斥体保证只有一个实例；再次启动它会打开窗口。
 - **托盘属于核心。** 右键菜单（打开、前 10 台设备、断开连接、退出）会立即打开，无需启动窗口。左键单击会启动窗口的浮出窗口（或按设置启动主窗口）。
 - **窗口只负责显示。** 它先接收核心状态的快照，之后接收变更；关闭窗口或窗口崩溃都不会停止音频。关闭窗口只是将其隐藏，因此从托盘重新打开是即时的。
-- **命令行使用同一个核心。** `a2dpwb-core.exe --cli` 在没有托盘和 IPC 的情况下运行核心服务；模拟器测试就是以这种方式运行的。
+- **命令行使用同一个核心。** `bluecaster-core.exe --cli` 在没有托盘和 IPC 的情况下运行核心服务；模拟器测试就是以这种方式运行的。
 
 ## 传输层：BTstack + WinUSB {#transport-btstack--winusb}
 
@@ -89,7 +89,7 @@ flowchart TB
 
 ```mermaid
 sequenceDiagram
-    participant App as A2DPWB（BTstack）
+    participant App as BlueCaster（BTstack）
     participant Ad as USB 适配器
     participant Sink as 耳机
     App->>Ad: 通过 WinUSB 打开，HCI reset / 初始化
@@ -125,11 +125,11 @@ USB 传输保留了 v1 中真实适配器所需的恢复措施：打开适配器
 | 3. 引擎 | `bt-host` | 在独立线程上运行 BTstack，由命令和类型化事件驱动：GAP、A2DP Source、AVRCP、SDP、用于直通（`rfcomm.*`）的 RFCOMM 信道、链接密钥、设备的 SDP 服务、AFH、固件加载和芯片加载程序（`bringup`）、芯片探测和芯片脚本、HCI 捕获（`.pklg`）、LE Audio（`le/`） |
 | 2. 组件 | `le-audio` | LE Audio（实验性）：不依赖 BTstack 和 Windows 的逻辑（assigned numbers、LTV、PACS / ASCS PDU、预设、CSIP / VCP / MCP / CCP 模型） |
 | 3. 引擎 | `pipeline` | PCM 环形缓冲区、格式转换、缩混、编码、媒体负载、发送节奏控制、ABR |
-| 4. 核心 | `a2dpwb-core`（目录 `core`） | 状态机、重新连接、睡眠 / 恢复、配置文件、设置和 v1 迁移、音量同步、输出静音、更新检查、Realtek 固件下载、接收器测试客户端、统计、厂商协议（`vendor/`） |
+| 4. 核心 | `bluecaster-core`（目录 `core`） | 状态机、重新连接、睡眠 / 恢复、配置文件、设置和 v1 迁移、音量同步、输出静音、更新检查、Realtek 固件下载、接收器测试客户端、统计、厂商协议（`vendor/`） |
 | 4. 核心 | `ipc` | 核心与窗口共享的协议类型（serde；用 `ts-rs` 生成 TypeScript 类型）以及管道分帧 |
-| 5. 程序 | `a2dpwb-core-exe`（`app/src/core`） | `a2dpwb-core.exe`：核心、托盘（`tao` 事件循环上的 `tray-icon`）、IPC 服务器、`--cli` |
-| 5. 程序 | `a2dpwb-ui`（`app/src/ui`） | `a2dpwb.exe`：Tauri 2；Rust 端是 IPC 客户端，页面为 SolidJS + TypeScript + Vite |
-| 5. 程序 | `a2dpwb-driver`（`app/src/driver`） | `a2dpwb-driver.exe`：提升权限运行的辅助程序 |
+| 5. 程序 | `bluecaster-core-exe`（`app/src/core`） | `bluecaster-core.exe`：核心、托盘（`tao` 事件循环上的 `tray-icon`）、IPC 服务器、`--cli` |
+| 5. 程序 | `bluecaster-ui`（`app/src/ui`） | `bluecaster.exe`：Tauri 2；Rust 端是 IPC 客户端，页面为 SolidJS + TypeScript + Vite |
+| 5. 程序 | `bluecaster-driver`（`app/src/driver`） | `bluecaster-driver.exe`：提升权限运行的辅助程序 |
 
 ## 音频路径与线程 {#audio-path-and-threads}
 
@@ -161,7 +161,7 @@ flowchart TD
 
 ## 核心与 IPC {#core-and-ipc}
 
-窗口通过用户的命名管道 `\\.\pipe\a2dpwb-<user SID>` 与核心通信，该管道的 DACL 只允许该用户访问。消息是带长度前缀的 JSON 帧：
+窗口通过用户的命名管道 `\\.\pipe\bluecaster-<user SID>` 与核心通信，该管道的 DACL 只允许该用户访问。消息是带长度前缀的 JSON 帧：
 
 1. 窗口发送 `hello { protocol, client }`。协议版本不同的核心会以 `reject` 应答，窗口随即提示这两个程序来自不同的版本。否则核心以 `welcome { protocol, server, features }` 应答；`features` 列出协议的新增内容（`rfcomm`）。
 2. 核心发送 `snapshot`：包含其全部状态（适配器、设备、流、配置文件、设置、更新）和一个修订号。
@@ -169,7 +169,7 @@ flowchart TD
 4. 操作通过 `request { id, method, params }` 发送，并以 `response { id,
    result | error }` 应答。方法分组为 `state.*`、`stream.*`、`device.*`、`profile.*`、`settings.*`、`adapter.*`、`audio.*`、`diag.*`、`receiver.*`、`rfcomm.*` 和 `app.*`。
 
-其他程序也使用同一个管道；它们需要了解的内容请参阅[集成（IPC）](integration)。
+其他程序也使用同一个管道；它们需要了解的内容请参阅[集成（IPC）](integration)。3.0.0 之前的版本将该管道命名为 `\\.\pipe\a2dpwb-<user SID>`；在 3.0.0 之后至少 6 个月内，核心也会在该名称上提供服务。
 
 错误是带参数的代码（例如 `adapter.driver_missing`），而不是文本；窗口会翻译它们，并在消息旁边提供解决方法。高频数据（链路质量、日志）只在某个页面订阅时才会发送。
 
@@ -193,7 +193,7 @@ stateDiagram-v2
 
 ## 驱动程序分配 {#driver-assignment}
 
-Windows 8 及更高版本自带 Microsoft 签名的 WinUSB 驱动程序（`winusb.inf`）。`a2dpwb-driver.exe` 通过 SetupAPI 完成设备管理器中“更新驱动程序 > 让我从列表中选取 > WinUsb Device”所做的操作：
+Windows 8 及更高版本自带 Microsoft 签名的 WinUSB 驱动程序（`winusb.inf`）。`bluecaster-driver.exe` 通过 SetupAPI 完成设备管理器中“更新驱动程序 > 让我从列表中选取 > WinUsb Device”所做的操作：
 
 1. 通过设备实例 ID 打开适配器。
 2. 向其 `Device Parameters` 写入 `DeviceInterfaceGUIDs` 值，使 WinUSB 为其注册设备接口。
@@ -236,7 +236,7 @@ Windows 8 及更高版本自带 Microsoft 签名的 WinUSB 驱动程序（`winus
 - `a2dp_source_establish_stream()`——连接到 A2DP 接收端
 - `a2dp_source_set_config_other()`——配置厂商特定的编解码器
 - `a2dp_source_stream_send_media_payload_rtp()`——发送带 RTP 标头的编码音频（LDAC、aptX HD、AAC、SBC、SBC XQ、LHDC V5、Opus）
-- `a2dp_source_stream_send_media_packet()`——发送不带 RTP 标头的原始媒体数据包（aptX、aptX LL、FastStream），或带有 A2DPWB 自己的 RTP 标头的媒体数据包（aptX Adaptive）
+- `a2dp_source_stream_send_media_packet()`——发送不带 RTP 标头的原始媒体数据包（aptX、aptX LL、FastStream），或带有 BlueCaster 自己的 RTP 标头的媒体数据包（aptX Adaptive）
 
 ### 音频捕获（`audio-capture`）
 
@@ -244,11 +244,11 @@ Windows 8 及更高版本自带 Microsoft 签名的 WinUSB 驱动程序（`winus
 - 默认输出设备的系统环回、所选（虚拟）设备的环回，或单个应用及其子进程的进程环回（Windows 10 内部版本 19041 或更高版本）
 - 提供设备在共享模式下的混音格式（通常为 float32；由流水线为编码器转换）
 - 在应用程序模式下，会等待应用启动，并在应用重新启动后重新捕获它
-- 像 Windows 的音量合成器一样，在默认输出上设置应用的音量和静音（`mixer`）：会话的音量会作用于环回捕获，在 System Loopback 串流期间核心将该输出静音时也是如此（`a2dpwb-core::mute_output`）
+- 像 Windows 的音量合成器一样，在默认输出上设置应用的音量和静音（`mixer`）：会话的音量会作用于环回捕获，在 System Loopback 串流期间核心将该输出静音时也是如此（`bluecaster-core::mute_output`）
 
-### 厂商协议（`a2dpwb-core::vendor`）
+### 厂商协议（`bluecaster-core::vendor`）
 
-有些耳塞只有在其自带应用通过它们自己的 RFCOMM 服务切换某个模式后，才会提供某个编解码器或比特率。每个厂商一个模块，通过 A2DPWB 已有的链路完成这一操作，耳塞按其报告的名称区分：
+有些耳塞只有在其自带应用通过它们自己的 RFCOMM 服务切换某个模式后，才会提供某个编解码器或比特率。每个厂商一个模块，通过 BlueCaster 已有的链路完成这一操作，耳塞按其报告的名称区分：
 
 - **Huawei / Honor**：如果配置文件为未列出 LDAC 的耳塞请求 LDAC，会将其设为“音质优先”模式，然后重新连接；原本关闭该模式的耳塞，在没有因此得到 LDAC 时会恢复原状。“自动”时从不执行
 - **OPPO**：当 LHDC V5 串流时（手动选择或由“自动”选择），会向耳塞请求一次 Hi-Res，并重新连接一次以读取它们随后列出的内容；该记录与设备的编解码器一起保存（`device_codecs.json`），直到 `device.forget_codecs` 将其清除
@@ -257,7 +257,7 @@ Windows 8 及更高版本自带 Microsoft 签名的 WinUSB 驱动程序（`winus
 
 ### 配对（`link_keys`、`win-sys::bt_keys`）
 
-链接密钥保存在 `link_keys.txt` 中。在添加设备的地方，核心可以接管 Windows 的 Bluetooth 为 A2DPWB 现在所用适配器保存的密钥：`a2dpwb-driver.exe windows-keys` 读取它们（一次 UAC 提示），A2DPWB 已有的密钥会保留，其中的音频设备以 Windows 中的名称保存。开发者模式会显示设备的链接密钥及其列出的 SDP 服务。
+链接密钥保存在 `link_keys.txt` 中。在添加设备的地方，核心可以接管 Windows 的 Bluetooth 为 BlueCaster 现在所用适配器保存的密钥：`bluecaster-driver.exe windows-keys` 读取它们（一次 UAC 提示），BlueCaster 已有的密钥会保留，其中的音频设备以 Windows 中的名称保存。开发者模式会显示设备的链接密钥及其列出的 SDP 服务。
 
 ### 音频编码器
 
@@ -265,7 +265,7 @@ Windows 8 及更高版本自带 Microsoft 签名的 WinUSB 驱动程序（`winus
 |---------|---------|---------|----------|
 | LHDC V5 | lhdcv5-enc（AOSP 编码器的 C 语言移植版） | 400/500/900/1000 kbps（低/中/中高/高），不超过接收端列出的最大值，ABR 160–400 kbps | 16/24-bit，5 ms 帧，2 字节媒体负载标头，RTP 标头 |
 | LDAC | libldac (AOSP) | 330/660/990 kbps | 高/中/低（HQ/SQ/MQ）模式，ABR |
-| aptX Adaptive | aptx-adaptive（AKS-Logic/aptx-adaptive-linux 的纯 Rust 编码器，MIT） | 高 427 kbps，低延迟 265 kbps（R2 接收端：270）；ABR 降至 364/318（R2：270/204） | 48 kHz 立体声（选择时，对列出 96 kHz 的 R2 接收端在高音质下使用 96 kHz：646/340/255 kbps），24-bit；每个媒体数据包一个编解码器数据包，位于 A2DPWB 自己的 RTP 标头之后；高音质下支持 ABR；“自动”在 LHDC V5 和 LDAC 之后选择它 |
+| aptX Adaptive | aptx-adaptive（AKS-Logic/aptx-adaptive-linux 的纯 Rust 编码器，MIT） | 高 427 kbps，低延迟 265 kbps（R2 接收端：270）；ABR 降至 364/318（R2：270/204） | 48 kHz 立体声（选择时，对列出 96 kHz 的 R2 接收端在高音质下使用 96 kHz：646/340/255 kbps），24-bit；每个媒体数据包一个编解码器数据包，位于 BlueCaster 自己的 RTP 标头之后；高音质下支持 ABR；“自动”在 LHDC V5 和 LDAC 之后选择它 |
 | Opus | libopus 1.5.2 | 256 kbps（立体声；单声道减半） | 实验性；Android 的 A2DP Opus：48 kHz，20 ms 帧（接收端只支持 10 ms 时为 10 ms），以媒体负载为上限的受约束 VBR，每个数据包一帧，1 字节媒体负载标头，RTP 标头 |
 | aptX HD | libopenaptx | 576 kbps | 24-bit 输入，固定码率，RTP 标头 |
 | aptX | libopenaptx | 352/384 kbps（44.1/48 kHz） | 16-bit 立体声，无 RTP 标头 |
@@ -301,52 +301,56 @@ AAC 和 SBC 使用 A2DP 规范中定义的标准 A2DP 编解码器 ID。
 
 - **aptX**：7 字节（第 6 字节 = 采样率 / 声道模式）
 - **aptX HD**：11 字节（第 6 字节同 aptX，另加 4 个保留字节）；必须为立体声
-- **aptX LL**：8 字节；当接收端设置了扩展（“new caps”）标志时为 17 字节。A2DPWB 只注册一个 aptX LL 端点，并以接收端所用的 vendor ID 配置流
-- **LHDC V5**：11 字节（Android `a2dp_vendor_lhdcv5_constants.h`）：第 6 字节为采样率（0x20 44.1k、0x10 48k、0x04 96k、0x01 192k），第 7 字节为位深度（0x04 16-bit、0x02 24-bit）以及接收端的最小/最大比特率限制，第 8 字节为编解码器子版本（0x01 = V5 ver.1）和 0x10 = 5 ms 帧，第 9-10 字节为可选功能（低延迟、无损、JAS、AR、META），A2DPWB 均不提供。仅支持立体声。与 Android 一样，接收端的比特率限制会在配置中回传并应用到编码器。媒体数据包带有 2 字节的负载标头：帧数 << 2（延迟位为 0）以及序列号
-- **FastStream**：8 字节（PipeWire `a2dp_faststream_t`）：第 6 字节为方向（0x01 sink = 音乐，0x02 source = 语音），第 7 字节的低 4 位为接收方向的采样率（0x2 44.1k、0x1 48k），高 4 位为发送方向的采样率（0x2 16k）。A2DPWB 只提供并配置音乐方向
-- **Opus**：7 字节（Android `a2dp_vendor_opus_constants.h`）：第 6 字节的位 2..0 为声道模式（0x01 单声道、0x02 立体声、0x04 双单声道），位 4..3 为帧长（0x08 10 ms、0x10 20 ms），位 7 为 48 kHz。A2DPWB 提供单声道和立体声、10 ms 和 20 ms，并配置为 20 ms 立体声（仅当输入为单声道且接收端支持单声道时才使用单声道）。媒体数据包在 1 字节的负载标头（低 4 位为帧数 1）之后携带一个 Opus 数据包
-- **aptX Adaptive**：40 字节。BTstack 的能力事件会把接收端的编解码器信息截断为 30 字节，但其中仍包含 A2DPWB 用到的全部内容。SET_CONFIGURATION：48 kHz，源类型 2（主机编码器：由接收端自行控制播放时序），立体声；R1 接收端会收到它自己的目标延迟字节，其中 LL0 提高到至少 80 ms，HQ 延迟为 0 时改为 200 ms；R2 接收端会收到源端自己的 R2 块
+- **aptX LL**：8 字节；当接收端设置了扩展（“new caps”）标志时为 17 字节。BlueCaster 只注册一个 aptX LL 端点，并以接收端所用的 vendor ID 配置流
+- **LHDC V5**：11 字节（Android `a2dp_vendor_lhdcv5_constants.h`）：第 6 字节为采样率（0x20 44.1k、0x10 48k、0x04 96k、0x01 192k），第 7 字节为位深度（0x04 16-bit、0x02 24-bit）以及接收端的最小/最大比特率限制，第 8 字节为编解码器子版本（0x01 = V5 ver.1）和 0x10 = 5 ms 帧，第 9-10 字节为可选功能（低延迟、无损、JAS、AR、META），BlueCaster 均不提供。仅支持立体声。与 Android 一样，接收端的比特率限制会在配置中回传并应用到编码器。媒体数据包带有 2 字节的负载标头：帧数 << 2（延迟位为 0）以及序列号
+- **FastStream**：8 字节（PipeWire `a2dp_faststream_t`）：第 6 字节为方向（0x01 sink = 音乐，0x02 source = 语音），第 7 字节的低 4 位为接收方向的采样率（0x2 44.1k、0x1 48k），高 4 位为发送方向的采样率（0x2 16k）。BlueCaster 只提供并配置音乐方向
+- **Opus**：7 字节（Android `a2dp_vendor_opus_constants.h`）：第 6 字节的位 2..0 为声道模式（0x01 单声道、0x02 立体声、0x04 双单声道），位 4..3 为帧长（0x08 10 ms、0x10 20 ms），位 7 为 48 kHz。BlueCaster 提供单声道和立体声、10 ms 和 20 ms，并配置为 20 ms 立体声（仅当输入为单声道且接收端支持单声道时才使用单声道）。媒体数据包在 1 字节的负载标头（低 4 位为帧数 1）之后携带一个 Opus 数据包
+- **aptX Adaptive**：40 字节。BTstack 的能力事件会把接收端的编解码器信息截断为 30 字节，但其中仍包含 BlueCaster 用到的全部内容。SET_CONFIGURATION：48 kHz，源类型 2（主机编码器：由接收端自行控制播放时序），立体声；R1 接收端会收到它自己的目标延迟字节，其中 LL0 提高到至少 80 ms，HQ 延迟为 0 时改为 200 ms；R2 接收端会收到源端自己的 R2 块
 
 **有无 RTP**：LDAC、aptX HD、AAC、SBC、SBC XQ、LHDC V5 和 Opus 的媒体数据包带有 12 字节的 RTP 标头。aptX、aptX LL 和 FastStream **不带** RTP 标头发送（与 Android 和 PipeWire 相同），因此整个 L2CAP MTU 都可用于 aptX 帧。
 
-**aptX Adaptive** 在 A2DPWB 自己的 12 字节 RTP 标头（BTstack 不添加）之后，每个媒体数据包发送一个编解码器数据包：负载类型 96，序列号每个数据包 +1，时间戳 = 数据包中每声道的采样数（不是时钟），SSRC = 接收端的延迟模式（0x000000A3 HQ、0x000000A1 LL）。负载按 16 位字进行字节交换。HQ 数据包为 656 字节（12 ms），LL 数据包为 348 字节（10 ms）。“自动”会优先选择它，而不是经典 aptX、Opus 和 AAC（issue #86 的顺序），但排在 LHDC V5 和 LDAC 之后。
+**aptX Adaptive** 在 BlueCaster 自己的 12 字节 RTP 标头（BTstack 不添加）之后，每个媒体数据包发送一个编解码器数据包：负载类型 96，序列号每个数据包 +1，时间戳 = 数据包中每声道的采样数（不是时钟），SSRC = 接收端的延迟模式（0x000000A3 HQ、0x000000A1 LL）。负载按 16 位字进行字节交换。HQ 数据包为 656 字节（12 ms），LL 数据包为 348 字节（10 ms）。“自动”会优先选择它，而不是经典 aptX、Opus 和 AAC（issue #86 的顺序），但排在 LHDC V5 和 LDAC 之后。
 
 ## 设置与文件 {#settings-and-files}
 
-所有内容都保存在设置文件夹 `%APPDATA%\A2DPWB`（或环境变量 `A2DPWB_CONFIG_DIR` 指定的文件夹）中；v1 已有的文件保持 v1 的格式：
+所有内容都保存在设置文件夹 `%APPDATA%\BlueCaster`（或环境变量 `BLUECASTER_CONFIG_DIR` 指定的文件夹）中；v1 和 2.0.x 已有的文件保持其格式（2.0.x 使用 `%APPDATA%\A2DPWB`；3.0.0 首次启动时会将该文件夹改名，并把文件整理到下列文件夹中）：
 
-| 文件 | 内容 |
+| 路径 | 内容 |
 |:-----|:---------|
 | `settings.json` | 应用设置，带有 `schema_version`；未知的键会被保留 |
 | `profiles.json` | 配置文件 |
-| `devices.txt`、`link_keys.txt` | 已知设备及其链接密钥：与 v1 配对过的耳机无需重新配对即可再次连接 |
-| `le_audio_devices.txt`、`le_audio_bonds.tlv`、`le_audio_csip.txt` | LE Audio（实验性）：设备列表中的 LE Audio 条目、LE 绑定信息（含 GATT 服务器持久保存的 CCC 值）以及协调集 |
-| `device_codecs.json` | 每台经典设备上次连接时提供的内容（以及是否已向 OPPO 耳塞请求过 Hi-Res） |
-| `adapter_caps.json` | 堆栈对每个适配器所了解的信息（是否支持 LE Audio、地址、HCI 版本、Windows 中的名称） |
+| `devices\devices.txt` | 已知设备 |
+| `devices\le_audio_devices.txt` | LE Audio（实验性）：设备列表中的 LE Audio 条目 |
+| `devices\device_codecs.json` | 每台经典设备上次连接时提供的内容（以及是否已向 OPPO 耳塞请求过 Hi-Res） |
+| `pairing\link_keys.txt` | 链接密钥：与 v1 或 2.0.x 配对过的耳机无需重新配对即可再次连接 |
+| `pairing\le_audio_bonds.tlv`、`pairing\le_audio_csip.txt` | LE Audio（实验性）：LE 绑定信息（含 GATT 服务器持久保存的 CCC 值）以及协调集 |
+| `adapters\adapter_caps.json` | 堆栈对每个适配器所了解的信息（是否支持 LE Audio、地址、HCI 版本、Windows 中的名称） |
+| `adapters\driver\<instance id>.json` | 每个被分配了 WinUSB 的适配器之前的驱动程序 |
 | `firmware\` | 固件文件（`*.bin`、`*.hcd`、`ibt-*`；Intel 的固件也位于 `firmware\intel\`，与 linux-firmware 的布局相同）；早期版本散放在设置文件夹中的文件会被移到这里 |
-| `profiles-before-codecs.json` | **编解码器**页面将一台设备的多个配置文件合并为一个之前的 `profiles.json`（只写入一次） |
-| `hci_<date>_<time>.pklg` | HCI 捕获 |
-| `logs\a2dpwb-core.<date>.log`、`logs\a2dpwb-ui.<date>.log`、`logs\a2dpwb-driver.log` | 核心和窗口的日志，每天一个文件（UTC），保留最近 7 个，以及驱动程序辅助程序的日志；不做隐藏处理 |
-| `logs\hci\` | HCI 飞行记录器的捕获，在串流失败或连接丢失时写入（最新的 10 个） |
+| `logs\<YYYY-MM-DD>\core.log`、`ui.log`、`driver.log` | 核心、窗口和驱动程序辅助程序的日志，每天一个文件夹（UTC）；不做隐藏处理 |
+| `logs\hci\*.pklg` | HCI 捕获：飞行记录器的捕获，在串流失败或连接丢失时写入（最新的 10 个），以及你自己开始的捕获（`hci_<date>_<time>.pklg`） |
 | `logs\probe\` | 芯片探测和芯片脚本的报告（最新的 10 个） |
-| `logs\crash\` | 崩溃报告：每次崩溃一个小型转储和一个文本文件（每个程序最新的 5 个） |
-| `logs\bundles\` | 诊断包（最新的 3 个） |
-| `driver\` | 每个被分配了 WinUSB 的适配器之前的驱动程序 |
-| `backup-v1\` | v1 设置的副本，在 v2 首次启动时创建一次 |
+| `logs\crash\` | 崩溃报告：每次崩溃一个小型转储（`*.dmp`）和一个文本文件（每个程序最新的 5 个） |
+| `logs\bundles\*.zip` | 诊断包（最新的 3 个） |
+| `backup\v1\` | v1 设置的副本，在 v2 首次启动时创建一次 |
+| `backup\v2\` | 2.0.x 设置和配对的副本，在 3.0.0 首次启动时创建一次 |
+| `backup\profiles-before-codecs.json` | **编解码器**页面将一台设备的多个配置文件合并为一个之前的 `profiles.json`（只写入一次） |
+
+程序文件夹为 `%LOCALAPPDATA%\BlueCaster\`：其中包含三个程序、卸载程序和 `licenses\`（`licenses\README.txt`、`licenses\bluecaster\LICENSE...`、`licenses\third-party\...`）。固件下载缓存为 `%TEMP%\bluecaster-cache`。
 
 ## 构建系统 {#build-system}
 
 - 程序由 **Cargo** 构建，不需要 CMake。每个 `-sys` crate 在 `build.rs` 中用 MSVC 从 `extern/` 中的 git 子模块编译其 C 库。只有开发者工具 `tools/a2dp_decode` 使用 CMake 构建
-- 窗口的页面由 **Vite** 构建（在 `app/src/ui` 中运行 `pnpm build`），并由 Tauri 嵌入 `a2dpwb.exe`
+- 窗口的页面由 **Vite** 构建（在 `app/src/ui` 中运行 `pnpm build`），并由 Tauri 嵌入 `bluecaster.exe`
 - IPC 协议的 TypeScript 类型由 Rust 类型生成（`cargo test -p ipc export_bindings`）
 - 语言文件（`app/lang/*.json`）供窗口和核心的托盘菜单使用
-- `installer/build-release.ps1` 生成安装程序（Inno Setup，`installer/A2DPWB.iss`）、便携版 zip 和更新程序清单。请参阅[构建](building)
+- `installer/build-release.ps1` 生成安装程序（Inno Setup，`installer/BlueCaster.iss`）、便携版 zip 和更新程序清单。请参阅[构建](building)
 
 ## 重要注意事项 {#important-considerations}
 
 - **适配器兼容性**：Realtek（测试最充分）和 CSR USB 适配器；Intel 和 Broadcom 为实验性支持。Realtek 适配器需要在启动时上传固件，处于 bootloader 模式的 Intel 适配器也是如此
 - **配对**：使用 SSP Just Works 和 General Bonding。链接密钥持久保存到本地文件，或从 Windows 的 Bluetooth 中接管该适配器的密钥
-- **建议使用第二个适配器**：内置 Bluetooth 留给 Windows 使用，专用 USB 适配器用于 A2DPWB
+- **建议使用第二个适配器**：内置 Bluetooth 留给 Windows 使用，专用 USB 适配器用于 BlueCaster
 - 某些 Bluetooth 适配器的固件会限制可达到的比特率
 - USB Bluetooth 5.0+ 适配器通常能很好地支持 LDAC
 - 自动选择编解码器的优先级（按音质，issue #86）：LHDC V5 > LDAC > aptX Adaptive > Opus > aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC（FastStream 和 Opus 05 仅在明确选择时使用）；所选编解码器设备不提供时，回退到该设备顺序中它提供的第一个编解码器

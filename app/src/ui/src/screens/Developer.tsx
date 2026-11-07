@@ -38,6 +38,7 @@ const NO_OVERRIDES: DevOverrides = {
   match_source: false,
   ignore_sink_max: false,
   queue_max_wait_ms: 0,
+  encode_at_send: false,
 };
 
 export function Developer() {
@@ -252,6 +253,12 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
             />
           )}
         </Field>
+        <Toggle
+          label={t("ui.dev.encode_at_send")}
+          hint={t("ui.dev.encode_at_send_hint")}
+          checked={props.value.encode_at_send}
+          onChange={(v) => set({ encode_at_send: v })}
+        />
       </Section>
       <PacketSizes />
       <Section title="AAC">

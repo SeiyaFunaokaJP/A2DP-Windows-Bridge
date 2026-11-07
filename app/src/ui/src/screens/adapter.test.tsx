@@ -98,7 +98,7 @@ describe("Adapter firmware", () => {
       firmware_present: null,
       vendor_note: { key: "firmware.vendor_intel", args: [] },
       windows_name: null,
-      // Neither Windows' Bluetooth nor a stack of A2DPWB ran it yet
+      // Neither Windows' Bluetooth nor a stack of BlueCaster ran it yet
       address: null,
       bt_version: null,
     };
@@ -119,12 +119,12 @@ describe("Adapter firmware", () => {
     const fw = within(mtk).getByRole("group", { name: "Firmware: Unsupported" });
     expect(within(fw).getByText("Unsupported")).toHaveClass("st-bad");
     expect(within(fw).getByRole("button", { name: "Download not available" })).toBeDisabled();
-    // A vendor's driver is the original one too, its service on hover; A2DPWB
+    // A vendor's driver is the original one too, its service on hover; BlueCaster
     // cannot use the adapter, so it keeps that driver
     const mtkDriver = within(mtk).getByRole("group", { name: "Driver: Original driver" });
     expect(within(mtkDriver).getByText("Original driver")).toHaveAttribute("title", "mtkbtfilterx");
     expect(within(mtkDriver).getByRole("button", { name: "Replace with WinUSB driver" })).toBeDisabled();
-    expect(mtkDriver).toHaveTextContent("A2DP Windows Bridge cannot use this adapter, so its driver stays as it is");
+    expect(mtkDriver).toHaveTextContent("BlueCaster cannot use this adapter, so its driver stays as it is");
     // The chip choice goes with the Realtek adapter only
     expect(within(mtk).queryByLabelText("Bluetooth Chip")).toBeNull();
     expect(within(rtl).getByLabelText("Bluetooth Chip")).toBeInTheDocument();
@@ -212,7 +212,7 @@ describe("Adapter firmware", () => {
     const { mock } = start();
     const open = vi.spyOn(mock, "openFolder");
     fireEvent.click(await screen.findByRole("button", { name: "Open Firmware Folder" }));
-    await waitFor(() => expect(open).toHaveBeenCalledWith("C:\\Users\\you\\AppData\\Roaming\\A2DPWB\\firmware"));
+    await waitFor(() => expect(open).toHaveBeenCalledWith("C:\\Users\\you\\AppData\\Roaming\\BlueCaster\\firmware"));
   });
 
   it("downloads the missing firmware after the user has read the terms", async () => {
@@ -274,7 +274,7 @@ describe("Adapter firmware", () => {
 });
 
 describe("Chip probe (developer mode)", () => {
-  it("offers WinUSB for a chip A2DPWB cannot use and reads a WinUSB adapter's chip", async () => {
+  it("offers WinUSB for a chip BlueCaster cannot use and reads a WinUSB adapter's chip", async () => {
     const { calls, mock } = start();
     await screen.findByRole("heading", { level: 1, name: "Adapters" });
     const m = mock as any;

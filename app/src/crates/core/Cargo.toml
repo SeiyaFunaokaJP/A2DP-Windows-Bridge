@@ -1,13 +1,13 @@
 [package]
-name = "a2dpwb-core"
-description = "A2DPWB's core: the streaming state machine, Bluetooth stack lifecycle, profiles, settings, devices"
+name = "bluecaster-core"
+description = "BlueCaster's core: the streaming state machine, Bluetooth stack lifecycle, profiles, settings, devices"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [lib]
-name = "a2dpwb_core"
+name = "bluecaster_core"
 
 [dependencies]
 bt-host.workspace = true
@@ -18,6 +18,8 @@ codec = { workspace = true, features = ["default"] }
 pipeline.workspace = true
 audio-capture.workspace = true
 win-sys.workspace = true
+# compat.rs: the 2.0.x pipe and mutex names (defined next to the new ones)
+ipc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

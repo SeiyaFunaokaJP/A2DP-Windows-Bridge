@@ -235,7 +235,7 @@ impl GattServer {
         let appearance = self.add_char(AttUuid::Uuid16(UUID_CHR_APPEARANCE), ATT_PROPERTY_READ, 0, 0, None, None);
         self.core_values.insert(appearance, vec![0x80, 0x00]);
         // GATT: Service Changed (the DB never changes while connected;
-        // indicated to bonded clients after an A2DPWB update changed it),
+        // indicated to bonded clients after an BlueCaster update changed it),
         // then the Database Hash (static value, filled in by start()). Keep
         // this layout: the handles up to the Service Changed CCC must stay
         // the same in every version, check_stored_client_configs() relies
@@ -359,7 +359,7 @@ impl GattServer {
 
     /// Before att_server_init(): the CCC values BTstack stored for bonded
     /// clients belong to the database with the stored hash. Another
-    /// database (an A2DPWB update added or moved characteristics, or a
+    /// database (an BlueCaster update added or moved characteristics, or a
     /// version from before the Database Hash, which stored no hash): drop
     /// them - BTstack would replay them on the old handles - and remember
     /// which clients had Service Changed indications on, to tell them on
@@ -589,7 +589,7 @@ mod tests {
     #[test]
     fn handles_follow_att_db_util() {
         let mut s = GattServer::new();
-        s.build_base("A2DPWB");
+        s.build_base("BlueCaster");
         // GAP 1, name 2/3, appearance 4/5, GATT 6, Service Changed 7/8 +
         // CCC 9, Database Hash 10/11
         assert_eq!(s.service_changed, 8);
@@ -603,14 +603,14 @@ mod tests {
         assert_eq!(b.end_service(), 17);
         assert_eq!(s.owner(16), Some(3));
         assert_eq!(s.owner(8), None);
-        assert_eq!(s.read_own(0x40, 3), Some(b"A2DPWB".to_vec()));
+        assert_eq!(s.read_own(0x40, 3), Some(b"BlueCaster".to_vec()));
         assert_eq!(s.read_own(0x40, 16), None);
     }
 
     #[test]
     fn ccc_and_prepared_writes() {
         let mut s = GattServer::new();
-        s.build_base("A2DPWB");
+        s.build_base("BlueCaster");
         let h =
             s.builder(0).add_characteristic(AttUuid::Uuid16(0x2BA4), ATT_PROPERTY_WRITE | ATT_PROPERTY_NOTIFY, 1, 1);
         s.started = true;

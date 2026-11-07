@@ -3,7 +3,7 @@
 A Bumble host on its own BroadcastController (le_audio/broadcast.py) does
 what a broadcast sink does: extended scan for a Broadcast Audio
 Announcement, periodic advertising sync, BASE and BIGInfo, LE BIG Create Sync
-(with --broadcast-code), ISO data paths on the BIS handles. What A2DPWB
+(with --broadcast-code), ISO data paths on the BIS handles. What BlueCaster
 advertises is parsed with Bumble's own parsers (bap.BroadcastAudioAnnouncement,
 pbp.PublicBroadcastAnnouncement, bap.BasicAudioAnnouncement) after a strict
 length walk of the AD and BASE structures, and logged for run_test.py
@@ -21,7 +21,7 @@ length walk of the AD and BASE structures, and logged for run_test.py
     Auracast sink: problem: <text>         (malformed data, unexpected values)
 
 The sink's HCI traffic (ISO data included) goes to the PacketLogger capture
-for a2dpwb_decode --le-audio --received.
+for bluecaster_decode --le-audio --received.
 """
 
 import asyncio

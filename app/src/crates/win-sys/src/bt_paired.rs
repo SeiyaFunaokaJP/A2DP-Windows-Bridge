@@ -3,7 +3,7 @@
 //!
 //! Reads Windows' own list through BluetoothFindFirstDevice /
 //! BluetoothFindNextDevice without an inquiry: nothing is sent over the
-//! air and the USB adapter A2DPWB uses (WinUSB) is not touched. The list is
+//! air and the USB adapter BlueCaster uses (WinUSB) is not touched. The list is
 //! what Windows' Bluetooth stack remembers, so it also works when that
 //! stack has no radio any more (the adapter was switched to WinUSB): the
 //! names and addresses stay in the registry.
@@ -161,7 +161,7 @@ fn search(radio: HANDLE) -> windows::core::Result<Vec<PairedDevice>> {
 }
 
 /// The classic devices Windows' Bluetooth paired through the USB device
-/// `instance_id` (an adapter A2DPWB now has on WinUSB): Windows keeps a
+/// `instance_id` (an adapter BlueCaster now has on WinUSB): Windows keeps a
 /// device node per paired device (`BTHENUM\DEV_<address>\...`) below the
 /// radio's, also once the radio has left its stack. Unlike
 /// `paired_devices`, this needs no running radio, and it leaves out what
@@ -342,13 +342,13 @@ mod tests {
         assert_eq!(device_node_address(r"BTHENUM\DEV_5818620\x"), None);
     }
 
-    /// This PC's devices paired through a USB device (A2DPWB_ADAPTER=<its
+    /// This PC's devices paired through a USB device (BLUECASTER_ADAPTER=<its
     /// instance ID> cargo test -p win-sys list_paired_through -- --ignored
     /// --nocapture)
     #[test]
     #[ignore = "reads this PC's Bluetooth devices"]
     fn list_paired_through() {
-        let id = std::env::var("A2DPWB_ADAPTER").unwrap_or_default();
+        let id = std::env::var("BLUECASTER_ADAPTER").unwrap_or_default();
         for d in paired_through(&id) {
             println!(
                 "{} \u{201C}{}\u{201D} CoD 0x{:06X} audio {}",

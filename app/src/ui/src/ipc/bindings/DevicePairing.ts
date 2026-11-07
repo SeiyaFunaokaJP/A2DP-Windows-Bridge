@@ -6,6 +6,6 @@ import type { LinkKeyInfo } from "./LinkKeyInfo";
  */
 export type DevicePairing = { 
 /**
- * The link key A2DPWB keeps, None when it has none (not paired)
+ * The link key BlueCaster keeps, None when it has none (not paired)
  */
 link_key: LinkKeyInfo | null, };

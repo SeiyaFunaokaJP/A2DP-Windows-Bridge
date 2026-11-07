@@ -11,8 +11,10 @@ use bt_host::media::{MEDIA_PAYLOAD_LIMIT_DEFAULT, clamp_media_payload_limit};
 /// settings.json's format: 1 is v1's (which wrote no schema_version), 2 is
 /// v2's, 3 has LE Audio on by default, 4 remembers each device's volume by
 /// default, 5 has one Auto-select for every device, 6 one Windows Volume
-/// Sync, media keys and remember volume for every device (see migrate.rs)
-pub const SCHEMA_VERSION: u32 = 7;
+/// Sync, media keys and remember volume for every device, 7 has what
+/// forgetting a device left behind gone, 8 the folder's sub folders (3.0.0;
+/// see migrate.rs)
+pub const SCHEMA_VERSION: u32 = 8;
 /// The first schema_version v2 wrote: a lower one is v1's folder
 pub const FIRST_V2_SCHEMA: u32 = 2;
 
@@ -325,7 +327,7 @@ impl Settings {
     }
 
     pub fn path(dir: &Path) -> PathBuf {
-        dir.join("settings.json")
+        crate::paths::settings_file(dir)
     }
 
     /// Missing or unreadable: defaults (a broken file is kept as .bad)
@@ -531,7 +533,7 @@ mod tests {
 
     #[test]
     fn unknown_theme_is_dark_as_in_v1() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-theme-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-theme-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         for (v1, v2) in [("white", "dark"), ("light", "light"), ("system", "system"), ("", "dark")] {
             std::fs::write(Settings::path(&dir), format!(r#"{{"theme":"{v1}"}}"#)).unwrap();
@@ -546,7 +548,7 @@ mod tests {
 
     #[test]
     fn experimental_codecs_off_loads_as_on() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-experimental-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-experimental-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             Settings::path(&dir),

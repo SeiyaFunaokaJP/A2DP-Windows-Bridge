@@ -6,8 +6,8 @@ Each module here belongs to one work package and may define:
     def check(case, ctx): -> [str]    extra checks after every case; return
                                       failure texts (empty list: fine)
 
-ctx is a dict: 'out' (the case's output folder), 'a2dpwb_log' / 'sink_log'
-(text of both logs), 'sent' / 'received' (parsed a2dpwb_decode reports, see
+ctx is a dict: 'out' (the case's output folder), 'bluecaster_log' / 'sink_log'
+(text of both logs), 'sent' / 'received' (parsed bluecaster_decode reports, see
 run_test.parse_le_report) and 'sink_addresses'. A check should only look at
 what its own profile does and return [] for cases it does not concern
 (case.tags says which profiles a case exercises).

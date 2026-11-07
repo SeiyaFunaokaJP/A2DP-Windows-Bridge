@@ -231,7 +231,7 @@ mod tests {
         child.wait().unwrap();
         assert!(process_exited(pid));
         assert!(process_exited(pid), "stays exited");
-        assert_eq!(find_process("no-such-app-a2dpwb.exe"), None);
+        assert_eq!(find_process("no-such-app-bluecaster.exe"), None);
         assert_eq!(find_process(""), None);
     }
 

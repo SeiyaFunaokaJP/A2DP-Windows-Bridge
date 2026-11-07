@@ -79,7 +79,7 @@ const RULES: Rule[] = [
   // audio_capture's own "audio capture: loopback of ..." describes the
   // source; the stream's "audio capture: ..." is the failure
   { step: "capture", target: "audio_capture", needle: /^audio capture: /, action: "detail", detail: "after" },
-  { step: "capture", target: "a2dpwb_core::stream", needle: /^audio capture: /, action: "failed", detail: "after" },
+  { step: "capture", target: "bluecaster_core::stream", needle: /^audio capture: /, action: "failed", detail: "after" },
   { step: "capture", needle: "capturing app ", action: "detail", detail: "after" },
   { step: "capture", needle: /^capture: /, action: "done", detail: "after" },
   { step: "config", needle: "codec configured", action: "running", detail: "after" },

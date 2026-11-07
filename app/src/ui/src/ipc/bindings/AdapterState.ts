@@ -7,7 +7,7 @@ import type { OtherRadio } from "./OtherRadio";
 
 export type AdapterState = { status: AdapterStatus, adapters: Array<AdapterInfo>, error: Msg | null, 
 /**
- * The adapter A2DPWB uses has LE Audio's isochronous channels: the
+ * The adapter BlueCaster uses has LE Audio's isochronous channels: the
  * running stack's, else the first WinUSB adapter's remembered
  * AdapterInfo::le_audio. None: not known yet (the UI then offers no LE
  * Audio)
@@ -20,7 +20,7 @@ le_audio: boolean | null,
  */
 rom_firmware: boolean, 
 /**
- * A radio Windows' own Bluetooth runs beside the adapter A2DPWB uses:
+ * A radio Windows' own Bluetooth runs beside the adapter BlueCaster uses:
  * the two may interfere (issue #86). None: no such radio
  */
 other_radio?: OtherRadio | null, 

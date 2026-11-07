@@ -44,7 +44,7 @@ pub const STATE_PLAYING: u8 = 0x01;
 pub const STATE_PAUSED: u8 = 0x02;
 pub const STATE_SEEKING: u8 = 0x03;
 
-// Media Control Point opcodes (MCS 3.18) A2DPWB knows
+// Media Control Point opcodes (MCS 3.18) BlueCaster knows
 pub const OP_PLAY: u8 = 0x01;
 pub const OP_PAUSE: u8 = 0x02;
 pub const OP_FAST_REWIND: u8 = 0x03;
@@ -430,12 +430,12 @@ pub trait MediaBackend: Send {
 }
 
 /// The simulated player's name
-pub const SIM_PLAYER: &str = "A2DPWB test player";
+pub const SIM_PLAYER: &str = "BlueCaster test player";
 /// The simulated tracks' duration: 180 s
 pub const SIM_DURATION: i32 = 18000;
 
 /// The dry-run player (v1 MediaBackend with dry_run): a simulated player
-/// that answers like a real one, for the emulator tests: "A2DPWB test
+/// that answers like a real one, for the emulator tests: "BlueCaster test
 /// player", paused, "Test track N ..." with a long non-ASCII title, 180 s,
 /// seekable. It has no thread: `command` and `seek` act at once and call
 /// `done` / the ChangedFn before they return (the module posts its

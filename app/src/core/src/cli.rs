@@ -1,11 +1,11 @@
-//! The command line: `a2dpwb-core --cli -d XX:XX:XX:XX:XX:XX [options]`.
+//! The command line: `bluecaster-core --cli -d XX:XX:XX:XX:XX:XX [options]`.
 //! The options are v1's; streaming goes through the same core service as the
 //! resident process.
 //!
 //! Without -d (and without a receiver giving its address), the first
 //! Windows-paired device whose class of device is Audio/Video is used, as v1
 //! did; -l lists the devices Windows has paired. Both read Windows' device
-//! list only: the adapter A2DPWB uses is not touched.
+//! list only: the adapter BlueCaster uses is not touched.
 //!
 //! `--le-audio` (implied by `--le-device` and `--le-scan`) streams LC3 over
 //! LE Audio (experimental) instead: v1's le_audio_cli.cpp flow and printed
@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use a2dpwb_core::{Service, ServiceEvent, ServiceOptions, SourceRequest, StreamRequest, StreamState, VolumeSync};
+use bluecaster_core::{Service, ServiceEvent, ServiceOptions, SourceRequest, StreamRequest, StreamState, VolumeSync};
 use bt_host::HciCapture;
 use bt_host::media::clamp_media_payload_limit;
 use codec::{CodecKind, Quality};
@@ -26,7 +26,7 @@ use hci_transport::UsbSelector;
 use win_sys::bt_paired::{self, PairedDevice};
 
 const USAGE: &str = "\
-Usage: a2dpwb-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
+Usage: bluecaster-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
 
   -d <address>          Bluetooth address of the headphones / receiver
                         (default: the first audio device paired with Windows)
@@ -63,7 +63,7 @@ Usage: a2dpwb-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
                         without -d, stream to that receiver
   --scan [seconds]      list nearby devices and exit
   --probe               read what the adapter answers (read commands only, no
-                        HCI init; for adapters A2DPWB cannot use yet), save it
+                        HCI init; for adapters BlueCaster cannot use yet), save it
                         to logs\\probe and exit
   --script <file>       run a chip script on the adapter in place of HCI init
                         (docs/chip-support.md), save its report and exit
@@ -415,7 +415,7 @@ pub fn run(args: &[String]) -> i32 {
     let (tx, rx) = mpsc::channel();
     let service = Service::new(
         ServiceOptions {
-            config_dir: a2dpwb_core::paths::config_dir(),
+            config_dir: bluecaster_core::paths::config_dir(),
             hci_tcp: a.hci_tcp.clone(),
             capture: capture.clone(),
             afh: a.afh.clone(),
@@ -463,10 +463,10 @@ pub fn run(args: &[String]) -> i32 {
                         println!("{line}");
                     }
                 }
-                println!("\n{}", a2dpwb_core::probe_report::summary_line(&report));
+                println!("\n{}", bluecaster_core::probe_report::summary_line(&report));
                 let adapter = a.usb.as_ref().map(|(u, _)| u.as_str());
-                match a2dpwb_core::probe_report::save(
-                    &a2dpwb_core::paths::config_dir(),
+                match bluecaster_core::probe_report::save(
+                    &bluecaster_core::paths::config_dir(),
                     &report,
                     adapter,
                     env!("CARGO_PKG_VERSION"),
@@ -518,10 +518,10 @@ pub fn run(args: &[String]) -> i32 {
 
     // The measuring receiver: its IP for the statistics and, without -d, its
     // Bluetooth address as the device to stream to
-    let receiver = a2dpwb_core::receiver::ReceiverClient::new();
+    let receiver = bluecaster_core::receiver::ReceiverClient::new();
     let mut device_arg = a.device.clone();
     if let Some(target) = &a.remote_sink {
-        use a2dpwb_core::receiver;
+        use bluecaster_core::receiver;
         let Some((host, port)) = receiver::split_target(target) else {
             eprintln!("Bad --remote-sink {target}");
             return 2;
@@ -709,7 +709,7 @@ fn stream_session(
     service: &Service,
     rx: &mpsc::Receiver<ServiceEvent>,
     running: &AtomicBool,
-    receiver: &a2dpwb_core::receiver::ReceiverClient,
+    receiver: &bluecaster_core::receiver::ReceiverClient,
     code: &mut i32,
 ) -> bool {
     let mut streaming_since: Option<Instant> = None;
@@ -791,7 +791,7 @@ const LE_RESTORE_ATTEMPTS: u32 = 3;
 const LE_STATS_EVERY: Duration = Duration::from_secs(5);
 
 fn le_print_stats(host: &bt_host::BtHost) {
-    println!("{}", a2dpwb_core::le_stats_line(&host.le_stream_stats()));
+    println!("{}", bluecaster_core::le_stats_line(&host.le_stream_stats()));
 }
 
 /// What the CLI needs of the LE core (v1 le_audio::Core): [`bt_host::BtHost`],
@@ -911,8 +911,8 @@ fn run_script(service: &Service, file: &std::path::Path, allow_writes: bool, ada
                 Some(e) => println!("\nStopped at {e}"),
                 None => println!("\n{} of {total} lines done", report.steps.len()),
             }
-            match a2dpwb_core::probe_report::save_script(
-                &a2dpwb_core::paths::config_dir(),
+            match bluecaster_core::probe_report::save_script(
+                &bluecaster_core::paths::config_dir(),
                 &report,
                 &text,
                 adapter,
@@ -952,7 +952,7 @@ fn le_setup(
 ) -> Result<bt_host::LeStreamStarted, String> {
     // (a failed connection printed why)
     let ids = le_connect_group(host, devices, &mut std::io::stdout()).ok_or_else(String::new)?;
-    host.le_start_stream(ids, request.clone(), &a2dpwb_core::le_silence_set)
+    host.le_start_stream(ids, request.clone(), &bluecaster_core::le_silence_set)
 }
 
 /// The LE Audio source of the command line: the test tone, a virtual
@@ -993,7 +993,7 @@ fn le_broadcast(a: &Args, service: &Service, rx: &mpsc::Receiver<ServiceEvent>, 
     println!("Starting the broadcast \"{}\"...", b.name.trim());
     service.start_streaming(request);
     let mut code = 0;
-    let receiver = a2dpwb_core::receiver::ReceiverClient::new();
+    let receiver = bluecaster_core::receiver::ReceiverClient::new();
     stream_session(a, service, rx, running, &receiver, &mut code);
     if let Some(host) = service.host() {
         le_print_stats(&host);
@@ -1004,7 +1004,7 @@ fn le_broadcast(a: &Args, service: &Service, rx: &mpsc::Receiver<ServiceEvent>, 
 /// The LE Audio flow (v1 le_audio_cli_run); the process exit code
 fn le_run(a: &Args, service: &Service, running: &Arc<AtomicBool>) -> i32 {
     let le = &a.le;
-    service.set_le_audio_cli(a2dpwb_core::LeCliOptions {
+    service.set_le_audio_cli(bluecaster_core::LeCliOptions {
         mcp_dry_run: le.mcp_dry_run,
         ccp_sim: le.ccp_sim.clone(),
         ccp_console: le.ccp_console,
@@ -1087,7 +1087,7 @@ fn le_run(a: &Args, service: &Service, running: &Arc<AtomicBool>) -> i32 {
     // Audio at the LC3 rate (WASAPI converts to it)
     let source = le_source(a);
     let mut rc = 0;
-    let start_audio = |started: &bt_host::LeStreamStarted| match a2dpwb_core::LeAudioPath::start(
+    let start_audio = |started: &bt_host::LeStreamStarted| match bluecaster_core::LeAudioPath::start(
         &source,
         started,
         host.stats().clone(),
@@ -1116,7 +1116,7 @@ fn le_run(a: &Args, service: &Service, running: &Arc<AtomicBool>) -> i32 {
     // Test only: the headset volume synced with a simulated Windows volume
     let mut sim_volume = None;
     if let Some(spec) = &le.sim_volume {
-        match a2dpwb_core::volume_sync::SimulatedWindowsVolume::parse(spec) {
+        match bluecaster_core::volume_sync::SimulatedWindowsVolume::parse(spec) {
             Some(v) => sim_volume = Some(v),
             None => {
                 eprintln!("Invalid --le-sim-volume {spec}");
@@ -1141,7 +1141,7 @@ fn le_run(a: &Args, service: &Service, running: &Arc<AtomicBool>) -> i32 {
             le_print_stats(&host);
         }
         if let Some(v) = sim_volume.as_mut() {
-            v.tick(&a2dpwb_core::volume_sync::LeHeadphones(&host));
+            v.tick(&bluecaster_core::volume_sync::LeHeadphones(&host));
         }
         if host.le_stream_lost() {
             // A device or CIS went away: tear down and set it up again
@@ -1305,7 +1305,7 @@ mod tests {
         // As run_test.py --le-audio calls it
         let a = parse(&args(
             "--cli --hci-tcp 127.0.0.1:9610 --le-audio -d 00:A2:D0:00:00:12 --le-device 00:A2:D0:00:00:13 \
-             --test-tone --duration 5 --hci-capture out\\a2dpwb.pklg --le-sim-volume 64,3:90",
+             --test-tone --duration 5 --hci-capture out\\bluecaster.pklg --le-sim-volume 64,3:90",
         ))
         .unwrap();
         assert!(a.le.on && a.test_tone);
@@ -1355,9 +1355,10 @@ mod tests {
 
     #[test]
     fn auracast_options() {
-        let a = parse(&args("--cli --hci-tcp 127.0.0.1:9900 --auracast A2DPWB-test --test-tone --duration 5")).unwrap();
+        let a =
+            parse(&args("--cli --hci-tcp 127.0.0.1:9900 --auracast BlueCaster-test --test-tone --duration 5")).unwrap();
         assert!(a.le.on && a.test_tone && a.device.is_none());
-        assert_eq!(a.le.broadcast.as_deref(), Some("A2DPWB-test"));
+        assert_eq!(a.le.broadcast.as_deref(), Some("BlueCaster-test"));
         assert!(a.le.broadcast_code.is_none() && !a.le.broadcast_mono);
         let a = parse(&[
             "--cli".into(),
@@ -1396,7 +1397,7 @@ mod tests {
 
     #[test]
     fn every_le_case_of_run_test_parses() {
-        // tools/emu/le_audio_tests: a2dpwb_args after the common ones
+        // tools/emu/le_audio_tests: bluecaster_args after the common ones
         for extra in [
             &["--afh", "6,11"][..],
             &["--ccp-sim", "2:alerting;3:answered"],
@@ -1406,7 +1407,7 @@ mod tests {
             &["--mcp-dry-run"],
         ] {
             let mut v = args("--cli --hci-tcp 127.0.0.1:9600 --le-audio -d 00:A2:D0:00:00:12 --test-tone --duration 8");
-            v.extend(["--hci-capture".to_string(), r"C:\out dir\a2dpwb.pklg".to_string()]);
+            v.extend(["--hci-capture".to_string(), r"C:\out dir\bluecaster.pklg".to_string()]);
             v.extend(extra.iter().map(|s| s.to_string()));
             let a = parse(&v).unwrap_or_else(|e| panic!("{extra:?}: {e}"));
             assert!(a.le.on, "{extra:?}");

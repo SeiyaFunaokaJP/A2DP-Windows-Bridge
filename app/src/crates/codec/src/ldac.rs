@@ -24,7 +24,7 @@ const RTP_HEADER_SIZE: usize = 12;
 /// windows from it
 pub const ABR_INTERVAL_MS: u32 = 100;
 
-/// ABR thresholds in packets for A2DPWB's 64-slot send queue (v1): critical,
+/// ABR thresholds in packets for BlueCaster's 64-slot send queue (v1): critical,
 /// dangerous trend, safety for HQ / SQ. libldac's defaults (6, 4, 2) suit
 /// Android's shallower queue.
 const ABR_THRESHOLDS: (u32, u32, u32) = (12, 8, 4);

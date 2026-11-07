@@ -50,7 +50,7 @@ pub fn parse_addr(s: &str) -> Option<[u8; 6]> {
     Some(a)
 }
 
-/// HCI status / reason codes A2DPWB reports in the log
+/// HCI status / reason codes BlueCaster reports in the log
 pub fn hci_error_string(status: u8) -> &'static str {
     match status {
         0x00 => "Success",

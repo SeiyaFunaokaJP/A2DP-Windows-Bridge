@@ -37,5 +37,5 @@ pub struct CodewordEntry {
     pub msb_mask: i32,
 }
 
-// A2DPWB: the bundled tables, which upstream's build.rs copies to OUT_DIR
+// BlueCaster: the bundled tables, which upstream's build.rs copies to OUT_DIR
 include!("../../bundled_tables.rs");

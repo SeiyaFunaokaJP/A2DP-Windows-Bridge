@@ -1,9 +1,9 @@
-// Shared by the build scripts of a2dpwb-core.exe and a2dpwb-driver.exe
+// Shared by the build scripts of bluecaster-core.exe and bluecaster-driver.exe
 // (`include!`): the VERSIONINFO resource, so that both programs carry the
-// same product name and version as a2dpwb.exe (Tauri writes its own).
+// same product name and version as bluecaster.exe (Tauri writes its own).
 // Code signing checks these fields (product name, product version).
 
-/// The VERSIONINFO block of `file` (e.g. "a2dpwb-core.exe") described as
+/// The VERSIONINFO block of `file` (e.g. "bluecaster-core.exe") described as
 /// `description`, from the package version Cargo gives the build script
 fn version_rc(file: &str, description: &str) -> String {
     let version = std::env::var("CARGO_PKG_VERSION").unwrap();
@@ -31,7 +31,7 @@ BEGIN
             VALUE "InternalName", "{file}"
             VALUE "LegalCopyright", "Copyright (c) Seiya Funaoka. Apache-2.0 OR MIT."
             VALUE "OriginalFilename", "{file}"
-            VALUE "ProductName", "A2DP Windows Bridge"
+            VALUE "ProductName", "BlueCaster"
             VALUE "ProductVersion", "{version}"
         END
     END

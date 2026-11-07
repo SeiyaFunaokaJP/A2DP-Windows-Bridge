@@ -5,7 +5,7 @@
 //! implements it: WRL-based DLLs do not count their factories as objects
 //! in use, and COM frees idle libraries as apartments come and go. The
 //! next call through the cache then reads the vtable of an unloaded DLL
-//! (a2dpwb-core crashed twice on 2026-10-22 in
+//! (bluecaster-core crashed twice on 2026-10-22 in
 //! GlobalSystemMediaTransportControlsSessionManager::RequestAsync, with
 //! Windows.Media.MediaControl.dll in the unloaded-module list).
 //!
@@ -26,7 +26,7 @@ use windows::Win32::System::LibraryLoader::{
 use windows::core::{Interface, PCWSTR};
 
 /// Keeps the multithreaded apartment for the process' life, so that COM
-/// never tears it down and unloads the DLLs loaded in it. a2dpwb-core
+/// never tears it down and unloads the DLLs loaded in it. bluecaster-core
 /// crashed twice on 2026-11-02 in Radio::GetRadiosAsync, through the cached
 /// factory of an unloaded Windows.Devices.Radios.dll: a thread that had
 /// joined the apartment (ComApartment) left it last

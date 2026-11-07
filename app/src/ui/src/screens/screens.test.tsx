@@ -277,14 +277,14 @@ describe("Home", () => {
     expect(after()[1].params).toMatchObject({ profile: { codec: "sbc" } });
   });
 
-  it("asks to exit the other A2DPWB (v1, or another v2) while it runs", async () => {
+  it("asks to exit the other BlueCaster (v1, or another v2) while it runs", async () => {
     start("#/home");
     await homeCard("WH-1000XM5");
-    expect(screen.queryByText("Another A2DP Windows Bridge is running")).toBeNull();
+    expect(screen.queryByText("Another BlueCaster is running")).toBeNull();
     mock!.setV1Running(true);
-    expect(await screen.findByText("Another A2DP Windows Bridge is running")).toBeInTheDocument();
+    expect(await screen.findByText("Another BlueCaster is running")).toBeInTheDocument();
     mock!.setV1Running(false);
-    await waitFor(() => expect(screen.queryByText("Another A2DP Windows Bridge is running")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Another BlueCaster is running")).toBeNull());
   });
 
   it("shows the cause of an error and a fix", async () => {
@@ -341,7 +341,7 @@ describe("every screen renders", () => {
     const { calls } = start("#/home", { scenario: "fresh" });
     expect(await screen.findByRole("heading", { level: 1, name: "Setup Wizard" })).toBeInTheDocument();
     mock!.setV1Running(true);
-    expect(await screen.findByText("Another A2DP Windows Bridge is running")).toBeInTheDocument();
+    expect(await screen.findByText("Another BlueCaster is running")).toBeInTheDocument();
     // The setup waits while the other one holds the adapter
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
     mock!.setV1Running(false);
@@ -353,17 +353,17 @@ describe("every screen renders", () => {
     expect(screen.getByText(/removes the adapter from Windows/)).toBeInTheDocument();
     expect(screen.getByText("rtl8761bu_fw.bin, rtl8761bu_config.bin")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Replace with WinUSB driver" })).toBeNull();
-    // Another A2DPWB started meanwhile: no driver change until it exits
+    // Another BlueCaster started meanwhile: no driver change until it exits
     mock!.setV1Running(true);
     await waitFor(() => expect(setUp).toBeDisabled());
     mock!.setV1Running(false);
     await waitFor(() => expect(setUp).toBeEnabled());
     fireEvent.click(setUp);
-    await screen.findByText("The adapter is ready for A2DP Windows Bridge", {}, { timeout: 5000 });
+    await screen.findByText("The adapter is ready for BlueCaster", {}, { timeout: 5000 });
     const order = calls.map((c) => c.method).filter((m) => m === "adapter.assign_winusb" || m === "adapter.download_firmware");
     expect(order).toEqual(["adapter.assign_winusb", "adapter.download_firmware"]);
     expect(screen.getByRole("button", { name: "Next" })).not.toBeDisabled();
-    // Step 3: no connection while another A2DPWB holds the adapter
+    // Step 3: no connection while another BlueCaster holds the adapter
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     const connect = (await screen.findAllByRole("button", { name: "Connect" }, { timeout: 5000 }))[0];
     mock!.setV1Running(true);
@@ -376,7 +376,7 @@ describe("every screen renders", () => {
     const { calls, core } = start("#/home", { scenario: "fresh" });
     fireEvent.click(await screen.findByRole("button", { name: "Next" }));
     fireEvent.click(await screen.findByRole("button", { name: "Set up this adapter" }));
-    await screen.findByText("The adapter is ready for A2DP Windows Bridge", {}, { timeout: 5000 });
+    await screen.findByText("The adapter is ready for BlueCaster", {}, { timeout: 5000 });
     await waitFor(() => expect(screen.getByRole("button", { name: "Next" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     const connect = (await screen.findAllByRole("button", { name: "Connect" }, { timeout: 5000 }))[0];

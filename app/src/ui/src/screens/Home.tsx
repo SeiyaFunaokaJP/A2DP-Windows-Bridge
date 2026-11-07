@@ -119,7 +119,7 @@ export function V1Running() {
   );
 }
 
-const OTHER_RADIO_KEY = "a2dpwb.home.other_radio_dismissed";
+const OTHER_RADIO_KEY = "bluecaster.home.other_radio_dismissed";
 
 function loadDismissed(): boolean {
   try {

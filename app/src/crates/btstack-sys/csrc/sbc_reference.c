@@ -16,7 +16,7 @@ typedef struct {
     UINT8 packet[1024];
 } sbc_reference_t;
 
-void *a2dpwb_sbc_ref_new(UINT16 sample_rate, int channel_mode, int blocks, int subbands, int allocation,
+void *bluecaster_sbc_ref_new(UINT16 sample_rate, int channel_mode, int blocks, int subbands, int allocation,
                          int bitpool) {
     sbc_reference_t *r = (sbc_reference_t *)calloc(1, sizeof(sbc_reference_t));
     if (r == NULL) return NULL;
@@ -41,7 +41,7 @@ void *a2dpwb_sbc_ref_new(UINT16 sample_rate, int channel_mode, int blocks, int s
 
 /* One frame from blocks * subbands interleaved samples per channel;
  * returns its length, or -1 if out_cap is too small */
-int a2dpwb_sbc_ref_encode(void *state, const SINT16 *pcm, UINT8 *out, int out_cap) {
+int bluecaster_sbc_ref_encode(void *state, const SINT16 *pcm, UINT8 *out, int out_cap) {
     sbc_reference_t *r = (sbc_reference_t *)state;
     r->params.ps16PcmBuffer = (SINT16 *)pcm;
     SBC_Encoder(&r->params);
@@ -51,6 +51,6 @@ int a2dpwb_sbc_ref_encode(void *state, const SINT16 *pcm, UINT8 *out, int out_ca
     return n;
 }
 
-void a2dpwb_sbc_ref_free(void *state) {
+void bluecaster_sbc_ref_free(void *state) {
     free(state);
 }

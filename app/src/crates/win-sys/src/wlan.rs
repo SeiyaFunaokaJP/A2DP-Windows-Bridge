@@ -318,7 +318,7 @@ fn channel_number(client: &Client, interface: &windows::core::GUID) -> Option<u3
 }
 
 /// Whether wlanapi.dll exists. Windows Server without the Wireless LAN
-/// Service and trimmed Windows images lack it; a2dpwb-core.exe delay-loads
+/// Service and trimmed Windows images lack it; bluecaster-core.exe delay-loads
 /// it (core/build.rs), so a missing DLL must be caught here, before the
 /// first Wlan* call would raise the delay-load exception. Such a PC is
 /// treated like one without Wi-Fi.

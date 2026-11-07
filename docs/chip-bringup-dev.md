@@ -11,11 +11,11 @@ english_only: true
 Qualcomm and other chips are left to contributors with the hardware: the
 procedure is [Adding Chip Support](chip-support).**
 
-A2DPWB drives the adapter itself, so every chip family that needs a firmware
+BlueCaster drives the adapter itself, so every chip family that needs a firmware
 download needs its own loader (Realtek in BTstack, Broadcom PatchRAM, Intel
 since #261). MediaTek (MT7921 / MT7922) and Qualcomm (QCA61x4) have none and
 are shown as unsupported. Whoever wants to add one needs to see what the chip
-says, and the maintainers have no MediaTek or Qualcomm hardware. So A2DPWB
+says, and the maintainers have no MediaTek or Qualcomm hardware. So BlueCaster
 provides the means, not the vendor code:
 
 1. a **common loader interface**, so a new vendor is a state machine plus
@@ -96,7 +96,7 @@ reports only with the HCI captures, as they hold the adapter's address.
 
 How to run it: developer mode, Adapters, **Read chip info** on an adapter
 with WinUSB (developer mode also offers WinUSB for an unsupported adapter);
-or `a2dpwb-core --cli -u <adapter> --probe`, or with `--hci-tcp` on the
+or `bluecaster-core --cli -u <adapter> --probe`, or with `--hci-tcp` on the
 emulator (tools/emu).
 
 ## 4. Tools in developer mode

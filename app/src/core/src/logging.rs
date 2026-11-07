@@ -1,16 +1,17 @@
-//! Logging of the resident process: tracing to daily files in
+//! Logging of the resident process: tracing to a file per day in
 //! `<config dir>\logs\` (v1 wrote one debug.log), to the console for `--cli`,
 //! and to the UI's log view through a broadcast layer.
 //!
-//! - Files: `a2dpwb-core.YYYY-MM-DD.log` (UTC date, as tracing-appender
-//!   names them), the last 7 kept (developer mode: 1 to 365, [`set_dev`]);
-//!   the window's `a2dpwb-ui.*` files are kept as long (that process only
-//!   stops at 365). Written on a worker thread
+//! - Files: `logs\<YYYY-MM-DD>\core.log` (local date, a new folder after
+//!   local midnight: bluecaster_core::paths::DayLogFile), the last 7 day
+//!   folders kept (developer mode: 1 to 365, [`set_dev`]), with the
+//!   window's `ui.log` and the driver helper's `driver.log` in them (the
+//!   window only stops at 365). Written on a worker thread
 //!   (tracing-appender's non-blocking writer, lossy when it falls behind), so
 //!   logging never waits for the disk.
-//! - Filter: `A2DPWB_LOG` (EnvFilter syntax, default "info"), for every
+//! - Filter: `BLUECASTER_LOG` (EnvFilter syntax, default "info"), for every
 //!   output. Verbose logging ([`set_verbose`], the diagnostics' switch)
-//!   adds A2DPWB's own modules at debug (24 hours) or trace (1 hour), kept in
+//!   adds BlueCaster's own modules at debug (24 hours) or trace (1 hour), kept in
 //!   `logs\verbose.json` so that it also covers a restart (a problem at
 //!   start-up); the filter is swapped while running. Developer mode can
 //!   keep it on without a time limit ([`set_dev`], read from the settings
@@ -21,7 +22,7 @@
 //!   ([`LogHub::subscribe`], [`LogHub::subscribe_with`]), each with its level
 //!   and a bounded queue; a slow UI loses lines instead of blocking logging.
 //! - The last [`RING_LINES`] lines stay in memory, and every line feeds the
-//!   connection flow tracker (a2dpwb_core::diag), for the diagnostics view
+//!   connection flow tracker (bluecaster_core::diag), for the diagnostics view
 //!   and "copy diagnostic info" without reading the files back.
 //!
 //! Cost per event without subscribers: the ring's slots are reused (their
@@ -33,17 +34,17 @@
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicI32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, TrySendError};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use a2dpwb_core::diag::{ConnectionFlow, LogEntry};
-use a2dpwb_core::settings::{DevLog, LOG_DAY_CAP_MB, LOG_KEEP_DAYS};
+use bluecaster_core::diag::{ConnectionFlow, LogEntry};
+use bluecaster_core::paths::{self, DayLogFile, LogFile};
+use bluecaster_core::settings::{DevLog, LOG_DAY_CAP_MB, LOG_KEEP_DAYS};
 use ipc::{LogLevel, LogLine, VerboseState};
 use tracing::field::{Field, Visit};
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::Layer;
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::time::FormatTime;
@@ -53,10 +54,8 @@ use tracing_subscriber::{EnvFilter, Registry, reload};
 
 /// Lines kept in memory for the diagnostics
 pub const RING_LINES: usize = 2000;
-/// Daily log files kept, per process (developer mode changes it)
+/// Day folders of the logs kept (developer mode changes it)
 static KEEP_DAYS: AtomicUsize = AtomicUsize::new(LOG_KEEP_DAYS as usize);
-/// The daily files of the core and of the window: what retention prunes
-const DAILY_PREFIXES: &[&str] = &["a2dpwb-core.", "a2dpwb-ui."];
 /// Lines queued per [`LogHub::subscribe`] receiver before new ones are
 /// dropped
 #[cfg_attr(not(test), allow(dead_code))]
@@ -65,16 +64,14 @@ pub const SUBSCRIBER_QUEUE: usize = 1024;
 /// queue is allocated in full up front: tracing-appender's default (128 000
 /// lines) alone is 4 MB of the resident core's memory.
 const FILE_QUEUE_LINES: usize = 8192;
-const FILE_PREFIX: &str = "a2dpwb-core";
 /// How long verbose logging stays on at debug
 pub const VERBOSE_FOR: Duration = Duration::from_secs(24 * 3600);
 /// ...and at trace: every HCI and media packet, hundreds of MB an hour
 pub const TRACE_FOR: Duration = Duration::from_secs(3600);
-const VERBOSE_FILE: &str = "verbose.json";
-/// A2DPWB's own modules (tracing targets): what verbose logging turns up,
+/// BlueCaster's own modules (tracing targets): what verbose logging turns up,
 /// leaving the libraries (tokio, reqwest, ...) at the base level
 pub const OWN_TARGETS: &[&str] = &[
-    "a2dpwb_core",
+    "bluecaster_core",
     "bt_host",
     "btstack_sys",
     "hci_transport",
@@ -95,7 +92,8 @@ pub const OWN_TARGETS: &[&str] = &[
 /// Where the logs go
 #[derive(Debug, Clone, Default)]
 pub struct LogOptions {
-    /// Folder of the daily files (`<config dir>\logs`); None = no files
+    /// The logs folder (`<config dir>\logs`: paths::log_dir), where the
+    /// day folders go; None = no files
     pub dir: Option<std::path::PathBuf>,
     /// Also to stderr (the command line)
     pub console: bool,
@@ -143,48 +141,44 @@ impl FormatTime for LocalTimer {
 /// changes it ([`set_dev`]).
 static DAY_CAP: AtomicU64 = AtomicU64::new(LOG_DAY_CAP_MB as u64 * 1024 * 1024);
 
-/// The UTC day (days since 1970) whose file reached [`FILE_DAY_CAP`]
+/// The local day (days since 1970) whose file reached [`DAY_CAP`]
 static FULL_DAY: AtomicU64 = AtomicU64::new(u64::MAX);
+/// The local time's offset from UTC (seconds), read once at start as the
+/// timestamps' and the day folders'
+static OFFSET_S: AtomicI32 = AtomicI32::new(0);
 
-/// Days since 1970, UTC: the log files' day
-fn utc_day() -> u64 {
-    unix_ms() / 86_400_000
+/// Days since 1970, local time: the log files' day
+fn local_day() -> u64 {
+    ((unix_ms() / 1000) as i64 + OFFSET_S.load(Ordering::Relaxed) as i64).max(0) as u64 / 86_400
 }
 
 /// The day's log file is full: debug and trace lines are not written
 pub fn file_capped() -> bool {
-    FULL_DAY.load(Ordering::Relaxed) == utc_day()
+    FULL_DAY.load(Ordering::Relaxed) == local_day()
 }
 
-/// The daily file, counting what each day gets (on the writer thread)
+/// The day's file, counting what each day gets (on the writer thread)
 struct CappedFile<W> {
     inner: W,
     day: u64,
     bytes: u64,
     cap: &'static AtomicU64,
-    /// The folder whose old daily files go when a new day starts
-    prune: Option<PathBuf>,
 }
 
 impl<W: std::io::Write> std::io::Write for CappedFile<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let today = utc_day();
-        let new_day = today != self.day;
-        if new_day {
+        let today = local_day();
+        if today != self.day {
             self.day = today;
             self.bytes = 0;
         }
         let n = self.inner.write(buf)?;
-        // After the write: today's file exists and counts as one kept
-        if new_day && let Some(dir) = &self.prune {
-            prune(dir, KEEP_DAYS.load(Ordering::Relaxed));
-        }
         self.bytes += n as u64;
         let cap = self.cap.load(Ordering::Relaxed);
         if self.bytes >= cap {
             if FULL_DAY.swap(today, Ordering::Relaxed) != today {
                 let note = format!(
-                    "--- this file reached {} MB: debug and trace lines stop until the next day (UTC) ---\n",
+                    "--- this file reached {} MB: debug and trace lines stop until the next day ---\n",
                     cap / (1024 * 1024)
                 );
                 let _ = self.inner.write_all(note.as_bytes());
@@ -201,36 +195,21 @@ impl<W: std::io::Write> std::io::Write for CappedFile<W> {
     }
 }
 
-/// The daily files beyond the newest `keep` of each process, oldest first
-/// (their names sort by date)
-fn expired(dir: &Path, keep: usize) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
-    let names: Vec<String> = entries.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
-    let mut out = Vec::new();
-    for prefix in DAILY_PREFIXES {
-        let mut daily: Vec<&String> = names.iter().filter(|n| n.starts_with(prefix) && n.ends_with(".log")).collect();
-        daily.sort();
-        let n = daily.len().saturating_sub(keep.max(1));
-        out.extend(daily[..n].iter().map(|n| dir.join(n)));
-    }
-    out
+/// The settings folder of a logs folder (main.rs passes paths::log_dir)
+fn config_of(logs: &Path) -> &Path {
+    logs.parent().unwrap_or(logs)
 }
 
-/// Deletes the daily files beyond the newest `keep`; how many went
-fn prune(dir: &Path, keep: usize) -> usize {
-    expired(dir, keep).iter().filter(|p| std::fs::remove_file(p).is_ok()).count()
+fn keep_days() -> usize {
+    KEEP_DAYS.load(Ordering::Relaxed)
 }
 
-/// `<dir>\a2dpwb-core.YYYY-MM-DD.log`, rotated daily (old files go by
-/// [`prune`], at the first line of each day and when the retention changes)
-pub fn file_appender(dir: &Path) -> Result<RollingFileAppender, String> {
-    std::fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
-    RollingFileAppender::builder()
-        .rotation(Rotation::DAILY)
-        .filename_prefix(FILE_PREFIX)
-        .filename_suffix("log")
-        .build(dir)
-        .map_err(|e| format!("cannot open a log file in {}: {e}", dir.display()))
+/// `logs\<YYYY-MM-DD>\core.log`, a new folder each local day (old day
+/// folders go at the first line of each day and when the retention
+/// changes)
+pub fn day_file(logs: &Path, offset: time::UtcOffset) -> Result<DayLogFile, String> {
+    std::fs::create_dir_all(logs).map_err(|e| format!("cannot create {}: {e}", logs.display()))?;
+    Ok(DayLogFile::new(config_of(logs), LogFile::Core, offset, keep_days))
 }
 
 /// Installs the global subscriber: filter, files, console, broadcast. Call
@@ -238,6 +217,7 @@ pub fn file_appender(dir: &Path) -> Result<RollingFileAppender, String> {
 /// offset is read here).
 pub fn init(opts: &LogOptions) -> LogGuard {
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+    OFFSET_S.store(offset.whole_seconds(), Ordering::Relaxed);
     let timer = LocalTimer { offset };
     store_limits(&opts.dev);
     let always = always_level(&opts.dev);
@@ -247,14 +227,14 @@ pub fn init(opts: &LogOptions) -> LogGuard {
     let (filter, filter_handle) = reload::Layer::new(make_filter(effective_level(verbose, always)));
 
     let mut file_error = None;
-    let (file_layer, file_guard) = match opts.dir.as_deref().map(file_appender) {
-        Some(Ok(appender)) => {
+    let (file_layer, file_guard) = match opts.dir.as_deref().map(|d| day_file(d, offset)) {
+        Some(Ok(file)) => {
             let (writer, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
                 .buffered_lines_limit(FILE_QUEUE_LINES)
-                .finish(CappedFile { inner: appender, day: 0, bytes: 0, cap: &DAY_CAP, prune: opts.dir.clone() });
+                .finish(CappedFile { inner: file, day: 0, bytes: 0, cap: &DAY_CAP });
             // Debug and trace lines stop for the day once the file is full
             let capped = tracing_subscriber::filter::filter_fn(|meta| {
-                *meta.level() <= tracing::Level::INFO || FULL_DAY.load(Ordering::Relaxed) != utc_day()
+                *meta.level() <= tracing::Level::INFO || FULL_DAY.load(Ordering::Relaxed) != local_day()
             });
             let layer = tracing_subscriber::fmt::layer()
                 .with_writer(writer)
@@ -282,7 +262,7 @@ pub fn init(opts: &LogOptions) -> LogGuard {
         .with(BroadcastLayer::new(hub.clone()))
         .try_init();
     if installed.is_err() {
-        eprintln!("a2dpwb-core: logging was set up already");
+        eprintln!("bluecaster-core: logging was set up already");
     }
     let _ = FILTER.set(filter_handle);
     if let Some(dir) = &opts.dir {
@@ -303,15 +283,15 @@ pub fn init(opts: &LogOptions) -> LogGuard {
 /// diagnostic info
 fn log_header(verbose: Option<VerboseState>, dev: &DevLog) {
     tracing::info!(
-        "a2dpwb-core {} ({}) starting: pid {}, Windows build {}, {}",
+        "bluecaster-core {} ({}) starting: pid {}, Windows build {}, {}",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::ARCH,
         std::process::id(),
         audio_capture::windows_build(),
         std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default()
     );
-    if let Ok(env) = std::env::var("A2DPWB_LOG") {
-        tracing::info!("log filter A2DPWB_LOG={env}");
+    if let Ok(env) = std::env::var("BLUECASTER_LOG") {
+        tracing::info!("log filter BLUECASTER_LOG={env}");
     }
     if let Some(v) = verbose {
         let minutes = v.until_ms.saturating_sub(unix_ms()) / 60_000;
@@ -354,8 +334,8 @@ pub fn set_dev(dev: &DevLog) {
     store_limits(dev);
     let keep = KEEP_DAYS.load(Ordering::Relaxed);
     if (keep, DAY_CAP.load(Ordering::Relaxed)) != before {
-        let gone = LOG_DIR.get().map_or(0, |d| prune(d, keep));
-        tracing::info!("log files: keep {keep} days, {} MB a day ({gone} old file(s) removed)", dev.day_cap_mb);
+        let gone = LOG_DIR.get().map_or(0, |d| paths::prune_day_dirs(d, keep));
+        tracing::info!("log files: keep {keep} days, {} MB a day ({gone} old day folder(s) removed)", dev.day_cap_mb);
     }
     let always = always_level(dev);
     if std::mem::replace(&mut *lock(&ALWAYS), always) != always {
@@ -372,7 +352,7 @@ pub fn always_verbose() -> Option<LogLevel> {
     *lock(&ALWAYS)
 }
 
-/// The level A2DPWB's own modules log at beyond info, from either switch
+/// The level BlueCaster's own modules log at beyond info, from either switch
 pub fn verbose_now() -> Option<LogLevel> {
     effective_level(verbose(), always_verbose())
 }
@@ -389,9 +369,9 @@ pub fn mark(note: &str) -> u64 {
     let note: String = note.chars().filter(|c| !c.is_control()).take(200).collect();
     let note = note.trim();
     if note.is_empty() {
-        tracing::info!(target: "a2dpwb_core::mark", "===== MARK {n} =====");
+        tracing::info!(target: "bluecaster_core::mark", "===== MARK {n} =====");
     } else {
-        tracing::info!(target: "a2dpwb_core::mark", "===== MARK {n}: {note} =====");
+        tracing::info!(target: "bluecaster_core::mark", "===== MARK {n}: {note} =====");
     }
     n
 }
@@ -399,15 +379,15 @@ pub fn mark(note: &str) -> u64 {
 /// Panics: logged, and a crash report with the backtrace. Native crashes:
 /// a crash report (win_sys::crash).
 fn install_crash_reports(dir: &Path) {
-    win_sys::crash::install(dir, "a2dpwb-core", &format!("a2dpwb-core {}", env!("CARGO_PKG_VERSION")));
+    win_sys::crash::install(dir, "bluecaster-core", &format!("bluecaster-core {}", env!("CARGO_PKG_VERSION")));
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let thread = std::thread::current();
         let reason = format!("panic in thread {}: {info}", thread.name().unwrap_or("unnamed"));
-        tracing::error!(target: "a2dpwb_core::crash", "{reason}");
+        tracing::error!(target: "bluecaster_core::crash", "{reason}");
         let backtrace = std::backtrace::Backtrace::force_capture().to_string();
         if let Some(p) = win_sys::crash::write(&reason, &backtrace) {
-            tracing::error!(target: "a2dpwb_core::crash", "crash report written: {}", p.display());
+            tracing::error!(target: "bluecaster_core::crash", "crash report written: {}", p.display());
         }
         default_hook(info);
     }));
@@ -434,7 +414,7 @@ fn level_name(l: LogLevel) -> &'static str {
     }
 }
 
-/// The filter's directives: `base`, then A2DPWB's own modules at `verbose`
+/// The filter's directives: `base`, then BlueCaster's own modules at `verbose`
 pub fn filter_directives(base: &str, verbose: Option<LogLevel>) -> String {
     let mut s = base.to_owned();
     if let Some(l) = verbose {
@@ -446,7 +426,7 @@ pub fn filter_directives(base: &str, verbose: Option<LogLevel>) -> String {
 }
 
 fn make_filter(verbose: Option<LogLevel>) -> EnvFilter {
-    let base = std::env::var("A2DPWB_LOG").ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| "info".into());
+    let base = std::env::var("BLUECASTER_LOG").ok().filter(|v| !v.trim().is_empty()).unwrap_or_else(|| "info".into());
     EnvFilter::try_new(filter_directives(&base, verbose)).unwrap_or_else(|_| EnvFilter::new("info"))
 }
 
@@ -456,7 +436,7 @@ fn verbose_level(level: Option<LogLevel>) -> Option<LogLevel> {
 }
 
 fn load_verbose(dir: &Path) -> Option<VerboseState> {
-    let text = std::fs::read_to_string(dir.join(VERBOSE_FILE)).ok()?;
+    let text = std::fs::read_to_string(paths::verbose_file(config_of(dir))).ok()?;
     let v: VerboseState = serde_json::from_str(&text).ok()?;
     (verbose_level(Some(v.level)).is_some() && v.until_ms > unix_ms()).then_some(v)
 }
@@ -499,7 +479,7 @@ fn apply_verbose(state: Option<VerboseState>) {
     *lock(&VERBOSE) = state;
     reload_filter();
     if let Some(dir) = LOG_DIR.get() {
-        let path = dir.join(VERBOSE_FILE);
+        let path = paths::verbose_file(config_of(dir));
         let _ = match state {
             Some(v) => std::fs::write(&path, serde_json::to_vec(&v).unwrap_or_default()),
             None => std::fs::remove_file(&path),
@@ -811,8 +791,7 @@ impl<S: tracing::Subscriber> Layer<S> for BroadcastLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a2dpwb_core::diag::{Step, StepStatus};
-    use std::time::Duration;
+    use bluecaster_core::diag::{Step, StepStatus};
 
     /// Runs `f` with a subscriber that feeds `hub` (not the global one)
     fn with_hub(hub: &LogHub, f: impl FnOnce()) {
@@ -940,7 +919,7 @@ mod tests {
     fn feeds_the_connection_flow() {
         let hub = LogHub::new(10);
         with_hub(&hub, || {
-            tracing::info!(target: "a2dpwb_core::stream", "stream: device AA:BB:CC:DD:EE:FF codec None");
+            tracing::info!(target: "bluecaster_core::stream", "stream: device AA:BB:CC:DD:EE:FF codec None");
             tracing::info!(target: "bt_host", "connecting to AA:BB:CC:DD:EE:FF");
             tracing::info!(target: "bt_host::app", "signaling connection established (cid 0x0041)");
         });
@@ -958,7 +937,7 @@ mod tests {
         let hub = LogHub::new(10);
         with_hub(&hub, || {
             tracing::info!(target: "t", "before");
-            tracing::info!(target: "a2dpwb_core::stream", "stream: device AA:BB:CC:DD:EE:FF codec None");
+            tracing::info!(target: "bluecaster_core::stream", "stream: device AA:BB:CC:DD:EE:FF codec None");
             tracing::info!(target: "bt_host", "connecting to AA:BB:CC:DD:EE:FF");
         });
         let lines = hub.recent();
@@ -983,25 +962,24 @@ mod tests {
     }
 
     #[test]
-    fn writes_daily_files() {
+    fn writes_into_the_day_folder() {
         use std::io::Write;
-        let dir = std::env::temp_dir().join(format!("a2dpwb-logs-{}", std::process::id()));
-        let mut appender = file_appender(&dir).unwrap();
-        appender.write_all(b"hello\n").unwrap();
-        appender.flush().unwrap();
-        drop(appender);
-        std::thread::sleep(Duration::from_millis(50));
-        let names: Vec<String> =
-            std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-        assert!(names.iter().any(|n| n.starts_with("a2dpwb-core.") && n.ends_with(".log")), "{names:?}");
-        let _ = std::fs::remove_dir_all(&dir);
+        let config = std::env::temp_dir().join(format!("bluecaster-logs-{}", std::process::id()));
+        let logs = paths::log_dir(&config);
+        let mut file = day_file(&logs, time::UtcOffset::UTC).unwrap();
+        file.write_all(b"hello\n").unwrap();
+        file.flush().unwrap();
+        drop(file);
+        let today = paths::day_name(time::OffsetDateTime::now_utc().date());
+        assert_eq!(std::fs::read_to_string(paths::core_log_file(&config, &today)).unwrap(), "hello\n");
+        let _ = std::fs::remove_dir_all(&config);
     }
 
     #[test]
     fn verbose_turns_up_our_modules_only() {
         assert_eq!(filter_directives("info", None), "info");
         let d = filter_directives("info", Some(LogLevel::Debug));
-        assert!(d.starts_with("info,a2dpwb_core=debug,bt_host=debug,"), "{d}");
+        assert!(d.starts_with("info,bluecaster_core=debug,bt_host=debug,"), "{d}");
         assert!(!d.contains("tokio"));
         // Every directive parses
         assert!(EnvFilter::try_new(filter_directives("warn", Some(LogLevel::Trace))).is_ok());
@@ -1011,28 +989,30 @@ mod tests {
 
     #[test]
     fn verbose_survives_a_restart_until_it_runs_out() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-verbose-{}", std::process::id()));
+        let config = std::env::temp_dir().join(format!("bluecaster-verbose-{}", std::process::id()));
+        let dir = paths::log_dir(&config);
         std::fs::create_dir_all(&dir).unwrap();
         let on = VerboseState { level: LogLevel::Debug, until_ms: unix_ms() + 60_000 };
-        std::fs::write(dir.join(VERBOSE_FILE), serde_json::to_vec(&on).unwrap()).unwrap();
+        // In logs\ itself, where 2.0.x kept it
+        std::fs::write(dir.join("verbose.json"), serde_json::to_vec(&on).unwrap()).unwrap();
         assert_eq!(load_verbose(&dir), Some(on));
         let over = VerboseState { until_ms: unix_ms() - 1, ..on };
-        std::fs::write(dir.join(VERBOSE_FILE), serde_json::to_vec(&over).unwrap()).unwrap();
+        std::fs::write(paths::verbose_file(&config), serde_json::to_vec(&over).unwrap()).unwrap();
         assert_eq!(load_verbose(&dir), None);
-        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&config);
     }
 
     #[test]
     fn a_full_day_stops_the_verbose_lines() {
         use std::io::Write;
         static CAP: AtomicU64 = AtomicU64::new(100);
-        let mut f = CappedFile { inner: Vec::new(), day: 0, bytes: 0, cap: &CAP, prune: None };
+        let mut f = CappedFile { inner: Vec::new(), day: 0, bytes: 0, cap: &CAP };
         f.write_all(&[b'x'; 60]).unwrap();
         assert!(!file_capped());
         f.write_all(&[b'x'; 60]).unwrap();
         assert!(file_capped());
         let text = String::from_utf8_lossy(&f.inner).into_owned();
-        assert!(text.ends_with("debug and trace lines stop until the next day (UTC) ---\n"), "{text}");
+        assert!(text.ends_with("debug and trace lines stop until the next day ---\n"), "{text}");
         // The note once a day
         f.write_all(b"more").unwrap();
         assert_eq!(String::from_utf8_lossy(&f.inner).matches("---").count(), 2);
@@ -1040,29 +1020,6 @@ mod tests {
         CAP.store(1000, Ordering::Relaxed);
         f.write_all(b"x").unwrap();
         assert!(!file_capped());
-    }
-
-    #[test]
-    fn retention_keeps_the_newest_files_of_each_process() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-prune-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        for d in ["2026-10-01", "2026-10-02", "2026-10-03"] {
-            std::fs::write(dir.join(format!("a2dpwb-core.{d}.log")), "x").unwrap();
-            std::fs::write(dir.join(format!("a2dpwb-ui.{d}.log")), "x").unwrap();
-        }
-        std::fs::write(dir.join("a2dpwb-driver.log"), "x").unwrap();
-        std::fs::write(dir.join(VERBOSE_FILE), "{}").unwrap();
-        let names = |v: Vec<PathBuf>| -> Vec<String> {
-            v.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect()
-        };
-        assert!(expired(&dir, 3).is_empty());
-        assert_eq!(names(expired(&dir, 2)), ["a2dpwb-core.2026-10-01.log", "a2dpwb-ui.2026-10-01.log"]);
-        // At least one file each stays
-        assert_eq!(prune(&dir, 0), 4);
-        let mut left = names(std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().path()).collect());
-        left.sort();
-        assert_eq!(left, ["a2dpwb-core.2026-10-03.log", "a2dpwb-driver.log", "a2dpwb-ui.2026-10-03.log", VERBOSE_FILE]);
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

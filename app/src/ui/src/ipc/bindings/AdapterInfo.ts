@@ -37,7 +37,7 @@ firmware_files: Array<string>,
  */
 firmware_invalid: string | null, 
 /**
- * A2DPWB can fetch those files from linux-firmware
+ * BlueCaster can fetch those files from linux-firmware
  * (adapter.download_firmware)
  */
 firmware_download: boolean, 
@@ -70,7 +70,7 @@ address: string | null,
 bt_version: string | null, 
 /**
  * Device Manager's name for the radio while Windows' Bluetooth runs it
- * ("Realtek Bluetooth 5.3 Adapter"), remembered for when A2DPWB has it
+ * ("Realtek Bluetooth 5.3 Adapter"), remembered for when BlueCaster has it
  * on WinUSB; else the product name the device itself reports ("TP-Link
  * UB500 Adapter"), not the driver's generic "WinUSB Device"; None if
  * neither is known

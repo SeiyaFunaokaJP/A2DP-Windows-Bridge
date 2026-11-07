@@ -4,7 +4,7 @@
 //! volume_sync.rs), so a session mutes it and unmutes it at the end.
 //!
 //! Only a device this session muted is unmuted: one the user had muted stays
-//! so. If A2DPWB exits unexpectedly, the device stays muted.
+//! so. If BlueCaster exits unexpectedly, the device stays muted.
 //!
 //! Windows' mute key (or the mute in its volume flyout) unmutes that device,
 //! and the PC would play (issue #86). An unmute of the device this session

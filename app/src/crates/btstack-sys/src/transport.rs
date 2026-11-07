@@ -524,7 +524,7 @@ pub(crate) fn pump(mut raw: impl FnMut(u8, &[u8])) {
     if !RAW.with(|r| r.get()) {
         for _ in 0..sent {
             // SAFETY: on the run loop thread; the shim checks for a handler.
-            unsafe { crate::ffi::a2dpwb_transport_packet_sent() };
+            unsafe { crate::ffi::bluecaster_transport_packet_sent() };
         }
     }
     loop {
@@ -561,7 +561,7 @@ fn deliver(packet_type: u8, buf: &mut [u8], hidden: bool) {
     if buf.len() <= u16::MAX as usize {
         // SAFETY: on the run loop thread; buf is valid for its length;
         // the shim copies it and checks the size.
-        let ok = unsafe { crate::ffi::a2dpwb_transport_deliver(packet_type, buf.as_ptr(), buf.len() as u16) };
+        let ok = unsafe { crate::ffi::bluecaster_transport_deliver(packet_type, buf.as_ptr(), buf.len() as u16) };
         if ok == 0 {
             tracing::warn!(target: "hci", "dropped an incoming HCI packet of {} bytes", buf.len());
         }

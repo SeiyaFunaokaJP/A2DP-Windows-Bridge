@@ -356,7 +356,7 @@ mod tests {
                 CreateWindowExW(
                     WINDOW_EX_STYLE(0),
                     w!("STATIC"),
-                    w!("a2dpwb notify test"),
+                    w!("bluecaster notify test"),
                     WINDOW_STYLE(0),
                     0,
                     0,

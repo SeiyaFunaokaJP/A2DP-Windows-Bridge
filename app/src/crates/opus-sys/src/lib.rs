@@ -2,7 +2,7 @@
 //! extern/opus.
 //!
 //! [`ffi`] has hand-written declarations matching include/opus.h and
-//! include/opus_defines.h (only what A2DPWB uses). [`OpusEnc`] and
+//! include/opus_defines.h (only what BlueCaster uses). [`OpusEnc`] and
 //! [`OpusDec`] own an encoder / decoder state and pass slice lengths along,
 //! so that callers need no `unsafe`.
 

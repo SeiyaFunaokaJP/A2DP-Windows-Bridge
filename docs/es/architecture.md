@@ -18,7 +18,7 @@ nav_order: 4
 
 ## Descripción general {#overview}
 
-A2DP Windows Bridge (A2DPWB) habilita el audio Bluetooth LHDC V5, LDAC, aptX Adaptive, aptX HD,
+BlueCaster habilita el audio Bluetooth LHDC V5, LDAC, aptX Adaptive, aptX HD,
 aptX Low Latency, aptX, Opus, AAC, SBC XQ y SBC en Windows
 (y LC3 sobre LE Audio, experimental). La pila Bluetooth propia de Windows solo admite
 SBC, aptX clásico y (solo en Windows 11) AAC para A2DP; esta herramienta añade los
@@ -26,19 +26,19 @@ demás sin necesidad de un controlador de kernel.
 
 Usa **BTstack + WinUSB**: todo en modo de usuario, sin necesidad de firmar controladores.
 
-A2DPWB 2.0 está escrito en Rust. Las bibliotecas en C que no se pueden sustituir
+BlueCaster 2.0 está escrito en Rust. Las bibliotecas en C que no se pueden sustituir
 (BTstack y los codificadores de los códecs) se compilan desde el código fuente y se llaman a través
 de pequeños crates FFI; todo lo demás, incluido el codificador SBC, es Rust.
 
 ## Procesos {#processes}
 
-A2DPWB se ejecuta como hasta tres programas:
+BlueCaster se ejecuta como hasta tres programas:
 
 | Programa | Se ejecuta | Función |
 |:--------|:-----|:-----|
-| `a2dpwb-core.exe` | Mientras A2DPWB está en ejecución (lo inician la ventana, el menú Inicio o **Iniciar con Windows**) | Bluetooth, captura y codificación del audio, perfiles y configuración, el icono de la bandeja y su menú, el servidor IPC. `--cli` ejecuta el mismo núcleo desde una consola |
-| `a2dpwb.exe` | Solo mientras hay una ventana abierta (se cierra 3 minutos después de cerrar la última) | La ventana principal y el panel desplegable de la bandeja (Tauri 2, SolidJS + TypeScript). No guarda ningún estado propio |
-| `a2dpwb-driver.exe` | Para un único cambio de controlador o una importación de claves, con derechos de administrador (UAC) | Asigna WinUSB a un adaptador o restaura su controlador anterior, o lee las claves de enlace que el Bluetooth de Windows guarda para un adaptador (`windows-keys`), y se cierra |
+| `bluecaster-core.exe` | Mientras BlueCaster está en ejecución (lo inician la ventana, el menú Inicio o **Iniciar con Windows**) | Bluetooth, captura y codificación del audio, perfiles y configuración, el icono de la bandeja y su menú, el servidor IPC. `--cli` ejecuta el mismo núcleo desde una consola |
+| `bluecaster.exe` | Solo mientras hay una ventana abierta (se cierra 3 minutos después de cerrar la última) | La ventana principal y el panel desplegable de la bandeja (Tauri 2, SolidJS + TypeScript). No guarda ningún estado propio |
+| `bluecaster-driver.exe` | Para un único cambio de controlador o una importación de claves, con derechos de administrador (UAC) | Asigna WinUSB a un adaptador o restaura su controlador anterior, o lee las claves de enlace que el Bluetooth de Windows guarda para un adaptador (`windows-keys`), y se cierra |
 
 ```mermaid
 ---
@@ -49,15 +49,15 @@ config:
 ---
 flowchart TB
     src["Audio de Windows: loopback del sistema / dispositivo virtual / una aplicación"]
-    ui["a2dpwb.exe: ventana y panel desplegable de la bandeja (Tauri + SolidJS)"]
-    subgraph core["a2dpwb-core.exe (residente, modo de usuario)"]
+    ui["bluecaster.exe: ventana y panel desplegable de la bandeja (Tauri + SolidJS)"]
+    subgraph core["bluecaster-core.exe (residente, modo de usuario)"]
         ctl["Menú de la bandeja / servidor IPC / CLI (--cli)"] --> svc["Servicio del núcleo: máquina de estados de la conexión, selección de códec, perfiles, reconexión"]
         svc --> cap["Captura WASAPI"]
         cap -- PCM --> enc["Canal de codificación: LDAC / familia aptX / LHDC V5 / Opus / AAC / SBC"]
         enc --> bt["BTstack: HCI / L2CAP / AVDTP / A2DP / AVRCP"]
     end
     ui <-->|"canalización con nombre por usuario"| ctl
-    svc -.->|"UAC, solo para cambiar el controlador o importar las claves de Windows"| drv["a2dpwb-driver.exe (elevado): asignar / restaurar WinUSB, leer las claves de enlace de Windows"]
+    svc -.->|"UAC, solo para cambiar el controlador o importar las claves de Windows"| drv["bluecaster-driver.exe (elevado): asignar / restaurar WinUSB, leer las claves de enlace de Windows"]
     src --> cap
     bt -->|"WinUSB (nusb)"| usb["Adaptador Bluetooth USB (controlador WinUSB)"]
     drv -.->|SetupAPI| usb
@@ -76,7 +76,7 @@ flowchart TB
   y después los cambios; cerrarla, o que la ventana se bloquee, no detiene
   el audio. Cerrar una ventana solo la oculta, así que volver a abrirla desde la bandeja
   es instantáneo.
-- **La línea de comandos usa el mismo núcleo.** `a2dpwb-core.exe --cli` ejecuta el
+- **La línea de comandos usa el mismo núcleo.** `bluecaster-core.exe --cli` ejecuta el
   servicio del núcleo sin bandeja ni IPC; la prueba con el emulador se ejecuta así.
 
 ## Transporte: BTstack + WinUSB
@@ -113,7 +113,7 @@ modo de usuario.
 
 ```mermaid
 sequenceDiagram
-    participant App as A2DPWB (BTstack)
+    participant App as BlueCaster (BTstack)
     participant Ad as Adaptador USB
     participant Sink as Auriculares
     App->>Ad: Apertura mediante WinUSB, reinicio / inicialización HCI
@@ -158,11 +158,11 @@ todos los demás crates tienen `#![forbid(unsafe_code)]`.
 | 3. Motor | `bt-host` | Ejecuta BTstack en su propio hilo, controlado mediante comandos y eventos tipados: GAP, A2DP Source, AVRCP, SDP, canales RFCOMM para el paso directo (`rfcomm.*`), claves de enlace, los servicios SDP de un dispositivo, AFH, carga de firmware y cargadores de chips (`bringup`), la lectura de datos del chip y los scripts de chip, captura HCI (`.pklg`), LE Audio (`le/`) |
 | 2. Componentes | `le-audio` | LE Audio (experimental): la lógica sin BTstack ni Windows (números asignados, LTV, PDU de PACS / ASCS, preajustes, los modelos CSIP / VCP / MCP / CCP) |
 | 3. Motor | `pipeline` | Búferes circulares de PCM, conversión de formato, mezcla descendente, codificación, cargas útiles multimedia, ritmo de envío, ABR |
-| 4. Núcleo | `a2dpwb-core` (directorio `core`) | La máquina de estados, las reconexiones, suspensión / reanudación, los perfiles, la configuración y la migración desde la v1, la sincronización de volumen, el silencio de la salida, la búsqueda de actualizaciones, la descarga del firmware de Realtek, el cliente de la prueba con receptor, las estadísticas, los protocolos de fabricante (`vendor/`) |
+| 4. Núcleo | `bluecaster-core` (directorio `core`) | La máquina de estados, las reconexiones, suspensión / reanudación, los perfiles, la configuración y la migración desde la v1, la sincronización de volumen, el silencio de la salida, la búsqueda de actualizaciones, la descarga del firmware de Realtek, el cliente de la prueba con receptor, las estadísticas, los protocolos de fabricante (`vendor/`) |
 | 4. Núcleo | `ipc` | Los tipos del protocolo compartidos por el núcleo y la ventana (serde; tipos de TypeScript generados con `ts-rs`) y el entramado de la canalización |
-| 5. Programas | `a2dpwb-core-exe` (`app/src/core`) | `a2dpwb-core.exe`: núcleo, bandeja (`tray-icon` sobre un bucle de eventos `tao`), servidor IPC, `--cli` |
-| 5. Programas | `a2dpwb-ui` (`app/src/ui`) | `a2dpwb.exe`: Tauri 2; la parte de Rust es un cliente IPC, la página es SolidJS + TypeScript + Vite |
-| 5. Programas | `a2dpwb-driver` (`app/src/driver`) | `a2dpwb-driver.exe`: el auxiliar elevado |
+| 5. Programas | `bluecaster-core-exe` (`app/src/core`) | `bluecaster-core.exe`: núcleo, bandeja (`tray-icon` sobre un bucle de eventos `tao`), servidor IPC, `--cli` |
+| 5. Programas | `bluecaster-ui` (`app/src/ui`) | `bluecaster.exe`: Tauri 2; la parte de Rust es un cliente IPC, la página es SolidJS + TypeScript + Vite |
+| 5. Programas | `bluecaster-driver` (`app/src/driver`) | `bluecaster-driver.exe`: el auxiliar elevado |
 
 ## Ruta del audio e hilos {#audio-path-and-threads}
 
@@ -198,7 +198,7 @@ el hilo bt-runloop.
 ## Núcleo e IPC {#core-and-ipc}
 
 La ventana se comunica con el núcleo a través de la canalización con nombre del usuario
-`\\.\pipe\a2dpwb-<user SID>`, cuya DACL solo admite a ese usuario. Los mensajes son
+`\\.\pipe\bluecaster-<user SID>`, cuya DACL solo admite a ese usuario. Los mensajes son
 tramas JSON precedidas de su longitud:
 
 1. La ventana envía `hello { protocol, client }`. Un núcleo con otra
@@ -216,7 +216,9 @@ tramas JSON precedidas de su longitud:
    `receiver.*`, `rfcomm.*` y `app.*`.
 
 Otros programas usan la misma canalización; lo que necesitan está en
-[Integración (IPC)](integration).
+[Integración (IPC)](integration). Las versiones anteriores a la 3.0.0 llamaban a la canalización
+`\\.\pipe\a2dpwb-<user SID>`; el núcleo también atiende ese nombre, durante al menos 6
+meses después de la 3.0.0.
 
 Los errores son códigos con parámetros (por ejemplo `adapter.driver_missing`), no
 textos; la ventana los traduce y ofrece la solución junto al mensaje.
@@ -247,7 +249,7 @@ el enlace perdido como un fallo y vuelve a conectar cuando el PC se reanuda.
 ## Asignación del controlador {#driver-assignment}
 
 Windows 8 y posteriores incluyen el controlador WinUSB firmado por Microsoft
-(`winusb.inf`). `a2dpwb-driver.exe` hace lo mismo que «Actualizar
+(`winusb.inf`). `bluecaster-driver.exe` hace lo mismo que «Actualizar
 controlador > Elegir en una lista > WinUsb Device» del Administrador de dispositivos, mediante SetupAPI:
 
 1. Abre el adaptador por su ID de instancia de dispositivo.
@@ -345,7 +347,7 @@ JSON. Enumerar los adaptadores y su controlador no requiere elevación.
 - `a2dp_source_stream_send_media_payload_rtp()` — Enviar audio codificado con
   encabezado RTP (LDAC, aptX HD, AAC, SBC, SBC XQ, LHDC V5, Opus)
 - `a2dp_source_stream_send_media_packet()` — Enviar paquetes multimedia sin procesar, sin
-  encabezado RTP (aptX, aptX LL, FastStream), o con el encabezado RTP propio de A2DPWB
+  encabezado RTP (aptX, aptX LL, FastStream), o con el encabezado RTP propio de BlueCaster
   (aptX Adaptive)
 
 ### Captura de audio (`audio-capture`)
@@ -361,13 +363,13 @@ Captura el audio en tiempo real mediante Windows Audio Session API.
 - Ajusta el volumen y el silencio de una aplicación en la salida predeterminada, como hace el mezclador
   de volumen de Windows (`mixer`): el volumen de una sesión llega a la captura loopback, también
   mientras el núcleo silencia esa salida durante una transmisión con Loopback del sistema
-  (`a2dpwb-core::mute_output`)
+  (`bluecaster-core::mute_output`)
 
-### Protocolos de fabricante (`a2dpwb-core::vendor`)
+### Protocolos de fabricante (`bluecaster-core::vendor`)
 
 Algunos auriculares solo ofrecen un códec o una tasa de bits después de que su propia app
 cambie un modo a través de su propio servicio RFCOMM. Un módulo por fabricante lo hace a través del
-enlace que tiene A2DPWB, para los auriculares que se distinguen por el nombre que indican:
+enlace que tiene BlueCaster, para los auriculares que se distinguen por el nombre que indican:
 
 - **Huawei / Honor**: un perfil que pide LDAC a unos auriculares que no lo
   anuncian activa su modo «prioridad a la calidad de sonido» y vuelve a conectar;
@@ -384,8 +386,8 @@ Siempre, Nunca) y ofrece las opciones propias del fabricante.
 ### Emparejamientos (`link_keys`, `win-sys::bt_keys`)
 
 Las claves de enlace se guardan en `link_keys.txt`. Donde se añaden dispositivos, el núcleo puede
-adoptar las claves que el Bluetooth de Windows guardó para el adaptador que A2DPWB usa ahora:
-`a2dpwb-driver.exe windows-keys` las lee (una solicitud de UAC), una clave que A2DPWB
+adoptar las claves que el Bluetooth de Windows guardó para el adaptador que BlueCaster usa ahora:
+`bluecaster-driver.exe windows-keys` las lee (una solicitud de UAC), una clave que BlueCaster
 ya tiene se conserva, y los dispositivos de audio entre ellas se guardan con los
 nombres de Windows. El modo de desarrollador muestra la clave de enlace de un dispositivo y los servicios
 SDP que anuncia.
@@ -396,7 +398,7 @@ SDP que anuncia.
 |---------|---------|---------|----------|
 | LHDC V5 | lhdcv5-enc (port en C del codificador de AOSP) | 400/500/900/1000 kbps (Baja/Media/Media-alta/Alta), como máximo el máximo que anuncia el receptor, ABR 160–400 kbps | 16/24 bits, tramas de 5 ms, encabezado de carga útil multimedia de 2 bytes, encabezado RTP |
 | LDAC | libldac (AOSP) | 330/660/990 kbps | Modos Alta/Media/Baja (HQ/SQ/MQ), ABR |
-| aptX Adaptive | aptx-adaptive (codificador en Rust puro de AKS-Logic/aptx-adaptive-linux, MIT) | 427 kbps en Alta, 265 kbps en Baja latencia (receptores R2: 270); ABR baja a 364/318 (R2: 270/204) | 48 kHz estéreo (96 kHz en Alta cuando se eligen, a un receptor R2 que los anuncia: 646/340/255 kbps), 24 bits; un paquete del códec por paquete multimedia tras el encabezado RTP propio de A2DPWB; ABR en Alta; Automático lo toma después de LHDC V5 y LDAC |
+| aptX Adaptive | aptx-adaptive (codificador en Rust puro de AKS-Logic/aptx-adaptive-linux, MIT) | 427 kbps en Alta, 265 kbps en Baja latencia (receptores R2: 270); ABR baja a 364/318 (R2: 270/204) | 48 kHz estéreo (96 kHz en Alta cuando se eligen, a un receptor R2 que los anuncia: 646/340/255 kbps), 24 bits; un paquete del códec por paquete multimedia tras el encabezado RTP propio de BlueCaster; ABR en Alta; Automático lo toma después de LHDC V5 y LDAC |
 | Opus | libopus 1.5.2 | 256 kbps (estéreo; mono la mitad) | Experimental; Opus A2DP de Android: 48 kHz, tramas de 20 ms (10 ms si el receptor solo admite eso), VBR restringida limitada a la carga útil multimedia, una trama por paquete, encabezado de carga útil multimedia de 1 byte, encabezado RTP |
 | aptX HD | libopenaptx | 576 kbps | Entrada de 24 bits, tasa fija, encabezado RTP |
 | aptX | libopenaptx | 352/384 kbps (44.1/48 kHz) | Estéreo de 16 bits, sin encabezado RTP |
@@ -437,29 +439,29 @@ Tamaños de los elementos de información de códec (incluidos los 6 bytes de Ve
 - **aptX HD**: 11 bytes (byte 6 como en aptX, más 4 bytes reservados); se requiere
   estéreo
 - **aptX LL**: 8 bytes, o 17 bytes cuando el receptor activa el indicador extendido
-  («new caps»). A2DPWB registra un único extremo aptX LL y configura el
+  («new caps»). BlueCaster registra un único extremo aptX LL y configura el
   flujo con el Vendor ID que usó el receptor
 - **LHDC V5**: 11 bytes (`a2dp_vendor_lhdcv5_constants.h` de Android): byte 6
   frecuencias de muestreo (0x20 44.1k, 0x10 48k, 0x04 96k, 0x01 192k), byte 7 profundidad de bits
   (0x04 16 bits, 0x02 24 bits) y los límites mínimo/máximo de tasa de bits del receptor, byte 8
   subversión del códec (0x01 = V5 ver.1) y 0x10 = tramas de 5 ms, bytes 9-10
   funciones opcionales (baja latencia, sin pérdida, JAS, AR, META), ninguna de las cuales
-  ofrece A2DPWB. Solo estéreo. Los límites de tasa de bits del receptor se devuelven en la
+  ofrece BlueCaster. Solo estéreo. Los límites de tasa de bits del receptor se devuelven en la
   configuración y se aplican al codificador, como hace Android. Los paquetes multimedia
   llevan un encabezado de carga útil de 2 bytes: número de tramas << 2 (bits de latencia 0) y un
   número de secuencia
 - **FastStream**: 8 bytes (`a2dp_faststream_t` de PipeWire): byte 6 dirección
   (0x01 sink = música, 0x02 source = voz), byte 7 en el nibble bajo las frecuencias del receptor
-  (0x2 44.1k, 0x1 48k), en el nibble alto la frecuencia de la fuente (0x2 16k). A2DPWB ofrece
+  (0x2 44.1k, 0x1 48k), en el nibble alto la frecuencia de la fuente (0x2 16k). BlueCaster ofrece
   y configura solo la dirección de música
 - **Opus**: 7 bytes (`a2dp_vendor_opus_constants.h` de Android): byte 6 bits
   2..0 modo de canal (0x01 mono, 0x02 estéreo, 0x04 mono dual), bits 4..3
-  duración de trama (0x08 10 ms, 0x10 20 ms), bit 7 48 kHz. A2DPWB ofrece mono
+  duración de trama (0x08 10 ms, 0x10 20 ms), bit 7 48 kHz. BlueCaster ofrece mono
   y estéreo, 10 y 20 ms, y configura estéreo a 20 ms (mono solo para una entrada
   mono hacia un receptor que lo admita). Los paquetes multimedia llevan un paquete Opus tras
   un encabezado de carga útil de 1 byte (número de tramas 1 en los 4 bits bajos)
 - **aptX Adaptive**: 40 bytes. El evento de capacidades de BTstack recorta la
-  información del códec del receptor a 30 bytes, que siguen conteniendo todo lo que usa A2DPWB.
+  información del códec del receptor a 30 bytes, que siguen conteniendo todo lo que usa BlueCaster.
   SET_CONFIGURATION: 48 kHz con tipo de fuente 2 (codificador en el host: el receptor
   temporiza la reproducción por sí mismo), estéreo; un receptor R1 recibe de vuelta sus propios
   bytes de latencia objetivo, con LL0 elevada a al menos 80 ms y una latencia HQ de cero
@@ -470,7 +472,7 @@ encabezado RTP de 12 bytes. aptX, aptX LL y FastStream se envían **sin** encabe
 PipeWire), de modo que toda la MTU de L2CAP queda disponible para las tramas aptX.
 
 **aptX Adaptive** envía un paquete del códec por paquete multimedia
-tras el encabezado RTP de 12 bytes propio de A2DPWB (BTstack no añade ninguno): tipo de carga útil 96,
+tras el encabezado RTP de 12 bytes propio de BlueCaster (BTstack no añade ninguno): tipo de carga útil 96,
 número de secuencia +1 por paquete, marca de tiempo = las muestras por canal del
 paquete (no un reloj), SSRC = el modo de latencia del receptor (0x000000A3 HQ,
 0x000000A1 LL). La carga útil lleva los bytes intercambiados en palabras de 16 bits. Los paquetes HQ tienen
@@ -479,28 +481,36 @@ aptX clásico, Opus y AAC (el orden del issue #86), por debajo de LHDC V5 y LDAC
 
 ## Configuración y archivos {#settings-and-files}
 
-Todo se guarda en la carpeta de configuración, `%APPDATA%\A2DPWB` (o la
-carpeta indicada por la variable de entorno `A2DPWB_CONFIG_DIR`); los archivos que tenía la v1
-conservan los formatos de la v1:
+Todo se guarda en la carpeta de configuración, `%APPDATA%\BlueCaster` (o la
+carpeta indicada por la variable de entorno `BLUECASTER_CONFIG_DIR`); los archivos que tenían
+la v1 y la 2.0.x conservan sus formatos (la 2.0.x usaba `%APPDATA%\A2DPWB`; la 3.0.0
+cambia el nombre de esa carpeta en su primer inicio y ordena los archivos en las carpetas
+de abajo):
 
-| Archivo | Contenido |
+| Ruta | Contenido |
 |:-----|:---------|
 | `settings.json` | Configuración de la aplicación, con un `schema_version`; las claves desconocidas se conservan |
 | `profiles.json` | Perfiles |
-| `devices.txt`, `link_keys.txt` | Dispositivos conocidos y sus claves de enlace: los auriculares emparejados con la v1 se reconectan sin volver a emparejar |
-| `le_audio_devices.txt`, `le_audio_bonds.tlv`, `le_audio_csip.txt` | LE Audio (experimental): las entradas LE Audio de la lista de dispositivos, los vínculos LE (con los valores CCC persistentes del servidor GATT) y los conjuntos coordinados |
-| `device_codecs.json` | Lo que ofreció cada dispositivo clásico en su última conexión (y si se pidió Hi-Res a unos auriculares OPPO) |
-| `adapter_caps.json` | Lo que una pila averiguó de cada adaptador (compatibilidad con LE Audio, dirección, versión HCI, el nombre que le da Windows) |
+| `devices\devices.txt` | Dispositivos conocidos |
+| `devices\le_audio_devices.txt` | LE Audio (experimental): las entradas LE Audio de la lista de dispositivos |
+| `devices\device_codecs.json` | Lo que ofreció cada dispositivo clásico en su última conexión (y si se pidió Hi-Res a unos auriculares OPPO) |
+| `pairing\link_keys.txt` | Claves de enlace: los auriculares emparejados con la v1 o la 2.0.x se reconectan sin volver a emparejar |
+| `pairing\le_audio_bonds.tlv`, `pairing\le_audio_csip.txt` | LE Audio (experimental): los vínculos LE (con los valores CCC persistentes del servidor GATT) y los conjuntos coordinados |
+| `adapters\adapter_caps.json` | Lo que una pila averiguó de cada adaptador (compatibilidad con LE Audio, dirección, versión HCI, el nombre que le da Windows) |
+| `adapters\driver\<instance id>.json` | El controlador anterior de cada adaptador al que se asignó WinUSB |
 | `firmware\` | Archivos de firmware (`*.bin`, `*.hcd`, `ibt-*`; los de Intel también en `firmware\intel\`, como los organiza linux-firmware); los archivos que versiones anteriores dejaban sueltos en la carpeta de configuración se mueven aquí |
-| `profiles-before-codecs.json` | `profiles.json` tal como estaba antes de que la pantalla Códecs integrara varios perfiles de un dispositivo en uno (se escribe una vez) |
-| `hci_<date>_<time>.pklg` | Capturas HCI |
-| `logs\a2dpwb-core.<date>.log`, `logs\a2dpwb-ui.<date>.log`, `logs\a2dpwb-driver.log` | Los registros del núcleo y de la ventana, un archivo por día (UTC), se conservan los 7 últimos, y el del auxiliar del controlador; sin enmascarar |
-| `logs\hci\` | Las capturas del registrador de vuelo HCI, escritas cuando falla una transmisión o se pierde una conexión (las 10 más recientes) |
+| `logs\<YYYY-MM-DD>\core.log`, `ui.log`, `driver.log` | Los registros del núcleo, de la ventana y del auxiliar del controlador, una carpeta por día (UTC); sin enmascarar |
+| `logs\hci\*.pklg` | Capturas HCI: las del registrador de vuelo, escritas cuando falla una transmisión o se pierde una conexión (las 10 más recientes), y las que inicia usted mismo (`hci_<date>_<time>.pklg`) |
 | `logs\probe\` | Informes de la lectura de datos del chip y de los scripts de chip (los 10 más recientes) |
-| `logs\crash\` | Informes de bloqueo: un minivolcado y un archivo de texto por bloqueo (los 5 más recientes por programa) |
-| `logs\bundles\` | Paquetes de diagnóstico (los 3 más recientes) |
-| `driver\` | El controlador anterior de cada adaptador al que se asignó WinUSB |
-| `backup-v1\` | Una copia de la configuración de la v1, creada una sola vez en el primer inicio de la v2 |
+| `logs\crash\` | Informes de bloqueo: un minivolcado (`*.dmp`) y un archivo de texto por bloqueo (los 5 más recientes por programa) |
+| `logs\bundles\*.zip` | Paquetes de diagnóstico (los 3 más recientes) |
+| `backup\v1\` | Una copia de la configuración de la v1, creada una sola vez en el primer inicio de la v2 |
+| `backup\v2\` | Una copia de la configuración y los emparejamientos de la 2.0.x, creada una sola vez en el primer inicio de la 3.0.0 |
+| `backup\profiles-before-codecs.json` | `profiles.json` tal como estaba antes de que la pantalla Códecs integrara varios perfiles de un dispositivo en uno (se escribe una vez) |
+
+La carpeta del programa es `%LOCALAPPDATA%\BlueCaster\`: los tres programas, el
+desinstalador y `licenses\` (`licenses\README.txt`, `licenses\bluecaster\LICENSE...`,
+`licenses\third-party\...`). La caché de descarga del firmware es `%TEMP%\bluecaster-cache`.
 
 ## Sistema de compilación {#build-system}
 
@@ -508,12 +518,12 @@ conservan los formatos de la v1:
   compila su biblioteca en C desde el submódulo git de `extern/` con MSVC en
   `build.rs`. Solo la herramienta para desarrolladores `tools/a2dp_decode` se compila con CMake
 - La página de la ventana se compila con **Vite** (`pnpm build` en `app/src/ui`) y
-  Tauri la incrusta en `a2dpwb.exe`
+  Tauri la incrusta en `bluecaster.exe`
 - Los tipos de TypeScript del protocolo IPC se generan a partir de los tipos de Rust
   (`cargo test -p ipc export_bindings`)
 - Los archivos de idioma (`app/lang/*.json`) los usan la ventana y el menú de la bandeja
   del núcleo
-- `installer/build-release.ps1` genera el instalador (Inno Setup, `installer/A2DPWB.iss`),
+- `installer/build-release.ps1` genera el instalador (Inno Setup, `installer/BlueCaster.iss`),
   el zip portable y el manifiesto del actualizador. Consulte [Compilación](building)
 
 ## Consideraciones importantes {#important-considerations}
@@ -524,7 +534,7 @@ conservan los formatos de la v1:
 - **Emparejamiento**: usa SSP Just Works con General Bonding. Las claves de enlace se guardan
   en un archivo local, o se adoptan del Bluetooth de Windows para el adaptador
 - **Se recomienda un segundo adaptador**: mantenga el Bluetooth integrado para Windows y use
-  un adaptador USB dedicado para A2DPWB
+  un adaptador USB dedicado para BlueCaster
 - El firmware de algunos adaptadores Bluetooth limita la tasa de bits alcanzable
 - Por lo general, los adaptadores USB Bluetooth 5.0+ funcionan bien con LDAC
 - Prioridad de la selección automática de códec (por calidad de sonido, issue #86): LHDC V5 > LDAC > aptX Adaptive > Opus > aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC (FastStream y Opus 05 solo si se eligen); un códec elegido que el dispositivo no ofrece pasa al primero del orden del dispositivo que este ofrezca

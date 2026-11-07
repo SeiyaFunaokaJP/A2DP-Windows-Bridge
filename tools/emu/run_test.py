@@ -1,14 +1,14 @@
-"""End-to-end A2DP test of A2DPWB against a virtual sink - no Bluetooth hardware.
+"""End-to-end A2DP test of BlueCaster against a virtual sink - no Bluetooth hardware.
 
     python tools/emu/setup_env.py          (once)
     python tools/emu/run_test.py [--codecs sbc aac ...] [--duration 5]
 
 For each codec: starts emu_sink.py (Bumble virtual link + A2DP sink), runs
-a2dpwb-core.exe --cli with a test tone over H4/TCP, then checks both HCI captures
-with a2dpwb_decode:
-  - A2DPWB streams the requested codec and a2dpwb_decode finds no problem,
+bluecaster-core.exe --cli with a test tone over H4/TCP, then checks both HCI captures
+with bluecaster_decode:
+  - BlueCaster streams the requested codec and bluecaster_decode finds no problem,
     on the sent side and on the received side
-  - the sink received every media packet / frame A2DPWB sent
+  - the sink received every media packet / frame BlueCaster sent
   - decoded audio (all codecs but LDAC, LHDC V5 and aptX Adaptive, which
     have no open-source decoder) is identical on both sides and is the test
     tone: 1 kHz left, 1.5 kHz right, amplitude 0.5
@@ -27,15 +27,15 @@ the sink runs in the tools/emu/.venv environment.
 
 runs the experimental LE Audio cases instead (le_audio_tests/: stereo,
 two-ase, earbuds, mono-16k and the profiles' own): emu_le_audio_sink.py with
-the case's layout, a2dpwb-core.exe --cli --le-audio with the test tone, and
-a2dpwb_decode --le-audio on both sides:
+the case's layout, bluecaster-core.exe --cli --le-audio with the test tone, and
+bluecaster_decode --le-audio on both sides:
   - one LC3 stream of the expected configuration on both sides, consecutive
     ISO SDU sequence numbers, no decoder problems
-  - the sinks received every SDU A2DPWB sent; decoded audio identical on both
+  - the sinks received every SDU BlueCaster sent; decoded audio identical on both
     sides and the test tone (1 kHz left, 1.5 kHz right; mono: both) in every
     100 ms of every stream but a short gap at its start and end
   - no SDU reached the emulated controller too late for a real one (its log
-    says "late SDU"), no underrun in A2DPWB's counters, audio (not counting
+    says "late SDU"), no underrun in BlueCaster's counters, audio (not counting
     inserted silence) for most of the duration
   - the checks of le_audio_tests/<profile>.py (core.py: each CIS's channel
     allocation within the PACS locations of the sink it goes to)
@@ -45,7 +45,7 @@ Outputs go to tools/emu/out/le-<case>/.
 
 runs the device scan cases instead (eir, name-request): emu_sink.py answers
 the inquiry (with its name in the extended inquiry response, or without it),
-a2dpwb-core.exe --cli --scan lists it:
+bluecaster-core.exe --cli --scan lists it:
   - listed once (it answers several times per inquiry), with its name, an
     RSSI and as an audio device
   - listed within 3 s of the inquiry's start (the sink answers after 1 s),
@@ -61,6 +61,7 @@ import os
 import queue
 import re
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -81,12 +82,12 @@ SINK_ADDRESS = '00:A2:D0:00:00:02'
 BASE_PORT = 9101  # A2DP cases; LE Audio cases use BASE_PORT + 100
 
 CODECS = ['sbc', 'sbcxq', 'aac', 'aptx', 'aptxhd', 'aptxll', 'ldac', 'lhdcv5', 'faststream', 'opus', 'opus05']
-CONFIG_PATTERN = {  # a2dpwb_decode's "Configuration :" line
+CONFIG_PATTERN = {  # bluecaster_decode's "Configuration :" line
     'sbc': r'SBC \d+ Hz, joint stereo, 16 blocks, 8 subbands, loudness, bitpool 2-53$',
     # SBC XQ: dual channel up to bitpool 47 (44.1 kHz) / 43 (48 kHz)
     'sbcxq': r'SBC (44100 Hz, dual channel, .*bitpool 2-47|48000 Hz, dual channel, .*bitpool 2-43)$',
     # Sinks with a low max bitpool: the configuration (and every frame,
-    # a2dpwb_decode checks) stays within it
+    # bluecaster_decode checks) stays within it
     'sbc-bp35': r'SBC \d+ Hz, joint stereo, 16 blocks, 8 subbands, loudness, bitpool 2-35$',
     'sbcxq-bp45': r'SBC 44100 Hz, dual channel, 16 blocks, 8 subbands, loudness, bitpool 2-45$',
     'sbcxq-bp39': r'SBC \d+ Hz, dual channel, 16 blocks, 8 subbands, loudness, bitpool 2-39$',
@@ -124,8 +125,8 @@ OPPO_SINK = ['--codecs', 'sbc', 'aac', 'lhdcv5', '--log-level', 'INFO', '--name'
 OTHER_NAME = ['--name', 'Other Buds']
 OPPO_NAME = ['--device-name', 'OPPO Enco Free4']
 OPPO_TWICE = OPPO_NAME + ['--sessions', '2']
-# Further cases: name -> (A2DPWB -c, emu_sink.py arguments, the codec expected,
-# more A2DPWB arguments)
+# Further cases: name -> (BlueCaster -c, emu_sink.py arguments, the codec expected,
+# more BlueCaster arguments)
 NEGOTIATION = {
     'sbcxq-44k': ('sbcxq', [], 'sbcxq', ['--rate', '44100']),            # bitpool 47
     # Developer mode's force_codec (DEV_SETTINGS): LDAC to a sink that lists SBC only
@@ -149,6 +150,9 @@ NEGOTIATION = {
     # up, so the bitpool stays at the ceiling; every frame within the range
     'sbc-abr': ('sbc', [], 'sbc', ['-a']),
     'sbcxq-abr': ('sbcxq', [], 'sbcxq', ['-a', '--rate', '44100']),
+    # Developer mode's encode at send time (DEV_SETTINGS), with ABR and without
+    'sbcxq-abr-hold': ('sbcxq', [], 'sbcxq', ['-a', '--rate', '44100']),
+    'ldac-hold': ('ldac', [], 'ldac', []),
     'faststream-44k': ('faststream', [], 'faststream', ['--rate', '44100']),
     # Auto never takes FastStream, even over SBC
     'auto-not-faststream': ('auto', ['--codecs', 'sbc', 'faststream', '--sbc-no-dual'], 'sbc', []),
@@ -263,6 +267,8 @@ NEGOTIATION = {
 # The settings.json a case starts with (developer mode)
 DEV_SETTINGS = {
     'force-ldac': {'debug_mode': True, 'dev_overrides': {'force_codec': True}},
+    'sbcxq-abr-hold': {'debug_mode': True, 'dev_overrides': {'encode_at_send': True}},
+    'ldac-hold': {'debug_mode': True, 'dev_overrides': {'encode_at_send': True}},
     'oppo-always': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'always'}}},
     'oppo-never': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'never'}}},
     'oppo-every-connection': {'debug_mode': True, 'dev_vendors': {'oppo': {'options': ['every_connection']}}},
@@ -273,36 +279,38 @@ ENCODED_1000, ENCODED_400 = 'encoder ready: LHDC V5 1000 kbps', 'encoder ready: 
 # What these cases' logs must, and must not, have: name -> (log, text, whether
 # it is there, or how many times)
 LOG_CHECKS = {
+    'sbcxq-abr-hold': [('bluecaster.log', 'encode at send time', True)],
+    'ldac-hold': [('bluecaster.log', 'encode at send time', True)],
     'huawei-ldac': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, False),
-                    ('a2dpwb.log', 'Emulated phone', False)],
+                    ('bluecaster.log', 'Emulated phone', False)],
     'huawei-no-mode': [('sink.log', 'Huawei control: 2BA2', False)],
     'huawei-other-name': [('sink.log', 'Huawei control', False)],
     'huawei-no-ldac': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
     'huawei-no-ldac-drop': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, True)],
     'huawei-no-ldac-mode-on': [('sink.log', QUALITY_ON, True), ('sink.log', QUALITY_OFF, False)],
-    'oppo-hi-res': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2),
+    'oppo-hi-res': [('sink.log', HI_RES_ON, 1), ('bluecaster.log', ENCODED_400, False), ('bluecaster.log', ENCODED_1000, 2),
                     ('sink.log', 'AVDTP connection', 3)],
-    'oppo-hi-res-on': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2)],
+    'oppo-hi-res-on': [('sink.log', HI_RES_ON, 1), ('bluecaster.log', ENCODED_400, False), ('bluecaster.log', ENCODED_1000, 2)],
     'oppo-codec-write': [('sink.log', HI_RES_CODEC, 1), ('sink.log', HI_RES_ON, False),
-                         ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2)],
-    'oppo-drop': [('sink.log', HI_RES_ON, True), ('a2dpwb.log', ENCODED_1000, True), ('a2dpwb.log', ENCODED_400, False)],
-    'oppo-once': [('sink.log', 'OPPO control: 0100', 1), ('a2dpwb.log', ENCODED_1000, 3)],
-    'oppo-no-change': [('sink.log', HI_RES_ON, 1), ('sink.log', HI_RES_OFF, 1), ('a2dpwb.log', ENCODED_400, 2),
+                         ('bluecaster.log', ENCODED_400, False), ('bluecaster.log', ENCODED_1000, 2)],
+    'oppo-drop': [('sink.log', HI_RES_ON, True), ('bluecaster.log', ENCODED_1000, True), ('bluecaster.log', ENCODED_400, False)],
+    'oppo-once': [('sink.log', 'OPPO control: 0100', 1), ('bluecaster.log', ENCODED_1000, 3)],
+    'oppo-no-change': [('sink.log', HI_RES_ON, 1), ('sink.log', HI_RES_OFF, 1), ('bluecaster.log', ENCODED_400, 2),
                        ('sink.log', 'AVDTP connection', 3)],
     'oppo-no-change-on': [('sink.log', HI_RES_ON, 1), ('sink.log', HI_RES_OFF, False),
-                          ('a2dpwb.log', ENCODED_400, 2)],
-    'oppo-other-product': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False),
-                           ('a2dpwb.log', ENCODED_1000, 2)],
-    'oppo-no-write': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
-    'oppo-spatial': [('sink.log', 'OPPO control: 0403', False), ('a2dpwb.log', ENCODED_400, True)],
-    'oppo-other-name': [('sink.log', 'OPPO control', False), ('a2dpwb.log', ENCODED_400, True)],
-    'oppo-auto': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_1000, 1), ('a2dpwb.log', ENCODED_400, False)],
-    'oppo-renamed': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_400, False), ('a2dpwb.log', ENCODED_1000, 2),
-                     ('a2dpwb.log', 'name=“OPPO Enco Free4”', 1)],
-    'huawei-renamed': [('sink.log', QUALITY_ON, True), ('a2dpwb.log', 'name=“HUAWEI FreeBuds Pro 4”', True)],
-    'oppo-always': [('sink.log', HI_RES_ON, 1), ('a2dpwb.log', ENCODED_1000, 1), ('a2dpwb.log', 'remote name of', False)],
-    'oppo-never': [('sink.log', 'OPPO control', False), ('a2dpwb.log', ENCODED_400, True)],
-    'oppo-every-connection': [('sink.log', HI_RES_ON, 2), ('sink.log', HI_RES_OFF, 2), ('a2dpwb.log', ENCODED_400, 2),
+                          ('bluecaster.log', ENCODED_400, 2)],
+    'oppo-other-product': [('sink.log', HI_RES_ON, 1), ('bluecaster.log', ENCODED_400, False),
+                           ('bluecaster.log', ENCODED_1000, 2)],
+    'oppo-no-write': [('sink.log', 'OPPO control: 0403', False), ('bluecaster.log', ENCODED_400, True)],
+    'oppo-spatial': [('sink.log', 'OPPO control: 0403', False), ('bluecaster.log', ENCODED_400, True)],
+    'oppo-other-name': [('sink.log', 'OPPO control', False), ('bluecaster.log', ENCODED_400, True)],
+    'oppo-auto': [('sink.log', HI_RES_ON, 1), ('bluecaster.log', ENCODED_1000, 1), ('bluecaster.log', ENCODED_400, False)],
+    'oppo-renamed': [('sink.log', HI_RES_ON, 1), ('bluecaster.log', ENCODED_400, False), ('bluecaster.log', ENCODED_1000, 2),
+                     ('bluecaster.log', 'name=“OPPO Enco Free4”', 1)],
+    'huawei-renamed': [('sink.log', QUALITY_ON, True), ('bluecaster.log', 'name=“HUAWEI FreeBuds Pro 4”', True)],
+    'oppo-always': [('sink.log', HI_RES_ON, 1), ('bluecaster.log', ENCODED_1000, 1), ('bluecaster.log', 'remote name of', False)],
+    'oppo-never': [('sink.log', 'OPPO control', False), ('bluecaster.log', ENCODED_400, True)],
+    'oppo-every-connection': [('sink.log', HI_RES_ON, 2), ('sink.log', HI_RES_OFF, 2), ('bluecaster.log', ENCODED_400, 2),
                               ('sink.log', 'AVDTP connection', 4)],
 }
 TONES = ((1000.0, 0.5), (1500.0, 0.5))  # (frequency, amplitude) per channel, as --test-tone
@@ -310,7 +318,7 @@ LATE_SDU_FAILURE = 'reached the controller after their SDU interval began'  # LE
 
 
 def parse_report(text):
-    """First stream of an a2dpwb_decode report."""
+    """First stream of an bluecaster_decode report."""
     def find(pattern, cast=str):
         m = re.search(pattern, text, re.M)
         return cast(m.group(1)) if m else None
@@ -384,16 +392,16 @@ def tone_check(path, tones=None):
 
 
 # LE Audio: the tone is checked in blocks of TONE_BLOCK_S over the whole
-# stream. Only the start and the end may lack it: A2DPWB sends encoded
+# stream. Only the start and the end may lack it: BlueCaster sends encoded
 # silence until its jitter buffer holds a few SDU sets (5 x 10 ms) and LC3
-# needs a frame or two to settle; at the end A2DPWB stops the test tone
+# needs a frame or two to settle; at the end BlueCaster stops the test tone
 # 100 ms before the stream (its buffer runs empty: silence). Up to
 # MAX_START_GAP_S / MAX_END_GAP_S are excluded there. Any other block without
 # the tone (an underrun's silence, a lost or doubled SDU) fails.
 TONE_BLOCK_S = 0.1    # whole periods of 1 kHz and 1.5 kHz
 MAX_START_GAP_S = 0.3
 MAX_END_GAP_S = 0.3
-# A2DPWB's underrun counter: the one when the test tone stops before the
+# BlueCaster's underrun counter: the one when the test tone stops before the
 # stream (above) is not counted, i.e. underruns in the last END_UNDERRUN_S of
 # the last stream
 END_UNDERRUN_S = 0.3
@@ -439,6 +447,21 @@ def tone_check_stream(path, tones):
     return not problems, '; '.join(problems + [desc])
 
 
+def free_port(port):
+    """`port`, or the next one nobody listens on (another program or test run
+    may hold it)."""
+    for p in range(port, port + 50):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('127.0.0.1', p))
+            except OSError:
+                continue
+        if p != port:
+            print(f'    port {port} is in use, the sink takes {p}')
+        return p
+    raise RuntimeError(f'no free TCP port from {port} to {port + 49}')
+
+
 def start_sink(port, capture, log_path, script='emu_sink.py', extra=()):
     """Starts a virtual sink; its READY line is in proc.ready_line."""
     log = open(log_path, 'w', encoding='utf-8')
@@ -477,30 +500,31 @@ def run_codec(args, codec, port):
     out = os.path.join(args.out, codec)
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
-    src_capture = os.path.join(out, 'a2dpwb.pklg')
+    src_capture = os.path.join(out, 'bluecaster.pklg')
     sink_capture = os.path.join(out, 'sink.pklg')
     failures = []
 
-    cli_codec, sink_args, expected, a2dpwb_args = NEGOTIATION.get(codec, (codec, [], codec, []))
+    cli_codec, sink_args, expected, bluecaster_args = NEGOTIATION.get(codec, (codec, [], codec, []))
+    port = free_port(port)
     sink = start_sink(port, sink_capture, os.path.join(out, 'sink.log'), extra=sink_args)
     try:
-        env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'))  # isolated link keys
+        env = dict(os.environ, BLUECASTER_CONFIG_DIR=os.path.join(out, 'config'))  # isolated link keys
         if codec in DEV_SETTINGS:
-            os.makedirs(env['A2DPWB_CONFIG_DIR'])
-            with open(os.path.join(env['A2DPWB_CONFIG_DIR'], 'settings.json'), 'w', encoding='utf-8') as f:
+            os.makedirs(env['BLUECASTER_CONFIG_DIR'])
+            with open(os.path.join(env['BLUECASTER_CONFIG_DIR'], 'settings.json'), 'w', encoding='utf-8') as f:
                 json.dump(DEV_SETTINGS[codec], f)
-        with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8', errors='replace') as log:
+        with open(os.path.join(out, 'bluecaster.log'), 'w', encoding='utf-8', errors='replace') as log:
             try:
                 rc = subprocess.run(
-                    [args.a2dpwb, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '-d', SINK_ADDRESS,
+                    [args.bluecaster, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '-d', SINK_ADDRESS,
                      '-c', cli_codec, '--test-tone', '--duration', str(args.duration),
-                     '--hci-capture', src_capture] + a2dpwb_args
+                     '--hci-capture', src_capture] + bluecaster_args
                     + (['--max-packet', str(args.max_packet)] if args.max_packet else []),
                     stdout=log, stderr=subprocess.STDOUT, env=env, timeout=args.duration + 90).returncode
             except subprocess.TimeoutExpired:
                 rc = 'timeout'
         if rc != 0:
-            failures.append(f'A2DPWB exited with {rc} (see a2dpwb.log)')
+            failures.append(f'BlueCaster exited with {rc} (see bluecaster.log)')
     finally:
         sink.terminate()
         sink.wait(10)
@@ -522,13 +546,13 @@ def run_codec(args, codec, port):
             f.write(text)
         r = reports[side] = parse_report(text)
         # One stream per --sessions
-        streams = int(a2dpwb_args[a2dpwb_args.index('--sessions') + 1]) if '--sessions' in a2dpwb_args else 1
+        streams = int(bluecaster_args[bluecaster_args.index('--sessions') + 1]) if '--sessions' in bluecaster_args else 1
         if r['streams'] != streams:
             failures.append(f'{side}: {r["streams"]} streams (expected {streams})')
         if not re.match(CONFIG_PATTERN[expected], r['config'] or ''):
             failures.append(f'{side}: configuration "{r["config"]}"')
         if not r['result_ok']:
-            failures.extend(f'{side}: {p}' for p in r['problems'] or ['a2dpwb_decode reported problems'])
+            failures.extend(f'{side}: {p}' for p in r['problems'] or ['bluecaster_decode reported problems'])
 
     sent, received = reports.get('sent'), reports.get('received')
     detail = ''
@@ -554,7 +578,7 @@ def run_codec(args, codec, port):
 
 
 def parse_le_report(text):
-    """a2dpwb_decode --le-audio report: as parse_report (configuration and WAV
+    """bluecaster_decode --le-audio report: as parse_report (configuration and WAV
     of the first stream), packets / frames / audio summed over all streams,
     plus the CIS lines"""
     r = parse_report(text)
@@ -571,41 +595,42 @@ def run_le_case(args, case, port):
     out = os.path.join(args.out, 'le-' + case.name)
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
-    src_capture = os.path.join(out, 'a2dpwb.pklg')
+    src_capture = os.path.join(out, 'bluecaster.pklg')
     sink_capture = os.path.join(out, 'sink.pklg')
     failures = []
 
+    port = free_port(port)
     sink = start_sink(port, sink_capture, os.path.join(out, 'sink.log'), 'emu_le_audio_sink.py',
                       ['--layout', case.layout] + case.sink_args)
     addresses = sink.ready_line.split('sinks=')[1].split(',')
     try:
-        env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'))  # isolated bonds
-        cmd = [args.a2dpwb, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '--le-audio', '-d', addresses[0]]
+        env = dict(os.environ, BLUECASTER_CONFIG_DIR=os.path.join(out, 'config'))  # isolated bonds
+        cmd = [args.bluecaster, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '--le-audio', '-d', addresses[0]]
         for a in ([] if case.first_address_only else addresses[1:]):
             cmd += ['--le-device', a]
         duration = case.duration or args.duration
-        cmd += ['--test-tone', '--duration', str(duration), '--hci-capture', src_capture] + case.a2dpwb_args
-        with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8', errors='replace') as log:
+        cmd += ['--test-tone', '--duration', str(duration), '--hci-capture', src_capture] + case.bluecaster_args
+        with open(os.path.join(out, 'bluecaster.log'), 'w', encoding='utf-8', errors='replace') as log:
             try:
                 rc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, env=env,
                                     timeout=duration + 120).returncode
             except subprocess.TimeoutExpired:
                 rc = 'timeout'
         if case.expect_error is None and rc != 0:
-            failures.append(f'A2DPWB exited with {rc} (see a2dpwb.log)')
+            failures.append(f'BlueCaster exited with {rc} (see bluecaster.log)')
     finally:
         sink.terminate()
         sink.wait(10)
 
     if case.expect_error is not None:
-        # A2DPWB must refuse with a clear error, not stream
-        log_text = read_text(os.path.join(out, 'a2dpwb.log'))
+        # BlueCaster must refuse with a clear error, not stream
+        log_text = read_text(os.path.join(out, 'bluecaster.log'))
         if rc == 0 or rc == 'timeout':
-            failures.append(f'A2DPWB exited with {rc}, expected an error exit')
+            failures.append(f'BlueCaster exited with {rc}, expected an error exit')
         if not re.search(case.expect_error, log_text):
-            failures.append(f'no error matching "{case.expect_error}" in a2dpwb.log')
+            failures.append(f'no error matching "{case.expect_error}" in bluecaster.log')
         if 'Streaming LE Audio:' in log_text:
-            failures.append('A2DPWB streamed although it should have refused')
+            failures.append('BlueCaster streamed although it should have refused')
         return failures, f'exit {rc}'
 
     sink_captures =[sink_capture] + [os.path.join(out, f'sink-{i + 1}.pklg') for i in range(1, len(addresses))]
@@ -625,10 +650,10 @@ def run_le_case(args, case, port):
         if not re.match(case.config, r['config'] or ''):
             failures.append(f'{side}: configuration "{r["config"]}"')
         if not r['result_ok']:
-            failures.extend(f'{side}: {p}' for p in r['problems'] or ['a2dpwb_decode reported problems'])
+            failures.extend(f'{side}: {p}' for p in r['problems'] or ['bluecaster_decode reported problems'])
 
     sent, received = reports.get('sent'), reports.get('received')
-    a2dpwb_log = read_text(os.path.join(out, 'a2dpwb.log'))
+    bluecaster_log = read_text(os.path.join(out, 'bluecaster.log'))
     detail = ''
     if sent and received:
         missing = (sent['packets'] or 0) - (received['packets'] or 0)
@@ -667,19 +692,19 @@ def run_le_case(args, case, port):
             failures.append(f'CIS {h}: {n} SDU(s) {LATE_SDU_FAILURE} '
                             f'(worst {worst} ms; the queue of a real controller would have run empty)')
 
-    # A2DPWB's own counters, per stream set-up ("stopped sending", the
+    # BlueCaster's own counters, per stream set-up ("stopped sending", the
     # counters start anew with each): no underrun (silence inserted while
     # streaming), and the audio sent (not counting the silence while its
     # buffer fills) must cover the duration
     frame_s = (7.5 if sent and re.search(r' 7\.5 ms ', sent['config'] or '') else 10) / 1000
-    stops = le_stream_stats(a2dpwb_log, frame_s)
+    stops = le_stream_stats(bluecaster_log, frame_s)
     if not stops:
-        failures.append('no "LE Audio: stopped sending" statistics in a2dpwb.log')
+        failures.append('no "LE Audio: stopped sending" statistics in bluecaster.log')
     else:
         sets, silence, underruns, at_end = (sum(s[i] for s in stops) for i in range(4))
         detail += f' | {silence} silence sets, {underruns} underruns ({at_end} as the tone stopped)'
         if underruns - at_end > case.max_underruns:
-            failures.append(f'{underruns - at_end} underrun(s) (A2DPWB sent silence while streaming; '
+            failures.append(f'{underruns - at_end} underrun(s) (BlueCaster sent silence while streaming; '
                             f'at most {case.max_underruns} allowed)')
         if sent:
             audio_s = (sets - silence) * frame_s
@@ -687,14 +712,14 @@ def run_le_case(args, case, port):
             if audio_s < min_audio * duration:
                 failures.append(f'only {audio_s:.2f} s of audio (without silence) for --duration {duration}')
 
-    ctx = dict(out=out, a2dpwb_log=a2dpwb_log, sink_log=read_text(os.path.join(out, 'sink.log')),
+    ctx = dict(out=out, bluecaster_log=bluecaster_log, sink_log=read_text(os.path.join(out, 'sink.log')),
                sent=sent, received=received, sink_addresses=addresses)
     failures.extend(le_audio_tests.check(case, ctx))
     return failures, detail
 
 
 def le_stream_stats(log, frame_s):
-    """Per stream set-up of A2DPWB's log ("sending ISO SDUs" ... "stopped
+    """Per stream set-up of BlueCaster's log ("sending ISO SDUs" ... "stopped
     sending: N SDU sets ..., S silence, U underruns"): (N, S, U, E), E = the
     underruns of the last stream within END_UNDERRUN_S of its end (as its
     "no audio for SDU set K" warnings say; the test tone stops first)"""
@@ -734,7 +759,7 @@ def main_le(args):
         failures, detail = run_le_case(args, case, args.base_port + 100 + index)
         if failures and all(LATE_SDU_FAILURE in f for f in failures):
             # Late SDUs only: a shared machine (a CI runner) can hold up
-            # A2DPWB's sender thread a few ms now and then. Run the case
+            # BlueCaster's sender thread a few ms now and then. Run the case
             # once more (the first run kept as le-<case>-try1); late SDUs
             # again fail it
             print(f'    late SDUs only, once more  {detail}')
@@ -762,29 +787,29 @@ SCAN_CASES = {
 }
 SCAN_SECONDS = 10
 SCAN_LISTED_MAX_S = 3.0
-SINK_NAME = 'A2DPWB Test Sink'
-# Link cases: sink arguments, A2DPWB arguments, (log, pattern, found or not).
+SINK_NAME = 'BlueCaster Test Sink'
+# Link cases: sink arguments, BlueCaster arguments, (log, pattern, found or not).
 # Disconnect after the 10 s in which BTstack ends an idle link by itself; the
 # headphones turned back on open A2DP themselves, or leave it to the PC.
 LINK_CASES = {
     'disconnect': ([], ['--duration', '12', '--sessions', '2'], [
-        ('a2dpwb.log', r'Disconnecting \(session 1.*dropping the ACL link.*HCI disconnection.*Connecting again', True),
+        ('bluecaster.log', r'Disconnecting \(session 1.*dropping the ACL link.*HCI disconnection.*Connecting again', True),
     ]),
     'device-link': (['--turn-off-after', '4'], ['--duration', '16', '--wait-off'], [
-        ('a2dpwb.log', r'the headphones connected again.*reconnected on attempt 1', True),
+        ('bluecaster.log', r'the headphones connected again.*reconnected on attempt 1', True),
         ('sink.log', r'turned on', True),
     ]),
     'device-a2dp': (['--turn-off-after', '4', '--opens-a2dp'], ['--duration', '16', '--wait-off'], [
-        ('a2dpwb.log', r'connected A2DP itself.*reconnected on attempt 1', True),
-        ('a2dpwb.log', r'closing a leftover AVDTP', False),
+        ('bluecaster.log', r'connected A2DP itself.*reconnected on attempt 1', True),
+        ('bluecaster.log', r'closing a leftover AVDTP', False),
         ('sink.log', r'A2DP opened', True),
         ('sink.log', r'A2DP closed.*turned off|turned on.*A2DP closed.*A2DP opened', False),
     ]),
     # ...and set up the stream itself, a vendor codec (LHDC V5 headphones)
     'device-stream': (['--turn-off-after', '4', '--opens-a2dp', '--opens-stream'],
                       ['-c', 'ldac', '--duration', '16', '--wait-off'], [
-        ('a2dpwb.log', r'opened the stream itself, starting LDAC on it.*reconnected on attempt 1', True),
-        ('a2dpwb.log', r'closing a leftover AVDTP', False),
+        ('bluecaster.log', r'opened the stream itself, starting LDAC on it.*reconnected on attempt 1', True),
+        ('bluecaster.log', r'closing a leftover AVDTP', False),
         ('sink.log', r'stream opened \(ldac\)', True),
         ('sink.log', r'A2DP closed.*stream opened', False),
     ]),
@@ -792,31 +817,31 @@ LINK_CASES = {
     # controller answers; the failed contact counter it refuses is left
     # out without holding up the other commands or the stream
     'details': ([], ['--duration', '12'], [
-        ('a2dpwb.log', r'remote controller of .*company 0x0094 \(Airoha\), LMP version 12', True),
-        ('a2dpwb.log', r'remote features of ', True),
-        ('a2dpwb.log', r'supervision timeout Some\(32000\) slots', True),
-        ('a2dpwb.log', r'does not support command 0x1401', True),
-        ('a2dpwb.log', r'Bluetooth stack stalled', False),
+        ('bluecaster.log', r'remote controller of .*company 0x0094 \(Airoha\), LMP version 12', True),
+        ('bluecaster.log', r'remote features of ', True),
+        ('bluecaster.log', r'supervision timeout Some\(32000\) slots', True),
+        ('bluecaster.log', r'does not support command 0x1401', True),
+        ('bluecaster.log', r'Bluetooth stack stalled', False),
     ]),
     # A controller that never answers Read Remote Version: the command
     # counts as unsupported after its timeout and the readings behind it
     # (supervision timeout, then RSSI and link quality) go on
     'details-unanswered': (['--silent-remote-version'], ['--duration', '12'], [
-        ('a2dpwb.log', r'no answer to command 0x041D in \d+ ms', True),
-        ('a2dpwb.log', r'no answer to command 0x041D.*supervision timeout Some\(32000\) slots', True),
-        ('a2dpwb.log', r'no answer to command 0x041D.*radio: link quality 230', True),
-        ('a2dpwb.log', r'remote controller of ', False),
-        ('a2dpwb.log', r'Bluetooth stack stalled', False),
+        ('bluecaster.log', r'no answer to command 0x041D in \d+ ms', True),
+        ('bluecaster.log', r'no answer to command 0x041D.*supervision timeout Some\(32000\) slots', True),
+        ('bluecaster.log', r'no answer to command 0x041D.*radio: link quality 230', True),
+        ('bluecaster.log', r'remote controller of ', False),
+        ('bluecaster.log', r'Bluetooth stack stalled', False),
     ]),
     # A setting changed just after the link came up: the next connection
     # starts while that link goes down
     'restart-on-link': (['--disconnect-delay', '0.5'], ['--duration', '3', '--restart-on-link'], [
-        ('a2dpwb.log', r'Starting again.*HCI disconnection.*state Streaming', True),
-        ('a2dpwb.log', r'Bluetooth stack stalled', False),
+        ('bluecaster.log', r'Starting again.*HCI disconnection.*state Streaming', True),
+        ('bluecaster.log', r'Bluetooth stack stalled', False),
     ]),
     # Headphones with Delay Reporting: their playout delay reaches the log
     'delay-report': (['--delay-report', '187.5'], ['--duration', '3'], [
-        ('a2dpwb.log', r'supports delay reporting.*device delay report: 187\.5 ms', True),
+        ('bluecaster.log', r'supports delay reporting.*device delay report: 187\.5 ms', True),
         ('sink.log', r'delay report sent \(187\.5 ms\)', True),
     ]),
 }
@@ -832,21 +857,22 @@ def log_time(log, pattern):
 
 
 def run_scan_case(args, case, port):
-    """a2dpwb-core --cli --scan against the sink: listed once, with its name
+    """bluecaster-core --cli --scan against the sink: listed once, with its name
     and RSSI, soon after the inquiry started."""
     sink_args, name_from, name_max_s = SCAN_CASES[case]
     out = os.path.join(args.out, 'scan-' + case)
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
     failures = []
+    port = free_port(port)
     sink = start_sink(port, os.path.join(out, 'sink.pklg'), os.path.join(out, 'sink.log'), extra=sink_args)
     try:
-        env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'), A2DPWB_LOG='debug')
+        env = dict(os.environ, BLUECASTER_CONFIG_DIR=os.path.join(out, 'config'), BLUECASTER_LOG='debug')
         started = time.time()
         try:
             r = subprocess.run(
-                [args.a2dpwb, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '--scan', str(SCAN_SECONDS),
-                 '--hci-capture', os.path.join(out, 'a2dpwb.pklg')],
+                [args.bluecaster, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '--scan', str(SCAN_SECONDS),
+                 '--hci-capture', os.path.join(out, 'bluecaster.pklg')],
                 capture_output=True, text=True, encoding='utf-8', errors='replace', env=env,
                 timeout=SCAN_SECONDS + 60)
             rc, text = r.returncode, r.stdout + r.stderr
@@ -854,13 +880,13 @@ def run_scan_case(args, case, port):
             partial = e.stdout or ''
             rc, text = 'timeout', partial.decode('utf-8', 'replace') if isinstance(partial, bytes) else partial
         took = time.time() - started
-        with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8') as f:
+        with open(os.path.join(out, 'bluecaster.log'), 'w', encoding='utf-8') as f:
             f.write(text)
     finally:
         sink.terminate()
         sink.wait(10)
     if rc != 0:
-        failures.append(f'A2DPWB exited with {rc} (see a2dpwb.log)')
+        failures.append(f'BlueCaster exited with {rc} (see bluecaster.log)')
     lines = [line for line in text.splitlines() if line.startswith(SINK_ADDRESS)]
     if len(lines) != 1:
         failures.append(f'the sink listed {len(lines)} times (expected once)')
@@ -901,22 +927,23 @@ def main_scan(args):
 
 
 def run_link_case(args, case, port):
-    """a2dpwb-core --cli with the sink ending or opening links: each pattern
-    of the case is found, or not, in a2dpwb.log / sink.log."""
-    sink_args, a2dpwb_args, checks = LINK_CASES[case]
+    """bluecaster-core --cli with the sink ending or opening links: each pattern
+    of the case is found, or not, in bluecaster.log / sink.log."""
+    sink_args, bluecaster_args, checks = LINK_CASES[case]
     out = os.path.join(args.out, 'link-' + case)
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
     failures = []
+    port = free_port(port)
     sink = start_sink(port, os.path.join(out, 'sink.pklg'), os.path.join(out, 'sink.log'), extra=sink_args)
     try:
-        env = dict(os.environ, A2DPWB_CONFIG_DIR=os.path.join(out, 'config'), A2DPWB_LOG='debug')
-        with open(os.path.join(out, 'a2dpwb.log'), 'w', encoding='utf-8', errors='replace') as log:
+        env = dict(os.environ, BLUECASTER_CONFIG_DIR=os.path.join(out, 'config'), BLUECASTER_LOG='debug')
+        with open(os.path.join(out, 'bluecaster.log'), 'w', encoding='utf-8', errors='replace') as log:
             try:
                 rc = subprocess.run(
-                    [args.a2dpwb, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '-d', SINK_ADDRESS]
-                    + ([] if '-c' in a2dpwb_args else ['-c', 'sbc'])
-                    + ['--test-tone', '--hci-capture', os.path.join(out, 'a2dpwb.pklg')] + a2dpwb_args,
+                    [args.bluecaster, '--cli', '--hci-tcp', f'127.0.0.1:{port}', '-d', SINK_ADDRESS]
+                    + ([] if '-c' in bluecaster_args else ['-c', 'sbc'])
+                    + ['--test-tone', '--hci-capture', os.path.join(out, 'bluecaster.pklg')] + bluecaster_args,
                     stdout=log, stderr=subprocess.STDOUT, env=env, timeout=120).returncode
             except subprocess.TimeoutExpired:
                 rc = 'timeout'
@@ -924,7 +951,7 @@ def run_link_case(args, case, port):
         sink.terminate()
         sink.wait(10)
     if rc != 0:
-        failures.append(f'A2DPWB exited with {rc} (see a2dpwb.log)')
+        failures.append(f'BlueCaster exited with {rc} (see bluecaster.log)')
     for name, pattern, present in checks:
         if bool(re.search(pattern, read_text(os.path.join(out, name)), re.S)) != present:
             failures.append(f'{name}: "{pattern}" {"missing" if present else "found"}')
@@ -950,7 +977,7 @@ def main_link(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='End-to-end A2DP test of A2DPWB against a virtual sink')
+    parser = argparse.ArgumentParser(description='End-to-end A2DP test of BlueCaster against a virtual sink')
     parser.add_argument('--codecs', nargs='+', choices=CODECS + list(NEGOTIATION),
                         default=CODECS + list(NEGOTIATION),
                         help='codecs and negotiation cases (%(default)s)')
@@ -961,20 +988,20 @@ def main():
     parser.add_argument('--link', nargs='*', metavar='CASE',
                         help=f'run the link cases instead ({", ".join(LINK_CASES)}; default: all of them)')
     parser.add_argument('--duration', type=int, default=5, help='seconds of streaming per codec')
-    parser.add_argument('--max-packet', type=int, help='passed to A2DPWB --max-packet (default: its own)')
+    parser.add_argument('--max-packet', type=int, help='passed to BlueCaster --max-packet (default: its own)')
     parser.add_argument('--build-dir', default=os.path.join(REPO, 'build'),
                         help="the decoder tool's CMake builds (cmake -S tools/a2dp_decode -B build/a2dp_decode)")
     parser.add_argument('--config', default='Release', help='build configuration (Release / Debug)')
-    parser.add_argument('--a2dpwb', help='A2DPWB core executable to test (default: target/release/a2dpwb-core.exe)')
-    parser.add_argument('--decoder', help='a2dpwb_decode executable (default: <build-dir>/a2dp_decode/<config>)')
+    parser.add_argument('--bluecaster', help='BlueCaster core executable to test (default: target/release/bluecaster-core.exe)')
+    parser.add_argument('--decoder', help='bluecaster_decode executable (default: <build-dir>/a2dp_decode/<config>)')
     parser.add_argument('--out', default=os.path.join(HERE, 'out'))
     parser.add_argument('--base-port', type=int, default=BASE_PORT,
                         help='first TCP port (LE Audio cases use +100); change it to run several tests at once')
     args = parser.parse_args()
-    args.a2dpwb = args.a2dpwb or os.path.join(REPO, 'target', args.config.lower(), 'a2dpwb-core.exe')
-    args.decoder = args.decoder or os.path.join(args.build_dir, 'a2dp_decode', args.config, 'a2dpwb_decode.exe')
+    args.bluecaster = args.bluecaster or os.path.join(REPO, 'target', args.config.lower(), 'bluecaster-core.exe')
+    args.decoder = args.decoder or os.path.join(args.build_dir, 'a2dp_decode', args.config, 'bluecaster_decode.exe')
     for path, hint in ((VENV_PYTHON, 'run: python tools/emu/setup_env.py'),
-                       (args.a2dpwb, 'build A2DPWB'), (args.decoder, 'build a2dpwb_decode')):
+                       (args.bluecaster, 'build BlueCaster'), (args.decoder, 'build bluecaster_decode')):
         if path == args.decoder and (args.scan is not None or args.link is not None):
             continue  # a scan streams nothing, a link case decodes nothing
         if not os.path.exists(path):

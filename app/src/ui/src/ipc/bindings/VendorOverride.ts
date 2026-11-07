@@ -3,7 +3,7 @@ import type { VendorMode } from "./VendorMode";
 
 /**
  * Developer mode's override of one vendor's protocol
- * (a2dpwb_core::vendor::Override)
+ * (bluecaster_core::vendor::Override)
  */
 export type VendorOverride = { mode: VendorMode, 
 /**

@@ -72,7 +72,7 @@ fn summary_json(s: &ProbeSummary) -> Value {
 /// parameters; USB: the SETUP packet and the bytes read)
 pub fn to_json(report: &ProbeReport, adapter: Option<&str>, version: &str) -> Value {
     json!({
-        "a2dpwb": version,
+        "bluecaster": version,
         "adapter": adapter,
         "summary": summary_json(&report.summary()),
         "error": report.error,
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn save_keeps_the_newest() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-probe-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-probe-test-{}", std::process::id()));
         let probe = crate::paths::probe_dir(&dir);
         std::fs::create_dir_all(&probe).unwrap();
         for i in 0..KEEP + 2 {

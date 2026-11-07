@@ -38,7 +38,7 @@ export function lengthError(text: string, [min, max]: readonly [number, number],
 function createSession(core: Core) {
   return createRoot(() => {
     const [choices, setChoices] = createSignal<Choices>({
-      name: "A2DPWB",
+      name: "BlueCaster",
       code: "",
       quality: "hq",
       channels: "stereo",

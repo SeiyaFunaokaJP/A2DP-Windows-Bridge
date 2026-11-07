@@ -1,4 +1,4 @@
-//! OPPO Enco Free4 earbuds offered A2DPWB LHDC V5 at 48 kHz and 400 kbps while
+//! OPPO Enco Free4 earbuds offered BlueCaster LHDC V5 at 48 kHz and 400 kbps while
 //! a phone got 192 kHz (issue #237). Their app sets Hi-Res over the HeyMelody
 //! protocol on their own RFCOMM service. A stream that wants more of LHDC V5
 //! sets it the same way, once per earbuds. They list the new limit only on a
@@ -291,7 +291,7 @@ impl<'a> Link<'a> {
 /// Asks the connected earbuds for LHDC with Hi-Res. The mode they were in (0:
 /// off) and how they took the write: more of LHDC V5 can then come with a new
 /// connection. The write goes out also when they report Hi-Res on already, set
-/// from a phone: it is that mode and no more that A2DPWB was offered (issue
+/// from a phone: it is that mode and no more that BlueCaster was offered (issue
 /// #237). Spatial audio excludes Hi-Res and is the user's: then nothing is
 /// written.
 pub fn ask_for_hi_res(host: &BtHost, addr: [u8; 6]) -> Option<(u8, Taken)> {

@@ -1,7 +1,8 @@
 //! Starting with Windows: the value under
-//! HKCU\Software\Microsoft\Windows\CurrentVersion\Run, as v1
-//! system_integration.cpp writes it (value name "A2DPWB", REG_SZ with the
-//! quoted program path and its arguments).
+//! HKCU\Software\Microsoft\Windows\CurrentVersion\Run, in the format v1
+//! system_integration.cpp writes it (REG_SZ with the quoted program path and
+//! its arguments). Value name "BlueCaster" since 3.0.0; v1 and 2.0.x used
+//! "A2DPWB" ([`OLD_VALUE_NAME`]), which the core takes over at start.
 //!
 //! Also holds the small registry helpers the driver module uses.
 
@@ -17,9 +18,36 @@ use windows::core::{HSTRING, PCWSTR};
 
 /// The Run key, under HKEY_CURRENT_USER
 pub const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-/// The value name v1 uses; v2 keeps it so that installing v2 over v1
-/// replaces the entry instead of starting both
-pub const VALUE_NAME: &str = "A2DPWB";
+/// The value name of the core's entry (3.0.0 on)
+pub const VALUE_NAME: &str = "BlueCaster";
+/// The value name v1 (A2DPWB.exe) and 2.0.x (a2dpwb-core.exe) used. The core
+/// moves an entry of its own (or of v1) under it to [`VALUE_NAME`] at start
+/// and leaves any other program's alone. Can be removed 6–12 months after
+/// 3.0.0.
+pub const OLD_VALUE_NAME: &str = "A2DPWB";
+/// Task Manager's Startup tab keeps enabled/disabled per Run value name
+/// here (REG_BINARY; first byte 2 = enabled, 3 = disabled; no value =
+/// enabled)
+pub const STARTUP_APPROVED_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+/// Carries Task Manager's enabled/disabled state of the Run value `old`
+/// over to `new` (unless `new` has one already) and drops the old one: a
+/// user who disabled "A2DPWB" there keeps it disabled under the new name.
+/// Ok(true) if there was one.
+pub fn carry_startup_approved(old: &str, new: &str) -> windows::core::Result<bool> {
+    let Some(key) = RegKey::open_hkcu(STARTUP_APPROVED_KEY, KEY_QUERY_VALUE | KEY_SET_VALUE)? else {
+        return Ok(false);
+    };
+    let Some((ty, data)) = key.query(old)? else {
+        return Ok(false);
+    };
+    if key.query(new)?.is_none() {
+        key.set(new, ty, &data)?;
+    }
+    key.delete_value(old)?;
+    tracing::debug!("autostart: Task Manager startup state of {old} carried over to {new}");
+    Ok(true)
+}
 
 /// The command line registered under `value_name`, or None if there is none
 pub fn get(value_name: &str) -> windows::core::Result<Option<String>> {
@@ -42,7 +70,7 @@ pub fn remove(value_name: &str) -> windows::core::Result<bool> {
     r
 }
 
-/// `"C:\path\a2dpwb.exe" --minimized`: the program path quoted (it may
+/// `"C:\path\bluecaster.exe" --minimized`: the program path quoted (it may
 /// contain spaces), then the arguments, as v1 RegisterStartup builds it
 pub fn command_line(exe: &Path, args: &str) -> String {
     let exe = exe.display();
@@ -201,20 +229,20 @@ mod tests {
     #[test]
     fn command_line_quotes_the_path() {
         assert_eq!(
-            command_line(Path::new(r"C:\Program Files\A2DPWB\a2dpwb.exe"), "--minimized"),
-            r#""C:\Program Files\A2DPWB\a2dpwb.exe" --minimized"#
+            command_line(Path::new(r"C:\Program Files\BlueCaster\bluecaster.exe"), "--minimized"),
+            r#""C:\Program Files\BlueCaster\bluecaster.exe" --minimized"#
         );
         assert_eq!(command_line(Path::new(r"C:\a.exe"), ""), r#""C:\a.exe""#);
     }
 
     #[test]
     fn program_of_reads_the_path_back() {
-        let exe = Path::new(r"C:\Program Files\A2DPWB\a2dpwb-core.exe");
+        let exe = Path::new(r"C:\Program Files\BlueCaster\bluecaster-core.exe");
         assert_eq!(program_of(&command_line(exe, "--background")).as_deref(), Some(exe));
         assert_eq!(program_of(&command_line(exe, "")).as_deref(), Some(exe));
         assert_eq!(
-            program_of(r"C:\A2DPWB\A2DPWB.exe --minimized").as_deref(),
-            Some(Path::new(r"C:\A2DPWB\A2DPWB.exe"))
+            program_of(r"C:\BlueCaster\A2DPWB.exe --minimized").as_deref(),
+            Some(Path::new(r"C:\BlueCaster\A2DPWB.exe"))
         );
         assert_eq!(program_of(r#"  "C:\x y\a.exe"#).as_deref(), Some(Path::new(r"C:\x y\a.exe"))); // unclosed quote
         assert_eq!(program_of(""), None);
@@ -224,11 +252,11 @@ mod tests {
     /// Writes only under a throwaway HKCU key, deleted afterwards
     #[test]
     fn set_get_remove_roundtrip() {
-        let subkey = format!(r"Software\A2DPWB_test_autostart_{}", std::process::id());
-        let name = "A2DPWB_test";
+        let subkey = format!(r"Software\BlueCaster_test_autostart_{}", std::process::id());
+        let name = "BlueCaster_test";
         assert_eq!(get_in(&subkey, name).unwrap(), None);
         assert!(!remove_in(&subkey, name).unwrap());
-        let cmd = command_line(Path::new(r"C:\Program Files\A2DPWB\a2dpwb.exe"), "--minimized");
+        let cmd = command_line(Path::new(r"C:\Program Files\BlueCaster\bluecaster.exe"), "--minimized");
         set_in(&subkey, name, &cmd).unwrap();
         assert_eq!(get_in(&subkey, name).unwrap().as_deref(), Some(cmd.as_str()));
         assert!(remove_in(&subkey, name).unwrap());

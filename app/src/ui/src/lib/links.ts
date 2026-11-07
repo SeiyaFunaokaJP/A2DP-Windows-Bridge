@@ -1,12 +1,12 @@
 // Web pages the UI opens (the same ones v1 opened)
 
-const REPO = "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge";
+const REPO = "https://github.com/SeiyaFunaokaJP/BlueCaster";
 
 export const LINKS = {
   repo: REPO,
   setupGuide: `${REPO}/blob/main/docs/setup.md`,
   /** The chip script format (docs/chip-support.md, published) */
-  chipScripts: "https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/chip-support#chip-scripts",
+  chipScripts: "https://seiyafunaokajp.github.io/BlueCaster/chip-support#chip-scripts",
   /** Realtek firmware: linux-firmware rtl_bt (v1 wx_firmware_dialog.cpp) */
   firmwareRealtek: "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt",
   firmwareIntel: "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/intel",
@@ -81,7 +81,7 @@ export function bugReportUrl(r: BugReport): string {
   const capture = r.captureMode && CAPTURE_OPTIONS[r.captureMode];
   if (capture) q.set("capture_mode", capture);
   if (r.whatHappened) q.set("what_happened", r.whatHappened);
-  if (r.bundle) q.set("bundle", `${r.bundle}\n(drag the file here from the Explorer window A2DP Windows Bridge opened)`);
+  if (r.bundle) q.set("bundle", `${r.bundle}\n(drag the file here from the Explorer window BlueCaster opened)`);
   // The field renders as a code block already: without the text's own fence
   let info = r.info.replace(/^```text\n/, "").replace(/\n?```\s*$/, "\n");
   if (encodeURIComponent(info).length > MAX_INFO_CHARS) {
@@ -119,7 +119,7 @@ export function chipReportUrl(r: ChipReport): string {
     version: r.version,
     adapter: r.adapter,
     chip: r.summary,
-    probe: `${r.file}\n(drag the file here from the Explorer window A2DP Windows Bridge opened)`,
+    probe: `${r.file}\n(drag the file here from the Explorer window BlueCaster opened)`,
   });
   const os = /OS\s*:\s*Windows build (\d+) \(([^)]+)\)/.exec(r.info);
   if (os) q.set("windows", `Windows build ${os[1]} (${os[2]})`);

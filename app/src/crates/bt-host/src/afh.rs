@@ -3,7 +3,7 @@
 //! Bluetooth BR/EDR hops over 79 channels (2402-2480 MHz). With Adaptive
 //! Frequency Hopping the central's controller leaves out channels it finds
 //! bad; the host may help with HCI Set AFH Host Channel Classification,
-//! marking channels it knows to be busy. A2DPWB is the central of its links,
+//! marking channels it knows to be busy. BlueCaster is the central of its links,
 //! so what it passes applies to headphones and receivers alike.
 //!
 //! Policies:

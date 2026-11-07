@@ -35,7 +35,7 @@ fn main() {
     assert!(!sources.is_empty(), "no liblc3 sources in {}", dir.join("src").display());
     // lc3.c (the API) through a wrapper: lc3_private.h makes LC3_EXPORT
     // __declspec(dllexport) on Windows, which would export the lc3_*
-    // functions from every A2DPWB executable linking this static library
+    // functions from every BlueCaster executable linking this static library
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
     let wrapper = out.join("lc3_static.c");
     std::fs::write(
@@ -61,7 +61,7 @@ fn main() {
         .warnings(false)
         .cargo_warnings(false)
         // The encoder runs in real time on the LE encode thread: keep it
-        // optimized in debug builds of A2DPWB too
+        // optimized in debug builds of BlueCaster too
         .opt_level(2);
     if build.get_compiler().is_like_msvc() {
         // stdalign.h (common.h) needs C11

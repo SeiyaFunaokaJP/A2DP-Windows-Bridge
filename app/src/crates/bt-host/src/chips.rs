@@ -133,7 +133,7 @@ impl ChipVendor {
 /// lists them here, and only they leave "unsupported" (docs/chip-support.md)
 pub const LOADER_CHIPS: &[(ChipVendor, u16, u16)] = &[];
 
-/// A2DPWB can bring this adapter up: its vendor needs no loader or has one
+/// BlueCaster can bring this adapter up: its vendor needs no loader or has one
 /// for every chip, or the chip is in [`LOADER_CHIPS`]
 pub fn chip_supported(vendor: ChipVendor, vid: u16, pid: u16) -> bool {
     supported_in(LOADER_CHIPS, vendor, vid, pid)
@@ -239,7 +239,7 @@ pub fn is_bluetooth_vendor_vid(vid: u16, pid: u16) -> bool {
 }
 
 /// Name for a Bluetooth SIG company ID from HCI Read Local / Remote Version
-/// (None if not one A2DPWB lists): adapter chips, and the chip makers and
+/// (None if not one BlueCaster lists): adapter chips, and the chip makers and
 /// brands found in headphones
 pub fn company_name(company_id: u16) -> Option<&'static str> {
     Some(match company_id {

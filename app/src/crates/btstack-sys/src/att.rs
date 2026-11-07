@@ -148,7 +148,7 @@ fn encode_read(result: &Result<Vec<u8>, u8>, offset: u16, buffer: *mut u8, buffe
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_att_read(con: u16, handle: u16, offset: u16, buffer: *mut u8, buffer_size: u16) -> u16 {
+extern "C" fn bluecaster_rs_att_read(con: u16, handle: u16, offset: u16, buffer: *mut u8, buffer_size: u16) -> u16 {
     guard(ATT_READ_ERROR_CODE_OFFSET + ATT_ERROR_UNLIKELY_ERROR as u16, || {
         if handle == ATT_READ_RESPONSE_PENDING {
             // BTstack tells that a read was answered "pending"
@@ -182,7 +182,7 @@ extern "C" fn a2dpwb_rs_att_read(con: u16, handle: u16, offset: u16, buffer: *mu
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_att_write(
+extern "C" fn bluecaster_rs_att_write(
     con: u16,
     handle: u16,
     mode: u16,
@@ -268,7 +268,7 @@ pub(crate) fn disconnected(con: u16) {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_le_disconnected(con: u16) {
+extern "C" fn bluecaster_rs_le_disconnected(con: u16) {
     guard((), || disconnected(con))
 }
 
@@ -295,7 +295,7 @@ fn request(con: u16) {
     });
     let Some(indication) = front else { return };
     // SAFETY: on the BTstack thread; the registration is static in C.
-    let status = unsafe { ffi::a2dpwb_att_server_request_to_send(con, indication as c_int) };
+    let status = unsafe { ffi::bluecaster_att_server_request_to_send(con, indication as c_int) };
     if status != ERROR_CODE_SUCCESS && status != ERROR_CODE_COMMAND_DISALLOWED {
         // COMMAND_DISALLOWED: already registered, the callback comes
         tracing::warn!(target: "le", "LE Audio: GATT server cannot send on 0x{con:04x} (0x{status:02x}), dropping");
@@ -304,7 +304,7 @@ fn request(con: u16) {
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn a2dpwb_rs_att_can_send(con: u16) {
+extern "C" fn bluecaster_rs_att_can_send(con: u16) {
     guard((), || {
         let item = SEND.with(|s| {
             let mut s = s.borrow_mut();

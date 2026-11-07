@@ -257,7 +257,8 @@ fn le_config(le_on: bool, cli: Option<&LeCliOptions>, opts: &ServiceOptions) -> 
     // player answers, nothing in Windows is read or controlled
     let dry_run = cli.is_some_and(|c| c.mcp_dry_run) || opts.hci_tcp.is_some();
     Some(LeConfig {
-        bond_dir: Some(opts.config_dir.clone()),
+        bonds_file: Some(crate::paths::le_bonds_file(&opts.config_dir)),
+        bond_dir: Some(crate::paths::pairing_dir(&opts.config_dir)),
         media: if dry_run { None } else { crate::le_media::windows_backend() },
         ccp_sim: cli.and_then(|c| c.ccp_sim.clone()),
         ccp_console: cli.is_some_and(|c| c.ccp_console),
@@ -405,7 +406,7 @@ impl Inner {
             None => TransportConfig::Usb(self.opts.usb.clone()),
         };
         let mut c = HostConfig::new(transport);
-        c.link_key_dir = Some(self.opts.config_dir.clone());
+        c.link_key_file = Some(crate::paths::link_keys_file(&self.opts.config_dir));
         c.firmware_dir = Some(crate::paths::firmware_dir(&self.opts.config_dir));
         c.capture = self.opts.capture.clone();
         crate::adapter::configure(&mut c, &s, &self.opts.config_dir);
@@ -1114,7 +1115,7 @@ impl Service {
         }
         // A running stack holds the keys in memory and writes them in full
         if !self.host().is_some_and(|h| h.forget_link_key(addr)) {
-            bt_host::link_keys::forget(&self.inner.opts.config_dir, &addr);
+            bt_host::link_keys::forget(&crate::paths::link_keys_file(&self.inner.opts.config_dir), &addr);
         }
     }
 
@@ -1335,7 +1336,7 @@ impl Service {
 
     /// The chip probe (bt_host::probe) on the adapter `instance_id` (None:
     /// the one a stack would open): read commands only, for adapters
-    /// A2DPWB cannot bring up yet. The stack stops first; the next use
+    /// BlueCaster cannot bring up yet. The stack stops first; the next use
     /// starts a new one.
     pub fn probe_adapter(&self, instance_id: Option<String>) -> Result<bt_host::probe::ProbeReport, Msg> {
         self.end_wait_for_device();
@@ -1581,7 +1582,7 @@ mod tests {
     }
 
     fn service() -> Service {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-service-restart-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-service-restart-{}", std::process::id()));
         let opts = ServiceOptions {
             config_dir: dir,
             hci_tcp: None,
@@ -1654,21 +1655,21 @@ mod tests {
         let req = request();
         let address = bt_host::addr_str(&req.device);
         let dir = s.inner.opts.config_dir.clone();
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(crate::paths::pairing_dir(&dir)).unwrap();
         let line = format!("{} {} 4\n", address.replace(':', "-"), "00".repeat(16));
-        std::fs::write(dir.join("link_keys.txt"), line).unwrap();
+        std::fs::write(crate::paths::link_keys_file(&dir), line).unwrap();
         s.inner.codecs.lock().unwrap().insert(address.clone(), Default::default());
         *s.last_request.lock().unwrap() = Some(req);
         // Another device, or the same address's other kind, changes nothing
         s.forget_device("00:11:22:33:44:66", false);
         s.forget_device(&address, true);
         assert!(s.last_request.lock().unwrap().is_some());
-        assert_eq!(bt_host::link_keys::FileLinkKeyStore::open(&dir).entries().len(), 1);
+        assert_eq!(bt_host::link_keys::FileLinkKeyStore::open(&crate::paths::link_keys_file(&dir)).entries().len(), 1);
 
         s.forget_device(&address, false);
         assert!(s.last_request.lock().unwrap().is_none());
         assert!(s.device_codecs().is_empty());
-        assert!(bt_host::link_keys::FileLinkKeyStore::open(&dir).entries().is_empty());
+        assert!(bt_host::link_keys::FileLinkKeyStore::open(&crate::paths::link_keys_file(&dir)).entries().is_empty());
     }
 
     #[test]
@@ -1892,7 +1893,8 @@ mod tests {
         assert!(le_config(false, None, &opts).is_none());
         let cli = LeCliOptions { mcp_dry_run: true, ccp_sim: Some("1:incoming x".into()), ccp_console: true };
         let c = le_config(true, Some(&cli), &opts).unwrap();
-        assert_eq!(c.bond_dir.as_deref(), Some(std::path::Path::new("cfg")));
+        assert_eq!(c.bond_dir.as_deref(), Some(std::path::Path::new(r"cfg\pairing")));
+        assert_eq!(c.bonds_file.as_deref(), Some(std::path::Path::new(r"cfg\pairing\le_audio_bonds.tlv")));
         assert!(c.media.is_none());
         assert_eq!(c.ccp_sim.as_deref(), Some("1:incoming x"));
         assert!(c.ccp_console);

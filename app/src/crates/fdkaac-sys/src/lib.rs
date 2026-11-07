@@ -1,4 +1,4 @@
-//! The Fraunhofer FDK AAC library: the AAC-LC encoder A2DPWB streams AAC
+//! The Fraunhofer FDK AAC library: the AAC-LC encoder BlueCaster streams AAC
 //! with, and (feature `decoder`) the decoder for round-trip tests.
 //!
 //! # Licence
@@ -9,7 +9,7 @@
 //! endorsement by Fraunhofer, and no patent licence (AAC patent licensing is
 //! the distributor's matter; THIRD_PARTY_LICENSES.md §3). It is kept in this
 //! crate of its own like the other C codecs. The Rust code here is
-//! Apache-2.0 OR MIT like the rest of A2DPWB.
+//! Apache-2.0 OR MIT like the rest of BlueCaster.
 //!
 //! # Layout
 //!
@@ -282,9 +282,9 @@ mod tests {
 
     unsafe extern "C" {
         // csrc/layout.c
-        fn a2dpwb_fdkaac_layout_count() -> usize;
-        fn a2dpwb_fdkaac_layout_key(i: usize) -> *const c_char;
-        fn a2dpwb_fdkaac_layout_value(i: usize) -> usize;
+        fn bluecaster_fdkaac_layout_count() -> usize;
+        fn bluecaster_fdkaac_layout_key(i: usize) -> *const c_char;
+        fn bluecaster_fdkaac_layout_value(i: usize) -> usize;
     }
 
     /// The layout the C compiler gives the hand-declared types (csrc/layout.c)
@@ -292,10 +292,10 @@ mod tests {
         // SAFETY: plain functions over a static table; every key below the
         // count is a NUL-terminated string literal
         unsafe {
-            (0..a2dpwb_fdkaac_layout_count())
+            (0..bluecaster_fdkaac_layout_count())
                 .map(|i| {
-                    let key = CStr::from_ptr(a2dpwb_fdkaac_layout_key(i)).to_str().unwrap().to_owned();
-                    (key, a2dpwb_fdkaac_layout_value(i))
+                    let key = CStr::from_ptr(bluecaster_fdkaac_layout_key(i)).to_str().unwrap().to_owned();
+                    (key, bluecaster_fdkaac_layout_value(i))
                 })
                 .collect()
         }

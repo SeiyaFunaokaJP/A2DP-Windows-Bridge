@@ -28,7 +28,7 @@
 //! OPUS_APPLICATION_AUDIO and libopus' default constrained VBR too, from 96
 //! to 320 kbps; here the quality levels are Android Opus' and the target
 //! is also capped at the bit rate configured (the sink's limit, units of
-//! 1024 bps). PipeWire adapts the bit rate to the send queue; A2DPWB does
+//! 1024 bps). PipeWire adapts the bit rate to the send queue; BlueCaster does
 //! not (no ABR).
 
 use opus_sys::{OpusEnc, ffi};

@@ -31,7 +31,7 @@ def main():
     version = subprocess.check_output(
         [venv_python(), '-c', 'import importlib.metadata as m; print(m.version("bumble"))'], text=True).strip()
     print(f'Ready: Bumble {version} in {VENV_DIR}')
-    print('Next: build A2DPWB and a2dpwb_decode (Release), then run  python tools/emu/run_test.py')
+    print('Next: build BlueCaster and bluecaster_decode (Release), then run  python tools/emu/run_test.py')
 
 
 if __name__ == '__main__':

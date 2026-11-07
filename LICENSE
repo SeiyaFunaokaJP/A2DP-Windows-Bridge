@@ -1,7 +1,7 @@
-A2DP Windows Bridge (A2DPWB)
+BlueCaster
 Copyright (c) 2026 Seiya Funaoka
 
-The A2DPWB source code is dual-licensed under either of
+The BlueCaster source code is dual-licensed under either of
 
   * Apache License, Version 2.0 (LICENSE-APACHE or
     http://www.apache.org/licenses/LICENSE-2.0)
@@ -12,7 +12,7 @@ at your option.
 SPDX-License-Identifier: Apache-2.0 OR MIT
 
 Unless you explicitly state otherwise, any contribution intentionally
-submitted for inclusion in A2DPWB by you shall be dual-licensed as above,
+submitted for inclusion in BlueCaster by you shall be dual-licensed as above,
 without any additional terms or conditions.
 
 Exceptions:
@@ -20,8 +20,8 @@ Exceptions:
   * Third-party libraries under extern/ and those fetched at build time are
     covered by their own licenses (see THIRD_PARTY_LICENSES.md).
 
-Note: the distributed a2dpwb-core.exe statically links BTstack, whose
+Note: the distributed bluecaster-core.exe statically links BTstack, whose
 license permits only personal, non-commercial use and redistribution. That
-restriction applies to that binary, and so to A2DPWB as distributed,
-regardless of which of the two licenses above you choose for the A2DPWB
+restriction applies to that binary, and so to BlueCaster as distributed,
+regardless of which of the two licenses above you choose for the BlueCaster
 source code.

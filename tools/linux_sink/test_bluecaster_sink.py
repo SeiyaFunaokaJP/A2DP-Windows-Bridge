@@ -1,8 +1,8 @@
-"""Tests of a2dpwb_sink's codec handling, without Bluetooth hardware.
+"""Tests of bluecaster_sink's codec handling, without Bluetooth hardware.
 
-    .venv/bin/python -m unittest test_a2dpwb_sink   (or tools/emu's environment)
+    .venv/bin/python -m unittest test_bluecaster_sink   (or tools/emu's environment)
 
-Packets are built the way A2DPWB sends them (app/src/crates/codec). The
+Packets are built the way BlueCaster sends them (app/src/crates/codec). The
 decoder tests run only where the library is installed (libopus0 for Opus).
 """
 
@@ -11,7 +11,7 @@ import math
 import struct
 import unittest
 
-import a2dpwb_sink as s
+import bluecaster_sink as s
 
 
 def sbc_frame(rate_idx, mode, bitpool, blocks=16, subbands=8):

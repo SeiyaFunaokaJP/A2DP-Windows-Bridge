@@ -2,7 +2,7 @@
 //! extern/btstack/3rd-party/lc3-google (build.rs; LC3_DIR overrides it).
 //!
 //! [`ffi`] has hand-written declarations matching include/lc3.h (only what
-//! A2DPWB uses). [`Lc3Encoder`] owns the encoder memory and passes slice
+//! BlueCaster uses). [`Lc3Encoder`] owns the encoder memory and passes slice
 //! lengths along, so that callers need no `unsafe`. One encoder per LC3
 //! channel (v1 Stream: one btstack_lc3_encoder_google_t per output
 //! channel). [`Lc3Decoder`] is the matching decoder, for tests and tools.
@@ -360,7 +360,7 @@ mod tests {
     /// ms frames, at the octets of the BAP presets: the decoded tone matches
     /// the input (time-aligned by the codec delay). At the low bit rates
     /// LC3's noise filling dominates the waveform error (about 20 dB); the
-    /// high-rate 48 kHz presets (A2DPWB's first choices) are near lossless
+    /// high-rate 48 kHz presets (BlueCaster's first choices) are near lossless
     /// for a tone.
     #[test]
     fn round_trip_snr() {

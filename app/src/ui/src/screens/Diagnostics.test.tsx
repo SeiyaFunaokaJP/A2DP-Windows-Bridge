@@ -103,24 +103,24 @@ describe("Diagnostics", () => {
       mask: true,
       hci: true,
     });
-    expect(saved).toHaveTextContent(/a2dpwb-diag-\d{8}_\d{6}\.zip · \d+ KB/);
+    expect(saved).toHaveTextContent(/bluecaster-diag-\d{8}_\d{6}\.zip · \d+ KB/);
     expect(saved).toHaveTextContent("Attach this file to your GitHub issue");
 
     // A prefilled issue, with the bundle shown in Explorer to drag in
     fireEvent.click(screen.getByRole("button", { name: "Report on GitHub" }));
     await waitFor(() => expect(open).toHaveBeenCalled());
     const url = new URL(open.mock.calls[0][0]);
-    expect(url.pathname).toBe("/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new");
+    expect(url.pathname).toBe("/SeiyaFunaokaJP/BlueCaster/issues/new");
     expect(url.searchParams.get("template")).toBe("bug_report.yml");
     expect(url.searchParams.get("version")).toBe(
       core.state.snap!.update.current_version,
     );
-    expect(url.searchParams.get("bundle")).toMatch(/^a2dpwb-diag-/);
+    expect(url.searchParams.get("bundle")).toMatch(/^bluecaster-diag-/);
     expect(
       calls.filter((c) => c.method === "diag.info").at(-1)!.params,
     ).toEqual({ mask: true });
     expect(reveal).toHaveBeenCalledWith(
-      expect.stringMatching(/\\bundles\\a2dpwb-diag-/),
+      expect.stringMatching(/\\bundles\\bluecaster-diag-/),
     );
     fireEvent.click(
       [...saved.querySelectorAll("button")].find(

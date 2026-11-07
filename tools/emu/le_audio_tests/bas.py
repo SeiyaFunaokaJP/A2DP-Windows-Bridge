@@ -1,7 +1,7 @@
 """BAS cases and checks of run_test.py --le-audio (standard library only).
 
 The sinks run a Battery Service (emu option --bas, le_audio/bas.py) and
-A2DPWB reads the level (the headphones' battery, shown in the UI).
+BlueCaster reads the level (the headphones' battery, shown in the UI).
 """
 
 import re
@@ -28,12 +28,12 @@ def _reported(log):
 def check(case, ctx):
     if 'bas' not in case.tags:
         return []
-    log, sink_log = ctx['a2dpwb_log'], ctx['sink_log']
+    log, sink_log = ctx['bluecaster_log'], ctx['sink_log']
     failures = []
     reported = _reported(log)
     if case.name == 'bas-level':
         if 'Battery Level read: 80%' not in sink_log:
-            failures.append('A2DPWB did not read the Battery Level')
+            failures.append('BlueCaster did not read the Battery Level')
         if reported != [80, 55]:
             failures.append(f'reported levels {reported}, expected [80, 55]')
     elif case.name == 'bas-earbuds':

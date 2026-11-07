@@ -1,13 +1,13 @@
-//! Developer mode: a classic device's pairing as A2DPWB keeps it and the
+//! Developer mode: a classic device's pairing as BlueCaster keeps it and the
 //! services the device lists. For everyone: taking over the link keys
-//! Windows' Bluetooth kept for the adapter A2DPWB now uses (issue #86:
+//! Windows' Bluetooth kept for the adapter BlueCaster now uses (issue #86:
 //! devices paired in Windows then connect without pairing again; the audio
 //! ones are added to the saved devices with Windows' names).
 //!
 //! Windows keeps its keys where only SYSTEM may read them: the elevated
-//! helper reads them (a2dpwb-driver.exe `windows-keys`, one administrator
-//! prompt). A key A2DPWB has already is never replaced: the device was
-//! paired with A2DPWB later, so Windows' key is the old one.
+//! helper reads them (bluecaster-driver.exe `windows-keys`, one administrator
+//! prompt). A key BlueCaster has already is never replaced: the device was
+//! paired with BlueCaster later, so Windows' key is the old one.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -112,7 +112,7 @@ fn parse_key(v: &Value) -> Option<([u8; 6], [u8; 16])> {
 /// it only reads Windows' keys, after an administrator prompt)
 pub fn import_windows(state: &Arc<CoreState>, adapter: &str) -> Result<Value, ErrorInfo> {
     let radio = bt_host::addr_str(&address(adapter)?);
-    let (code, result) = crate::driver::run(&["windows-keys", &radio])?;
+    let (code, result) = crate::driver::run(&state.config_dir(), &["windows-keys", &radio])?;
     if code != 0 || result.get("ok").and_then(Value::as_bool) != Some(true) {
         tracing::warn!("Windows' keys of {radio}: helper exit {code}");
         return Err(err("adapter.import_failed", "ipc.error.import_failed"));
@@ -168,14 +168,15 @@ pub fn import_windows(state: &Arc<CoreState>, adapter: &str) -> Result<Value, Er
 fn add_audio_devices(state: &Arc<CoreState>, instance_id: &str, with_key: &[String]) -> Vec<String> {
     let windows = win_sys::bt_paired::paired_through(instance_id);
     let dir = state.config_dir();
-    let saved: Vec<String> = a2dpwb_core::devices::load(&dir).into_iter().map(|d| d.address.to_uppercase()).collect();
+    let saved: Vec<String> =
+        bluecaster_core::devices::load(&dir).into_iter().map(|d| d.address.to_uppercase()).collect();
     let mut added = Vec::new();
     for d in windows.iter().filter(|d| d.is_a2dp_sink()) {
         let address = bt_host::addr_str(&d.address);
         if !with_key.contains(&address) || saved.contains(&address.to_uppercase()) {
             continue;
         }
-        match a2dpwb_core::devices::save(&dir, &address, d.name.trim()) {
+        match bluecaster_core::devices::save(&dir, &address, d.name.trim()) {
             Ok(()) => added.push(address),
             Err(e) => tracing::warn!("Windows' device {address} not saved: {e}"),
         }

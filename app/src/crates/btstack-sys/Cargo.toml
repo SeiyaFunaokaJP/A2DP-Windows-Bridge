@@ -1,6 +1,6 @@
 [package]
 name = "btstack-sys"
-description = "BTstack built from extern/btstack, with the FFI and the safe layer A2DPWB uses"
+description = "BTstack built from extern/btstack, with the FFI and the safe layer BlueCaster uses"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

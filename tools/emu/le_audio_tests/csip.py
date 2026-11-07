@@ -1,7 +1,7 @@
 """CSIP cases and checks of run_test.py --le-audio.
 
 The earbuds layout with --csip-set: the two earbuds (Front Left / Front
-Right, one sink ASE each) are the members of one coordinated set. A2DPWB is
+Right, one sink ASE each) are the members of one coordinated set. BlueCaster is
 given only the first earbud's address (first_address_only); its CSIP module
 reads the SIRK, finds the second earbud by its RSI, connects it and streams
 left to one and right to the other. Before the stream is set up the set is
@@ -17,7 +17,7 @@ TWO_CIS = r'LC3 48000 Hz 10 ms 155 octets, 2 channel\(s\) over 2 CIS'
 ONE_CIS = r'LC3 48000 Hz 10 ms 155 octets, 1 channel\(s\) over 1 CIS'
 
 CASES = [
-    # Plaintext SIRK: A2DPWB finds and connects the second earbud itself
+    # Plaintext SIRK: BlueCaster finds and connects the second earbud itself
     Case('csip-set', 'earbuds', TWO_CIS, sink_args=['--csip-set', 'plaintext'],
          tags=('csip',), first_address_only=True),
     # Encrypted SIRK (decrypted with the LTK); the earbud named first has
@@ -30,12 +30,12 @@ CASES = [
          sink_args=['--csip-set', 'plaintext', '--csip-missing'], tags=('csip',), first_address_only=True),
     # Both earbuds named (-d / --le-device) and a set: no member twice
     Case('csip-both-named', 'earbuds', TWO_CIS, sink_args=['--csip-set', 'plaintext'], tags=('csip',)),
-    # The named earbud drops its link while streaming: A2DPWB reconnects it,
+    # The named earbud drops its link while streaming: BlueCaster reconnects it,
     # keeps the other (still connected) and streams to both again
     Case('csip-link-loss', 'earbuds', TWO_CIS, sink_args=['--csip-set', 'plaintext', '--drop-link-after', '5'],
          tags=('csip',), first_address_only=True, streams=2, lossy=True, duration=14),
     # Another coordinator holds the second earbud's lock for the first two
-    # requests: Lock Denied -> A2DPWB releases the first earbud, waits, tries
+    # requests: Lock Denied -> BlueCaster releases the first earbud, waits, tries
     # again and gets the set on the third attempt
     Case('csip-lock-denied', 'earbuds', TWO_CIS, sink_args=['--csip-set', 'plaintext', '--csip-lock-deny', '2'],
          tags=('csip',), first_address_only=True),
@@ -45,7 +45,7 @@ CASES = [
          tags=('csip',), first_address_only=True),
 ]
 
-LOCK = re.compile(r'(A2DPWB LE \w+): CSIS lock: (.*?)\s*$', re.M)
+LOCK = re.compile(r'(BlueCaster LE \w+): CSIS lock: (.*?)\s*$', re.M)
 
 
 def _lock_events(sink_log):
@@ -58,15 +58,15 @@ def _check_lock(case, log, sink_log):
     events = _lock_events(sink_log)
     if case.name == 'csip-no-lock':
         if 'not every member has a Set Member Lock: ordered access without locking' not in log:
-            failures.append('A2DPWB did not report the set without a lock')
+            failures.append('BlueCaster did not report the set without a lock')
         if events:
             failures.append(f'lock requests to members without a lock: {events}')
         return failures
     if case.name == 'csip-link-loss':
         return failures      # the lock of the lost link is released by its disconnect: checked by csip-set
-    first, second = ('A2DPWB LE R', 'A2DPWB LE L') if case.name == 'csip-encrypted-sirk' else (
-        'A2DPWB LE L', 'A2DPWB LE R')
-    locked, released = 'locked by A2DPWB', 'released by A2DPWB'
+    first, second = ('BlueCaster LE R', 'BlueCaster LE L') if case.name == 'csip-encrypted-sirk' else (
+        'BlueCaster LE L', 'BlueCaster LE R')
+    locked, released = 'locked by BlueCaster', 'released by BlueCaster'
     if case.name == 'csip-missing-member':
         want = [(first, locked), (first, released)]
     else:
@@ -75,21 +75,21 @@ def _check_lock(case, log, sink_log):
         denied = (second, 'Lock Denied (another coordinator holds it)')
         want = [(first, locked), denied, (first, released)] * 2 + want
         if log.count('Lock Denied by') != 2:
-            failures.append(f'A2DPWB reported {log.count("Lock Denied by")} Lock Denied answers (expected 2)')
+            failures.append(f'BlueCaster reported {log.count("Lock Denied by")} Lock Denied answers (expected 2)')
     if events != want:
         failures.append(f'lock sequence at the sinks {events}, expected {want}')
     members = 1 if case.name == 'csip-missing-member' else 2
     if f'CSIP: coordinated set 0 locked ({members} member(s), in rank order)' not in log:
-        failures.append('A2DPWB did not report the set locked')
+        failures.append('BlueCaster did not report the set locked')
     if 'without the lock' in log:
-        failures.append('A2DPWB streamed without the lock')
+        failures.append('BlueCaster streamed without the lock')
     return failures
 
 
 def check(case, ctx):
     if 'csip' not in case.tags:
         return []
-    log = ctx['a2dpwb_log']
+    log = ctx['bluecaster_log']
     sink_log = ctx['sink_log']
     failures = []
     if 'CSIP: crypto self-check passed' not in log:

@@ -49,7 +49,7 @@ const LAST = STEP_KEYS.length - 1;
 /** The classic saved devices: what the setup finds and connects */
 const classicEntries = (snap: Snapshot) => audioEntries(snap).filter((e) => !e.le_audio);
 
-/** The adapter's name and what A2DPWB can do with it (issue #86): Device
+/** The adapter's name and what BlueCaster can do with it (issue #86): Device
  *  Manager's name with the chip as the title, its IDs and the driver below,
  *  and a green "Supported" or red "Not supported" tag */
 function AdapterLine(props: { adapter: AdapterInfo }) {
@@ -105,7 +105,7 @@ export function Setup() {
   };
 
   const canNext = () => {
-    // Another A2DPWB (v1, or another v2) holds the adapter: the banner asks
+    // Another BlueCaster (v1, or another v2) holds the adapter: the banner asks
     // to exit it first, the setup waits (Skip stays)
     if (snap().v1_running) return false;
     switch (step()) {
@@ -240,7 +240,7 @@ function StepAdapter(props: { chosen: AdapterInfo | null; onChoose: (id: string)
         <div class="choice-list" role="radiogroup" aria-label={t("firmware.detected_adapters")}>
           <For each={supportedFirst(adapters())}>
             {(a) => (
-              // One A2DPWB cannot use is listed, not chosen (issue #86)
+              // One BlueCaster cannot use is listed, not chosen (issue #86)
               <label
                 class="choice"
                 classList={{ on: props.chosen?.instance_id === a.instance_id, ro: !adapterSupported(a) }}
@@ -271,7 +271,7 @@ function StepAdapter(props: { chosen: AdapterInfo | null; onChoose: (id: string)
  * One explanation and one button (issue #86: the driver and firmware
  * choices were intimidating): it switches the adapter to WinUSB and
  * downloads its firmware when it needs some. The separate steps stay on the
- * Adapters screen. Firmware A2DPWB cannot fetch still has the manual way.
+ * Adapters screen. Firmware BlueCaster cannot fetch still has the manual way.
  */
 function StepDriver(props: { adapter: AdapterInfo | null }) {
   const app = useApp();

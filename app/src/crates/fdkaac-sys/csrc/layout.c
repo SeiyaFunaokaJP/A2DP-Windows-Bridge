@@ -65,14 +65,14 @@ static const struct {
     OFF(CStreamInfo, numChannels),
 };
 
-size_t a2dpwb_fdkaac_layout_count(void) {
+size_t bluecaster_fdkaac_layout_count(void) {
     return sizeof(layout) / sizeof(layout[0]);
 }
 
-const char *a2dpwb_fdkaac_layout_key(size_t i) {
-    return i < a2dpwb_fdkaac_layout_count() ? layout[i].key : NULL;
+const char *bluecaster_fdkaac_layout_key(size_t i) {
+    return i < bluecaster_fdkaac_layout_count() ? layout[i].key : NULL;
 }
 
-size_t a2dpwb_fdkaac_layout_value(size_t i) {
-    return i < a2dpwb_fdkaac_layout_count() ? layout[i].value : (size_t)-1;
+size_t bluecaster_fdkaac_layout_value(size_t i) {
+    return i < bluecaster_fdkaac_layout_count() ? layout[i].value : (size_t)-1;
 }

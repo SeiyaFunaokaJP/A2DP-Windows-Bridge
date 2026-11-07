@@ -1,5 +1,5 @@
 #!/bin/sh
-# One-time setup of a2dpwb_sink (Ubuntu / Debian): decoder libraries, a Python
+# One-time setup of bluecaster_sink (Ubuntu / Debian): decoder libraries, a Python
 # virtual environment in .venv and the pinned requirements. Safe to run again.
 #
 #     sh setup.sh

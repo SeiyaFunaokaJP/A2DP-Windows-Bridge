@@ -1,4 +1,4 @@
-//! Win32 APIs for A2DPWB that no Rust library covers. The only crate besides
+//! Win32 APIs for BlueCaster that no Rust library covers. The only crate besides
 //! the `*-sys` crates where `unsafe` is allowed; every function here is
 //! safe to call.
 

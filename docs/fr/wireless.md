@@ -25,7 +25,7 @@ Faites-les un à la fois et écoutez quelques minutes entre deux : si les coupur
 
 ### 1. Désactivez les autres adaptateurs Bluetooth de ce PC
 
-Le Bluetooth de Windows (l'adaptateur intégré) continue d'émettre pendant qu'A2DPWB diffuse par l'adaptateur USB à côté de lui, et les deux partagent une même bande et souvent une même zone d'antenne. C'est aussi par lui que l'application du casque sur le PC se connecte, ce qui donne au casque une seconde liaison (voir le point suivant). Désactivez l'adaptateur intégré dans le Gestionnaire de périphériques pendant qu'A2DPWB fonctionne, ou au moins pour le test. A2DPWB affiche un avertissement sur l'Accueil quand il voit un autre adaptateur actif.
+Le Bluetooth de Windows (l'adaptateur intégré) continue d'émettre pendant qu'BlueCaster diffuse par l'adaptateur USB à côté de lui, et les deux partagent une même bande et souvent une même zone d'antenne. C'est aussi par lui que l'application du casque sur le PC se connecte, ce qui donne au casque une seconde liaison (voir le point suivant). Désactivez l'adaptateur intégré dans le Gestionnaire de périphériques pendant qu'BlueCaster fonctionne, ou au moins pour le test. BlueCaster affiche un avertissement sur l'Accueil quand il voit un autre adaptateur actif.
 
 Un second adaptateur actif est l'une des deux causes qu'un testeur de longue date a nommées pour les connexions instables et les changements de codec.
 
@@ -33,9 +33,9 @@ Un second adaptateur actif est l'une des deux causes qu'un testeur de longue dat
 
 La double connexion (multipoint) permet au casque de rester connecté à la fois à un téléphone et au PC. Chaque connexion coûte du temps radio, et certains casques proposent alors moins de codecs, refusent la liaison mains libres (donc pas de niveau de batterie) ou réservent un endpoint de codec à l'autre appareil tant qu'elle est activée. L'application du casque compte aussi : elle garde sa propre liaison ouverte, sur le téléphone ou sur le Bluetooth de ce PC, même si vous ne l'utilisez que pour la batterie ou l'égaliseur.
 
-Pour le test : désactivez la double connexion dans l'application du casque, désactivez le Bluetooth du téléphone, fermez l'application du casque sur le téléphone et sur le PC, puis reconnectez-vous depuis A2DPWB.
+Pour le test : désactivez la double connexion dans l'application du casque, désactivez le Bluetooth du téléphone, fermez l'application du casque sur le téléphone et sur le PC, puis reconnectez-vous depuis BlueCaster.
 
-La double connexion est l'autre cause nommée par ce testeur ; les changements de codec sont devenus bien plus fluides une fois l'application du casque déconnectée. Une première connexion a été refusée alors que le casque était encore connecté à un téléphone avec LE Audio activé, et plusieurs écouteurs ont proposé à A2DPWB moins de codecs ou un débit plus bas tant qu'un téléphone ou leur application était en jeu. Le LDAC de Sony est désactivé tant que le multipoint du casque est activé.
+La double connexion est l'autre cause nommée par ce testeur ; les changements de codec sont devenus bien plus fluides une fois l'application du casque déconnectée. Une première connexion a été refusée alors que le casque était encore connecté à un téléphone avec LE Audio activé, et plusieurs écouteurs ont proposé à BlueCaster moins de codecs ou un débit plus bas tant qu'un téléphone ou leur application était en jeu. Le LDAC de Sony est désactivé tant que le multipoint du casque est activé.
 
 ### 3. Déplacez l'adaptateur
 
@@ -47,7 +47,7 @@ Un récepteur de souris gaming à côté de l'adaptateur, sur un PC sans adaptat
 
 ### 4. Éloignez le Wi-Fi 2,4 GHz de la liaison
 
-Mettez ce PC, et si possible le téléphone et les autres appareils proches, en Wi-Fi 5 ou 6 GHz. Si le 2,4 GHz doit rester activé, A2DPWB indique à l'adaptateur d'éviter le canal sur lequel ce PC est connecté (AFH, Auto). Il ne peut pas voir le Wi-Fi quand le PC n'a pas d'adaptateur Wi-Fi, est en filaire, ou est sur une autre bande que le réseau 2,4 GHz du routeur : trouvez alors le canal du routeur (sa page d'administration, ou une application d'analyse Wi-Fi sur le téléphone), fixez-le là s'il change, et saisissez-le sous **Adaptateur > Éviter les canaux Wi-Fi > Manuel**, par exemple `6` ou `11`. Voir [Qualité de liaison et AFH](usage#link-quality).
+Mettez ce PC, et si possible le téléphone et les autres appareils proches, en Wi-Fi 5 ou 6 GHz. Si le 2,4 GHz doit rester activé, BlueCaster indique à l'adaptateur d'éviter le canal sur lequel ce PC est connecté (AFH, Auto). Il ne peut pas voir le Wi-Fi quand le PC n'a pas d'adaptateur Wi-Fi, est en filaire, ou est sur une autre bande que le réseau 2,4 GHz du routeur : trouvez alors le canal du routeur (sa page d'administration, ou une application d'analyse Wi-Fi sur le téléphone), fixez-le là s'il change, et saisissez-le sous **Adaptateur > Éviter les canaux Wi-Fi > Manuel**, par exemple `6` ou `11`. Voir [Qualité de liaison et AFH](usage#link-quality).
 
 LDAC 990 kbps a perdu environ 1 700 paquets en 5 minutes sur un réseau 2,4 GHz chargé, et 33 en 15 minutes une fois le routeur fixé sur un canal et l'AFH réglé sur Manuel avec celui-ci.
 
@@ -61,7 +61,7 @@ Une liaison Bluetooth porte un peu plus de 1 Mbps dans le meilleur des cas ; LDA
 
 Sur une liaison qui portait 750 kbps, tout ce qui dépassait 500 kbps coupait alors que l'ABR n'avait aucune perte. SBC XQ au-dessus du bitpool 36 devenait muet sur des écouteurs d'entrée de gamme dont la capacité SBC autorisait 53. Sur les mêmes écouteurs, LHDC V5 coupait au hasard là où LDAC était stable. Une liaison propre le porte bien : l'adaptateur intégré d'un portable a diffusé LDAC 990 kbps pendant 5 minutes avec 0 paquet perdu.
 
-### 6. Mettez A2DPWB à jour
+### 6. Mettez BlueCaster à jour
 
 Plusieurs saccades qui ressemblaient à de la radio venaient de l'application. La 2.0.1 envoyait l'audio plus vite que le temps réel quand un câble virtuel le livrait en retard, ce que le casque entend comme une seconde de son et une de silence ; un flux après Déconnecter > Connecter saccadait jusqu'au redémarrage de l'application ; une pile Bluetooth périmée refusait de se connecter après une veille, une longue session ou de nombreux redémarrages. Tout cela est corrigé dans la version actuelle ([Mises à jour](usage#updates)). Si le problème a disparu après la mise à jour, aucun rapport n'est nécessaire.
 
@@ -81,9 +81,9 @@ Le côté récepteur n'est pas visible depuis le PC. Pour mesurer ce qui arrive 
 
 ## Ce que le casque décide {#headphones}
 
-Certains rapports « il ne me donne que 400 kbps » ou « LDAC manque » ne concernent pas du tout la liaison : le casque indique à A2DPWB quels codecs et débits il accepte, et A2DPWB s'y conforme, comme Android. La ligne de journal `remote supports ...` montre ce qu'il a proposé.
+Certains rapports « il ne me donne que 400 kbps » ou « LDAC manque » ne concernent pas du tout la liaison : le casque indique à BlueCaster quels codecs et débits il accepte, et BlueCaster s'y conforme, comme Android. La ligne de journal `remote supports ...` montre ce qu'il a proposé.
 
-- Les **Huawei FreeBuds** ne proposent LDAC à un PC qu'une fois que leur application AI Life a réglé « privilégier la qualité sonore » avec la multiconnexion désactivée ; sinon ils ne listent que SBC et AAC. Depuis la 2.0.2, A2DPWB demande lui-même ce mode quand LDAC est choisi avec la sélection automatique désactivée.
+- Les **Huawei FreeBuds** ne proposent LDAC à un PC qu'une fois que leur application AI Life a réglé « privilégier la qualité sonore » avec la multiconnexion désactivée ; sinon ils ne listent que SBC et AAC. Depuis la 2.0.2, BlueCaster demande lui-même ce mode quand LDAC est choisi avec la sélection automatique désactivée.
 - Les **casques LHDC V5** annoncent un débit maximal. En mode 96 kHz de leur application, une paire listait 400 kbps ; en mode 192 kHz, 1000 kbps. Les OPPO Enco Free4 et Enco X4 listent 400 kbps et 48 kHz à un PC quoi que dise l'application ; la 2.0.2 demande le Hi-Res aux écouteurs OPPO par leur propre protocole quand LHDC V5 diffuse avec l'ABR désactivé, et se reconnecte une fois pour cela ; pas encore confirmé sur de vrais écouteurs.
 - L'**ABR** maintient LHDC V5 à 400 kbps ou moins, comme sur Android.
 - Un codec que le casque **réserve à un autre appareil** manque tant que cet appareil est connecté ([Codec absent quand le casque est connecté à un autre appareil](usage#sep-in-use)).
@@ -107,7 +107,7 @@ Tous les rapports reçus jusqu'ici qui concernaient le côté sans fil, groupés
 |:--|:--|:--|
 | **Environnement** : la radio, l'emplacement, un autre appareil | Environ un tiers | Wi-Fi 2,4 GHz sur les mêmes canaux, un récepteur de souris gaming à côté de l'adaptateur, un second adaptateur Bluetooth actif, la double connexion et une application du casque en cours d'exécution, un débit sans marge sur des écouteurs true wireless, un signal faible de petits écouteurs, un fichier de firmware qui était une page web enregistrée |
 | **Casque** : ce qu'il propose à un PC | Environ un quart | LDAC seulement après le mode qualité sonore de Huawei, LHDC V5 limité à 400 kbps par le mode propre du casque, le Hi-Res réglé par le protocole d'OPPO, un codec réservé au téléphone |
-| **Application** : un bogue dans A2DPWB, tous corrigés | Un peu moins de la moitié | Audio envoyé plus vite que le temps réel avec un câble virtuel, saccades après Déconnecter > Connecter, une pile Bluetooth périmée après une veille ou de nombreux redémarrages, la liaison conservée après Déconnecter, un casque qui se connecte en premier pris pour une mauvaise clé, un cache de codecs qui masquait LDAC, des adaptateurs non reconnus (une puce, une classe USB, une liaison de pilote pas encore active) |
+| **Application** : un bogue dans BlueCaster, tous corrigés | Un peu moins de la moitié | Audio envoyé plus vite que le temps réel avec un câble virtuel, saccades après Déconnecter > Connecter, une pile Bluetooth périmée après une veille ou de nombreux redémarrages, la liaison conservée après Déconnecter, un casque qui se connecte en premier pris pour une mauvaise clé, un cache de codecs qui masquait LDAC, des adaptateurs non reconnus (une puce, une classe USB, une liaison de pilote pas encore active) |
 
 Ce qui ressort :
 
@@ -118,7 +118,7 @@ Ce qui ressort :
 
 ## Signaler {#reporting}
 
-Si les vérifications ci-dessus n'ont rien trouvé, ouvrez un [rapport de bogue](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) et cochez ce que vous avez essayé. Ce qui règle vite un rapport sans fil :
+Si les vérifications ci-dessus n'ont rien trouvé, ouvrez un [rapport de bogue](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/new?template=bug_report.yml) et cochez ce que vous avez essayé. Ce qui règle vite un rapport sans fil :
 
 1. **Diagnostic > Signaler un problème**, **Journalisation détaillée** sur **Détaillée (debug)**, puis reproduisez le problème.
 2. Le **paquet de diagnostic** (**Paquet de diagnostic > Enregistrer…** avec **Inclure les captures HCI** activé, puis **Signaler sur GitHub**). Il contient les lignes de santé du flux (file d'envoi, paquets abandonnés, signal, canaux AFH au fil du temps) et la capture HCI d'une connexion échouée, qui montrent où les paquets se sont arrêtés.

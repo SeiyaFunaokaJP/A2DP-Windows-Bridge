@@ -1,4 +1,4 @@
-//! Broadcast source (Auracast, developer mode): what A2DPWB advertises and
+//! Broadcast source (Auracast, developer mode): what BlueCaster advertises and
 //! how the BIG is set up, as plain data.
 //!
 //! A broadcast is one BIG of one BIS per channel (stereo: Front Left and
@@ -269,7 +269,7 @@ mod tests {
 
     fn config(stereo: bool, preset: &str, code: Option<&str>) -> BroadcastConfig {
         BroadcastConfig {
-            name: "A2DPWB test".into(),
+            name: "BlueCaster test".into(),
             code: code.map(|c| broadcast_code(c).unwrap()),
             preset: find_preset(preset).unwrap(),
             stereo,
@@ -319,11 +319,11 @@ mod tests {
                 0x18,
                 PBP_HIGH_QUALITY,
                 0, // PBP, no metadata
-                12
+                16
             ]
         );
         assert_eq!(adv[14], AD_BROADCAST_NAME);
-        assert_eq!(&adv[15..], b"A2DPWB test");
+        assert_eq!(&adv[15..], b"BlueCaster test");
 
         let c = config(false, STANDARD_PRESET, Some("1234"));
         assert_eq!(adv_data(&c)[11], PBP_ENCRYPTED | PBP_STANDARD_QUALITY);

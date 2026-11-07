@@ -2,13 +2,13 @@
 
 With --bas every sink gets a Battery Service and logs
 
-  BAS <sink>: Battery Level read: L%        (A2DPWB's reads)
+  BAS <sink>: Battery Level read: L%        (BlueCaster's reads)
   BAS <sink>: Battery Level set to L% (notified)
 
 Options:
   --bas L[,L2]       Battery Level (0-100) per sink (the last one for the
                      remaining sinks)
-  --bas-change S:L[@N]  S seconds after A2DPWB connected, sink N (default 0)
+  --bas-change S:L[@N]  S seconds after BlueCaster connected, sink N (default 0)
                      sets its level to L and notifies it (repeatable)
 """
 
@@ -23,7 +23,7 @@ log = logging.getLogger('emu_le_audio')
 def add_arguments(parser):
     parser.add_argument('--bas', metavar='L[,L2]', help='Battery Service on every sink, level 0-100 per sink')
     parser.add_argument('--bas-change', action='append', default=[], metavar='S:L[@N]',
-                        help='S seconds after A2DPWB connected, sink N sets its battery level L (notified)')
+                        help='S seconds after BlueCaster connected, sink N sets its battery level L (notified)')
 
 
 def _level_for(args, index):

@@ -5,16 +5,16 @@ body:
   - type: markdown
     attributes:
       value: |
-        Tried A2DPWB with your gear? I'd love to hear how it went! 🎧
+        Tried BlueCaster with your gear? I'd love to hear how it went! 🎧
         "It just works" reports are super helpful too, especially for the experimental codecs (aptX HD, aptX Low Latency, Opus).
-        Just check what you tried and leave the rest blank. If something is clearly broken, a [bug report](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) is a better fit.
+        Just check what you tried and leave the rest blank. If something is clearly broken, a [bug report](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/new?template=bug_report.yml) is a better fit.
 
   - type: input
     id: version
     attributes:
-      label: A2DPWB version
-      description: Shown in Settings → About A2DPWB.
-      placeholder: e.g. 2.0.0
+      label: BlueCaster version
+      description: Shown in Settings → About BlueCaster.
+      placeholder: e.g. 3.0.0
     validations:
       required: true
 
@@ -73,12 +73,12 @@ body:
     id: verification
     attributes:
       label: How did you confirm the codec?
-      description: Totally optional. e.g. codec shown in a headphone app, Wireshark on an HCI capture (**Diagnostics → Start HCI Capture**), or just the codec A2DPWB shows on Home.
+      description: Totally optional. e.g. codec shown in a headphone app, Wireshark on an HCI capture (**Diagnostics → Start HCI Capture**), or just the codec BlueCaster shows on Home.
 
   - type: textarea
     id: notes
     attributes:
       label: Notes
       description: |
-        Dropouts, latency, stability, sample rate, impressions — anything you noticed. For dropouts, the checks in [Dropouts and Connection Problems](https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/wireless) tell the radio from the app.
+        Dropouts, latency, stability, sample rate, impressions — anything you noticed. For dropouts, the checks in [Dropouts and Connection Problems](https://seiyafunaokajp.github.io/BlueCaster/wireless) tell the radio from the app.
         Logs are welcome. **Diagnostics → Copy Diagnostics** masks Bluetooth addresses; files from the log folder are not masked.

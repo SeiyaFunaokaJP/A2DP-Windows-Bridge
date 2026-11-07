@@ -141,8 +141,8 @@ pub struct AfhClassification {
 
 pub struct HostConfig {
     pub transport: TransportConfig,
-    /// Folder of link_keys.txt (None: in memory only)
-    pub link_key_dir: Option<PathBuf>,
+    /// The link key file, link_keys.txt (None: in memory only)
+    pub link_key_file: Option<PathBuf>,
     /// Folder of the firmware files (None: the executable's folder)
     pub firmware_dir: Option<PathBuf>,
     /// Realtek USB product ID of the chip for the firmware download (0: not
@@ -173,13 +173,13 @@ pub struct HostConfig {
 }
 
 /// The name without a computer name
-pub const APP_LOCAL_NAME: &str = "A2DPWB";
+pub const APP_LOCAL_NAME: &str = "BlueCaster";
 /// HCI Write Local Name: at most 248 bytes of UTF-8
 const LOCAL_NAME_MAX: usize = 248;
 
 /// The adapter's Bluetooth name: the computer's, as Windows' own Bluetooth
 /// shows it, with the app's beside it so the two can be told apart
-/// (issue #86): "Taro-PC (A2DPWB)"; no computer name: "A2DPWB"
+/// (issue #86): "Taro-PC (BlueCaster)"; no computer name: "BlueCaster"
 pub fn local_name(computer: &str) -> String {
     let computer = computer.trim();
     if computer.is_empty() {
@@ -197,7 +197,7 @@ impl HostConfig {
     pub fn new(transport: TransportConfig) -> HostConfig {
         HostConfig {
             transport,
-            link_key_dir: None,
+            link_key_file: None,
             firmware_dir: None,
             realtek_pid: 0,
             realtek_files: None,
@@ -519,7 +519,7 @@ impl BtHost {
                     let _priority = RUNLOOP_PRIORITY_HOOK.get().map(|h| h());
                     let HostConfig {
                         transport,
-                        link_key_dir,
+                        link_key_file,
                         firmware_dir,
                         realtek_pid,
                         realtek_files,
@@ -560,7 +560,7 @@ impl BtHost {
                         let _ = remote_tx.send((remote, sink));
                         let setup = Setup {
                             tcp,
-                            link_key_dir,
+                            link_key_file,
                             firmware_dir: firmware_dir.unwrap_or_else(exe_dir),
                             realtek_pid: if tcp { 0 } else { realtek_pid },
                             realtek_files,
@@ -1972,9 +1972,9 @@ mod local_name_tests {
 
     #[test]
     fn the_computer_name_with_the_app_beside_it() {
-        assert_eq!(local_name("Taro-PC"), "Taro-PC (A2DPWB)");
-        assert_eq!(local_name("  "), "A2DPWB");
-        assert_eq!(local_name("太郎のPC"), "太郎のPC (A2DPWB)");
+        assert_eq!(local_name("Taro-PC"), "Taro-PC (BlueCaster)");
+        assert_eq!(local_name("  "), "BlueCaster");
+        assert_eq!(local_name("太郎のPC"), "太郎のPC (BlueCaster)");
     }
 
     #[test]
@@ -1982,7 +1982,7 @@ mod local_name_tests {
         let long = "あ".repeat(100); // 300 bytes
         let name = local_name(&long);
         assert!(name.len() <= 248, "{}", name.len());
-        assert!(name.ends_with(" (A2DPWB)"));
+        assert!(name.ends_with(" (BlueCaster)"));
         assert!(name.starts_with("あああ"));
     }
 }

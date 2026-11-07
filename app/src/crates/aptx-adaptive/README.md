@@ -20,8 +20,8 @@ Changes from upstream:
   that path (and its `sha2` build dependency) is left out.
 - `Cargo.toml` stands alone (upstream's workspace settings and lints inlined).
 - The integration tests, examples and the 12 MB of reference vectors are not
-  copied. The crate is excluded from the A2DPWB workspace, so the unit tests
+  copied. The crate is excluded from the BlueCaster workspace, so the unit tests
   that read those vectors are not run here; upstream's full suite (98 tests,
   bit-exact against the vectors) passes on Windows x64 with Rust 1.99.
 
-A2DPWB's own tests of the codec integration are in `app/src/crates/codec`.
+BlueCaster's own tests of the codec integration are in `app/src/crates/codec`.

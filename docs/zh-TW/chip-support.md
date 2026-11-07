@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # 加入晶片支援
 
-A2DP Windows Bridge 會自行驅動藍牙介面卡（WinUSB），因此介面卡能運作之前，它必須做到廠商的 Windows 驅動程式所做的事：許多晶片每次啟動時都需要載入韌體。Realtek、Intel、Broadcom 與 CSR 介面卡目前可以使用；MediaTek（MT7921、MT7922 等）與 Qualcomm（QCA61x4）則不行，因為還沒有人為它們寫出載入程式。
+BlueCaster 會自行驅動藍牙介面卡（WinUSB），因此介面卡能運作之前，它必須做到廠商的 Windows 驅動程式所做的事：許多晶片每次啟動時都需要載入韌體。Realtek、Intel、Broadcom 與 CSR 介面卡目前可以使用；MediaTek（MT7921、MT7922 等）與 Qualcomm（QCA61x4）則不行，因為還沒有人為它們寫出載入程式。
 
 本頁說明如何加入一個載入程式。您需要一張採用該晶片的介面卡；維護者手上沒有這些介面卡。即使不寫程式碼也能幫忙：步驟 1 與 2 可產生其他貢獻者所需的回報。
 
@@ -25,20 +25,20 @@ A2DP Windows Bridge 會自行驅動藍牙介面卡（WinUSB），因此介面卡
 ## 需要準備的東西
 
 - 該介面卡，插在 Windows 10 / 11 電腦上
-- A2DP Windows Bridge 2.0.2 或更新版本（以下步驟只需要應用程式）
+- BlueCaster 2.0.2 或更新版本（以下步驟只需要應用程式）
 - 若要撰寫載入程式：依 [建置](building) 準備的建置環境，以及 [USBPcap](https://desowin.org/usbpcap/) 與 [Wireshark](https://www.wireshark.org/)，用來記錄 Windows 本身的驅動程式做了什麼
 
-## 步驟 1：將介面卡交給 A2DP Windows Bridge
+## 步驟 1：將介面卡交給 BlueCaster
 
 1. **設定 > 開發人員模式**：開啟
-2. **介面卡**：在該介面卡的卡片上按 **替換為 WinUSB 驅動程式**（Windows 會要求系統管理員權限）。對於 A2DP Windows Bridge 尚無法使用的晶片，此按鈕只在開發人員模式下啟用
+2. **介面卡**：在該介面卡的卡片上按 **替換為 WinUSB 驅動程式**（Windows 會要求系統管理員權限）。對於 BlueCaster 尚無法使用的晶片，此按鈕只在開發人員模式下啟用
 3. 若卡片顯示 **請重新插拔或重新啟動 Windows**，請照做
 
 介面卡使用 WinUSB 期間，Windows 本身的藍牙無法使用它。若筆電唯一的藍牙就是這顆晶片，透過 Windows 連線的鍵盤、滑鼠與耳機在您還原驅動程式之前都會停止運作：在同一張卡片上按 **還原原始驅動程式**。
 
 ## 步驟 2：讀取晶片的回應（晶片探測）
 
-在介面卡卡片的 **韌體** 部分按 **讀取晶片資訊**。藍牙堆疊會短暫停止，執行探測後，檔案總管會開啟報告：設定資料夾（`%APPDATA%\A2DPWB`）中 `logs\probe\` 內的 `probe-<date>_<time>.json`。最多保留最新的 10 份。
+在介面卡卡片的 **韌體** 部分按 **讀取晶片資訊**。藍牙堆疊會短暫停止，執行探測後，檔案總管會開啟報告：設定資料夾（`%APPDATA%\BlueCaster`）中 `logs\probe\` 內的 `probe-<date>_<time>.json`。最多保留最新的 10 份。
 
 探測只會讀取，不會傳送 HCI Reset，也不會傳送任何廠商命令：
 
@@ -56,10 +56,10 @@ A2DP Windows Bridge 會自行驅動藍牙介面卡（WinUSB），因此介面卡
 也可從命令列執行，指定介面卡的 VID:PID 或執行個體 ID（介面卡卡片上有顯示）：
 
 ```bat
-"%LOCALAPPDATA%\A2DP Windows Bridge\a2dpwb-core.exe" --cli -u 0e8d:7961 --probe
+"%LOCALAPPDATA%\BlueCaster\bluecaster-core.exe" --cli -u 0e8d:7961 --probe
 ```
 
-請先從系統匣結束 A2DP Windows Bridge，因為兩者無法同時使用介面卡。
+請先從系統匣結束 BlueCaster，因為兩者無法同時使用介面卡。
 
 **傳送回報**：按下 **讀取晶片資訊** 後，介面卡的卡片會顯示讀取到的內容，以及 **在 GitHub 回報** 按鈕。它會開啟一個新的 issue，預先填入版本、介面卡、該摘要與您的 Windows 組建，並在檔案總管中顯示報告檔案：請將檔案拖曳到 issue 中，並補充介面卡的來源（筆電內建時請註明筆電型號）。報告包含介面卡的藍牙位址與名稱，但不含任何與您耳機有關的資訊。包含 HCI 擷取的 **診斷套件**（**診斷** 畫面）也會在 `probe/` 下附上探測報告。
 
@@ -78,18 +78,18 @@ A2DP Windows Bridge 會自行驅動藍牙介面卡（WinUSB），因此介面卡
 - opcode 介於 0xFC00 到 0xFFFF 的 **HCI 命令**（類別請求，`bmRequestType` 0x20）：廠商命令。一長串參數很大的相同 opcode，就是在傳送韌體；其回應說明每個部分如何被確認
 - 不是 Command Complete / Status 的 **事件**：廠商事件（代碼 0xFF，或廠商自己的代碼，例如 0xE4），例如「韌體已啟動」，或以它取代 Command Complete 來確認每個韌體部分
 - 第一個 HCI Reset 之前的 **Bulk OUT** 資料：有些晶片透過 ACL 管道接收韌體
-- 檔案的來源：將傳送的資料與驅動程式資料夾中的檔案（裝置管理員 > 驅動程式詳細資料，或 `C:\Windows\System32\DriverStore\FileRepository\`）以及 [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) 中該晶片的檔案（`mediatek/`、`qca/`）比對；後者可以再散布，A2DP Windows Bridge 的使用者也能下載
+- 檔案的來源：將傳送的資料與驅動程式資料夾中的檔案（裝置管理員 > 驅動程式詳細資料，或 `C:\Windows\System32\DriverStore\FileRepository\`）以及 [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) 中該晶片的檔案（`mediatek/`、`qca/`）比對；後者可以再散布，BlueCaster 的使用者也能下載
 
 記下驅動程式在各步驟之間保留的延遲（擷取檔的時間戳記）：仍在重設中的晶片不會回應。
 
 {: .warning }
-請以擷取檔、探測報告與廠商文件為依據。請勿複製或密切參照 GPL 程式碼，例如 Linux 核心的 `btmtk` 或 `btqca` 驅動程式：A2DP Windows Bridge 採用 MIT 授權，衍生自它們的載入程式無法被收錄。
+請以擷取檔、探測報告與廠商文件為依據。請勿複製或密切參照 GPL 程式碼，例如 Linux 核心的 `btmtk` 或 `btqca` 驅動程式：BlueCaster 採用 MIT 授權，衍生自它們的載入程式無法被收錄。
 
 ## 不必建置也能試：晶片指令碼 {#chip-scripts}
 
 撰寫載入程式之前，先在介面卡上試試擷取檔中看到的內容：**晶片指令碼** 是以文字寫成的序列，每行一個請求，取代藍牙堆疊來執行。沒有該介面卡的人可以撰寫指令碼，傳給擁有介面卡的人；結果會以報告的形式傳回，不需要新的建置。
 
-**執行方式**：在開發人員模式下開啟 **開發者 > 晶片**：選擇介面卡（使用 WinUSB），輸入指令碼或開啟檔案，然後按 **執行**。每一行的回應會顯示在下方，**顯示報告** 會開啟 `logs\probe\` 中的 `script-<date>_<time>.json`（其中包含指令碼）。從命令列執行：`a2dpwb-core --cli -u <adapter> --script <file>`。
+**執行方式**：在開發人員模式下開啟 **開發者 > 晶片**：選擇介面卡（使用 WinUSB），輸入指令碼或開啟檔案，然後按 **執行**。每一行的回應會顯示在下方，**顯示報告** 會開啟 `logs\probe\` 中的 `script-<date>_<time>.json`（其中包含指令碼）。從命令列執行：`bluecaster-core --cli -u <adapter> --script <file>`。
 
 ```text
 # 每行一個請求；數字為十六進位（0x 可省略），wait、timeout= 與 chunk= 除外
@@ -119,8 +119,8 @@ upload-bulk patch.bin fc09 01      # 同上，但走 bulk OUT 管道
 | Crate（套件） | 資料夾 | 內容 |
 |:--|:--|:--|
 | `bt-host` | `app/src/crates/bt-host` | 藍牙主機：載入程式、探測、晶片偵測 |
-| `a2dpwb-core`（函式庫） | `app/src/crates/core` | 設定與介面卡：決定執行哪個載入程式 |
-| `a2dpwb-core-exe` | `app/src/core` | 服務執行檔（`a2dpwb-core.exe`）：處理視窗的請求、介面卡的說明 |
+| `bluecaster-core`（函式庫） | `app/src/crates/core` | 設定與介面卡：決定執行哪個載入程式 |
+| `bluecaster-core-exe` | `app/src/core` | 服務執行檔（`bluecaster-core.exe`）：處理視窗的請求、介面卡的說明 |
 
 後兩者名稱中都有「core」；`cargo -p` 接受的是上表中的套件名稱。
 
@@ -162,7 +162,7 @@ upload-bulk patch.bin fc09 01      # 同上，但走 bulk OUT 管道
 - `hci_command(opcode, params)` 建立命令
 - `parse_event(event)` 回傳 `HciEvent::Complete { opcode, status, ret }`（status 之後的回傳參數）、`Status { opcode, status }`、`Vendor(params)`（事件 0xFF）或 `Other { code, params }`（其他任何代碼，包括廠商自己的代碼，例如 0xE4）
 
-**韌體檔案**：載入程式會取得一個 `FileReader`，並以 **不含資料夾的檔名**（`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`）向它要求檔案。應用程式會在韌體資料夾（`%APPDATA%\A2DPWB\firmware`）及其中的廠商子資料夾（`firmware\mediatek\`）中尋找，與 linux-firmware 的配置相同；子資料夾在步驟 6 中設定。
+**韌體檔案**：載入程式會取得一個 `FileReader`，並以 **不含資料夾的檔名**（`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`）向它要求檔案。應用程式會在韌體資料夾（`%APPDATA%\BlueCaster\firmware`）及其中的廠商子資料夾（`firmware\mediatek\`）中尋找，與 linux-firmware 的配置相同；子資料夾在步驟 6 中設定。
 
 ### 模式
 
@@ -234,15 +234,15 @@ cargo test -p bt-host
 
 **文件**：
 
-13. `docs/setup.md` 與 `docs/*/setup.md`（所有語言）中的晶片表格：比照 Intel 新增一列，寫出涵蓋的晶片、韌體檔案及其存放位置（韌體資料夾：`%APPDATA%\A2DPWB\firmware`，或其中的 `<vendor>` 子資料夾；較舊的列仍寫著「config folder」）以及 *Experimental.*。視窗的按鈕名稱請依各語言的 `app/lang/*.json`（**介面卡** 畫面為 `ui.nav.adapter`，開啟該資料夾的按鈕為 `firmware.open_folder`）。整個廠商：從「Not supported」那一列中移除。部分晶片：保留該廠商，並寫出仍不支援的晶片。將該廠商加入 Firmware 一節開頭的句子（"Intel and Broadcom adapters (experimental) may need firmware files of their own"）
+13. `docs/setup.md` 與 `docs/*/setup.md`（所有語言）中的晶片表格：比照 Intel 新增一列，寫出涵蓋的晶片、韌體檔案及其存放位置（韌體資料夾：`%APPDATA%\BlueCaster\firmware`，或其中的 `<vendor>` 子資料夾；較舊的列仍寫著「config folder」）以及 *Experimental.*。視窗的按鈕名稱請依各語言的 `app/lang/*.json`（**介面卡** 畫面為 `ui.nav.adapter`，開啟該資料夾的按鈕為 `firmware.open_folder`）。整個廠商：從「Not supported」那一列中移除。部分晶片：保留該廠商，並寫出仍不支援的晶片。將該廠商加入 Firmware 一節開頭的句子（"Intel and Broadcom adapters (experimental) may need firmware files of their own"）
 14. 有人實際使用過後，更新 [已驗證的硬體](hardware)（`docs/hardware.md`），以及本頁的開頭（`docs/chip-support.md`，所有語言），其中列出尚無載入程式的廠商（部分晶片時寫成「the other <vendor> chips」）
 
 ## 步驟 7：在介面卡上實測
 
-在儲存庫根目錄建置（`cargo build --release -p a2dpwb-core-exe`），結束已安裝的應用程式（從其系統匣圖示），然後從命令列執行核心並進行 HCI 擷取：
+在儲存庫根目錄建置（`cargo build --release -p bluecaster-core-exe`），結束已安裝的應用程式（從其系統匣圖示），然後從命令列執行核心並進行 HCI 擷取：
 
 ```bat
-target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
+target\release\bluecaster-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
 ```
 
 記錄會顯示每個步驟；`loader.pklg` 可在 Wireshark 中開啟，依序列出每個命令、事件與控制傳輸。拔除介面卡（或關機）後再試一次：下載必須能從冷啟動的晶片開始成功，且在韌體已執行時不做任何事。
@@ -272,7 +272,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 python tools/check_lang.py
 ```
 
-若沒有 Node.js，請改為只對上述三個 crate 執行測試與 clippy（`-p bt-host -p a2dpwb-core -p a2dpwb-core-exe`），將 UI 檢查交給 pull request 的 CI，並在 pull request 中註明。`pwsh ./build.ps1 -Test` 會執行全部檢查。
+若沒有 Node.js，請改為只對上述三個 crate 執行測試與 clippy（`-p bt-host -p bluecaster-core -p bluecaster-core-exe`），將 UI 檢查交給 pull request 的 CI，並在 pull request 中註明。`pwsh ./build.ps1 -Test` 會執行全部檢查。
 
 Clippy 也會檢查命名：名為 `PatchState` 的 `State` 變體會觸發 `enum_variant_names` 而失敗；請命名為 `Patch`。`check_lang.py` 可能會回報您修改之前就存在的「long hints left」；只有錯誤與缺少的鍵需要您修正。
 

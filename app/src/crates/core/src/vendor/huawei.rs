@@ -312,7 +312,7 @@ impl<'a> Link<'a> {
 /// Sets the connected earbuds to sound quality first. The mode they were in
 /// (0: off) when they have that mode and took the write: LDAC can then come
 /// with a new connection. The mode is written also when they report it on
-/// already, set from a phone: FreeBuds set so did not list LDAC to A2DPWB
+/// already, set from a phone: FreeBuds set so did not list LDAC to BlueCaster
 /// (issue #30). Nothing is written to earbuds that do not answer the read.
 pub fn ask_for_ldac(host: &BtHost, addr: [u8; 6]) -> Option<u8> {
     let mut link = Link::open(host, addr)?;

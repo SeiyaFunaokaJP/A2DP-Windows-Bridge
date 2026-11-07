@@ -1,4 +1,4 @@
-//! The messages between a2dpwb-core.exe (server) and the UI (client).
+//! The messages between bluecaster-core.exe (server) and the UI (client).
 //!
 //! 1. The client sends [`ClientMessage::Hello`]; a different major protocol
 //!    version is answered with [`ServerMessage::Reject`].
@@ -74,7 +74,7 @@ pub enum AdapterStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 pub enum DriverKind {
-    /// WinUSB: usable by A2DPWB
+    /// WinUSB: usable by BlueCaster
     Winusb,
     /// Windows' Bluetooth driver: the adapter is Windows'
     Bluetooth,
@@ -108,7 +108,7 @@ pub struct AdapterInfo {
     /// page): firmware.invalid
     #[serde(default)]
     pub firmware_invalid: Option<String>,
-    /// A2DPWB can fetch those files from linux-firmware
+    /// BlueCaster can fetch those files from linux-firmware
     /// (adapter.download_firmware)
     #[serde(default)]
     pub firmware_download: bool,
@@ -135,7 +135,7 @@ pub struct AdapterInfo {
     #[serde(default)]
     pub bt_version: Option<String>,
     /// Device Manager's name for the radio while Windows' Bluetooth runs it
-    /// ("Realtek Bluetooth 5.3 Adapter"), remembered for when A2DPWB has it
+    /// ("Realtek Bluetooth 5.3 Adapter"), remembered for when BlueCaster has it
     /// on WinUSB; else the product name the device itself reports ("TP-Link
     /// UB500 Adapter"), not the driver's generic "WinUSB Device"; None if
     /// neither is known
@@ -164,7 +164,7 @@ pub struct AdapterState {
     pub status: AdapterStatus,
     pub adapters: Vec<AdapterInfo>,
     pub error: Option<Msg>,
-    /// The adapter A2DPWB uses has LE Audio's isochronous channels: the
+    /// The adapter BlueCaster uses has LE Audio's isochronous channels: the
     /// running stack's, else the first WinUSB adapter's remembered
     /// AdapterInfo::le_audio. None: not known yet (the UI then offers no LE
     /// Audio)
@@ -175,7 +175,7 @@ pub struct AdapterState {
     /// (issue #81)
     #[serde(default)]
     pub rom_firmware: bool,
-    /// A radio Windows' own Bluetooth runs beside the adapter A2DPWB uses:
+    /// A radio Windows' own Bluetooth runs beside the adapter BlueCaster uses:
     /// the two may interfere (issue #86). None: no such radio
     #[ts(optional = nullable)]
     #[serde(default)]
@@ -377,7 +377,7 @@ pub struct SbcDeviceCaps {
     pub max_bitpool: u32,
 }
 
-/// What a device's endpoint of one codec lists (a2dpwb_core::CodecDeviceCaps)
+/// What a device's endpoint of one codec lists (bluecaster_core::CodecDeviceCaps)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 
 pub struct CodecDeviceCaps {
@@ -622,10 +622,13 @@ pub struct DevOverrides {
     /// (ms, 50..=2000); 0 = the default (350). Applies to the next stream
     #[ts(type = "number")]
     pub queue_max_wait_ms: u32,
+    /// Audio waits unencoded while the send queue is backed up (ABR then
+    /// lowers its bit rate too). Applies to the next stream
+    pub encode_at_send: bool,
 }
 
 /// Developer mode's override of one vendor's protocol
-/// (a2dpwb_core::vendor::Override)
+/// (bluecaster_core::vendor::Override)
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default)]
 pub struct VendorOverride {
@@ -645,7 +648,7 @@ pub enum VendorMode {
     Never,
 }
 
-/// A vendor whose earbuds A2DPWB speaks to over their own protocol
+/// A vendor whose earbuds BlueCaster speaks to over their own protocol
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct VendorInfo {
     /// Key of its overrides (Settings.dev_vendors)
@@ -655,7 +658,7 @@ pub struct VendorInfo {
     pub options: Vec<String>,
 }
 
-/// Developer mode's logging (a2dpwb_core::settings::DevLog), in force while
+/// Developer mode's logging (bluecaster_core::settings::DevLog), in force while
 /// developer_mode is on
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default)]
@@ -835,7 +838,7 @@ pub struct Snapshot {
     #[serde(default)]
     #[ts(optional = nullable)]
     pub verbose: Option<VerboseState>,
-    /// Crash reports of A2DPWB's own processes the user has not dismissed
+    /// Crash reports of BlueCaster's own processes the user has not dismissed
     /// yet (diag.crashes_seen), newest first
     #[serde(default)]
     pub crashes: Vec<CrashReport>,
@@ -845,13 +848,13 @@ pub struct Snapshot {
 }
 
 /// A crash report (logs\crash\<process>-<stamp>.txt): a panic or a crash
-/// of a2dpwb-core.exe or a2dpwb.exe
+/// of bluecaster-core.exe or bluecaster.exe
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 
 pub struct CrashReport {
-    /// "a2dpwb-core-20261022-012338-512": the file without .txt
+    /// "bluecaster-core-20261022-012338-512": the file without .txt
     pub name: String,
-    /// "a2dpwb-core" or "a2dpwb-ui"
+    /// "bluecaster-core" or "bluecaster-ui"
     pub process: String,
     /// Local time, "2026-10-22 01:23:38"
     pub time: String,
@@ -862,7 +865,7 @@ pub struct CrashReport {
     pub text: String,
 }
 
-/// Verbose logging (diag.set_verbose): A2DPWB's own modules log at `level`
+/// Verbose logging (diag.set_verbose): BlueCaster's own modules log at `level`
 /// until `until_ms`, then back to info by themselves
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 
@@ -1442,12 +1445,12 @@ pub enum Method {
     /// here may conflict with it, issue #86)
     #[serde(rename = "device.windows_paired")]
     DeviceWindowsPaired,
-    /// -> DevicePairing: what A2DPWB keeps of a classic device's pairing
+    /// -> DevicePairing: what BlueCaster keeps of a classic device's pairing
     /// (developer mode only)
     #[serde(rename = "device.pairing")]
     DevicePairing { address: String },
     /// -> ServiceList: the services a classic device lists, asked over the
-    /// connection A2DPWB has to it, else the list from its last connection
+    /// connection BlueCaster has to it, else the list from its last connection
     /// since the core started (developer mode only)
     #[serde(rename = "device.services")]
     DeviceServices { address: String },
@@ -1914,7 +1917,7 @@ pub struct ReceiverState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 
 pub struct DevicePairing {
-    /// The link key A2DPWB keeps, None when it has none (not paired)
+    /// The link key BlueCaster keeps, None when it has none (not paired)
     pub link_key: Option<LinkKeyInfo>,
 }
 
@@ -1958,8 +1961,8 @@ pub struct WindowsImport {
     pub adapter_found: bool,
     /// The addresses whose keys were taken
     pub imported: Vec<String>,
-    /// The addresses A2DPWB has a key for already: it stays (the device
-    /// was paired with A2DPWB after Windows, Windows' key is an old one)
+    /// The addresses BlueCaster has a key for already: it stays (the device
+    /// was paired with BlueCaster after Windows, Windows' key is an old one)
     pub kept: Vec<String>,
     /// The audio devices among `imported` that were added to the saved
     /// devices, with Windows' names
@@ -2004,7 +2007,7 @@ pub struct RfcommClosed {
 pub enum ClientMessage {
     Hello {
         protocol: u32,
-        /// "a2dpwb-ui/2.0.0"
+        /// "bluecaster-ui/2.0.0"
         client: String,
     },
     Request {
@@ -2020,7 +2023,7 @@ pub enum ClientMessage {
 pub enum ServerMessage {
     Welcome {
         protocol: u32,
-        /// "a2dpwb-core/2.0.0"
+        /// "bluecaster-core/2.0.0"
         server: String,
         /// Additions to the protocol this core has ([`FEATURES`]): a client
         /// checks for one before using it. Absent from older cores.

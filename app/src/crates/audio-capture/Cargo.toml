@@ -1,6 +1,6 @@
 [package]
 name = "audio-capture"
-description = "Audio sources for A2DPWB: WASAPI loopback (system, device, application) and the test tone"
+description = "Audio sources for BlueCaster: WASAPI loopback (system, device, application) and the test tone"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

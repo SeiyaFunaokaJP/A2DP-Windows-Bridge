@@ -20,4 +20,9 @@ ignore_sink_max: boolean,
  * Longest a media packet waits in the send queue before it is dropped
  * (ms, 50..=2000); 0 = the default (350). Applies to the next stream
  */
-queue_max_wait_ms: number, };
+queue_max_wait_ms: number, 
+/**
+ * Audio waits unencoded while the send queue is backed up (ABR then
+ * lowers its bit rate too). Applies to the next stream
+ */
+encode_at_send: boolean, };

@@ -1,6 +1,6 @@
 [package]
 name = "win-sys"
-description = "Win32 APIs A2DPWB needs that no Rust library covers (unsafe allowed here)"
+description = "Win32 APIs BlueCaster needs that no Rust library covers (unsafe allowed here)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

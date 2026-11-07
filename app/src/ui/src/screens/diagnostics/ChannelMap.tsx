@@ -21,7 +21,7 @@ import {
   wifiCovers,
 } from "../../lib/radio";
 
-const DOCS = "https://seiyafunaokajp.github.io/A2DP-Windows-Bridge/";
+const DOCS = "https://seiyafunaokajp.github.io/BlueCaster/";
 
 /** The last scan, kept while the window lives */
 const [scan, setScan] = createSignal<WifiAccessPoint[] | null>(null);
@@ -62,7 +62,7 @@ export function ChannelMap() {
 
   const inUse = () => channelsInUse(sample()?.afh_map);
   const used = () => inUse()?.filter(Boolean).length ?? 0;
-  /** Bluetooth channels A2DPWB asked the adapter to avoid (Wi-Fi channels
+  /** Bluetooth channels BlueCaster asked the adapter to avoid (Wi-Fi channels
    *  of the AFH setting) */
   const avoided = () => {
     const s = sample();

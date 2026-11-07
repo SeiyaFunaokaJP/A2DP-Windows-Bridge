@@ -1,7 +1,7 @@
 //! Realtek firmware download: the files of a chip in the table, fetched from
 //! linux-firmware (kernel.org) when the user asks for them (issue #81).
 //!
-//! A2DPWB does not ship or mirror the files: they are proprietary Realtek
+//! BlueCaster does not ship or mirror the files: they are proprietary Realtek
 //! binaries, redistributable under the terms in linux-firmware's WHENCE. The
 //! user's PC fetches them from kernel.org itself, at a pinned linux-firmware
 //! commit, and each file is checked against its SHA-256 before it is saved.
@@ -119,7 +119,7 @@ fn source_for(firmware_file: &str) -> Option<(&'static ChipSource, &'static chip
     })
 }
 
-/// A2DPWB can fetch the files of the chip whose firmware file this is
+/// BlueCaster can fetch the files of the chip whose firmware file this is
 /// ("rtl8761bu_fw.bin", as AdapterInfo.firmware_files lists it)
 pub fn available(firmware_file: &str) -> bool {
     source_for(firmware_file).is_some()
@@ -136,10 +136,16 @@ fn sha256_hex(data: &[u8]) -> String {
 
 /// Downloaded files are kept here and used again (checked by their SHA-256)
 /// for a later download, also after a reinstall: kernel.org is asked once
-/// per file and machine. Never removed by A2DPWB; Windows' temp clean-up
+/// per file and machine. Never removed by BlueCaster; Windows' temp clean-up
 /// may.
 pub fn cache_dir() -> PathBuf {
-    std::env::temp_dir().join("A2DPWB_cache")
+    std::env::temp_dir().join("bluecaster-cache")
+}
+
+/// The cache of 2.0.x (A2DPWB): read when a file is not in [`cache_dir`]
+/// (a hit is copied there), never written or removed
+pub fn old_cache_dir() -> PathBuf {
+    std::env::temp_dir().join(crate::compat::OLD_FIRMWARE_CACHE)
 }
 
 /// The file from the cache when its SHA-256 is the one expected
@@ -172,10 +178,22 @@ fn store(cache: &Path, source: &Source, data: &[u8]) {
     }
 }
 
-/// From the cache, else downloaded (and then cached)
-fn fetch_cached(agent: &ureq::Agent, cache: &Path, source: &Source) -> Result<Vec<u8>, DownloadError> {
+/// The file from `cache`, else from the old cache `old` (then also stored
+/// in `cache`)
+fn cached_or_old(cache: &Path, old: &Path, source: &Source) -> Option<Vec<u8>> {
     if let Some(data) = cached(cache, source) {
         tracing::info!("firmware: {} from the cache {}", source.name, cache.display());
+        return Some(data);
+    }
+    let data = cached(old, source)?;
+    tracing::info!("firmware: {} from the old cache {}", source.name, old.display());
+    store(cache, source, &data);
+    Some(data)
+}
+
+/// From the cache (or the old one), else downloaded (and then cached)
+fn fetch_cached(agent: &ureq::Agent, cache: &Path, old: &Path, source: &Source) -> Result<Vec<u8>, DownloadError> {
+    if let Some(data) = cached_or_old(cache, old, source) {
         return Ok(data);
     }
     let data = fetch(agent, source)?;
@@ -246,14 +264,14 @@ pub fn download(dir: &Path, firmware_file: &str) -> Result<Vec<String>, Download
 
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(TIMEOUT))
-        .user_agent(concat!("A2DPWB/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("BlueCaster/", env!("CARGO_PKG_VERSION")))
         .build()
         .into();
-    let cache = cache_dir();
-    let fw = if need_fw { Some(fetch_cached(&agent, &cache, &source.firmware)?) } else { None };
+    let (cache, old) = (cache_dir(), old_cache_dir());
+    let fw = if need_fw { Some(fetch_cached(&agent, &cache, &old, &source.firmware)?) } else { None };
     let cfg = match (need_cfg, &source.config) {
         (false, _) => None,
-        (true, Some(c)) => Some(fetch_cached(&agent, &cache, c)?),
+        (true, Some(c)) => Some(fetch_cached(&agent, &cache, &old, c)?),
         (true, None) => Some(Vec::new()),
     };
 
@@ -278,7 +296,7 @@ mod tests {
 
     #[test]
     fn the_cache_gives_back_only_files_with_the_expected_hash() {
-        let cache = std::env::temp_dir().join(format!("a2dpwb-fwcache-{}", std::process::id()));
+        let cache = std::env::temp_dir().join(format!("bluecaster-fwcache-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&cache);
         // SHA-256 of "abc"
         let abc = src("abc.bin", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
@@ -289,6 +307,33 @@ mod tests {
         std::fs::write(cache.join("abc.bin"), b"abd").unwrap();
         assert_eq!(cached(&cache, &abc), None);
         let _ = std::fs::remove_dir_all(&cache);
+    }
+
+    #[test]
+    fn the_old_cache_is_read_and_left_alone() {
+        let base = std::env::temp_dir().join(format!("bluecaster-fwcache-old-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (cache, old) = (base.join("new"), base.join("old"));
+        let abc = src("abc.bin", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        assert_eq!(cached_or_old(&cache, &old, &abc), None);
+        // A damaged file in the old cache is not used
+        store(&old, &abc, b"abd");
+        assert_eq!(cached_or_old(&cache, &old, &abc), None);
+        // A good one is, and copied to the new cache; the old file stays
+        store(&old, &abc, b"abc");
+        assert_eq!(cached_or_old(&cache, &old, &abc).as_deref(), Some(&b"abc"[..]));
+        assert_eq!(std::fs::read(cache.join("abc.bin")).unwrap(), b"abc");
+        assert_eq!(std::fs::read(old.join("abc.bin")).unwrap(), b"abc");
+        // The new cache comes first
+        std::fs::write(old.join("abc.bin"), b"abd").unwrap();
+        assert_eq!(cached_or_old(&cache, &old, &abc).as_deref(), Some(&b"abc"[..]));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn cache_folders() {
+        assert!(cache_dir().ends_with("bluecaster-cache"));
+        assert!(old_cache_dir().ends_with("A2DPWB_cache"));
     }
 
     #[test]
@@ -317,7 +362,7 @@ mod tests {
 
     #[test]
     fn unknown_chip_fetches_nothing() {
-        let dir = std::env::temp_dir().join("a2dpwb-fw-unknown");
+        let dir = std::env::temp_dir().join("bluecaster-fw-unknown");
         assert!(matches!(download(&dir, "custom_fw.bin"), Err(DownloadError::Unknown(_))));
         assert!(!dir.exists());
     }
@@ -325,7 +370,7 @@ mod tests {
     /// Valid files are kept: nothing to fetch, nothing saved
     #[test]
     fn present_files_are_kept() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-fw-kept-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-fw-kept-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let mut fw = b"Realtech".to_vec();
         fw.extend_from_slice(&[0, 0, 0, 0, 0x51, 0x04, 0xFD, 0x77]);
@@ -336,11 +381,11 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// Really asks kernel.org: `cargo test -p a2dpwb-core firmware -- --ignored`
+    /// Really asks kernel.org: `cargo test -p bluecaster-core firmware -- --ignored`
     #[test]
     #[ignore = "network"]
     fn downloads_every_chip() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-fw-net-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-fw-net-{}", std::process::id()));
         for s in SOURCES {
             let chip = chips::realtek_chip(s.pid).unwrap();
             let fw = format!("{}.bin", chip.fw_name);

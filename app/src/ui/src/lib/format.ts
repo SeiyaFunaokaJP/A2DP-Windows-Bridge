@@ -44,9 +44,9 @@ const NOBODY = ["public", "default", "default user", "all users"];
  *  stops at what a file name cannot contain, or at a space that starts another path */
 const DRIVE_PATH = /(?<![A-Za-z0-9])[A-Za-z]:((?:[\\/]+(?:(?!\s[A-Za-z]:[\\/])[^\\/:*?"<>|\x00-\x1f])*)+)/g;
 /** The app's own folders: a path is kept from one of these on */
-const APP_FOLDERS = ["a2dpwb", "a2dp windows bridge"];
+const APP_FOLDERS = ["bluecaster", "a2dpwb", "a2dp windows bridge"];
 /** A SID with a machine part, S-1-5-21-a-b-c-rid (five or more numbers); not in a longer
- *  word (a '-' on either side is fine: the pipe's a2dpwb-<sid>-<instance>) */
+ *  word (a '-' on either side is fine: the pipe's bluecaster-<sid>-<instance>) */
 const SID = /(?<![A-Za-z0-9])S-1(?:-\d+){5,}(?![A-Za-z0-9]|-\d)/g;
 
 /** Names and addresses seen so far -> their number: the same one the same
@@ -79,8 +79,8 @@ const addressPseudonym = (addr: string) => {
  * Masks what identifies the user, the PC and their devices, as the core's
  * mask_identifiers: device names in typographic quotes (“...”, how the core
  * logs them) -> "<device-N>", paths -> "<path>" and the part from the app's
- * own folder on ("<path>\A2DPWB\logs\x.log") or their last part alone
- * ("<path>\a2dpwb-core.exe"), the Windows user name in a path without a
+ * own folder on ("<path>\BlueCaster\logs\x.log") or their last part alone
+ * ("<path>\bluecaster-core.exe"), the Windows user name in a path without a
  * drive ("\Users\<name>\...") -> x's, Windows account SIDs (the IPC pipe's
  * name) -> "<sid>", Bluetooth addresses "AC:80:0A:12:34:56"
  * (or with '-', or the 12 hex digits alone: Windows' Bluetooth device IDs,

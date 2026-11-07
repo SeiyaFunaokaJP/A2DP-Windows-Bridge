@@ -1,15 +1,15 @@
-"""CCP on the emulated sink: a Call Control Client of A2DPWB's GTBS.
+"""CCP on the emulated sink: a Call Control Client of BlueCaster's GTBS.
 
 The PC is the call control server (Generic Telephone Bearer Service, TBS 1.0);
 with --ccp the first sink acts as the CCP client, as an earbud would. Bumble
 0.0.234 has no TBS / CCP profile, so this uses its generic GATT client: once
-A2DPWB has connected and the link is encrypted it discovers GTBS (0x184C),
+BlueCaster has connected and the link is encrypted it discovers GTBS (0x184C),
 checks that every mandatory characteristic is there with its properties,
 reads them all (long reads included), subscribes to every notifying one and
 then runs the --ccp-ops script. Everything goes to sink.log as "CCP: ..."
 lines that le_audio_tests/ccp.py checks.
 
---ccp-mtu N makes the sinks accept at most this ATT MTU (A2DPWB negotiates
+--ccp-mtu N makes the sinks accept at most this ATT MTU (BlueCaster negotiates
 517 otherwise, and no TBS value needs a long read then).
 
 --ccp-ops: comma-separated steps, run in order
@@ -80,7 +80,7 @@ TIMEOUT = 10.0
 
 def add_arguments(parser):
     parser.add_argument('--ccp', action='store_true',
-                        help='the first sink is a CCP client of A2DPWB\'s GTBS (reads, subscribes)')
+                        help='the first sink is a CCP client of BlueCaster\'s GTBS (reads, subscribes)')
     parser.add_argument('--ccp-ops', default='',
                         help='CCP client steps after the reads (see le_audio/ccp.py)')
     parser.add_argument('--ccp-mtu', type=int, default=0,
@@ -90,7 +90,7 @@ def add_arguments(parser):
 
 def configure_sink(sink, args):
     if args.ccp_mtu:
-        # A2DPWB (the GATT client) asks for the MTU; Bumble's server answers this
+        # BlueCaster (the GATT client) asks for the MTU; Bumble's server answers this
         sink.device.gatt_server.max_mtu = args.ccp_mtu
 
 
@@ -181,7 +181,7 @@ class CcpClient:
         await self.wait_encrypted()
         services = await self.peer.discover_service(GTBS)
         if not services:
-            log.info('CCP: no GTBS on A2DPWB')
+            log.info('CCP: no GTBS on BlueCaster')
             return
         service = services[0]
         for c in await self.peer.discover_characteristics(service=service):
@@ -202,7 +202,7 @@ class CcpClient:
         for uuid16, name, _, props in CHARACTERISTICS:
             if uuid16 in self.chars and 'R' in props:
                 await self.read(uuid16)
-        # Subscribe to everything, Call State last (A2DPWB's --ccp-sim starts then)
+        # Subscribe to everything, Call State last (BlueCaster's --ccp-sim starts then)
         for uuid16, name, _, props in sorted(CHARACTERISTICS, key=lambda e: e[0] == 0x2BBD):
             c = self.chars.get(uuid16)
             if c is not None and c.properties & PROP_BITS['N']:

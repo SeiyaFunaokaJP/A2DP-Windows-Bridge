@@ -25,7 +25,7 @@ Nehmen Sie sich einen Punkt nach dem anderen vor und hören Sie zwischendurch ei
 
 ### 1. Die anderen Bluetooth-Adapter in diesem PC ausschalten
 
-Das eigene Bluetooth von Windows (der integrierte Adapter) sendet weiter, während A2DPWB über den USB-Adapter daneben streamt, und beide teilen sich ein Band und oft denselben Antennenbereich. Dort verbindet sich außerdem die App der Kopfhörer auf dem PC, was den Kopfhörern eine zweite Verbindung verschafft (siehe den nächsten Punkt). Deaktivieren Sie den integrierten Adapter im Geräte-Manager, solange A2DPWB läuft, oder zumindest für den Test. A2DPWB zeigt auf Start einen Hinweis, wenn es einen weiteren aktiven Adapter sieht.
+Das eigene Bluetooth von Windows (der integrierte Adapter) sendet weiter, während BlueCaster über den USB-Adapter daneben streamt, und beide teilen sich ein Band und oft denselben Antennenbereich. Dort verbindet sich außerdem die App der Kopfhörer auf dem PC, was den Kopfhörern eine zweite Verbindung verschafft (siehe den nächsten Punkt). Deaktivieren Sie den integrierten Adapter im Geräte-Manager, solange BlueCaster läuft, oder zumindest für den Test. BlueCaster zeigt auf Start einen Hinweis, wenn es einen weiteren aktiven Adapter sieht.
 
 Ein zweiter aktiver Adapter ist eine der beiden Ursachen, die ein langjähriger Tester für instabile Verbindungen und Codec-Wechsel genannt hat.
 
@@ -33,9 +33,9 @@ Ein zweiter aktiver Adapter ist eine der beiden Ursachen, die ein langjähriger 
 
 Die Doppelverbindung (Multipoint) lässt die Kopfhörer gleichzeitig mit einem Telefon und dem PC verbunden bleiben. Jede Verbindung kostet Funkzeit, und manche Kopfhörer bieten dann auch weniger Codecs an, verweigern die Freisprechverbindung (also keinen Akkustand) oder halten einen Codec-Endpunkt für das andere Gerät bereit, solange es eingeschaltet ist. Die App der Kopfhörer zählt ebenfalls: Sie hält ihre eigene Verbindung offen, auf dem Telefon oder über das Bluetooth dieses PCs, auch wenn Sie sie nur für den Akkustand oder den Equalizer verwenden.
 
-Für den Test: Doppelverbindung in der App der Kopfhörer ausschalten, Bluetooth am Telefon ausschalten, die App der Kopfhörer auf dem Telefon und auf dem PC schließen, dann von A2DPWB aus erneut verbinden.
+Für den Test: Doppelverbindung in der App der Kopfhörer ausschalten, Bluetooth am Telefon ausschalten, die App der Kopfhörer auf dem Telefon und auf dem PC schließen, dann von BlueCaster aus erneut verbinden.
 
-Die Doppelverbindung ist die andere Ursache, die dieser Tester genannt hat; Codec-Wechsel liefen deutlich glatter, sobald die App der Kopfhörer getrennt war. Eine erste Verbindung wurde abgelehnt, solange die Kopfhörer noch mit einem Telefon mit eingeschaltetem LE Audio verbunden waren, und mehrere Ohrhörer boten A2DPWB weniger Codecs oder eine niedrigere Bitrate an, solange ein Telefon oder ihre App im Spiel war. Sonys LDAC ist aus, solange das Multipoint der Kopfhörer an ist.
+Die Doppelverbindung ist die andere Ursache, die dieser Tester genannt hat; Codec-Wechsel liefen deutlich glatter, sobald die App der Kopfhörer getrennt war. Eine erste Verbindung wurde abgelehnt, solange die Kopfhörer noch mit einem Telefon mit eingeschaltetem LE Audio verbunden waren, und mehrere Ohrhörer boten BlueCaster weniger Codecs oder eine niedrigere Bitrate an, solange ein Telefon oder ihre App im Spiel war. Sonys LDAC ist aus, solange das Multipoint der Kopfhörer an ist.
 
 ### 3. Den Adapter umstecken
 
@@ -47,7 +47,7 @@ Ein Gaming-Maus-Empfänger neben dem Adapter, an einem PC ohne Wi-Fi-Adapter, de
 
 ### 4. 2,4-GHz-Wi-Fi von der Verbindung fernhalten
 
-Bringen Sie diesen PC und, wenn möglich, das Telefon und die anderen Geräte in seiner Nähe auf 5- oder 6-GHz-Wi-Fi. Muss 2,4 GHz eingeschaltet bleiben, weist A2DPWB den Adapter an, den Kanal zu meiden, über den dieser PC verbunden ist (AFH, Automatisch). Es kann das Wi-Fi nicht sehen, wenn der PC keinen Wi-Fi-Adapter hat, per Kabel verbunden ist oder in einem anderen Band ist als das 2,4-GHz-Netz des Routers: Ermitteln Sie dann den Kanal des Routers (seine Verwaltungsseite oder eine Wi-Fi-Analyzer-App auf dem Telefon), legen Sie ihn dort fest, falls er wechselt, und tragen Sie ihn unter **Adapter > Wi-Fi-Kanäle meiden > Manuell** ein, zum Beispiel `6` oder `11`. Siehe [Verbindungsqualität und AFH](usage#link-quality).
+Bringen Sie diesen PC und, wenn möglich, das Telefon und die anderen Geräte in seiner Nähe auf 5- oder 6-GHz-Wi-Fi. Muss 2,4 GHz eingeschaltet bleiben, weist BlueCaster den Adapter an, den Kanal zu meiden, über den dieser PC verbunden ist (AFH, Automatisch). Es kann das Wi-Fi nicht sehen, wenn der PC keinen Wi-Fi-Adapter hat, per Kabel verbunden ist oder in einem anderen Band ist als das 2,4-GHz-Netz des Routers: Ermitteln Sie dann den Kanal des Routers (seine Verwaltungsseite oder eine Wi-Fi-Analyzer-App auf dem Telefon), legen Sie ihn dort fest, falls er wechselt, und tragen Sie ihn unter **Adapter > Wi-Fi-Kanäle meiden > Manuell** ein, zum Beispiel `6` oder `11`. Siehe [Verbindungsqualität und AFH](usage#link-quality).
 
 LDAC 990 kbps verlor in einem stark belegten 2,4-GHz-Netz etwa 1.700 Pakete in 5 Minuten, und 33 in 15 Minuten, nachdem der Router auf einen Kanal festgelegt und AFH auf Manuell mit diesem Kanal gesetzt war.
 
@@ -61,7 +61,7 @@ Eine Bluetooth-Verbindung trägt an einem perfekten Tag etwas über 1 Mbps; LDAC
 
 Auf einer Verbindung, die 750 kbps trug, setzte alles über 500 kbps aus, während ABR null Aussetzer hatte. SBC XQ über Bitpool 36 verstummte auf günstigen Ohrhörern, deren SBC-Fähigkeit 53 erlaubte. Auf denselben Ohrhörern setzte LHDC V5 zufällig aus, wo LDAC stabil war. Eine saubere Verbindung trägt es durchaus: Der integrierte Adapter eines Notebooks streamte LDAC 990 kbps 5 Minuten lang mit 0 verlorenen Paketen.
 
-### 6. A2DPWB aktualisieren
+### 6. BlueCaster aktualisieren
 
 Mehrere Stotterer, die nach Funk klangen, waren die App. 2.0.1 sendete Audio schneller als in Echtzeit, wenn ein virtuelles Kabel es verspätet lieferte, was die Kopfhörer als eine Sekunde Ton und eine Sekunde Stille hören; ein Stream nach Trennen > Verbinden stotterte, bis die App neu gestartet wurde; ein veralteter Bluetooth-Stack verweigerte die Verbindung nach dem Energiesparmodus, einer langen Sitzung oder vielen Neustarts. Alle sind im aktuellen Release behoben ([Updates](usage#updates)). Ist das Problem nach dem Update verschwunden, ist kein Bericht nötig.
 
@@ -81,9 +81,9 @@ Die Empfangsseite ist vom PC aus nicht zu sehen. Um zu messen, was tatsächlich 
 
 ## Was die Kopfhörer entscheiden {#headphones}
 
-Manche Berichte wie „es gibt mir nur 400 kbps“ oder „LDAC fehlt“ haben gar nichts mit der Verbindung zu tun: Die Kopfhörer teilen A2DPWB mit, welche Codecs und Bitraten sie annehmen, und A2DPWB hält sich daran, wie Android auch. Die Protokollzeile `remote supports ...` zeigt, was sie angeboten haben.
+Manche Berichte wie „es gibt mir nur 400 kbps“ oder „LDAC fehlt“ haben gar nichts mit der Verbindung zu tun: Die Kopfhörer teilen BlueCaster mit, welche Codecs und Bitraten sie annehmen, und BlueCaster hält sich daran, wie Android auch. Die Protokollzeile `remote supports ...` zeigt, was sie angeboten haben.
 
-- **Huawei FreeBuds** bieten einem PC LDAC erst an, nachdem ihre App AI Life „Klangqualität bevorzugen“ eingestellt hat, mit ausgeschalteter Mehrfachverbindung; sonst führen sie nur SBC und AAC auf. Seit 2.0.2 fordert A2DPWB diesen Modus selbst an, wenn LDAC bei ausgeschaltetem Automatisch wählen gewählt ist.
+- **Huawei FreeBuds** bieten einem PC LDAC erst an, nachdem ihre App AI Life „Klangqualität bevorzugen“ eingestellt hat, mit ausgeschalteter Mehrfachverbindung; sonst führen sie nur SBC und AAC auf. Seit 2.0.2 fordert BlueCaster diesen Modus selbst an, wenn LDAC bei ausgeschaltetem Automatisch wählen gewählt ist.
 - **LHDC-V5-Kopfhörer** melden eine maximale Bitrate. Im 96-kHz-Modus ihrer App führte ein Paar 400 kbps auf, in deren 192-kHz-Modus 1000 kbps. OPPO Enco Free4 und Enco X4 melden einem PC 400 kbps und 48 kHz, egal was die App sagt; 2.0.2 fordert bei OPPO-Ohrhörern Hi-Res über ihr eigenes Protokoll an, wenn LHDC V5 bei ausgeschaltetem ABR streamt, und verbindet sich dafür einmal neu; auf echten Ohrhörern noch nicht bestätigt.
 - **ABR** hält LHDC V5 bei 400 kbps oder darunter, wie unter Android.
 - Ein Codec, den die Kopfhörer **für ein anderes Gerät bereithalten**, fehlt, solange dieses Gerät verbunden ist ([Codec fehlt, während die Kopfhörer mit einem anderen Gerät verbunden sind](usage#sep-in-use)).
@@ -107,7 +107,7 @@ Jeder bisherige Bericht, der die Funkseite betraf, gruppiert danach, was es am E
 |:--|:--|:--|
 | **Umgebung**: der Funk, die Platzierung, ein anderes Gerät | Etwa ein Drittel | 2,4-GHz-Wi-Fi auf denselben Kanälen, ein Gaming-Maus-Empfänger neben dem Adapter, ein zweiter aktiver Bluetooth-Adapter, Doppelverbindung und eine laufende App der Kopfhörer, eine Bitrate ohne Spielraum auf True-Wireless-Ohrhörern, ein schwaches Signal kleiner Ohrhörer, eine Firmware-Datei, die eine gespeicherte Webseite war |
 | **Kopfhörer**: was sie einem PC anbieten | Etwa ein Viertel | LDAC erst nach Huaweis Klangqualitätsmodus, LHDC V5 durch den eigenen Modus der Kopfhörer auf 400 kbps begrenzt, Hi-Res über OPPOs Protokoll gesetzt, ein für das Telefon bereitgehaltener Codec |
-| **App**: ein Fehler in A2DPWB, alle behoben | Knapp die Hälfte | Audio schneller als in Echtzeit gesendet mit einem virtuellen Kabel, Stottern nach Trennen > Verbinden, ein veralteter Bluetooth-Stack nach dem Energiesparmodus oder vielen Neustarts, die nach Trennen gehaltene Verbindung, Kopfhörer, die zuerst verbinden, für einen falschen Schlüssel gehalten, ein Codec-Cache, der LDAC verbarg, nicht erkannte Adapter (ein Chip, eine USB-Klasse, eine Treiberbindung, die noch nicht aktiv war) |
+| **App**: ein Fehler in BlueCaster, alle behoben | Knapp die Hälfte | Audio schneller als in Echtzeit gesendet mit einem virtuellen Kabel, Stottern nach Trennen > Verbinden, ein veralteter Bluetooth-Stack nach dem Energiesparmodus oder vielen Neustarts, die nach Trennen gehaltene Verbindung, Kopfhörer, die zuerst verbinden, für einen falschen Schlüssel gehalten, ein Codec-Cache, der LDAC verbarg, nicht erkannte Adapter (ein Chip, eine USB-Klasse, eine Treiberbindung, die noch nicht aktiv war) |
 
 Was auffällt:
 
@@ -118,7 +118,7 @@ Was auffällt:
 
 ## Melden {#reporting}
 
-Haben die Prüfungen oben es nicht gefunden, öffnen Sie einen [Fehlerbericht](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) und haken Sie ab, was Sie versucht haben. Was einen Funkbericht schnell klärt:
+Haben die Prüfungen oben es nicht gefunden, öffnen Sie einen [Fehlerbericht](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/new?template=bug_report.yml) und haken Sie ab, was Sie versucht haben. Was einen Funkbericht schnell klärt:
 
 1. **Diagnose > Problem melden**, **Ausführliche Protokollierung** auf **Detailliert (debug)**, dann das Problem nachstellen.
 2. Das **Diagnosepaket** (**Diagnosepaket > Speichern…** mit eingeschaltetem **HCI-Mitschnitte einschließen**, dann **Auf GitHub melden**). Es enthält die Zeilen zum Zustand des Streams (Sendewarteschlange, verworfene Pakete, Signal, AFH-Kanäle im Zeitverlauf) und die HCI-Aufzeichnung einer fehlgeschlagenen Verbindung, die zeigen, wo die Pakete stehen blieben.

@@ -4,7 +4,7 @@
 //!
 //! The encoder covers the R1 and R2 bitstreams of a host (software) source:
 //! high quality (HQ) and low latency (LL), with the reference's per-packet
-//! loop, mode tables and bit rate levels (`aptx_adaptive::Stream`). A2DPWB
+//! loop, mode tables and bit rate levels (`aptx_adaptive::Stream`). BlueCaster
 //! streams 48 kHz stereo, the rate every aptX Adaptive sink takes and the only
 //! one an R1 sink is ever streamed at, or 96 kHz in HQ to an R2 sink that
 //! lists it when the profile asks for 96 kHz (as upstream's plugin: config 3,
@@ -40,6 +40,7 @@
 
 use aptx_adaptive::{Config, DecoderLevel, Profile, Stream, packet_budget};
 
+use crate::abr::StallMemory;
 use crate::{CodecKind, Encoded, Encoder, EncoderConfig, EncoderDetails, EncoderError, Pcm, PcmFormat, Quality};
 
 /// The RTP header the encoder writes in front of each codec packet
@@ -53,7 +54,7 @@ const RTP_PAYLOAD_TYPE: u8 = 0x60;
 pub const SSRC_HQ: u32 = 0x0000_00A3;
 pub const SSRC_LL: u32 = 0x0000_00A1;
 
-/// The rate A2DPWB streams by default, to every sink
+/// The rate BlueCaster streams by default, to every sink
 pub const SAMPLE_RATE: u32 = 48000;
 /// HQ to an R2 sink that lists it
 pub const SAMPLE_RATE_96K: u32 = 96000;
@@ -102,6 +103,8 @@ struct Abr {
     since_down: u32,
     /// Calls in a row with the queue at or below ABR_UP_DEPTH
     calm: u32,
+    /// Back up to a level the queue backed up at only after longer
+    stalls: StallMemory,
 }
 
 /// The decoder compatibility level of the sink (`caps::RemoteCaps`): R2 when
@@ -274,7 +277,8 @@ impl Encoder for AptxAdaptiveEncoder {
     /// One step per call (every 100 ms): down one level while the queue
     /// holds [`ABR_DOWN_DEPTH`] packets or more (at most every ~0.5 s, not
     /// below level 2), up one level after ~3 s with the queue nearly empty
-    /// (not above the quality's level). A step applies from the next packet
+    /// (not above the quality's level; back to a level the queue backed up
+    /// at only after [`crate::abr::STALL_TICKS`] or longer). A step applies from the next packet
     /// (§7L); a level whose bit rate equals the current one is skipped.
     fn abr_adjust(&mut self, queue_depth: u32) {
         let Some(abr) = self.abr.as_mut() else { return };
@@ -288,15 +292,24 @@ impl Encoder for AptxAdaptiveEncoder {
             let now = bitrate(&self.stream, current);
             let target = (ABR_MIN_LEVEL..current).rev().find(|&l| bitrate(&self.stream, l) != now);
             if let Some(level) = target {
+                abr.stalls.stepped_down("aptX Adaptive", current);
                 self.request(level, format_args!("queue {queue_depth}"));
             }
-        } else if abr.calm >= ABR_UP_CALLS && current < self.level {
+            return;
+        }
+        if queue_depth >= ABR_DOWN_DEPTH {
+            return;
+        }
+        abr.stalls.tick("aptX Adaptive", current, abr.calm, ABR_UP_CALLS);
+        if abr.calm < ABR_UP_CALLS || current >= self.level {
+            return;
+        }
+        let now = bitrate(&self.stream, current);
+        let Some(level) = (current + 1..=self.level).find(|&l| bitrate(&self.stream, l) != now) else { return };
+        let wait = abr.stalls.wait(current, level, ABR_UP_CALLS);
+        if abr.calm >= wait {
             abr.calm = 0;
-            let now = bitrate(&self.stream, current);
-            let target = (current + 1..=self.level).find(|&l| bitrate(&self.stream, l) != now);
-            if let Some(level) = target {
-                self.request(level, format_args!("queue at most {ABR_UP_DEPTH} for {ABR_UP_CALLS} rounds"));
-            }
+            self.request(level, format_args!("queue at most {ABR_UP_DEPTH} for {wait} rounds"));
         }
     }
 
@@ -534,9 +547,12 @@ mod tests {
             enc.abr_adjust(0);
         }
         assert_eq!(level(&enc), 3);
-        for _ in 0..2 * ABR_UP_CALLS {
+        // 4 is where the queue backed up: back to it only after 10 s
+        for _ in 0..crate::abr::STALL_TICKS - 1 {
             enc.abr_adjust(1);
         }
+        assert_eq!(level(&enc), 3);
+        enc.abr_adjust(1);
         assert_eq!(level(&enc), 4);
         for _ in 0..2 * ABR_UP_CALLS {
             enc.abr_adjust(0);
@@ -552,5 +568,29 @@ mod tests {
         enc.abr_reset();
         run(&mut enc, &pcm[..2 * 4800]);
         assert_eq!(enc.bitrate_kbps(), 427);
+    }
+
+    #[test]
+    fn abr_waits_longer_each_time_a_level_stalls_again() {
+        let mut enc = AptxAdaptiveEncoder::new(&config(Quality::High, false, true, 2)).unwrap();
+        let level = |e: &AptxAdaptiveEncoder| e.stream.pending_level().unwrap_or(e.stream.level());
+        // Drained calls until the level goes up
+        let climb = |e: &mut AptxAdaptiveEncoder| {
+            let from = level(e);
+            (1..=10_000).find(|_| {
+                e.abr_adjust(0);
+                level(e) != from
+            })
+        };
+        let mut wait = crate::abr::STALL_TICKS;
+        for round in 0..3 {
+            for _ in 0..ABR_DOWN_CALLS {
+                enc.abr_adjust(8);
+            }
+            assert_eq!(level(&enc), 3, "round {round}");
+            assert_eq!(climb(&mut enc), Some(wait), "round {round}");
+            assert_eq!(level(&enc), 4);
+            wait *= 2;
+        }
     }
 }

@@ -1222,6 +1222,10 @@ fn start_pipeline(
     host: &BtHost,
 ) -> (Pipeline, CaptureInput) {
     let abr = encoder.abr_active();
+    let hold = codec::dev::overrides().encode_at_send;
+    if hold {
+        tracing::info!("encode at send time: audio waits unencoded while the send queue is backed up (developer mode)");
+    }
     Pipeline::start(
         PipelineConfig {
             encoder,
@@ -1230,6 +1234,7 @@ fn start_pipeline(
             mtu,
             abr,
             buffer: BufferPreset::Standard,
+            hold,
             // Volume 0, or Windows' mute key under the output mute
             mute: Some(Box::new({
                 let zero = host.volume_is_zero();
@@ -1516,14 +1521,21 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // (44.1 kHz, say). Not the highest it lists nor the Windows mix rate
     // (issue #86: 96 kHz brought latency and trouble with no audible gain,
     // and Windows mixes at 48 kHz); 96 kHz when chosen. WASAPI resamples.
-    // Developer mode: Auto follows the captured output's format instead
+    // Developer mode: Auto follows the captured output's format instead, as
+    // near as the rates the device lists for the codec go
     let mix = (codec::dev::overrides().match_source && (req.sample_rate.is_none() || req.bit_depth.is_none()))
         .then(|| source_mix(&req.source))
         .flatten();
-    if let Some(m) = mix {
-        tracing::info!("codec: matching the source (developer mode): {} Hz, {}-bit", m.rate, m.bits);
+    let matched = mix.map(|m| remote.match_sample_rate(kind, m.rate));
+    if let (Some(m), Some(r)) = (mix, matched) {
+        tracing::info!(
+            "codec: matching the source (developer mode): {} Hz, {}-bit; {r} Hz of {:?} listed",
+            m.rate,
+            m.bits,
+            remote.listed_sample_rates(kind)
+        );
     }
-    let mut preferred = req.sample_rate.or(mix.map(|m| m.rate)).unwrap_or(AUTO_SAMPLE_RATE);
+    let mut preferred = req.sample_rate.or(matched).unwrap_or(AUTO_SAMPLE_RATE);
     tracing::debug!(
         "capture rate: {preferred} Hz preferred ({})",
         if req.sample_rate.is_some() {
@@ -2188,7 +2200,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                     inner.notify(StreamState::Error, Msg::with("error.codec_not_supported", &[&kind.name()]));
                 } else if restart_why.is_none() {
                     // The adapter works, the headphones never answered: off
-                    // or out of range, not an error of A2DPWB
+                    // or out of range, not an error of BlueCaster
                     inner.notify(StreamState::Idle, Msg::new("status.device_unreachable"));
                 } else {
                     inner.notify(StreamState::Error, Msg::new("error.reconnect_failed"));

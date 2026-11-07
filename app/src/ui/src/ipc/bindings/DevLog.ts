@@ -2,7 +2,7 @@
 import type { LogLevel } from "./LogLevel";
 
 /**
- * Developer mode's logging (a2dpwb_core::settings::DevLog), in force while
+ * Developer mode's logging (bluecaster_core::settings::DevLog), in force while
  * developer_mode is on
  */
 export type DevLog = { 

@@ -1,5 +1,5 @@
 [package]
-name = "a2dpwb-driver"
+name = "bluecaster-driver"
 description = "Elevated helper that assigns WinUSB to a Bluetooth adapter and restores its previous driver"
 version.workspace = true
 edition.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [[bin]]
-name = "a2dpwb-driver"
+name = "bluecaster-driver"
 path = "src/main.rs"
 
 [dependencies]

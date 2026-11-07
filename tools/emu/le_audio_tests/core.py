@@ -1,4 +1,4 @@
-"""BAP unicast cases: the stream set-ups A2DPWB plans from the sink's PACS /
+"""BAP unicast cases: the stream set-ups BlueCaster plans from the sink's PACS /
 ASCS (app/src/crates/le-audio/src/presets.rs), one per emu_le_audio_sink.py layout."""
 
 import re
@@ -14,13 +14,13 @@ CASES = [
     Case('earbuds', 'earbuds', r'LC3 48000 Hz 10 ms 155 octets, 2 channel\(s\) over 2 CIS'),
     # Mono sink with a forced low-latency preset (--le-preset): downmix, 16 kHz
     Case('mono-16k', 'mono', r'LC3 16000 Hz 10 ms 40 octets, 1 channel\(s\) over 1 CIS',
-         tones=MONO_TONES, a2dpwb_args=['--le-preset', '16_2_1']),
-    # The sink drops the LE link 3 s after A2DPWB connected: A2DPWB tears the
+         tones=MONO_TONES, bluecaster_args=['--le-preset', '16_2_1']),
+    # The sink drops the LE link 3 s after BlueCaster connected: BlueCaster tears the
     # stream down (CIS, CIG) and sets it up again on a new link (bond reused)
     Case('link-loss', 'stereo', r'LC3 48000 Hz 10 ms 155 octets, 2 channel\(s\) over 1 CIS',
          sink_args=['--drop-link-after', '3'], streams=2, lossy=True, duration=14),
     # The sink keeps released ASEs in Releasing until the client drops the
-    # CIS: A2DPWB disconnects the CIS after Disable, so stop does not wait
+    # CIS: BlueCaster disconnects the CIS after Disable, so stop does not wait
     # out the Release timeout
     Case('release-cis', 'two-ase', r'LC3 48000 Hz 10 ms 155 octets, 2 channel\(s\) over 2 CIS',
          sink_args=['--ascs-release-waits-for-cis'], tags=('release-cis',)),
@@ -28,20 +28,20 @@ CASES = [
     # for the Available Audio Contexts notification instead of failing
     Case('contexts-later', 'stereo', r'LC3 48000 Hz 10 ms 155 octets, 2 channel\(s\) over 1 CIS',
          sink_args=['--available-contexts-after', '3'], tags=('contexts-later',)),
-    # AFH host channel classification forced (--afh 6,11; by default A2DPWB
+    # AFH host channel classification forced (--afh 6,11; by default BlueCaster
     # sends it depending on the PC's Wi-Fi): the controller must answer it
     # and streaming go on as usual
     Case('afh', 'stereo', r'LC3 48000 Hz 10 ms 155 octets, 2 channel\(s\) over 1 CIS',
-         a2dpwb_args=['--afh', '6,11']),
+         bluecaster_args=['--afh', '6,11']),
     # A controller with LE but no ISO buffers (LE Read Buffer Size v2: 0):
-    # A2DPWB must refuse LE Audio with an error that names ISO
+    # BlueCaster must refuse LE Audio with an error that names ISO
     Case('no-iso-buffers', 'stereo', r'.*', sink_args=['--no-iso-buffers'], expect_error=r'ISO'),
 ]
 
 # The emulator's PACS Sink Audio Locations per sink, in capture order
 # (le_audio/bap.py logs them)
 SINK_LOCATIONS = re.compile(r'LE Audio sink, locations 0x([0-9a-fA-F]+)')
-# a2dpwb_decode --le-audio: a CIS of a stream, its Audio_Channel_Allocation
+# bluecaster_decode --le-audio: a CIS of a stream, its Audio_Channel_Allocation
 # (Config Codec) and the capture (sink) it is in
 CIS_LINE = re.compile(r'^  CIS 0x([0-9A-F]+) +: ASE (\d+) on ACL 0x[0-9A-F]+, location\(s\) (\S+), '
                       r'.*, capture (\d+)$', re.M)
@@ -79,7 +79,7 @@ def check_locations(ctx):
 
 def check(case, ctx):
     failures = []
-    log = ctx['a2dpwb_log']
+    log = ctx['bluecaster_log']
     failures += check_locations(ctx)
     # Bumble's complaints about a command the emulated controller did not
     # answer (BTstack then waits for ever)
@@ -87,9 +87,9 @@ def check(case, ctx):
         if complaint in ctx['sink_log']:
             failures.append(f'emulated controller: "{complaint}" (a command was not answered)')
     if case.name == 'afh' and 'AFH host classification: avoid Wi-Fi' not in log:
-        failures.append('A2DPWB did not send the AFH host channel classification (--afh 6,11)')
+        failures.append('BlueCaster did not send the AFH host channel classification (--afh 6,11)')
     if 'Streaming LE Audio:' not in log:
-        failures.append('A2DPWB did not report "Streaming LE Audio"')
+        failures.append('BlueCaster did not report "Streaming LE Audio"')
     # The stream must be torn down in order: Disable / Release / Remove CIG
     for step in ('unicast: Disable', 'unicast: Release', 'CIG 1 removed'):
         if step not in log:
@@ -104,7 +104,7 @@ def check(case, ctx):
         if timeout in log and not case.lossy:
             failures.append(f'teardown: {timeout}')
     if 'release-cis' in case.tags and 'disconnecting CIS' not in log:
-        failures.append('A2DPWB did not disconnect the CIS before Release')
+        failures.append('BlueCaster did not disconnect the CIS before Release')
     if 'contexts-later' in case.tags and 'no audio context available for Enable' not in log:
-        failures.append('A2DPWB did not wait for an available audio context')
+        failures.append('BlueCaster did not wait for an available audio context')
     return failures

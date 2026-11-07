@@ -1,4 +1,4 @@
-//! BTstack constants A2DPWB uses (btstack_defines.h, bluetooth.h, avdtp.h,
+//! BTstack constants BlueCaster uses (btstack_defines.h, bluetooth.h, avdtp.h,
 //! avrcp.h of the BTstack version in extern/btstack)
 
 // ---- HCI packet types (H4) ----

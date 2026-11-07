@@ -73,6 +73,12 @@ impl ZipWriter {
         self.entries.len()
     }
 
+    /// The entries' names, in the order added
+    #[cfg(test)]
+    pub fn names(&self) -> Vec<String> {
+        self.entries.iter().map(|e| String::from_utf8_lossy(&e.name).into_owned()).collect()
+    }
+
     /// The archive's bytes
     pub fn finish(mut self) -> Vec<u8> {
         let start = self.out.len() as u32;
@@ -132,7 +138,7 @@ mod tests {
         z.add("a.txt", text.as_bytes());
         z.add("dir/b.bin", &[1, 2, 3]);
         assert_eq!(z.len(), 2);
-        let dir = std::env::temp_dir().join(format!("a2dpwb-zip-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-zip-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.zip");
         std::fs::write(&path, z.finish()).unwrap();

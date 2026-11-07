@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use a2dpwb_core::{Service, ServiceOptions};
+use bluecaster_core::{Service, ServiceOptions};
 use bt_host::HciCapture;
 use ipc::{AclPacket, EncodeLoad, Event, IsoCounters, LinkCounters, LinkSample, LinkTotals};
 
@@ -33,11 +33,11 @@ enum UserEvent {
     Quit,
 }
 
-/// Starts the UI (a2dpwb.exe next to us), `arg` saying what it opens; a
+/// Starts the UI (bluecaster.exe next to us), `arg` saying what it opens; a
 /// running UI gets it instead
 fn launch_ui(arg: Option<&str>) {
     let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) else { return };
-    let ui = dir.join("a2dpwb.exe");
+    let ui = dir.join("bluecaster.exe");
     if !ui.exists() {
         tracing::warn!("UI not found: {}", ui.display());
         return;
@@ -50,13 +50,13 @@ fn launch_ui(arg: Option<&str>) {
 }
 
 fn tr(lang: &str, key: &str, default: &str) -> String {
-    a2dpwb_core::messages::translate(lang, key, default)
+    bluecaster_core::messages::translate(lang, key, default)
 }
 
 fn build_menu(view: &TrayView) -> Menu {
     let lang = view.language.as_str();
     let menu = Menu::new();
-    let _ = menu.append(&MenuItem::with_id("open", tr(lang, "tray.open", "Open A2DP Windows Bridge"), true, None));
+    let _ = menu.append(&MenuItem::with_id("open", tr(lang, "tray.open", "Open BlueCaster"), true, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
     // Each by its device (issue #86: profile names are not shown)
     for (i, (name, label)) in view.profiles.iter().zip(&view.labels).take(TRAY_PROFILES).enumerate() {
@@ -153,7 +153,7 @@ fn link_sample(
     };
     let (bps, pps) = if iso.is_some() { (0.0, 0.0) } else { (bps, pps) };
     let link = stats.link();
-    let air = a2dpwb_core::link::airtime_on(pps, bps, link.remote_features.as_ref());
+    let air = bluecaster_core::link::airtime_on(pps, bps, link.remote_features.as_ref());
     let since = total.since(&start);
     let radio = stats.radio();
     // The most the controller held since the last sample: while an A2DP
@@ -181,14 +181,18 @@ fn link_sample(
         }),
         bandwidth_share: air.map(|a| a.bandwidth_share),
         queue_capacity: iso.is_none().then_some(bt_host::stats::MEDIA_QUEUE_PACKETS as u32),
-        queue_ms: iso.is_none().then(|| stats.queue_wait_ms.load(Ordering::Relaxed)),
+        // With the audio held back unencoded (developer mode), which waits
+        // for the radio as well
+        queue_ms: iso
+            .is_none()
+            .then(|| stats.queue_wait_ms.load(Ordering::Relaxed) + stats.held_ms.load(Ordering::Relaxed)),
         encode,
         sink_delay_ms: if iso.is_some() { None } else { stats.sink_delay().map(|d| d.as_secs_f64() * 1000.0) },
         source_rate: Some(source_rate),
         counters: Some(LinkCounters { total, stream_start: start, stream_starts: starts }),
         iso,
         controller_backlog: a2dp.then_some(backlog as u32),
-        controller_backlog_ms: a2dp.then(|| a2dpwb_core::link::backlog_ms(backlog, acl_ps)).flatten(),
+        controller_backlog_ms: a2dp.then(|| bluecaster_core::link::backlog_ms(backlog, acl_ps)).flatten(),
         remote_chip: remote_chip(&link).map(Box::new),
         link_details: link_details(&link).map(Box::new),
         capture_discontinuities: Some(since.capture_discontinuities),
@@ -215,7 +219,7 @@ async fn sampler(state: Arc<CoreState>) {
             if let Some((t, prev)) = last_rates {
                 let d = total.since(&prev);
                 let secs = now.duration_since(t).as_secs_f64();
-                state.set_rates(Some(a2dpwb_core::link::audio_rates(d.packets, d.bytes, d.capture_frames, secs)));
+                state.set_rates(Some(bluecaster_core::link::audio_rates(d.packets, d.bytes, d.capture_frames, secs)));
             }
             last_rates = Some((now, total));
             state.publish_receiver();
@@ -284,6 +288,44 @@ fn replace_v1() -> Option<win_sys::single_instance::SingleInstance> {
     }
 }
 
+/// How long the start waits for a 2.0.x core to exit when asked (it stops
+/// its stream and releases the adapter first)
+const OLD_CORE_EXIT_WAIT: Duration = Duration::from_secs(8);
+
+/// How often the core tries to take the 2.0.x core's mutex while it could
+/// not (the old core did not exit when asked)
+const OLD_CORE_CHECK: Duration = Duration::from_secs(5);
+
+/// A 2.0.x core (A2DPWB) that runs is asked to exit, like `--quit` does,
+/// and waited for; then its mutex is held too, so that a 2.0.x core started
+/// later (an old shortcut) quits at once and its UI talks to this core over
+/// the old pipe name. None if it still runs: [`hold_old_core_mutex`] takes
+/// the mutex once it has exited.
+fn replace_old_core() -> Option<win_sys::single_instance::SingleInstance> {
+    crate::quit::stop_old_core(OLD_CORE_EXIT_WAIT);
+    match win_sys::single_instance::SingleInstance::acquire(&ipc::old_core_mutex_name()) {
+        Ok(g) => g,
+        Err(e) => {
+            tracing::warn!("2.0.x core mutex: {e}");
+            None
+        }
+    }
+}
+
+/// Takes the 2.0.x core's mutex once it is free and holds it from then on
+async fn hold_old_core_mutex() {
+    let name = ipc::old_core_mutex_name();
+    let mut tick = tokio::time::interval(OLD_CORE_CHECK);
+    loop {
+        tick.tick().await;
+        if let Ok(Some(guard)) = win_sys::single_instance::SingleInstance::acquire(&name) {
+            tracing::info!("the 2.0.x core has exited: {name} is held now");
+            std::future::pending::<()>().await;
+            drop(guard);
+        }
+    }
+}
+
 /// While v1 still runs (it did not exit when asked): the UI asks the user to
 /// exit it. Once it has exited, v1's mutex is taken and held from then on.
 async fn watch_v1(state: Arc<CoreState>) {
@@ -327,8 +369,12 @@ pub fn run(args: &[String]) -> i32 {
             return 1;
         }
     };
+    // Before the service starts, so that a 2.0.x core has released the
+    // adapter
+    let old_core_guard = replace_old_core();
+    let holds_old_core_mutex = old_core_guard.is_some();
     // Before the service starts, so that v1 has released the adapter. A
-    // development instance (A2DPWB_INSTANCE) leaves v1 alone.
+    // development instance (BLUECASTER_INSTANCE) leaves v1 alone.
     let replaces_v1 = ipc::instance_suffix().is_empty();
     let v1_guard = if replaces_v1 { replace_v1() } else { None };
     let watches_v1 = replaces_v1 && v1_guard.is_none();
@@ -337,14 +383,20 @@ pub fn run(args: &[String]) -> i32 {
 
     let (tx, rx) = mpsc::channel();
     let capture = HciCapture::new();
+    // Now that the 2.0.x core and v1 have been stopped: moves their folder
+    // if the first call (main, before the log) had to leave it. This
+    // process holds their mutexes itself now, which the check would take
+    // for the old program; while one of them still runs the folder waits
+    // for the next start.
+    if holds_old_core_mutex && !watches_v1 {
+        bluecaster_core::paths::old_apps_stopped();
+    }
+    let config_dir = bluecaster_core::paths::config_dir();
+    if let Some(note) = bluecaster_core::paths::take_folder_note() {
+        tracing::info!("{note}");
+    }
     let service = Arc::new(Service::new(
-        ServiceOptions {
-            config_dir: a2dpwb_core::paths::config_dir(),
-            hci_tcp: None,
-            capture,
-            afh: None,
-            usb: Default::default(),
-        },
+        ServiceOptions { config_dir, hci_tcp: None, capture, afh: None, usb: Default::default() },
         tx,
     ));
     let state = {
@@ -401,14 +453,17 @@ pub fn run(args: &[String]) -> i32 {
                     if watches_v1 {
                         tokio::spawn(watch_v1(state.clone()));
                     }
-                    let name = match win_sys::pipe::current_user_sid() {
-                        Ok(sid) => ipc::pipe_name(&sid),
+                    if !holds_old_core_mutex {
+                        tokio::spawn(hold_old_core_mutex());
+                    }
+                    let (name, old_name) = match win_sys::pipe::current_user_sid() {
+                        Ok(sid) => (ipc::pipe_name(&sid), ipc::old_pipe_name(&sid)),
                         Err(e) => {
                             tracing::error!("cannot read the user SID: {e}");
                             return;
                         }
                     };
-                    if let Err(e) = crate::server::serve(state, name).await {
+                    if let Err(e) = crate::server::serve(state, name, old_name).await {
                         tracing::error!("IPC server: {e}");
                         let _ = quit.send_event(UserEvent::Quit);
                     }
@@ -443,7 +498,7 @@ pub fn run(args: &[String]) -> i32 {
             TaoEvent::NewEvents(StartCause::Init) => {
                 let v = view.clone().unwrap_or(TrayView {
                     streaming: false,
-                    tooltip: "A2DP Windows Bridge".into(),
+                    tooltip: "BlueCaster".into(),
                     profiles: Vec::new(),
                     labels: Vec::new(),
                     active_profile: None,

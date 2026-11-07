@@ -6,7 +6,7 @@ nav_order: 4.5
 
 # Adding Chip Support
 
-A2DP Windows Bridge drives the Bluetooth adapter itself (WinUSB), so it has to do what the vendor's Windows driver does before the adapter works: on many chips, load firmware into it at every start. Realtek, Intel, Broadcom and CSR adapters work today; MediaTek (MT7921, MT7922 and others) and Qualcomm (QCA61x4) do not, because nobody has written their loader yet.
+BlueCaster drives the Bluetooth adapter itself (WinUSB), so it has to do what the vendor's Windows driver does before the adapter works: on many chips, load firmware into it at every start. Realtek, Intel, Broadcom and CSR adapters work today; MediaTek (MT7921, MT7922 and others) and Qualcomm (QCA61x4) do not, because nobody has written their loader yet.
 
 This page is the procedure for adding one. You need an adapter with that chip; the maintainers do not have them. Even without writing code, you can help: steps 1 and 2 give the report a contributor needs.
 
@@ -24,20 +24,20 @@ The design behind this, and what is still open, is in the [developer note](chip-
 ## What you need
 
 - The adapter, plugged into a Windows 10 / 11 PC
-- A2DP Windows Bridge 2.0.2 or later (the steps below only need the app)
+- BlueCaster 2.0.2 or later (the steps below only need the app)
 - To write the loader: a build setup as in [Building](building), and [USBPcap](https://desowin.org/usbpcap/) with [Wireshark](https://www.wireshark.org/) to record what Windows' own driver does
 
-## Step 1: Give the adapter to A2DP Windows Bridge
+## Step 1: Give the adapter to BlueCaster
 
 1. **Settings > Developer mode**: on
-2. **Adapters**: on the adapter's card, **Replace with WinUSB driver** (Windows asks for administrator permission). For a chip A2DP Windows Bridge cannot use yet, this button is only enabled in developer mode
+2. **Adapters**: on the adapter's card, **Replace with WinUSB driver** (Windows asks for administrator permission). For a chip BlueCaster cannot use yet, this button is only enabled in developer mode
 3. If the card says **Replug or restart Windows**, do that
 
 While the adapter has WinUSB, Windows' own Bluetooth cannot use it. On a laptop whose only Bluetooth is that chip, keyboards, mice and headsets connected through Windows stop working until you put the driver back: **Restore original driver** on the same card.
 
 ## Step 2: Read what the chip says (chip probe)
 
-On the adapter's card, **Firmware** part: **Read chip info**. The Bluetooth stack stops for a moment, the probe runs, and Explorer opens with the report, `probe-<date>_<time>.json` in `logs\probe\` of the settings folder (`%APPDATA%\A2DPWB`). The newest 10 are kept.
+On the adapter's card, **Firmware** part: **Read chip info**. The Bluetooth stack stops for a moment, the probe runs, and Explorer opens with the report, `probe-<date>_<time>.json` in `logs\probe\` of the settings folder (`%APPDATA%\BlueCaster`). The newest 10 are kept.
 
 The probe only reads. It sends no HCI Reset and no vendor command:
 
@@ -55,10 +55,10 @@ It also records the USB configuration Windows reports (interfaces, endpoints) an
 From the command line, with the adapter's VID:PID or instance ID (the adapter card shows them):
 
 ```bat
-"%LOCALAPPDATA%\A2DP Windows Bridge\a2dpwb-core.exe" --cli -u 0e8d:7961 --probe
+"%LOCALAPPDATA%\BlueCaster\bluecaster-core.exe" --cli -u 0e8d:7961 --probe
 ```
 
-Quit A2DP Windows Bridge from the tray first, as both cannot use the adapter at once.
+Quit BlueCaster from the tray first, as both cannot use the adapter at once.
 
 **Sending a report**: after **Read chip info**, the adapter's card shows what was read and a **Report on GitHub** button. It opens a new issue with the version, the adapter, that summary and your Windows build filled in, and shows the report file in Explorer: drag it into the issue, and add where the adapter came from (built into a laptop: its model). The report contains the adapter's Bluetooth address and name; it does not contain anything about your headphones. A **diagnostic bundle** (Diagnostics screen) with HCI captures included also carries the probe reports, under `probe/`.
 
@@ -77,18 +77,18 @@ What to look for, in order:
 - **HCI commands** (class requests, `bmRequestType` 0x20) with opcodes 0xFC00 to 0xFFFF: vendor commands. A long run of the same opcode with large parameters is the firmware being sent; its answers say how each part is acknowledged
 - **Events** that are not Command Complete / Status: vendor events (code 0xFF, or a vendor's own code such as 0xE4), for example "firmware started", or the acknowledgment of each firmware part in place of a Command Complete
 - **Bulk OUT** data before the first HCI Reset: some chips take the firmware on the ACL pipe
-- Where the file comes from: compare the data sent with the files in the driver's folder (Device Manager > driver details, or `C:\Windows\System32\DriverStore\FileRepository\`) and with the chip's files in [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) (`mediatek/`, `qca/`), which may be redistributed and which A2DP Windows Bridge users can download
+- Where the file comes from: compare the data sent with the files in the driver's folder (Device Manager > driver details, or `C:\Windows\System32\DriverStore\FileRepository\`) and with the chip's files in [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) (`mediatek/`, `qca/`), which may be redistributed and which BlueCaster users can download
 
 Note any delay the driver keeps between steps (the capture's timestamps): a chip that is still resetting does not answer.
 
 {: .warning }
-Work from captures, probe reports and vendor documentation. Do not copy or closely follow GPL code, such as the Linux kernel's `btmtk` or `btqca` drivers: A2DP Windows Bridge is MIT licensed, and a loader derived from them could not be included.
+Work from captures, probe reports and vendor documentation. Do not copy or closely follow GPL code, such as the Linux kernel's `btmtk` or `btqca` drivers: BlueCaster is MIT licensed, and a loader derived from them could not be included.
 
 ## Try it without a build: chip scripts {#chip-scripts}
 
 Before writing a loader, try what the capture showed on the adapter: a **chip script** is the sequence as text, one request per line, run in place of the Bluetooth stack. Someone without the adapter can write one and send it to someone who has it; the result comes back as a report, with no new build.
 
-**Running one**: developer mode, **Developer > Chip**: choose the adapter (with WinUSB), type the script or open a file, **Run**. Each line's answer shows below, and **Show Report** opens `script-<date>_<time>.json` in `logs\probe\` (the script is in it). From the command line: `a2dpwb-core --cli -u <adapter> --script <file>`.
+**Running one**: developer mode, **Developer > Chip**: choose the adapter (with WinUSB), type the script or open a file, **Run**. Each line's answer shows below, and **Show Report** opens `script-<date>_<time>.json` in `logs\probe\` (the script is in it). From the command line: `bluecaster-core --cli -u <adapter> --script <file>`.
 
 ```text
 # one request per line; numbers are hexadecimal (0x optional) except wait, timeout= and chunk=
@@ -118,8 +118,8 @@ Paths from here on are from the repository root. Three crates matter:
 | Crate (package) | Folder | What is there |
 |:--|:--|:--|
 | `bt-host` | `app/src/crates/bt-host` | The Bluetooth host: loaders, the probe, chip detection |
-| `a2dpwb-core` (library) | `app/src/crates/core` | Settings and adapters: which loader runs |
-| `a2dpwb-core-exe` | `app/src/core` | The service executable (`a2dpwb-core.exe`): the window's requests, adapter notes |
+| `bluecaster-core` (library) | `app/src/crates/core` | Settings and adapters: which loader runs |
+| `bluecaster-core-exe` | `app/src/core` | The service executable (`bluecaster-core.exe`): the window's requests, adapter notes |
 
 The last two both have "core" in their name; the package names above are what `cargo -p` takes.
 
@@ -161,7 +161,7 @@ Helpers, so a loader does not parse bytes by hand:
 - `hci_command(opcode, params)` builds a command
 - `parse_event(event)` gives `HciEvent::Complete { opcode, status, ret }` (return parameters after the status), `Status { opcode, status }`, `Vendor(params)` (event 0xFF) or `Other { code, params }` (any other code, including a vendor's own, such as 0xE4)
 
-**Firmware files**: the loader gets a `FileReader` and asks it for a file **name without a folder** (`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`). The app looks in the firmware folder (`%APPDATA%\A2DPWB\firmware`) and in the vendor's subfolder there (`firmware\mediatek\`), as linux-firmware lays them out; step 6 sets that subfolder.
+**Firmware files**: the loader gets a `FileReader` and asks it for a file **name without a folder** (`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`). The app looks in the firmware folder (`%APPDATA%\BlueCaster\firmware`) and in the vendor's subfolder there (`firmware\mediatek\`), as linux-firmware lays them out; step 6 sets that subfolder.
 
 ### Patterns
 
@@ -233,15 +233,15 @@ Keep each file's line endings: some source files use CRLF, others LF. Some edito
 
 **Docs**:
 
-13. The chip table in `docs/setup.md` and `docs/*/setup.md` (all languages): a row like Intel's, with the chips it covers, the firmware files and where they go (the firmware folder: `%APPDATA%\A2DPWB\firmware`, or its `<vendor>` subfolder; older rows still say "config folder") and *Experimental.* Name the window's buttons as each language's `app/lang/*.json` has them (`ui.nav.adapter` for the Adapters screen, `firmware.open_folder` for the button that opens that folder). Whole vendor: take it out of the "Not supported" row. Some chips: keep the vendor there and name the chips still not supported. Add the vendor to the sentence at the top of the Firmware section ("Intel and Broadcom adapters (experimental) may need firmware files of their own")
+13. The chip table in `docs/setup.md` and `docs/*/setup.md` (all languages): a row like Intel's, with the chips it covers, the firmware files and where they go (the firmware folder: `%APPDATA%\BlueCaster\firmware`, or its `<vendor>` subfolder; older rows still say "config folder") and *Experimental.* Name the window's buttons as each language's `app/lang/*.json` has them (`ui.nav.adapter` for the Adapters screen, `firmware.open_folder` for the button that opens that folder). Whole vendor: take it out of the "Not supported" row. Some chips: keep the vendor there and name the chips still not supported. Add the vendor to the sentence at the top of the Firmware section ("Intel and Broadcom adapters (experimental) may need firmware files of their own")
 14. [Verified Hardware](hardware) (`docs/hardware.md`) once someone has used it, and the opening of this page (`docs/chip-support.md`, all languages), which names the vendors without a loader (some chips: "the other <vendor> chips")
 
 ## Step 7: Try it on the adapter
 
-Build in the repository root (`cargo build --release -p a2dpwb-core-exe`), quit the installed app (from its tray icon), and run the core from the command line with an HCI capture:
+Build in the repository root (`cargo build --release -p bluecaster-core-exe`), quit the installed app (from its tray icon), and run the core from the command line with an HCI capture:
 
 ```bat
-target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
+target\release\bluecaster-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
 ```
 
 The log shows each step; `loader.pklg` opens in Wireshark with every command, event and control transfer in order. Unplug the adapter (or shut down) and try again: the download must work from a cold chip, and do nothing when the firmware already runs.
@@ -271,7 +271,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 python tools/check_lang.py
 ```
 
-Without Node.js, run the tests and clippy on the three crates above instead (`-p bt-host -p a2dpwb-core -p a2dpwb-core-exe`), leave the UI checks to the pull request's CI, and say so in the pull request. `pwsh ./build.ps1 -Test` runs everything.
+Without Node.js, run the tests and clippy on the three crates above instead (`-p bt-host -p bluecaster-core -p bluecaster-core-exe`), leave the UI checks to the pull request's CI, and say so in the pull request. `pwsh ./build.ps1 -Test` runs everything.
 
 Clippy also checks names: a `State` variant called `PatchState` fails `enum_variant_names`; call it `Patch`. `check_lang.py` may report "long hints left" that were there before your change; only errors and missing keys are yours to fix.
 

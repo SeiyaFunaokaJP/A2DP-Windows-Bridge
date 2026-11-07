@@ -8,6 +8,6 @@ if errorlevel 1 (
     exit /b 1
 )
 pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0build.ps1" %*
-set "A2DPWB_RC=%ERRORLEVEL%"
+set "BLUECASTER_RC=%ERRORLEVEL%"
 if "%~1"=="" pause
-exit /b %A2DPWB_RC%
+exit /b %BLUECASTER_RC%

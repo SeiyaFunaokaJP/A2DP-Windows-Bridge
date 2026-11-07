@@ -1,7 +1,7 @@
 //! CCP: the call model of the GTBS server on the PC (v1 le_audio::ccp in
 //! le_audio_ccp.{h,cpp}).
 //!
-//! A2DPWB has no telephony: Windows has no generic call-state API and the LE
+//! BlueCaster has no telephony: Windows has no generic call-state API and the LE
 //! Audio path has no microphone. The GTBS server (bt-host's CCP module) is
 //! spec-correct around this in-memory model, which two sides drive:
 //! - the headset, through the Call Control Point (Accept, Terminate, Local
@@ -169,7 +169,7 @@ pub struct Call {
 /// is allowed.
 pub trait Backend {
     fn provider_name(&self) -> String {
-        "A2DPWB".into()
+        "BlueCaster".into()
     }
     /// Uniform Caller Identifier (Assigned Numbers); "un000" = unknown
     fn uci(&self) -> String {
@@ -1051,7 +1051,7 @@ mod tests {
         let b = SimBackend;
         assert_eq!(
             (b.provider_name(), b.uci(), b.technology(), b.uri_schemes()),
-            ("A2DPWB".into(), "un000".into(), 4, "tel,sip".into())
+            ("BlueCaster".into(), "un000".into(), 4, "tel,sip".into())
         );
         assert!(b.supports_local_hold());
     }

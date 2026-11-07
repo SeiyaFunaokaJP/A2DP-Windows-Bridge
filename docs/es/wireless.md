@@ -25,7 +25,7 @@ Pruébelas de una en una y escuche unos minutos entre una y otra: si los cortes 
 
 ### 1. Apague los demás adaptadores Bluetooth de este PC
 
-El Bluetooth propio de Windows (el adaptador integrado) sigue transmitiendo mientras A2DPWB transmite por el adaptador USB que tiene al lado, y los dos comparten una banda y a menudo la misma zona de antena. También es donde se conecta la app de los auriculares en el PC, lo que da a los auriculares un segundo enlace (consulte el punto siguiente). Desactive el adaptador integrado en el Administrador de dispositivos mientras A2DPWB está en uso, o al menos para la prueba. A2DPWB muestra un aviso en Inicio cuando detecta otro adaptador activo.
+El Bluetooth propio de Windows (el adaptador integrado) sigue transmitiendo mientras BlueCaster transmite por el adaptador USB que tiene al lado, y los dos comparten una banda y a menudo la misma zona de antena. También es donde se conecta la app de los auriculares en el PC, lo que da a los auriculares un segundo enlace (consulte el punto siguiente). Desactive el adaptador integrado en el Administrador de dispositivos mientras BlueCaster está en uso, o al menos para la prueba. BlueCaster muestra un aviso en Inicio cuando detecta otro adaptador activo.
 
 Un segundo adaptador activo es una de las dos causas que un probador veterano señaló para las conexiones inestables y los cambios de códec.
 
@@ -33,9 +33,9 @@ Un segundo adaptador activo es una de las dos causas que un probador veterano se
 
 La conexión doble (multipunto) permite a los auriculares estar conectados a la vez a un teléfono y al PC. Cada conexión cuesta tiempo de radio, y algunos auriculares además ofrecen menos códecs, rechazan el enlace manos libres (así que no hay nivel de batería) o reservan un extremo de códec para el otro dispositivo mientras está activa. La app complementaria de los auriculares también cuenta: mantiene su propio enlace abierto, en el teléfono o en el Bluetooth de este PC, aunque solo la use para la batería o el ecualizador.
 
-Para la prueba: desactive la conexión doble en la app de los auriculares, apague el Bluetooth del teléfono, cierre la app complementaria en el teléfono y en el PC, y vuelva a conectar desde A2DPWB.
+Para la prueba: desactive la conexión doble en la app de los auriculares, apague el Bluetooth del teléfono, cierre la app complementaria en el teléfono y en el PC, y vuelva a conectar desde BlueCaster.
 
-La conexión doble es la otra causa que señaló ese probador; los cambios de códec se volvieron mucho más fluidos al desconectar la app complementaria. Una primera conexión fue rechazada mientras los auriculares seguían conectados a un teléfono con LE Audio activado, y varios auriculares de botón ofrecieron a A2DPWB menos códecs o una tasa de bits menor mientras intervenía un teléfono o su app. El LDAC de Sony está desactivado mientras el multipunto de los auriculares está activado.
+La conexión doble es la otra causa que señaló ese probador; los cambios de códec se volvieron mucho más fluidos al desconectar la app complementaria. Una primera conexión fue rechazada mientras los auriculares seguían conectados a un teléfono con LE Audio activado, y varios auriculares de botón ofrecieron a BlueCaster menos códecs o una tasa de bits menor mientras intervenía un teléfono o su app. El LDAC de Sony está desactivado mientras el multipunto de los auriculares está activado.
 
 ### 3. Cambie de sitio el adaptador
 
@@ -47,7 +47,7 @@ Un receptor de ratón gaming junto al adaptador, en un PC sin adaptador Wi-Fi qu
 
 ### 4. Mantenga la Wi-Fi de 2.4 GHz lejos del enlace
 
-Ponga este PC y, si puede, el teléfono y los demás dispositivos cercanos en una Wi-Fi de 5 o 6 GHz. Si la de 2.4 GHz tiene que seguir activa, A2DPWB indica al adaptador que evite el canal al que está conectado este PC (AFH, Automático). No puede ver la Wi-Fi cuando el PC no tiene adaptador Wi-Fi, va por cable o está en otra banda distinta de la red de 2.4 GHz del router: en ese caso, averigüe el canal del router (su página de administración, o una app de análisis Wi-Fi en el teléfono), fíjelo allí si cambia de canal e introdúzcalo en **Adaptador > Evitar canales Wi-Fi > Manual**, por ejemplo `6` u `11`. Consulte [Calidad del enlace y AFH](usage#link-quality).
+Ponga este PC y, si puede, el teléfono y los demás dispositivos cercanos en una Wi-Fi de 5 o 6 GHz. Si la de 2.4 GHz tiene que seguir activa, BlueCaster indica al adaptador que evite el canal al que está conectado este PC (AFH, Automático). No puede ver la Wi-Fi cuando el PC no tiene adaptador Wi-Fi, va por cable o está en otra banda distinta de la red de 2.4 GHz del router: en ese caso, averigüe el canal del router (su página de administración, o una app de análisis Wi-Fi en el teléfono), fíjelo allí si cambia de canal e introdúzcalo en **Adaptador > Evitar canales Wi-Fi > Manual**, por ejemplo `6` u `11`. Consulte [Calidad del enlace y AFH](usage#link-quality).
 
 LDAC 990 kbps perdió unos 1.700 paquetes en 5 minutos en una red de 2.4 GHz muy cargada, y 33 en 15 minutos una vez fijado el router en un canal y puesto el AFH en Manual con ese canal.
 
@@ -61,7 +61,7 @@ Un enlace Bluetooth transporta poco más de 1 Mbps en el mejor de los casos; LDA
 
 En un enlace que transportaba 750 kbps, todo lo que superaba 500 kbps se cortaba, mientras que ABR no tuvo ningún corte. SBC XQ por encima del bitpool 36 se quedó en silencio en unos auriculares de botón económicos cuya capacidad SBC permitía 53. En los mismos auriculares, LHDC V5 se cortaba al azar donde LDAC era estable. Un enlace limpio sí lo transporta: el adaptador integrado de un portátil transmitió LDAC 990 kbps durante 5 minutos con 0 paquetes perdidos.
 
-### 6. Actualice A2DPWB
+### 6. Actualice BlueCaster
 
 Varios tirones que parecían de radio eran la aplicación. 2.0.1 enviaba el audio más rápido que en tiempo real cuando un cable virtual lo entregaba tarde, lo que los auriculares oyen como un segundo de sonido y otro de silencio; una transmisión tras Desconectar > Conectar se entrecortaba hasta reiniciar la aplicación; una pila Bluetooth obsoleta se negaba a conectar tras la suspensión, una sesión larga o muchos reinicios. Todo está corregido en la versión actual ([Actualizaciones](usage#updates)). Si el problema desaparece tras actualizar, no hace falta ningún informe.
 
@@ -81,9 +81,9 @@ El lado receptor no se puede ver desde el PC. Para medir lo que llega de verdad,
 
 ## Lo que deciden los auriculares {#headphones}
 
-Algunos informes de «solo me da 400 kbps» o «falta LDAC» no tienen nada que ver con el enlace: los auriculares indican a A2DPWB qué códecs y tasas de bits aceptan, y A2DPWB lo respeta, como hace Android. La línea de registro `remote supports ...` muestra lo que ofrecieron.
+Algunos informes de «solo me da 400 kbps» o «falta LDAC» no tienen nada que ver con el enlace: los auriculares indican a BlueCaster qué códecs y tasas de bits aceptan, y BlueCaster lo respeta, como hace Android. La línea de registro `remote supports ...` muestra lo que ofrecieron.
 
-- Los **Huawei FreeBuds** ofrecen LDAC a un PC solo después de que su app AI Life haya activado «priorizar la calidad de sonido» con la multiconexión desactivada; si no, solo ofrecen SBC y AAC. Desde 2.0.2, A2DPWB les pide ese modo por sí mismo cuando se elige LDAC con la selección automática desactivada.
+- Los **Huawei FreeBuds** ofrecen LDAC a un PC solo después de que su app AI Life haya activado «priorizar la calidad de sonido» con la multiconexión desactivada; si no, solo ofrecen SBC y AAC. Desde 2.0.2, BlueCaster les pide ese modo por sí mismo cuando se elige LDAC con la selección automática desactivada.
 - Los **auriculares LHDC V5** anuncian una tasa de bits máxima. En el modo de 96 kHz de su app, un modelo anunciaba 400 kbps; en su modo de 192 kHz, 1000 kbps. Los OPPO Enco Free4 y Enco X4 anuncian 400 kbps y 48 kHz a un PC diga lo que diga la app; 2.0.2 pide Hi-Res a los auriculares OPPO por su propio protocolo cuando LHDC V5 transmite con ABR desactivado, y vuelve a conectar una vez para ello; aún sin confirmar con auriculares reales.
 - **ABR** mantiene LHDC V5 en 400 kbps o menos, como en Android.
 - Un códec que los auriculares **reservan para otro dispositivo** falta mientras ese dispositivo está conectado ([Falta un códec mientras los auriculares están conectados a otro dispositivo](usage#sep-in-use)).
@@ -107,7 +107,7 @@ Todos los informes recibidos hasta ahora sobre el lado inalámbrico, agrupados s
 |:--|:--|:--|
 | **Entorno**: la radio, la colocación, otro dispositivo | Alrededor de un tercio | Wi-Fi de 2.4 GHz en los mismos canales, un receptor de ratón gaming junto al adaptador, un segundo adaptador Bluetooth activo, conexión doble y una app complementaria en ejecución, una tasa de bits sin margen en auriculares true wireless, una señal débil de unos auriculares de botón pequeños, un archivo de firmware que era una página web guardada |
 | **Auriculares**: lo que ofrecen a un PC | Alrededor de un cuarto | LDAC solo tras el modo de calidad de sonido de Huawei, LHDC V5 limitado a 400 kbps por el modo propio de los auriculares, Hi-Res configurado por el protocolo de OPPO, un códec reservado para el teléfono |
-| **Aplicación**: un error de A2DPWB, todos corregidos | Menos de la mitad | Audio enviado más rápido que en tiempo real con un cable virtual, tirones tras Desconectar > Conectar, una pila Bluetooth obsoleta tras la suspensión o muchos reinicios, el enlace mantenido tras Desconectar, auriculares que conectan primero confundidos con una clave incorrecta, una caché de códecs que ocultaba LDAC, adaptadores no reconocidos (un chip, una clase USB, una vinculación de controlador que aún no estaba activa) |
+| **Aplicación**: un error de BlueCaster, todos corregidos | Menos de la mitad | Audio enviado más rápido que en tiempo real con un cable virtual, tirones tras Desconectar > Conectar, una pila Bluetooth obsoleta tras la suspensión o muchos reinicios, el enlace mantenido tras Desconectar, auriculares que conectan primero confundidos con una clave incorrecta, una caché de códecs que ocultaba LDAC, adaptadores no reconocidos (un chip, una clase USB, una vinculación de controlador que aún no estaba activa) |
 
 Lo que destaca:
 
@@ -118,7 +118,7 @@ Lo que destaca:
 
 ## Cómo informar {#reporting}
 
-Si las comprobaciones anteriores no lo han encontrado, abra un [informe de error](https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/issues/new?template=bug_report.yml) y marque lo que haya probado. Lo que resuelve rápido un informe sobre el lado inalámbrico:
+Si las comprobaciones anteriores no lo han encontrado, abra un [informe de error](https://github.com/SeiyaFunaokaJP/BlueCaster/issues/new?template=bug_report.yml) y marque lo que haya probado. Lo que resuelve rápido un informe sobre el lado inalámbrico:
 
 1. **Diagnóstico > Informar de un problema**, **Registro detallado** en **Detallado (debug)**, y después reproduzca el problema.
 2. El **paquete de diagnóstico** (**Paquete de diagnóstico > Guardar…** con **Incluir capturas HCI** activado, después **Informar en GitHub**). Contiene las líneas de estado de la transmisión (cola de envío, paquetes descartados, señal, canales AFH a lo largo del tiempo) y la captura HCI de una conexión fallida, que muestran dónde se detuvieron los paquetes.

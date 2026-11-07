@@ -1,6 +1,6 @@
 //! LC3 / QoS presets (v1 le_audio_presets.{h,cpp}).
 //!
-//! The table holds the BAP 1.0 configurations A2DPWB can use: codec
+//! The table holds the BAP 1.0 configurations BlueCaster can use: codec
 //! configuration settings (BAP Table 3.12, e.g. "48_2" = 48 kHz, 10 ms, 100
 //! octets) combined with a unicast QoS setting (BAP Table 5.2: "_1" low
 //! latency, "_2" high reliability), plus GMAP's low-latency settings for a

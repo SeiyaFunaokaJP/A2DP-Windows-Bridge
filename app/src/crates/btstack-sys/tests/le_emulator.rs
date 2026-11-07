@@ -9,7 +9,7 @@
 //!
 //! ```text
 //! tools\emu\.venv\Scripts\python.exe tools\emu\emu_le_audio_sink.py --port 9311
-//! set A2DPWB_EMU_LE=127.0.0.1:9311
+//! set BLUECASTER_EMU_LE=127.0.0.1:9311
 //! cargo test -p btstack-sys --test le_emulator -- --ignored --nocapture --test-threads 1
 //! ```
 
@@ -205,12 +205,12 @@ impl App for LeApp {
     }
     fn on_att_read(&mut self, _s: &Stack, _con: u16, handle: u16, _offset: u16) -> Result<Vec<u8>, u8> {
         let _ = self.tx.send(Ev::AttRead(handle));
-        Ok(b"A2DPWB".to_vec())
+        Ok(b"BlueCaster".to_vec())
     }
 }
 
 fn emulator() -> String {
-    std::env::var("A2DPWB_EMU_LE").expect("set A2DPWB_EMU_LE=host:port of emu_le_audio_sink.py")
+    std::env::var("BLUECASTER_EMU_LE").expect("set BLUECASTER_EMU_LE=host:port of emu_le_audio_sink.py")
 }
 
 fn wait_for(rx: &mpsc::Receiver<Ev>, mut what: impl FnMut(&Ev) -> bool, secs: u64, seen: &mut Vec<Ev>) -> bool {
@@ -238,7 +238,7 @@ fn start(
     let (tx, rx) = mpsc::channel();
     let (rtx, rrx) = mpsc::channel();
     let address = emulator();
-    let tlv = std::env::temp_dir().join(format!("a2dpwb_le_test_{}.tlv", std::process::id()));
+    let tlv = std::env::temp_dir().join(format!("bluecaster_le_test_{}.tlv", std::process::id()));
     let _ = std::fs::remove_file(&tlv);
     let thread = std::thread::spawn(move || {
         btstack_sys::run(move |s, remote| {
@@ -274,7 +274,7 @@ fn start(
 }
 
 #[test]
-#[ignore = "needs tools/emu/emu_le_audio_sink.py (A2DPWB_EMU_LE)"]
+#[ignore = "needs tools/emu/emu_le_audio_sink.py (BLUECASTER_EMU_LE)"]
 fn le_unhidden_init_scan_pair_discover() {
     let sent = Arc::new(Mutex::new(Vec::new()));
     let (rx, remote, thread) = start(false, true, sent.clone());
@@ -314,7 +314,7 @@ fn le_unhidden_init_scan_pair_discover() {
 }
 
 #[test]
-#[ignore = "needs tools/emu/emu_le_audio_sink.py (A2DPWB_EMU_LE)"]
+#[ignore = "needs tools/emu/emu_le_audio_sink.py (BLUECASTER_EMU_LE)"]
 fn le_hidden_init() {
     let sent = Arc::new(Mutex::new(Vec::new()));
     let (rx, remote, thread) = start(true, false, sent.clone());
@@ -334,7 +334,7 @@ fn le_hidden_init() {
 }
 
 #[test]
-#[ignore = "needs tools/emu/emu_le_audio_sink.py (A2DPWB_EMU_LE)"]
+#[ignore = "needs tools/emu/emu_le_audio_sink.py (BLUECASTER_EMU_LE)"]
 fn le_unhidden_twice_in_one_process() {
     // LE setup, teardown (SM, ATT server, TLV store) and setup again
     for run in 0..2 {

@@ -10,8 +10,8 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use a2dpwb_core::paths;
-use a2dpwb_core::settings::Settings;
+use bluecaster_core::paths;
+use bluecaster_core::settings::Settings;
 use ipc::CrashReport;
 use serde_json::Value;
 
@@ -64,7 +64,7 @@ pub fn mark_seen(settings: &mut Settings, name: &str) {
     }
 }
 
-/// "a2dpwb-core-20261022-012338-512" -> ("a2dpwb-core", "20261022-012338-512")
+/// "bluecaster-core-20261022-012338-512" -> ("bluecaster-core", "20261022-012338-512")
 fn split_name(name: &str) -> Option<(&str, &str)> {
     // The stamp is the last 19 characters, after a '-'
     let at = name.len().checked_sub(20)?;
@@ -108,10 +108,10 @@ mod tests {
 
     #[test]
     fn names_split_into_process_and_stamp() {
-        assert_eq!(split_name("a2dpwb-core-20261022-012338-512"), Some(("a2dpwb-core", "20261022-012338-512")));
-        assert_eq!(split_name("a2dpwb-ui-20261022-012338-512"), Some(("a2dpwb-ui", "20261022-012338-512")));
+        assert_eq!(split_name("bluecaster-core-20261022-012338-512"), Some(("bluecaster-core", "20261022-012338-512")));
+        assert_eq!(split_name("bluecaster-ui-20261022-012338-512"), Some(("bluecaster-ui", "20261022-012338-512")));
         assert_eq!(split_name("notes"), None);
-        assert_eq!(split_name("a2dpwb-core-2026102x-012338-512"), None);
+        assert_eq!(split_name("bluecaster-core-2026102x-012338-512"), None);
         assert_eq!(split_name("-20261022-012338-512"), None);
         // Another file in the folder, not ASCII: no panic
         assert_eq!(split_name("メモメモメモメモメモメモメモ"), None);
@@ -119,38 +119,42 @@ mod tests {
 
     #[test]
     fn only_reports_newer_than_the_dismissed_one_are_listed() {
-        let dir = std::env::temp_dir().join(format!("a2dpwb-crashes-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bluecaster-crashes-{}", std::process::id()));
         let crash = paths::crash_dir(&dir);
         std::fs::create_dir_all(&crash).unwrap();
         let write = |name: &str, reason: &str| {
             std::fs::write(
                 crash.join(format!("{name}.txt")),
-                format!("a2dpwb-core 2.0.2\nprocess 1 thread 2\n{reason}\nno dump\n"),
+                format!("bluecaster-core 2.0.2\nprocess 1 thread 2\n{reason}\nno dump\n"),
             )
             .unwrap();
         };
-        write("a2dpwb-core-20261020-100000-000", "panic in thread main: old");
-        write("a2dpwb-ui-20261022-012338-512", "panic in thread main: ui");
-        write("a2dpwb-core-20261022-090000-000", "unhandled exception 0xC0000005 at 0x1");
-        std::fs::write(crash.join("a2dpwb-core-20261022-090000-000.dmp"), b"x").unwrap();
+        write("bluecaster-core-20261020-100000-000", "panic in thread main: old");
+        write("bluecaster-ui-20261022-012338-512", "panic in thread main: ui");
+        write("bluecaster-core-20261022-090000-000", "unhandled exception 0xC0000005 at 0x1");
+        std::fs::write(crash.join("bluecaster-core-20261022-090000-000.dmp"), b"x").unwrap();
 
         let mut s = Settings::default();
         // Never dismissed: all recent ones (the files were just written)
         let all = unseen(&dir, &s);
         assert_eq!(
             all.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
-            ["a2dpwb-core-20261022-090000-000", "a2dpwb-ui-20261022-012338-512", "a2dpwb-core-20261020-100000-000"]
+            [
+                "bluecaster-core-20261022-090000-000",
+                "bluecaster-ui-20261022-012338-512",
+                "bluecaster-core-20261020-100000-000"
+            ]
         );
-        assert_eq!(all[0].process, "a2dpwb-core");
+        assert_eq!(all[0].process, "bluecaster-core");
         assert_eq!(all[0].time, "2026-10-22 09:00:00");
         assert_eq!(all[0].reason, "unhandled exception 0xC0000005 at 0x1");
 
-        mark_seen(&mut s, "a2dpwb-ui-20261022-012338-512");
+        mark_seen(&mut s, "bluecaster-ui-20261022-012338-512");
         let left = unseen(&dir, &s);
         assert_eq!(left.len(), 1);
-        assert_eq!(left[0].name, "a2dpwb-core-20261022-090000-000");
+        assert_eq!(left[0].name, "bluecaster-core-20261022-090000-000");
         // An older name does not move the mark back
-        mark_seen(&mut s, "a2dpwb-core-20261020-100000-000");
+        mark_seen(&mut s, "bluecaster-core-20261020-100000-000");
         assert_eq!(unseen(&dir, &s).len(), 1);
         mark_seen(&mut s, &left[0].name);
         assert!(unseen(&dir, &s).is_empty());

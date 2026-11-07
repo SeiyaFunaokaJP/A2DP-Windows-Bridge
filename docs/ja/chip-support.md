@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # チップ対応の追加
 
-A2DP Windows Bridge は Bluetooth アダプターを自分で（WinUSB を通して）動かすため、アダプターが使えるようになるまでにメーカーの Windows ドライバーがしていることを、自分で行う必要があります。多くのチップでは、起動のたびにファームウェアを読み込ませることです。Realtek、Intel、Broadcom、CSR のアダプターはすでに使えますが、MediaTek（MT7921、MT7922 など）と Qualcomm（QCA61x4）は、そのローダーをまだ誰も書いていないため使えません。
+BlueCaster は Bluetooth アダプターを自分で（WinUSB を通して）動かすため、アダプターが使えるようになるまでにメーカーの Windows ドライバーがしていることを、自分で行う必要があります。多くのチップでは、起動のたびにファームウェアを読み込ませることです。Realtek、Intel、Broadcom、CSR のアダプターはすでに使えますが、MediaTek（MT7921、MT7922 など）と Qualcomm（QCA61x4）は、そのローダーをまだ誰も書いていないため使えません。
 
 このページは、それを追加する手順です。そのチップのアダプターが必要です（メンテナーは持っていません）。コードを書かなくても協力できます。手順 1 と 2 で、コントリビューターに必要なレポートが作れます。
 
@@ -25,20 +25,20 @@ A2DP Windows Bridge は Bluetooth アダプターを自分で（WinUSB を通し
 ## 必要なもの
 
 - そのアダプターと、それを挿した Windows 10 / 11 の PC
-- A2DP Windows Bridge 2.0.2 以降（下の手順 1 と 2 はアプリだけで行えます）
+- BlueCaster 2.0.2 以降（下の手順 1 と 2 はアプリだけで行えます）
 - ローダーを書くには: [ビルド](building)のとおりのビルド環境と、Windows 自身のドライバーの動きを記録するための [USBPcap](https://desowin.org/usbpcap/) と [Wireshark](https://www.wireshark.org/)
 
-## 手順 1: アダプターを A2DP Windows Bridge に渡す
+## 手順 1: アダプターを BlueCaster に渡す
 
 1. **設定 > 開発者モード**: オン
-2. **アダプタ**: そのアダプターのカードで **WinUSB ドライバに置き換える**（Windows が管理者の許可を求めます）。A2DP Windows Bridge がまだ使えないチップでは、このボタンは開発者モードのときだけ押せます
+2. **アダプタ**: そのアダプターのカードで **WinUSB ドライバに置き換える**（Windows が管理者の許可を求めます）。BlueCaster がまだ使えないチップでは、このボタンは開発者モードのときだけ押せます
 3. カードに **差し直すか Windows を再起動** と出たら、そのとおりにします
 
 アダプターが WinUSB の間は、Windows 自身の Bluetooth はそのアダプターを使えません。Bluetooth がそのチップだけのノート PC では、Windows で接続しているキーボード、マウス、ヘッドセットが、ドライバーを戻すまで使えなくなります。戻すには、同じカードの **元のドライバに戻す** を押します。
 
 ## 手順 2: チップの応答を読む（チッププローブ）
 
-アダプターのカードの **ファームウェア** の欄で **チップ情報を読む** を押します。Bluetooth スタックが少しの間止まってプローブが実行され、エクスプローラーでレポートが開きます。レポートは設定フォルダー（`%APPDATA%\A2DPWB`）の `logs\probe\` にある `probe-<date>_<time>.json` で、新しいものから 10 個が残ります。
+アダプターのカードの **ファームウェア** の欄で **チップ情報を読む** を押します。Bluetooth スタックが少しの間止まってプローブが実行され、エクスプローラーでレポートが開きます。レポートは設定フォルダー（`%APPDATA%\BlueCaster`）の `logs\probe\` にある `probe-<date>_<time>.json` で、新しいものから 10 個が残ります。
 
 プローブは読むだけです。HCI Reset もベンダーコマンドも送りません。
 
@@ -56,10 +56,10 @@ A2DP Windows Bridge は Bluetooth アダプターを自分で（WinUSB を通し
 コマンドラインからは、アダプターの VID:PID かインスタンス ID（アダプターのカードに出ています）を指定します。
 
 ```bat
-"%LOCALAPPDATA%\A2DP Windows Bridge\a2dpwb-core.exe" --cli -u 0e8d:7961 --probe
+"%LOCALAPPDATA%\BlueCaster\bluecaster-core.exe" --cli -u 0e8d:7961 --probe
 ```
 
-アダプターは両方から同時には使えないので、先にトレイから A2DP Windows Bridge を終了してください。
+アダプターは両方から同時には使えないので、先にトレイから BlueCaster を終了してください。
 
 **レポートを送る**: **チップ情報を読む** のあと、アダプターのカードに読み取った内容と **GitHub で報告** ボタンが表示されます。このボタンは、バージョン、アダプター、その概要、Windows のビルドを記入した新しい issue を開き、エクスプローラーでレポートのファイルを表示します。そのファイルを issue にドラッグし、アダプターの入手元（ノート PC 内蔵ならその機種）を書き足してください。レポートにはアダプターの Bluetooth アドレスと名前が入りますが、ヘッドホンについての情報は入りません。HCI キャプチャを含めた **診断パッケージ**（診断画面）にも、プローブのレポートが `probe/` に入ります。
 
@@ -78,18 +78,18 @@ A2DP Windows Bridge は Bluetooth アダプターを自分で（WinUSB を通し
 - オペコード 0xFC00〜0xFFFF の **HCI コマンド**（クラス要求、`bmRequestType` 0x20）: ベンダーコマンドです。同じオペコードが大きなパラメーター付きで長く続いていれば、ファームウェアを送っているところです。その応答から、各部分がどう確認されるかがわかります
 - Command Complete / Status 以外の **イベント**: ベンダーイベント（コード 0xFF、または 0xE4 のようなベンダー独自のコード）。たとえば「ファームウェアが起動した」という通知や、Command Complete の代わりにファームウェアの各部分を確認するものです
 - 最初の HCI Reset より前の **Bulk OUT** のデータ: ACL パイプでファームウェアを受け取るチップもあります
-- ファイルの出どころ: 送られたデータを、ドライバーのフォルダー（デバイス マネージャー > ドライバーの詳細、または `C:\Windows\System32\DriverStore\FileRepository\`）のファイルや、[linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) にあるそのチップのファイル（`mediatek/`、`qca/`）と比べます。linux-firmware のファイルは再配布でき、A2DP Windows Bridge のユーザーもダウンロードできます
+- ファイルの出どころ: 送られたデータを、ドライバーのフォルダー（デバイス マネージャー > ドライバーの詳細、または `C:\Windows\System32\DriverStore\FileRepository\`）のファイルや、[linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) にあるそのチップのファイル（`mediatek/`、`qca/`）と比べます。linux-firmware のファイルは再配布でき、BlueCaster のユーザーもダウンロードできます
 
 ドライバーが手順の間に置いている待ち時間（キャプチャのタイムスタンプ）も書き留めてください。リセット中のチップは応答しません。
 
 {: .warning }
-キャプチャ、プローブのレポート、メーカーの資料をもとに作業してください。Linux カーネルの `btmtk` や `btqca` ドライバーのような GPL のコードを、コピーしたりなぞって書いたりしないでください。A2DP Windows Bridge は MIT ライセンスで、それらから派生したローダーは取り込めません。
+キャプチャ、プローブのレポート、メーカーの資料をもとに作業してください。Linux カーネルの `btmtk` や `btqca` ドライバーのような GPL のコードを、コピーしたりなぞって書いたりしないでください。BlueCaster は MIT ライセンスで、それらから派生したローダーは取り込めません。
 
 ## ビルドせずに試す: チップスクリプト {#chip-scripts}
 
 ローダーを書く前に、キャプチャでわかったことをアダプターで試してみます。**チップスクリプト** は手順をテキストにしたもので、1 行に 1 つの要求を書き、Bluetooth スタックの代わりに実行します。アダプターを持っていない人が書いて、持っている人に送ることもできます。結果はレポートとして返ってくるので、新しいビルドは要りません。
 
-**実行する**: 開発者モードで **開発者 > チップ** を開き、アダプター（WinUSB のもの）を選んで、スクリプトを入力するかファイルを開き、**実行** を押します。各行の応答が下に表示され、**レポートを表示** で `logs\probe\` の `script-<date>_<time>.json` が開きます（スクリプトも入っています）。コマンドラインからは `a2dpwb-core --cli -u <adapter> --script <file>` です。
+**実行する**: 開発者モードで **開発者 > チップ** を開き、アダプター（WinUSB のもの）を選んで、スクリプトを入力するかファイルを開き、**実行** を押します。各行の応答が下に表示され、**レポートを表示** で `logs\probe\` の `script-<date>_<time>.json` が開きます（スクリプトも入っています）。コマンドラインからは `bluecaster-core --cli -u <adapter> --script <file>` です。
 
 ```text
 # 1 行に 1 つの要求。数値は 16 進数（0x は省略可）。ただし wait、timeout=、chunk= は 10 進数
@@ -119,8 +119,8 @@ upload-bulk patch.bin fc09 01      # 同じものを Bulk OUT パイプで
 | クレート（パッケージ） | フォルダー | 中身 |
 |:--|:--|:--|
 | `bt-host` | `app/src/crates/bt-host` | Bluetooth ホスト: ローダー、プローブ、チップの検出 |
-| `a2dpwb-core`（ライブラリ） | `app/src/crates/core` | 設定とアダプター: どのローダーを動かすか |
-| `a2dpwb-core-exe` | `app/src/core` | サービスの実行ファイル（`a2dpwb-core.exe`）: ウィンドウからの要求、アダプターの説明 |
+| `bluecaster-core`（ライブラリ） | `app/src/crates/core` | 設定とアダプター: どのローダーを動かすか |
+| `bluecaster-core-exe` | `app/src/core` | サービスの実行ファイル（`bluecaster-core.exe`）: ウィンドウからの要求、アダプターの説明 |
 
 下の 2 つはどちらも名前に "core" が付きます。`cargo -p` に渡すのは上のパッケージ名です。
 
@@ -162,7 +162,7 @@ upload-bulk patch.bin fc09 01      # 同じものを Bulk OUT パイプで
 - `hci_command(opcode, params)` はコマンドを組み立てます
 - `parse_event(event)` は `HciEvent::Complete { opcode, status, ret }`（ステータスのあとの戻りパラメーター）、`Status { opcode, status }`、`Vendor(params)`（イベント 0xFF）、`Other { code, params }`（ほかのすべてのコード。0xE4 のようなベンダー独自のものも含む）を返します
 
-**ファームウェアのファイル**: ローダーは `FileReader` を受け取り、**フォルダーを含まないファイル名**（`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`）でファイルを求めます。アプリはファームウェアのフォルダー（`%APPDATA%\A2DPWB\firmware`）と、その中のベンダーのサブフォルダー（`firmware\mediatek\`）を、linux-firmware と同じ配置で探します。このサブフォルダーは手順 6 で決めます。
+**ファームウェアのファイル**: ローダーは `FileReader` を受け取り、**フォルダーを含まないファイル名**（`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`）でファイルを求めます。アプリはファームウェアのフォルダー（`%APPDATA%\BlueCaster\firmware`）と、その中のベンダーのサブフォルダー（`firmware\mediatek\`）を、linux-firmware と同じ配置で探します。このサブフォルダーは手順 6 で決めます。
 
 ### パターン
 
@@ -234,15 +234,15 @@ cargo test -p bt-host
 
 **ドキュメント**:
 
-13. `docs/setup.md` と `docs/*/setup.md`（全言語）のチップの表: Intel と同じような行に、対応するチップ、ファームウェアのファイルとその置き場所（ファームウェアのフォルダー `%APPDATA%\A2DPWB\firmware`、またはその `<vendor>` サブフォルダー。古い行にはまだ "config folder" とあります）と *Experimental.*（日本語のページでは *試験的。*）を書きます。ウィンドウのボタンは、各言語の `app/lang/*.json` にあるとおりの名前で書きます（アダプタ画面は `ui.nav.adapter`、そのフォルダーを開くボタンは `firmware.open_folder`）。ベンダー全体: "Not supported" の行から外します。一部のチップ: ベンダーはそこに残し、まだ対応していないチップを書きます。Firmware の節の最初の文（"Intel and Broadcom adapters (experimental) may need firmware files of their own"）にそのベンダーを加えます
+13. `docs/setup.md` と `docs/*/setup.md`（全言語）のチップの表: Intel と同じような行に、対応するチップ、ファームウェアのファイルとその置き場所（ファームウェアのフォルダー `%APPDATA%\BlueCaster\firmware`、またはその `<vendor>` サブフォルダー。古い行にはまだ "config folder" とあります）と *Experimental.*（日本語のページでは *試験的。*）を書きます。ウィンドウのボタンは、各言語の `app/lang/*.json` にあるとおりの名前で書きます（アダプタ画面は `ui.nav.adapter`、そのフォルダーを開くボタンは `firmware.open_folder`）。ベンダー全体: "Not supported" の行から外します。一部のチップ: ベンダーはそこに残し、まだ対応していないチップを書きます。Firmware の節の最初の文（"Intel and Broadcom adapters (experimental) may need firmware files of their own"）にそのベンダーを加えます
 14. 誰かが使ったら [動作確認済みハードウェア](hardware)（`docs/hardware.md`）に載せます。またこのページの冒頭（`docs/chip-support.md`、全言語）も直します。ここではローダーのないベンダーを挙げています（一部のチップなら "the other <vendor> chips"）
 
 ## 手順 7: アダプターで試す
 
-リポジトリのルートでビルドし（`cargo build --release -p a2dpwb-core-exe`）、インストール済みのアプリを（トレイアイコンから）終了してから、HCI キャプチャを取りながらコアをコマンドラインで実行します。
+リポジトリのルートでビルドし（`cargo build --release -p bluecaster-core-exe`）、インストール済みのアプリを（トレイアイコンから）終了してから、HCI キャプチャを取りながらコアをコマンドラインで実行します。
 
 ```bat
-target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
+target\release\bluecaster-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
 ```
 
 ログに各手順が出ます。`loader.pklg` は Wireshark で開け、コマンド、イベント、コントロール転送がすべて順に入っています。アダプターを抜いて（またはシャットダウンして）もう一度試してください。ダウンロードは電源が切れていたチップから動き、ファームウェアがすでに動いているときは何もしない必要があります。
@@ -272,7 +272,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 python tools/check_lang.py
 ```
 
-Node.js がなければ、テストと clippy を上の 3 つのクレートだけで実行し（`-p bt-host -p a2dpwb-core -p a2dpwb-core-exe`）、UI のチェックはプルリクエストの CI に任せて、そのことをプルリクエストに書いてください。`pwsh ./build.ps1 -Test` ですべて実行できます。
+Node.js がなければ、テストと clippy を上の 3 つのクレートだけで実行し（`-p bt-host -p bluecaster-core -p bluecaster-core-exe`）、UI のチェックはプルリクエストの CI に任せて、そのことをプルリクエストに書いてください。`pwsh ./build.ps1 -Test` ですべて実行できます。
 
 Clippy は名前も確かめます。`PatchState` という `State` のバリアントは `enum_variant_names` で失敗するので、`Patch` にします。`check_lang.py` は、変更前からある "long hints left" を報告することがあります。直す必要があるのは、エラーと足りないキーだけです。
 

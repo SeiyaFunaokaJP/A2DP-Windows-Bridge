@@ -1,7 +1,7 @@
-// Taking over the pairings Windows' Bluetooth made with the adapter A2DPWB
+// Taking over the pairings Windows' Bluetooth made with the adapter BlueCaster
 // now has on WinUSB (issue #86): on Audio Devices and in the setup's device
 // step, where devices are added. Shown only while Windows paired a device
-// through this adapter that A2DPWB has not saved (other radios' pairings
+// through this adapter that BlueCaster has not saved (other radios' pairings
 // are no use here, and Windows may have no radio running at all); the
 // core reads the keys after an administrator prompt and saves the audio
 // devices with Windows' names.

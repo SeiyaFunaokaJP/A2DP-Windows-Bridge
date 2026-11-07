@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # 添加芯片支持
 
-A2DP Windows Bridge 自己驱动 Bluetooth 适配器（WinUSB），因此在适配器能工作之前，它必须完成厂商的 Windows 驱动程序所做的事：许多芯片需要在每次启动时加载固件。Realtek、Intel、Broadcom 和 CSR 适配器目前已可使用；MediaTek（MT7921、MT7922 等）和 Qualcomm（QCA61x4）还不行，因为还没有人为它们编写加载程序。
+BlueCaster 自己驱动 Bluetooth 适配器（WinUSB），因此在适配器能工作之前，它必须完成厂商的 Windows 驱动程序所做的事：许多芯片需要在每次启动时加载固件。Realtek、Intel、Broadcom 和 CSR 适配器目前已可使用；MediaTek（MT7921、MT7922 等）和 Qualcomm（QCA61x4）还不行，因为还没有人为它们编写加载程序。
 
 本页介绍添加加载程序的步骤。你需要一个使用该芯片的适配器；维护者手上没有这些适配器。即使不写代码也能帮忙：第 1 步和第 2 步就能得到贡献者所需的报告。
 
@@ -25,20 +25,20 @@ A2DP Windows Bridge 自己驱动 Bluetooth 适配器（WinUSB），因此在适�
 ## 准备工作
 
 - 适配器，插在 Windows 10 / 11 PC 上
-- A2DP Windows Bridge 2.0.2 或更高版本（下面的步骤只需要应用本身）
+- BlueCaster 2.0.2 或更高版本（下面的步骤只需要应用本身）
 - 编写加载程序时：按[构建](building)准备好构建环境，并安装 [USBPcap](https://desowin.org/usbpcap/) 和 [Wireshark](https://www.wireshark.org/)，用来记录 Windows 自带驱动程序的操作
 
-## 第 1 步：把适配器交给 A2DP Windows Bridge
+## 第 1 步：把适配器交给 BlueCaster
 
 1. **设置 > 开发者模式**：开启
-2. **适配器**：在该适配器的卡片上单击**替换为 WinUSB 驱动程序**（Windows 会请求管理员权限）。对于 A2DP Windows Bridge 尚不能使用的芯片，此按钮只在开发者模式下可用
+2. **适配器**：在该适配器的卡片上单击**替换为 WinUSB 驱动程序**（Windows 会请求管理员权限）。对于 BlueCaster 尚不能使用的芯片，此按钮只在开发者模式下可用
 3. 如果卡片上显示**请重新插拔或重启 Windows**，请照做
 
 适配器使用 WinUSB 期间，Windows 自带的 Bluetooth 无法使用它。如果笔记本电脑只有这一个 Bluetooth 芯片，通过 Windows 连接的键盘、鼠标和耳机在恢复驱动程序之前都无法使用：在同一张卡片上单击**恢复原始驱动程序**即可恢复。
 
 ## 第 2 步：读取芯片信息（芯片探测）
 
-在适配器卡片的**固件**部分单击**读取芯片信息**。Bluetooth 协议栈会短暂停止，探测运行完毕后，资源管理器会打开报告：设置文件夹（`%APPDATA%\A2DPWB`）中 `logs\probe\` 下的 `probe-<date>_<time>.json`。只保留最新的 10 份。
+在适配器卡片的**固件**部分单击**读取芯片信息**。Bluetooth 协议栈会短暂停止，探测运行完毕后，资源管理器会打开报告：设置文件夹（`%APPDATA%\BlueCaster`）中 `logs\probe\` 下的 `probe-<date>_<time>.json`。只保留最新的 10 份。
 
 探测只读取信息，不发送 HCI Reset，也不发送任何厂商命令：
 
@@ -56,10 +56,10 @@ A2DP Windows Bridge 自己驱动 Bluetooth 适配器（WinUSB），因此在适�
 也可以在命令行中使用适配器的 VID:PID 或实例 ID（适配器卡片上有显示）：
 
 ```bat
-"%LOCALAPPDATA%\A2DP Windows Bridge\a2dpwb-core.exe" --cli -u 0e8d:7961 --probe
+"%LOCALAPPDATA%\BlueCaster\bluecaster-core.exe" --cli -u 0e8d:7961 --probe
 ```
 
-请先从托盘退出 A2DP Windows Bridge，两者不能同时使用适配器。
+请先从托盘退出 BlueCaster，两者不能同时使用适配器。
 
 **提交报告**：单击**读取芯片信息**后，适配器卡片上会显示读到的内容和**在 GitHub 上报告**按钮。它会新建一个 issue，自动填入版本、适配器、这些摘要以及你的 Windows 版本号，并在资源管理器中显示报告文件：把它拖到 issue 中，再补充适配器的来源（笔记本电脑内置的请写明电脑型号）。报告中包含适配器的 Bluetooth 地址和名称，不包含任何关于你的耳机的信息。包含 HCI 抓包的**诊断包**（**诊断**页面）也会在 `probe/` 下附带探测报告。
 
@@ -78,18 +78,18 @@ A2DP Windows Bridge 自己驱动 Bluetooth 适配器（WinUSB），因此在适�
 - 操作码在 0xFC00 到 0xFFFF 之间的 **HCI 命令**（类请求，`bmRequestType` 0x20）：即厂商命令。同一个操作码带着大段参数连续出现，就是在发送固件；它们的应答说明了每一部分如何确认
 - 不是 Command Complete / Status 的**事件**：厂商事件（代码 0xFF，或厂商自己的代码，如 0xE4），例如“固件已启动”，或代替 Command Complete 对每一部分固件的确认
 - 第一个 HCI Reset 之前的 **Bulk OUT** 数据：有些芯片通过 ACL 管道接收固件
-- 文件的来源：把发送的数据与驱动程序文件夹中的文件（设备管理器 > 驱动程序详细信息，或 `C:\Windows\System32\DriverStore\FileRepository\`）以及 [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) 中该芯片的文件（`mediatek/`、`qca/`）进行比较；后者允许再分发，A2DP Windows Bridge 的用户也可以下载
+- 文件的来源：把发送的数据与驱动程序文件夹中的文件（设备管理器 > 驱动程序详细信息，或 `C:\Windows\System32\DriverStore\FileRepository\`）以及 [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) 中该芯片的文件（`mediatek/`、`qca/`）进行比较；后者允许再分发，BlueCaster 的用户也可以下载
 
 注意驱动程序在步骤之间留出的延迟（看抓包的时间戳）：仍在复位的芯片不会应答。
 
 {: .warning }
-请以抓包、探测报告和厂商文档为依据。不要复制或照搬 GPL 代码，例如 Linux 内核的 `btmtk` 或 `btqca` 驱动程序：A2DP Windows Bridge 采用 MIT 许可证，由它们派生的加载程序无法被收录。
+请以抓包、探测报告和厂商文档为依据。不要复制或照搬 GPL 代码，例如 Linux 内核的 `btmtk` 或 `btqca` 驱动程序：BlueCaster 采用 MIT 许可证，由它们派生的加载程序无法被收录。
 
 ## 无需构建即可试用：芯片脚本 {#chip-scripts}
 
 在编写加载程序之前，先在适配器上试一试抓包中看到的操作：**芯片脚本**就是以文本形式写下的这串操作，每行一个请求，代替 Bluetooth 协议栈运行。没有该适配器的人也可以编写脚本，发给手上有适配器的人；结果以报告的形式返回，无需新的构建。
 
-**运行脚本**：开发者模式下打开**开发者 > 芯片**：选择适配器（使用 WinUSB），输入脚本或打开文件，然后单击**运行**。每一行的应答显示在下方，**显示报告**会打开 `logs\probe\` 中的 `script-<date>_<time>.json`（其中包含脚本本身）。在命令行中：`a2dpwb-core --cli -u <adapter> --script <file>`。
+**运行脚本**：开发者模式下打开**开发者 > 芯片**：选择适配器（使用 WinUSB），输入脚本或打开文件，然后单击**运行**。每一行的应答显示在下方，**显示报告**会打开 `logs\probe\` 中的 `script-<date>_<time>.json`（其中包含脚本本身）。在命令行中：`bluecaster-core --cli -u <adapter> --script <file>`。
 
 ```text
 # 每行一个请求；除 wait、timeout= 和 chunk= 外，数字均为十六进制（0x 可省略）
@@ -119,8 +119,8 @@ upload-bulk patch.bin fc09 01      # 同上，但在 bulk OUT 管道上发送
 | Crate（包） | 文件夹 | 内容 |
 |:--|:--|:--|
 | `bt-host` | `app/src/crates/bt-host` | Bluetooth 主机：加载程序、探测、芯片检测 |
-| `a2dpwb-core`（库） | `app/src/crates/core` | 设置和适配器：决定运行哪个加载程序 |
-| `a2dpwb-core-exe` | `app/src/core` | 服务可执行文件（`a2dpwb-core.exe`）：处理窗口的请求、适配器说明 |
+| `bluecaster-core`（库） | `app/src/crates/core` | 设置和适配器：决定运行哪个加载程序 |
+| `bluecaster-core-exe` | `app/src/core` | 服务可执行文件（`bluecaster-core.exe`）：处理窗口的请求、适配器说明 |
 
 后两者的名称中都有“core”；`cargo -p` 接受的是上表中的包名。
 
@@ -162,7 +162,7 @@ upload-bulk patch.bin fc09 01      # 同上，但在 bulk OUT 管道上发送
 - `hci_command(opcode, params)` 构造一条命令
 - `parse_event(event)` 返回 `HciEvent::Complete { opcode, status, ret }`（status 之后的返回参数）、`Status { opcode, status }`、`Vendor(params)`（事件 0xFF）或 `Other { code, params }`（其他任何代码，包括厂商自己的代码，如 0xE4）
 
-**固件文件**：加载程序会得到一个 `FileReader`，并向它请求**不带文件夹的文件名**（`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`）。应用会在固件文件夹（`%APPDATA%\A2DPWB\firmware`）及其中的厂商子文件夹（`firmware\mediatek\`）里查找，与 linux-firmware 的目录结构一致；该子文件夹在第 6 步中设置。
+**固件文件**：加载程序会得到一个 `FileReader`，并向它请求**不带文件夹的文件名**（`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`）。应用会在固件文件夹（`%APPDATA%\BlueCaster\firmware`）及其中的厂商子文件夹（`firmware\mediatek\`）里查找，与 linux-firmware 的目录结构一致；该子文件夹在第 6 步中设置。
 
 ### 模式
 
@@ -234,15 +234,15 @@ cargo test -p bt-host
 
 **文档**：
 
-13. `docs/setup.md` 和 `docs/*/setup.md`（所有语言）中的芯片表：参照 Intel 的那一行添加一行，写明覆盖的芯片、固件文件及其存放位置（固件文件夹：`%APPDATA%\A2DPWB\firmware`，或其中的 `<vendor>` 子文件夹；较旧的行仍写着“config folder”），以及 *Experimental.*。窗口中的按钮名称按各语言的 `app/lang/*.json` 书写（适配器页面为 `ui.nav.adapter`，打开该文件夹的按钮为 `firmware.open_folder`）。整个厂商：把它从“Not supported”一行中去掉。部分芯片：保留该厂商，并写明仍不支持的芯片。在“固件”一节开头的句子中加上该厂商（"Intel and Broadcom adapters (experimental) may need firmware files of their own"）
+13. `docs/setup.md` 和 `docs/*/setup.md`（所有语言）中的芯片表：参照 Intel 的那一行添加一行，写明覆盖的芯片、固件文件及其存放位置（固件文件夹：`%APPDATA%\BlueCaster\firmware`，或其中的 `<vendor>` 子文件夹；较旧的行仍写着“config folder”），以及 *Experimental.*。窗口中的按钮名称按各语言的 `app/lang/*.json` 书写（适配器页面为 `ui.nav.adapter`，打开该文件夹的按钮为 `firmware.open_folder`）。整个厂商：把它从“Not supported”一行中去掉。部分芯片：保留该厂商，并写明仍不支持的芯片。在“固件”一节开头的句子中加上该厂商（"Intel and Broadcom adapters (experimental) may need firmware files of their own"）
 14. 有人实际用过之后更新[已验证硬件](hardware)（`docs/hardware.md`），以及本页开头（`docs/chip-support.md`，所有语言）中列出尚无加载程序的厂商的那句话（部分芯片时写成“the other <vendor> chips”）
 
 ## 第 7 步：在适配器上试用
 
-在仓库根目录中构建（`cargo build --release -p a2dpwb-core-exe`），退出已安装的应用（从其托盘图标），然后在命令行中运行 core 并开启 HCI 抓包：
+在仓库根目录中构建（`cargo build --release -p bluecaster-core-exe`），退出已安装的应用（从其托盘图标），然后在命令行中运行 core 并开启 HCI 抓包：
 
 ```bat
-target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
+target\release\bluecaster-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
 ```
 
 日志会显示每一步；`loader.pklg` 可在 Wireshark 中打开，按顺序列出每条命令、事件和控制传输。拔下适配器（或关机）后再试一次：下载必须能从冷启动的芯片开始完成，并且在固件已运行时什么都不做。
@@ -272,7 +272,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 python tools/check_lang.py
 ```
 
-如果没有 Node.js，就改为只对上面三个 crate 运行测试和 clippy（`-p bt-host -p a2dpwb-core -p a2dpwb-core-exe`），把 UI 检查留给 pull request 的 CI，并在 pull request 中说明。`pwsh ./build.ps1 -Test` 会运行全部检查。
+如果没有 Node.js，就改为只对上面三个 crate 运行测试和 clippy（`-p bt-host -p bluecaster-core -p bluecaster-core-exe`），把 UI 检查留给 pull request 的 CI，并在 pull request 中说明。`pwsh ./build.ps1 -Test` 会运行全部检查。
 
 Clippy 也会检查命名：名为 `PatchState` 的 `State` 变体会触发 `enum_variant_names` 而失败，请命名为 `Patch`。`check_lang.py` 可能会报告你修改之前就已存在的“long hints left”；你只需修复错误和缺失的键。
 

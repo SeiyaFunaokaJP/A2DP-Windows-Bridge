@@ -16,7 +16,7 @@ use std::sync::RwLock;
 
 use serde::{Deserialize, Serialize};
 
-/// A vendor whose earbuds A2DPWB speaks to over their own protocol
+/// A vendor whose earbuds BlueCaster speaks to over their own protocol
 pub struct Vendor {
     /// Key of its overrides (settings, IPC)
     pub id: &'static str,

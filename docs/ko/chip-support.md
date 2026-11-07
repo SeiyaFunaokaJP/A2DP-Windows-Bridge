@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # 칩 지원 추가
 
-A2DP Windows Bridge는 Bluetooth 어댑터를 직접(WinUSB로) 다루므로, 어댑터가 작동하기 전에 제조사의 Windows 드라이버가 하는 일을 대신 해야 합니다. 많은 칩에서는 시작할 때마다 펌웨어를 칩에 로드하는 일입니다. 현재 Realtek, Intel, Broadcom, CSR 어댑터는 작동하지만, MediaTek(MT7921, MT7922 등)과 Qualcomm(QCA61x4)은 아직 아무도 로더를 작성하지 않아 작동하지 않습니다.
+BlueCaster는 Bluetooth 어댑터를 직접(WinUSB로) 다루므로, 어댑터가 작동하기 전에 제조사의 Windows 드라이버가 하는 일을 대신 해야 합니다. 많은 칩에서는 시작할 때마다 펌웨어를 칩에 로드하는 일입니다. 현재 Realtek, Intel, Broadcom, CSR 어댑터는 작동하지만, MediaTek(MT7921, MT7922 등)과 Qualcomm(QCA61x4)은 아직 아무도 로더를 작성하지 않아 작동하지 않습니다.
 
 이 페이지는 로더를 추가하는 절차를 설명합니다. 해당 칩을 쓰는 어댑터가 필요하며, 메인테이너는 이런 어댑터를 가지고 있지 않습니다. 코드를 작성하지 않더라도 도울 수 있습니다. 1단계와 2단계를 거치면 기여자에게 필요한 보고서를 만들 수 있습니다.
 
@@ -25,20 +25,20 @@ A2DP Windows Bridge는 Bluetooth 어댑터를 직접(WinUSB로) 다루므로, �
 ## 준비 사항
 
 - Windows 10 / 11 PC에 연결한 해당 어댑터
-- A2DP Windows Bridge 2.0.2 이상(아래 1, 2단계는 앱만 있으면 됩니다)
+- BlueCaster 2.0.2 이상(아래 1, 2단계는 앱만 있으면 됩니다)
 - 로더를 작성하려면: [빌드](building)와 같은 빌드 환경, 그리고 Windows 자체 드라이버의 동작을 기록할 [USBPcap](https://desowin.org/usbpcap/)과 [Wireshark](https://www.wireshark.org/)
 
-## 1단계: 어댑터를 A2DP Windows Bridge에 맡기기
+## 1단계: 어댑터를 BlueCaster에 맡기기
 
 1. **설정 > 개발자 모드**: 켬
-2. **어댑터**: 해당 어댑터 카드에서 **WinUSB 드라이버로 교체**(Windows가 관리자 권한을 요청합니다). A2DP Windows Bridge가 아직 사용할 수 없는 칩에서는 이 버튼이 개발자 모드에서만 활성화됩니다
+2. **어댑터**: 해당 어댑터 카드에서 **WinUSB 드라이버로 교체**(Windows가 관리자 권한을 요청합니다). BlueCaster가 아직 사용할 수 없는 칩에서는 이 버튼이 개발자 모드에서만 활성화됩니다
 3. 카드에 **다시 연결하거나 Windows 다시 시작**이 표시되면 그대로 합니다
 
 어댑터에 WinUSB가 할당되어 있는 동안에는 Windows 자체 Bluetooth가 이 어댑터를 사용할 수 없습니다. Bluetooth가 이 칩 하나뿐인 노트북에서는 Windows를 통해 연결한 키보드, 마우스, 헤드셋이 드라이버를 되돌릴 때까지 작동하지 않습니다. 되돌리려면 같은 카드의 **원래 드라이버 복원**을 누릅니다.
 
 ## 2단계: 칩의 응답 읽기(칩 프로브)
 
-어댑터 카드의 **펌웨어** 부분에서 **칩 정보 읽기**를 누릅니다. Bluetooth 스택이 잠시 멈추고 프로브가 실행된 다음, 탐색기가 보고서를 엽니다. 보고서는 설정 폴더(`%APPDATA%\A2DPWB`)의 `logs\probe\`에 있는 `probe-<date>_<time>.json`이며, 최근 10개가 보관됩니다.
+어댑터 카드의 **펌웨어** 부분에서 **칩 정보 읽기**를 누릅니다. Bluetooth 스택이 잠시 멈추고 프로브가 실행된 다음, 탐색기가 보고서를 엽니다. 보고서는 설정 폴더(`%APPDATA%\BlueCaster`)의 `logs\probe\`에 있는 `probe-<date>_<time>.json`이며, 최근 10개가 보관됩니다.
 
 프로브는 읽기만 합니다. HCI Reset이나 벤더 명령은 보내지 않습니다.
 
@@ -56,10 +56,10 @@ Windows가 보고하는 USB 구성(인터페이스, 엔드포인트)과 칩이 �
 명령줄에서는 어댑터의 VID:PID 또는 인스턴스 ID(어댑터 카드에 표시됨)를 지정합니다.
 
 ```bat
-"%LOCALAPPDATA%\A2DP Windows Bridge\a2dpwb-core.exe" --cli -u 0e8d:7961 --probe
+"%LOCALAPPDATA%\BlueCaster\bluecaster-core.exe" --cli -u 0e8d:7961 --probe
 ```
 
-둘이 동시에 어댑터를 사용할 수는 없으므로, 먼저 트레이에서 A2DP Windows Bridge를 종료하십시오.
+둘이 동시에 어댑터를 사용할 수는 없으므로, 먼저 트레이에서 BlueCaster를 종료하십시오.
 
 **보고서 보내기**: **칩 정보 읽기** 후 어댑터 카드에 읽은 내용과 **GitHub에 보고** 버튼이 표시됩니다. 이 버튼은 버전, 어댑터, 그 요약, Windows 빌드가 채워진 새 이슈를 열고, 탐색기에서 보고서 파일을 보여 줍니다. 그 파일을 이슈에 끌어다 놓고, 어댑터의 출처(노트북 내장이라면 노트북 모델)를 적으십시오. 보고서에는 어댑터의 Bluetooth 주소와 이름이 들어 있지만, 헤드폰에 관한 정보는 들어 있지 않습니다. HCI 캡처를 포함한 **진단 패키지**(**진단** 화면)에도 프로브 보고서가 `probe/` 아래에 들어 있습니다.
 
@@ -78,18 +78,18 @@ Windows가 보고하는 USB 구성(인터페이스, 엔드포인트)과 칩이 �
 - 옵코드 0xFC00~0xFFFF인 **HCI 명령**(클래스 요청, `bmRequestType` 0x20): 벤더 명령입니다. 같은 옵코드가 큰 파라미터와 함께 길게 이어지면 펌웨어를 보내는 중이며, 그 응답을 보면 각 부분이 어떻게 확인되는지 알 수 있습니다
 - Command Complete / Status가 아닌 **이벤트**: 벤더 이벤트(코드 0xFF, 또는 0xE4처럼 벤더 고유의 코드). 예를 들어 "펌웨어 시작됨"이나, Command Complete 대신 각 펌웨어 부분에 대한 확인
 - 첫 HCI Reset 이전의 **Bulk OUT** 데이터: 일부 칩은 ACL 파이프로 펌웨어를 받습니다
-- 파일의 출처: 보낸 데이터를 드라이버 폴더의 파일(장치 관리자 > 드라이버 세부 정보, 또는 `C:\Windows\System32\DriverStore\FileRepository\`) 및 [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/)의 해당 칩 파일(`mediatek/`, `qca/`)과 비교합니다. linux-firmware의 파일은 재배포할 수 있고 A2DP Windows Bridge 사용자가 다운로드할 수 있습니다
+- 파일의 출처: 보낸 데이터를 드라이버 폴더의 파일(장치 관리자 > 드라이버 세부 정보, 또는 `C:\Windows\System32\DriverStore\FileRepository\`) 및 [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/)의 해당 칩 파일(`mediatek/`, `qca/`)과 비교합니다. linux-firmware의 파일은 재배포할 수 있고 BlueCaster 사용자가 다운로드할 수 있습니다
 
 드라이버가 단계 사이에 두는 대기 시간도 기록해 두십시오(캡처의 타임스탬프). 리셋 중인 칩은 응답하지 않습니다.
 
 {: .warning }
-캡처, 프로브 보고서, 제조사 문서를 바탕으로 작업하십시오. Linux 커널의 `btmtk`나 `btqca` 드라이버 같은 GPL 코드를 복사하거나 비슷하게 따라 쓰지 마십시오. A2DP Windows Bridge는 MIT 라이선스이므로, 이런 코드에서 파생된 로더는 포함할 수 없습니다.
+캡처, 프로브 보고서, 제조사 문서를 바탕으로 작업하십시오. Linux 커널의 `btmtk`나 `btqca` 드라이버 같은 GPL 코드를 복사하거나 비슷하게 따라 쓰지 마십시오. BlueCaster는 MIT 라이선스이므로, 이런 코드에서 파생된 로더는 포함할 수 없습니다.
 
 ## 빌드 없이 시험: 칩 스크립트 {#chip-scripts}
 
 로더를 작성하기 전에 캡처에서 본 내용을 어댑터에서 시험해 보십시오. **칩 스크립트**는 그 순서를 한 줄에 요청 하나씩 텍스트로 적은 것으로, Bluetooth 스택 대신 실행됩니다. 어댑터가 없는 사람이 스크립트를 써서 어댑터를 가진 사람에게 보낼 수 있고, 결과는 보고서로 돌아오므로 새 빌드가 필요 없습니다.
 
-**실행하기**: 개발자 모드에서 **개발자 > 칩**을 엽니다. 어댑터(WinUSB 할당)를 고르고, 스크립트를 입력하거나 파일을 연 다음 **실행**을 누릅니다. 각 줄의 응답이 아래에 표시되며, **보고서 보기**는 `logs\probe\`의 `script-<date>_<time>.json`(스크립트 포함)을 엽니다. 명령줄에서는 `a2dpwb-core --cli -u <adapter> --script <file>`을 실행합니다.
+**실행하기**: 개발자 모드에서 **개발자 > 칩**을 엽니다. 어댑터(WinUSB 할당)를 고르고, 스크립트를 입력하거나 파일을 연 다음 **실행**을 누릅니다. 각 줄의 응답이 아래에 표시되며, **보고서 보기**는 `logs\probe\`의 `script-<date>_<time>.json`(스크립트 포함)을 엽니다. 명령줄에서는 `bluecaster-core --cli -u <adapter> --script <file>`을 실행합니다.
 
 ```text
 # 한 줄에 요청 하나. 숫자는 16진수(0x 생략 가능)이며, wait, timeout=, chunk=만 예외
@@ -119,8 +119,8 @@ upload-bulk patch.bin fc09 01      # 같은 것을 bulk OUT 파이프로
 | 크레이트(패키지) | 폴더 | 내용 |
 |:--|:--|:--|
 | `bt-host` | `app/src/crates/bt-host` | Bluetooth 호스트: 로더, 프로브, 칩 감지 |
-| `a2dpwb-core`(라이브러리) | `app/src/crates/core` | 설정과 어댑터: 어떤 로더를 실행할지 |
-| `a2dpwb-core-exe` | `app/src/core` | 서비스 실행 파일(`a2dpwb-core.exe`): 창의 요청, 어댑터 안내 문구 |
+| `bluecaster-core`(라이브러리) | `app/src/crates/core` | 설정과 어댑터: 어떤 로더를 실행할지 |
+| `bluecaster-core-exe` | `app/src/core` | 서비스 실행 파일(`bluecaster-core.exe`): 창의 요청, 어댑터 안내 문구 |
 
 뒤의 두 개는 이름에 모두 "core"가 들어 있습니다. `cargo -p`에 지정하는 것은 위의 패키지 이름입니다.
 
@@ -162,7 +162,7 @@ upload-bulk patch.bin fc09 01      # 같은 것을 bulk OUT 파이프로
 - `hci_command(opcode, params)`는 명령을 만듭니다
 - `parse_event(event)`는 `HciEvent::Complete { opcode, status, ret }`(status 뒤의 반환 파라미터), `Status { opcode, status }`, `Vendor(params)`(이벤트 0xFF) 또는 `Other { code, params }`(0xE4 같은 벤더 고유 코드를 포함한 그 밖의 코드)를 돌려줍니다
 
-**펌웨어 파일**: 로더는 `FileReader`를 받아 **폴더 없는 파일 이름**(`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`)으로 파일을 요청합니다. 앱은 펌웨어 폴더(`%APPDATA%\A2DPWB\firmware`)와 그 안의 벤더 하위 폴더(`firmware\mediatek\`)를 linux-firmware의 배치대로 찾습니다. 이 하위 폴더는 6단계에서 정합니다.
+**펌웨어 파일**: 로더는 `FileReader`를 받아 **폴더 없는 파일 이름**(`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`)으로 파일을 요청합니다. 앱은 펌웨어 폴더(`%APPDATA%\BlueCaster\firmware`)와 그 안의 벤더 하위 폴더(`firmware\mediatek\`)를 linux-firmware의 배치대로 찾습니다. 이 하위 폴더는 6단계에서 정합니다.
 
 ### 패턴
 
@@ -234,15 +234,15 @@ cargo test -p bt-host
 
 **문서**:
 
-13. `docs/setup.md`와 `docs/*/setup.md`(모든 언어)의 칩 표: Intel과 같은 행으로, 다루는 칩, 펌웨어 파일과 그 위치(펌웨어 폴더 `%APPDATA%\A2DPWB\firmware` 또는 그 `<vendor>` 하위 폴더. 예전 행에는 아직 "config folder"라고 되어 있음), 그리고 *Experimental.*을 적습니다. 창의 버튼은 각 언어의 `app/lang/*.json`에 있는 대로 씁니다(어댑터 화면은 `ui.nav.adapter`, 그 폴더를 여는 버튼은 `firmware.open_folder`). 벤더 전체: "Not supported" 행에서 뺍니다. 일부 칩: 벤더를 그대로 두고 아직 지원되지 않는 칩의 이름을 적습니다. Firmware 섹션 맨 위의 문장("Intel and Broadcom adapters (experimental) may need firmware files of their own")에 벤더를 추가합니다
+13. `docs/setup.md`와 `docs/*/setup.md`(모든 언어)의 칩 표: Intel과 같은 행으로, 다루는 칩, 펌웨어 파일과 그 위치(펌웨어 폴더 `%APPDATA%\BlueCaster\firmware` 또는 그 `<vendor>` 하위 폴더. 예전 행에는 아직 "config folder"라고 되어 있음), 그리고 *Experimental.*을 적습니다. 창의 버튼은 각 언어의 `app/lang/*.json`에 있는 대로 씁니다(어댑터 화면은 `ui.nav.adapter`, 그 폴더를 여는 버튼은 `firmware.open_folder`). 벤더 전체: "Not supported" 행에서 뺍니다. 일부 칩: 벤더를 그대로 두고 아직 지원되지 않는 칩의 이름을 적습니다. Firmware 섹션 맨 위의 문장("Intel and Broadcom adapters (experimental) may need firmware files of their own")에 벤더를 추가합니다
 14. 누군가 실제로 사용해 본 뒤에는 [Verified Hardware](hardware)(`docs/hardware.md`)를, 그리고 로더가 없는 벤더를 적어 둔 이 페이지의 첫머리(`docs/chip-support.md`, 모든 언어)를 고칩니다(일부 칩: "the other <vendor> chips")
 
 ## 7단계: 어댑터에서 시험
 
-저장소 루트에서 빌드하고(`cargo build --release -p a2dpwb-core-exe`), 설치된 앱을 (트레이 아이콘에서) 종료한 다음, HCI 캡처와 함께 명령줄에서 코어를 실행합니다.
+저장소 루트에서 빌드하고(`cargo build --release -p bluecaster-core-exe`), 설치된 앱을 (트레이 아이콘에서) 종료한 다음, HCI 캡처와 함께 명령줄에서 코어를 실행합니다.
 
 ```bat
-target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
+target\release\bluecaster-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
 ```
 
 로그에 각 단계가 표시되며, `loader.pklg`를 Wireshark에서 열면 모든 명령, 이벤트, 컨트롤 전송을 순서대로 볼 수 있습니다. 어댑터를 뽑고(또는 PC를 종료하고) 다시 시도하십시오. 다운로드는 콜드 상태의 칩에서 성공해야 하고, 펌웨어가 이미 실행 중일 때는 아무것도 하지 않아야 합니다.
@@ -272,7 +272,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 python tools/check_lang.py
 ```
 
-Node.js가 없다면 대신 위의 세 크레이트에 대해 테스트와 clippy를 실행하고(`-p bt-host -p a2dpwb-core -p a2dpwb-core-exe`), UI 검사는 풀 리퀘스트의 CI에 맡긴 뒤 풀 리퀘스트에 그렇게 적으십시오. `pwsh ./build.ps1 -Test`는 모든 것을 실행합니다.
+Node.js가 없다면 대신 위의 세 크레이트에 대해 테스트와 clippy를 실행하고(`-p bt-host -p bluecaster-core -p bluecaster-core-exe`), UI 검사는 풀 리퀘스트의 CI에 맡긴 뒤 풀 리퀘스트에 그렇게 적으십시오. `pwsh ./build.ps1 -Test`는 모든 것을 실행합니다.
 
 Clippy는 이름도 검사합니다. `PatchState`라는 `State` variant는 `enum_variant_names`에 걸리므로 `Patch`로 하십시오. `check_lang.py`가 변경 전부터 있던 "long hints left"를 보고할 수 있습니다. 고쳐야 할 것은 오류와 누락된 키뿐입니다.
 

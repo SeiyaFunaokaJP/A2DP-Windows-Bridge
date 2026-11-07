@@ -106,7 +106,7 @@ const OPUS_CONFIG_DEFAULT: u8 = OPUS_FREQ_48000 | OPUS_FRAME_20MS | OPUS_CH_STER
 //   +2..+5 audio location (LE; Bluetooth audio location bits), +6 frame
 //   durations (0x01 2.5 ms, 0x02 5, 0x04 10, 0x08 20, 0x10 40), +7..+8
 //   bit rate (LE, units of 1024 bps; 0 = no limit)
-// A2DPWB offers and configures the main direction only: stereo (2
+// BlueCaster offers and configures the main direction only: stereo (2
 // channels, 1 coupled stream, front left + right) or mono, 10 or 20 ms.
 const OPUS05_INFO_LEN: usize = 24;
 const OPUS05_MAIN: usize = 6;
@@ -380,7 +380,7 @@ pub fn endpoint_kind(kind: CodecKind) -> CodecKind {
 // FastStream (PipeWire a2dp-codec-caps.h, a2dp_faststream_t): 8 bytes, byte
 // 6 direction (0x01 sink = music to the headset, 0x02 source = voice back),
 // byte 7 low nibble the sink rates (0x02 44.1k, 0x01 48k), high nibble the
-// source rate (0x2 16k). A2DPWB offers and configures the sink direction
+// source rate (0x2 16k). BlueCaster offers and configures the sink direction
 // only.
 const FASTSTREAM_INFO_LEN: usize = 8;
 const FASTSTREAM_DIRECTION_SINK: u8 = 0x01;
@@ -967,6 +967,13 @@ impl RemoteCaps {
         }
     }
 
+    /// The rate `kind` streams at to match the PC's `source` rate, from
+    /// those the sink lists (developer mode's match_source): see
+    /// [`nearest_rate`]
+    pub fn match_sample_rate(&self, kind: CodecKind, source: u32) -> u32 {
+        nearest_rate(&self.listed_sample_rates(kind), source)
+    }
+
     /// The bit depths the sink lists for `kind` (LHDC V5 only; empty for
     /// the others: no choice, or the sink does not say)
     pub fn listed_bit_depths(&self, kind: CodecKind) -> Vec<u32> {
@@ -1094,8 +1101,8 @@ impl RemoteCaps {
 
     /// These capabilities with `kind` usable even though the sink does not
     /// list it (developer mode's force_codec): it is taken to list what
-    /// A2DPWB offers itself, and the SET_CONFIGURATION goes to the SEP
-    /// that has the codec in a form A2DPWB does not use, else to any SEP
+    /// BlueCaster offers itself, and the SET_CONFIGURATION goes to the SEP
+    /// that has the codec in a form BlueCaster does not use, else to any SEP
     /// (SBC's first). None without an encoder for it or a SEP to ask.
     pub fn forcing(&self, kind: CodecKind) -> Option<RemoteCaps> {
         if !kind.available() {
@@ -1472,7 +1479,7 @@ impl RemoteCaps {
             }
             CodecKind::Opus05 => {
                 // The rate is not in the configuration: 48 kHz is the one
-                // PipeWire lists first and the only one A2DPWB encodes
+                // PipeWire lists first and the only one BlueCaster encodes
                 if sample_rate != 48000 {
                     return Err(ConfigError::SampleRate(kind, sample_rate));
                 }
@@ -1497,6 +1504,20 @@ impl RemoteCaps {
         }
         Ok(Configuration { kind, remote_seid, request })
     }
+}
+
+/// Of `listed` (lowest first), the rate nearest the PC's `source` rate:
+/// `source` itself, else one of its family (44.1 kHz multiples or not: no
+/// fractional resampling), the highest below it, else the lowest above it;
+/// else from the other family the lowest above it (nothing lost), else the
+/// highest below it. `source` when none is listed (the encoder's own picker
+/// decides)
+pub fn nearest_rate(listed: &[u32], source: u32) -> u32 {
+    let family = |r: u32| r.is_multiple_of(11025);
+    let (same, other): (Vec<u32>, Vec<u32>) = listed.iter().partition(|&&r| family(r) == family(source));
+    let below = |rates: &[u32]| rates.iter().rev().find(|&&r| r <= source).copied();
+    let above = |rates: &[u32]| rates.iter().find(|&&r| r >= source).copied();
+    below(&same).or_else(|| above(&same)).or_else(|| above(&other)).or_else(|| below(&other)).unwrap_or(source)
 }
 
 fn aptx_freq_bits(kind: CodecKind, remote_caps: u8, sample_rate: u32) -> Result<u8, ConfigError> {
@@ -1955,6 +1976,25 @@ mod tests {
         assert_eq!(a.object_type_names(), vec!["MPEG-2 AAC-LC", "MPEG-4 HE-AAC"]);
         assert_eq!(a.sample_rates(), vec![44100, 48000, 96000]);
         assert_eq!(a.channel_counts(), vec![1, 2]);
+    }
+
+    #[test]
+    fn nearest_rate_keeps_the_family() {
+        let ldac = [44100, 48000, 88200, 96000];
+        assert_eq!(nearest_rate(&ldac, 48000), 48000);
+        assert_eq!(nearest_rate(&ldac, 192000), 96000);
+        assert_eq!(nearest_rate(&ldac, 176400), 88200);
+        // 44.1 kHz family first, even when 48 kHz is closer
+        let lhdc = [44100, 48000, 96000];
+        assert_eq!(nearest_rate(&lhdc, 88200), 44100);
+        assert_eq!(nearest_rate(&lhdc, 192000), 96000);
+        // No rate of its family: the lowest above, else the highest below
+        assert_eq!(nearest_rate(&[48000], 44100), 48000);
+        assert_eq!(nearest_rate(&[44100], 96000), 44100);
+        assert_eq!(nearest_rate(&[16000, 32000, 48000], 44100), 48000);
+        // Below every listed rate of its family
+        assert_eq!(nearest_rate(&[48000, 96000], 32000), 48000);
+        assert_eq!(nearest_rate(&[], 96000), 96000);
     }
 
     #[test]

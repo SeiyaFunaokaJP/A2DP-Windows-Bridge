@@ -498,7 +498,7 @@ const PROFILE_KEYS = [
   "error.aac_unavailable",
 ];
 
-/** The adapter A2DPWB would use but cannot: not on WinUSB */
+/** The adapter BlueCaster would use but cannot: not on WinUSB */
 export function adapterNeedingDriver(snap: Snapshot): AdapterInfo | null {
   return snap.adapter.adapters.find((a) => a.driver !== "winusb") ?? null;
 }
@@ -608,7 +608,7 @@ const USER_SIDE_CODES = new Set([
   "stream.bad_source",
 ]);
 
-/** Whether an error points at A2DPWB itself (worth a bug report); anything
+/** Whether an error points at BlueCaster itself (worth a bug report); anything
  *  not known to be on the user's side is */
 export function isAppFault(key: string, code?: string | null): boolean {
   return !USER_SIDE_ERRORS.has(key) && !(code && USER_SIDE_CODES.has(code));
@@ -741,12 +741,12 @@ export function ErrorPanel(props: { code?: string | null; message: Msg; title?: 
 
 /**
  * Assign WinUSB / restore the driver, after saying what it does: while
- * A2DPWB has the adapter, Windows' Bluetooth does not see it.
+ * BlueCaster has the adapter, Windows' Bluetooth does not see it.
  */
 export function WinusbDialog(props: { adapter: AdapterInfo | null; mode: "assign" | "restore"; onClose: (done: boolean) => void }) {
   const app = useApp();
   const [busy, setBusy] = createSignal(false);
-  // Restore: saved devices Windows has paired too. A pairing in A2DPWB
+  // Restore: saved devices Windows has paired too. A pairing in BlueCaster
   // gave the device a new key, so Windows' old one fails (BTHUSB event 16)
   // until the device is paired in Windows again. Read per adapter: Windows'
   // own list needs a radio of its own running, which an adapter on WinUSB

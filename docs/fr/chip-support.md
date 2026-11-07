@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # Ajouter la prise en charge d'une puce
 
-A2DP Windows Bridge pilote lui-même l'adaptateur Bluetooth (WinUSB) : il doit donc faire ce que fait le pilote Windows du fabricant avant que l'adaptateur fonctionne, c'est-à-dire, pour de nombreuses puces, y charger un firmware à chaque démarrage. Les adaptateurs Realtek, Intel, Broadcom et CSR fonctionnent déjà ; MediaTek (MT7921, MT7922 et d'autres) et Qualcomm (QCA61x4) non, car personne n'a encore écrit leur chargeur.
+BlueCaster pilote lui-même l'adaptateur Bluetooth (WinUSB) : il doit donc faire ce que fait le pilote Windows du fabricant avant que l'adaptateur fonctionne, c'est-à-dire, pour de nombreuses puces, y charger un firmware à chaque démarrage. Les adaptateurs Realtek, Intel, Broadcom et CSR fonctionnent déjà ; MediaTek (MT7921, MT7922 et d'autres) et Qualcomm (QCA61x4) non, car personne n'a encore écrit leur chargeur.
 
 Cette page décrit la marche à suivre pour en ajouter un. Il vous faut un adaptateur équipé de cette puce ; les mainteneurs n'en ont pas. Même sans écrire de code, vous pouvez aider : les étapes 1 et 2 produisent le rapport dont un contributeur a besoin.
 
@@ -25,20 +25,20 @@ La conception qui sous-tend tout cela, et ce qui reste ouvert, se trouvent dans 
 ## Ce qu'il vous faut
 
 - L'adaptateur, branché sur un PC sous Windows 10 / 11
-- A2DP Windows Bridge 2.0.2 ou ultérieur (les étapes ci-dessous ne demandent que l'application)
+- BlueCaster 2.0.2 ou ultérieur (les étapes ci-dessous ne demandent que l'application)
 - Pour écrire le chargeur : un environnement de compilation comme dans [Building](building), et [USBPcap](https://desowin.org/usbpcap/) avec [Wireshark](https://www.wireshark.org/) pour enregistrer ce que fait le pilote de Windows
 
-## Étape 1 : confier l'adaptateur à A2DP Windows Bridge
+## Étape 1 : confier l'adaptateur à BlueCaster
 
 1. **Paramètres > Mode développeur** : activé
-2. **Adaptateur** : sur la carte de l'adaptateur, **Remplacer par le pilote WinUSB** (Windows demande l'autorisation de l'administrateur). Pour une puce qu'A2DP Windows Bridge ne sait pas encore utiliser, ce bouton n'est actif qu'en mode développeur
+2. **Adaptateur** : sur la carte de l'adaptateur, **Remplacer par le pilote WinUSB** (Windows demande l'autorisation de l'administrateur). Pour une puce qu'BlueCaster ne sait pas encore utiliser, ce bouton n'est actif qu'en mode développeur
 3. Si la carte indique **Rebranchez ou redémarrez Windows**, faites-le
 
 Tant que l'adaptateur a WinUSB, le Bluetooth de Windows ne peut pas l'utiliser. Sur un portable dont le seul Bluetooth est cette puce, les claviers, souris et casques connectés via Windows cessent de fonctionner jusqu'à ce que vous remettiez le pilote : **Restaurer le pilote d'origine** sur la même carte.
 
 ## Étape 2 : lire ce que dit la puce (sonde de la puce)
 
-Sur la carte de l'adaptateur, partie **Firmware** : **Lire les infos de la puce**. La pile Bluetooth s'arrête un instant, la sonde s'exécute et l'Explorateur s'ouvre sur le rapport, `probe-<date>_<time>.json` dans `logs\probe\` du dossier des paramètres (`%APPDATA%\A2DPWB`). Les 10 plus récents sont conservés.
+Sur la carte de l'adaptateur, partie **Firmware** : **Lire les infos de la puce**. La pile Bluetooth s'arrête un instant, la sonde s'exécute et l'Explorateur s'ouvre sur le rapport, `probe-<date>_<time>.json` dans `logs\probe\` du dossier des paramètres (`%APPDATA%\BlueCaster`). Les 10 plus récents sont conservés.
 
 La sonde ne fait que lire. Elle n'envoie ni HCI Reset ni commande constructeur :
 
@@ -56,10 +56,10 @@ Elle enregistre aussi la configuration USB que rapporte Windows (interfaces, poi
 En ligne de commande, avec le VID:PID ou l'ID d'instance de l'adaptateur (la carte de l'adaptateur les affiche) :
 
 ```bat
-"%LOCALAPPDATA%\A2DP Windows Bridge\a2dpwb-core.exe" --cli -u 0e8d:7961 --probe
+"%LOCALAPPDATA%\BlueCaster\bluecaster-core.exe" --cli -u 0e8d:7961 --probe
 ```
 
-Quittez d'abord A2DP Windows Bridge depuis la zone de notification, car les deux ne peuvent pas utiliser l'adaptateur en même temps.
+Quittez d'abord BlueCaster depuis la zone de notification, car les deux ne peuvent pas utiliser l'adaptateur en même temps.
 
 **Envoyer un rapport** : après **Lire les infos de la puce**, la carte de l'adaptateur affiche ce qui a été lu et un bouton **Signaler sur GitHub**. Il ouvre une nouvelle issue préremplie avec la version, l'adaptateur, ce résumé et votre build de Windows, et montre le fichier du rapport dans l'Explorateur : faites-le glisser dans l'issue, et indiquez la provenance de l'adaptateur (intégré à un portable : son modèle). Le rapport contient l'adresse Bluetooth et le nom de l'adaptateur ; il ne contient rien sur votre casque. Un **Paquet de diagnostic** (écran **Diagnostic**) avec **Inclure les captures HCI** contient aussi les rapports de sonde, sous `probe/`.
 
@@ -78,18 +78,18 @@ Ce qu'il faut chercher, dans l'ordre :
 - Les **commandes HCI** (requêtes de classe, `bmRequestType` 0x20) avec des opcodes de 0xFC00 à 0xFFFF : les commandes constructeur. Une longue suite du même opcode avec de gros paramètres, c'est le firmware qui est envoyé ; leurs réponses indiquent comment chaque partie est acquittée
 - Les **événements** autres que Command Complete / Status : événements constructeur (code 0xFF, ou un code propre au fabricant comme 0xE4), par exemple « firmware démarré », ou l'acquittement de chaque partie du firmware à la place d'un Command Complete
 - Des données **Bulk OUT** avant le premier HCI Reset : certaines puces reçoivent le firmware sur le canal ACL
-- La provenance du fichier : comparez les données envoyées avec les fichiers du dossier du pilote (Gestionnaire de périphériques > détails du pilote, ou `C:\Windows\System32\DriverStore\FileRepository\`) et avec les fichiers de la puce dans [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) (`mediatek/`, `qca/`), qui peuvent être redistribués et que les utilisateurs d'A2DP Windows Bridge peuvent télécharger
+- La provenance du fichier : comparez les données envoyées avec les fichiers du dossier du pilote (Gestionnaire de périphériques > détails du pilote, ou `C:\Windows\System32\DriverStore\FileRepository\`) et avec les fichiers de la puce dans [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) (`mediatek/`, `qca/`), qui peuvent être redistribués et que les utilisateurs d'BlueCaster peuvent télécharger
 
 Notez tout délai que le pilote respecte entre deux étapes (horodatages de la capture) : une puce encore en cours de réinitialisation ne répond pas.
 
 {: .warning }
-Travaillez à partir des captures, des rapports de sonde et de la documentation du fabricant. Ne copiez pas de code GPL et ne le suivez pas de près, par exemple les pilotes `btmtk` ou `btqca` du noyau Linux : A2DP Windows Bridge est sous licence MIT, et un chargeur qui en serait dérivé ne pourrait pas être intégré.
+Travaillez à partir des captures, des rapports de sonde et de la documentation du fabricant. Ne copiez pas de code GPL et ne le suivez pas de près, par exemple les pilotes `btmtk` ou `btqca` du noyau Linux : BlueCaster est sous licence MIT, et un chargeur qui en serait dérivé ne pourrait pas être intégré.
 
 ## Essayer sans compiler : les scripts de puce {#chip-scripts}
 
 Avant d'écrire un chargeur, essayez sur l'adaptateur ce que la capture a montré : un **script de puce** est la séquence sous forme de texte, une requête par ligne, exécutée à la place de la pile Bluetooth. Quelqu'un qui n'a pas l'adaptateur peut en écrire un et l'envoyer à quelqu'un qui l'a ; le résultat revient sous forme de rapport, sans nouvelle compilation.
 
-**En exécuter un** : en mode développeur, **Développeur > Puce** : choisissez l'adaptateur (sous WinUSB), saisissez le script ou ouvrez un fichier, puis **Exécuter**. La réponse à chaque ligne s'affiche en dessous, et **Afficher le rapport** ouvre `script-<date>_<time>.json` dans `logs\probe\` (le script y figure). En ligne de commande : `a2dpwb-core --cli -u <adapter> --script <file>`.
+**En exécuter un** : en mode développeur, **Développeur > Puce** : choisissez l'adaptateur (sous WinUSB), saisissez le script ou ouvrez un fichier, puis **Exécuter**. La réponse à chaque ligne s'affiche en dessous, et **Afficher le rapport** ouvre `script-<date>_<time>.json` dans `logs\probe\` (le script y figure). En ligne de commande : `bluecaster-core --cli -u <adapter> --script <file>`.
 
 ```text
 # une requête par ligne ; nombres en hexadécimal (0x facultatif) sauf wait, timeout= et chunk=
@@ -119,8 +119,8 @@ Les chemins à partir d'ici sont relatifs à la racine du dépôt. Trois crates 
 | Crate (paquet) | Dossier | Contenu |
 |:--|:--|:--|
 | `bt-host` | `app/src/crates/bt-host` | L'hôte Bluetooth : les chargeurs, la sonde, la détection des puces |
-| `a2dpwb-core` (bibliothèque) | `app/src/crates/core` | Paramètres et adaptateurs : quel chargeur s'exécute |
-| `a2dpwb-core-exe` | `app/src/core` | L'exécutable du service (`a2dpwb-core.exe`) : les requêtes de la fenêtre, les notes des adaptateurs |
+| `bluecaster-core` (bibliothèque) | `app/src/crates/core` | Paramètres et adaptateurs : quel chargeur s'exécute |
+| `bluecaster-core-exe` | `app/src/core` | L'exécutable du service (`bluecaster-core.exe`) : les requêtes de la fenêtre, les notes des adaptateurs |
 
 Les deux derniers ont tous deux « core » dans leur nom ; ce sont les noms de paquet ci-dessus qu'attend `cargo -p`.
 
@@ -162,7 +162,7 @@ Des fonctions utilitaires évitent au chargeur d'analyser les octets à la main 
 - `hci_command(opcode, params)` construit une commande
 - `parse_event(event)` donne `HciEvent::Complete { opcode, status, ret }` (paramètres de retour après le statut), `Status { opcode, status }`, `Vendor(params)` (événement 0xFF) ou `Other { code, params }` (tout autre code, y compris un code propre au fabricant comme 0xE4)
 
-**Fichiers de firmware** : le chargeur reçoit un `FileReader` et lui demande un fichier par son **nom, sans dossier** (`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`). L'application cherche dans le dossier du firmware (`%APPDATA%\A2DPWB\firmware`) et dans le sous-dossier du fabricant qui s'y trouve (`firmware\mediatek\`), selon l'organisation de linux-firmware ; l'étape 6 définit ce sous-dossier.
+**Fichiers de firmware** : le chargeur reçoit un `FileReader` et lui demande un fichier par son **nom, sans dossier** (`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`). L'application cherche dans le dossier du firmware (`%APPDATA%\BlueCaster\firmware`) et dans le sous-dossier du fabricant qui s'y trouve (`firmware\mediatek\`), selon l'organisation de linux-firmware ; l'étape 6 définit ce sous-dossier.
 
 ### Modèles
 
@@ -234,15 +234,15 @@ Conservez les fins de ligne de chaque fichier : certains fichiers source utilise
 
 **Documentation** :
 
-13. Le tableau des puces de `docs/setup.md` et `docs/*/setup.md` (toutes les langues) : une ligne comme celle d'Intel, avec les puces couvertes, les fichiers de firmware et leur emplacement (le dossier du firmware : `%APPDATA%\A2DPWB\firmware`, ou son sous-dossier `<vendor>` ; les lignes plus anciennes disent encore « config folder ») et *Experimental.* Nommez les boutons de la fenêtre comme les nomme le `app/lang/*.json` de chaque langue (`ui.nav.adapter` pour l'écran **Adaptateur**, `firmware.open_folder` pour le bouton qui ouvre ce dossier). Tout le fabricant : retirez-le de la ligne « Not supported ». Certaines puces : gardez-y le fabricant et nommez les puces toujours non prises en charge. Ajoutez le fabricant à la phrase en tête de la section Firmware ("Intel and Broadcom adapters (experimental) may need firmware files of their own")
+13. Le tableau des puces de `docs/setup.md` et `docs/*/setup.md` (toutes les langues) : une ligne comme celle d'Intel, avec les puces couvertes, les fichiers de firmware et leur emplacement (le dossier du firmware : `%APPDATA%\BlueCaster\firmware`, ou son sous-dossier `<vendor>` ; les lignes plus anciennes disent encore « config folder ») et *Experimental.* Nommez les boutons de la fenêtre comme les nomme le `app/lang/*.json` de chaque langue (`ui.nav.adapter` pour l'écran **Adaptateur**, `firmware.open_folder` pour le bouton qui ouvre ce dossier). Tout le fabricant : retirez-le de la ligne « Not supported ». Certaines puces : gardez-y le fabricant et nommez les puces toujours non prises en charge. Ajoutez le fabricant à la phrase en tête de la section Firmware ("Intel and Broadcom adapters (experimental) may need firmware files of their own")
 14. [Verified Hardware](hardware) (`docs/hardware.md`) une fois que quelqu'un l'a utilisé, et l'introduction de cette page (`docs/chip-support.md`, toutes les langues), qui nomme les fabricants sans chargeur (certaines puces : « the other <vendor> chips »)
 
 ## Étape 7 : l'essayer sur l'adaptateur
 
-Compilez à la racine du dépôt (`cargo build --release -p a2dpwb-core-exe`), quittez l'application installée (depuis son icône de la zone de notification) et lancez le cœur en ligne de commande avec une capture HCI :
+Compilez à la racine du dépôt (`cargo build --release -p bluecaster-core-exe`), quittez l'application installée (depuis son icône de la zone de notification) et lancez le cœur en ligne de commande avec une capture HCI :
 
 ```bat
-target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
+target\release\bluecaster-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
 ```
 
 Le journal montre chaque étape ; `loader.pklg` s'ouvre dans Wireshark avec chaque commande, événement et transfert de contrôle dans l'ordre. Débranchez l'adaptateur (ou éteignez le PC) et recommencez : le téléchargement doit fonctionner sur une puce à froid, et ne rien faire quand le firmware tourne déjà.
@@ -272,7 +272,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 python tools/check_lang.py
 ```
 
-Sans Node.js, lancez plutôt les tests et clippy sur les trois crates ci-dessus (`-p bt-host -p a2dpwb-core -p a2dpwb-core-exe`), laissez les vérifications de l'interface à la CI de la pull request, et indiquez-le dans la pull request. `pwsh ./build.ps1 -Test` lance tout.
+Sans Node.js, lancez plutôt les tests et clippy sur les trois crates ci-dessus (`-p bt-host -p bluecaster-core -p bluecaster-core-exe`), laissez les vérifications de l'interface à la CI de la pull request, et indiquez-le dans la pull request. `pwsh ./build.ps1 -Test` lance tout.
 
 Clippy vérifie aussi les noms : une variante de `State` appelée `PatchState` échoue sur `enum_variant_names` ; appelez-la `Patch`. `check_lang.py` peut signaler des « long hints left » qui existaient avant votre modification ; seuls les erreurs et les clés manquantes sont à votre charge.
 

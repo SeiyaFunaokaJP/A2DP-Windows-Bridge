@@ -28,6 +28,7 @@ pub use faststream::{
 };
 pub use frame::{Allocation, ChannelMode, SbcConfig, SbcFrameEncoder};
 
+use crate::abr::StallMemory;
 use crate::{CodecKind, Encoded, Encoder, EncoderConfig, EncoderDetails, EncoderError, Pcm, PcmFormat, Quality};
 
 const BLOCKS: u8 = 16;
@@ -197,7 +198,7 @@ pub fn bitrate_kbps(frame_len: usize, sample_rate: u32, pcm_frames: usize) -> u3
 // configuration's minimum, 12) .. the configured maximum; media-sink.c
 // lowers it when a write finds the socket full, at most every 0.5 s, and
 // raises it when a packet goes out with nothing unsent and nothing was
-// lowered or raised for 1 s). A2DPWB has no socket: the encode thread
+// lowered or raised for 1 s). BlueCaster has no socket: the encode thread
 // passes the send queue depth every 100 ms (ldac::ABR_INTERVAL_MS), so a
 // queue past LDAC's "dangerous" threshold stands for the full socket and a
 // nearly empty one for nothing unsent.
@@ -218,7 +219,6 @@ pub const ABR_DOWN_TICKS: u32 = 5;
 pub const ABR_UP_TICKS: u32 = 10;
 /// PipeWire's lowest bitpool
 pub const ABR_MIN_BITPOOL: u8 = 12;
-
 /// The lowest bitpool ABR goes to: never below the sink's minimum or
 /// PipeWire's 12, and not below the Mobile quality's bitpool of the stream
 /// ([`auto_bitpool`] for SBC: 19 joint stereo, stereo and mono, 10 -> 12
@@ -246,7 +246,8 @@ pub fn user_abr_floor(min: u8, sink_min: u8, ceiling: u8) -> u8 {
 /// The adaptive bitpool state: the bitpool the stream started with is the
 /// ceiling, congestion lowers it by [`ABR_DOWN_STEP`] (at most every
 /// [`ABR_DOWN_TICKS`]), a drained queue raises it by [`ABR_UP_STEP`] every
-/// [`ABR_UP_TICKS`]
+/// [`ABR_UP_TICKS`], except back to a bitpool the queue backed up at
+/// ([`StallMemory`])
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BitpoolAbr {
     pub floor: u8,
@@ -255,11 +256,18 @@ pub struct BitpoolAbr {
     since_down: u32,
     /// Steps the queue stayed drained since the last change
     calm: u32,
+    stalls: StallMemory,
 }
 
 impl BitpoolAbr {
     pub fn new(floor: u8, ceiling: u8) -> BitpoolAbr {
-        BitpoolAbr { floor: floor.min(ceiling), ceiling, since_down: ABR_DOWN_TICKS, calm: 0 }
+        BitpoolAbr {
+            floor: floor.min(ceiling),
+            ceiling,
+            since_down: ABR_DOWN_TICKS,
+            calm: 0,
+            stalls: StallMemory::default(),
+        }
     }
 
     /// One step (every 100 ms) with the send queue depth: the bitpool for
@@ -270,6 +278,7 @@ impl BitpoolAbr {
             self.calm = 0;
             if self.since_down >= ABR_DOWN_TICKS && bitpool > self.floor {
                 self.since_down = 0;
+                self.stalls.stepped_down("SBC", bitpool);
                 return bitpool.saturating_sub(ABR_DOWN_STEP).max(self.floor);
             }
             return bitpool;
@@ -279,9 +288,11 @@ impl BitpoolAbr {
         } else {
             self.calm = 0;
         }
-        if self.calm >= ABR_UP_TICKS && bitpool < self.ceiling {
+        self.stalls.tick("SBC", bitpool, self.calm, ABR_UP_TICKS);
+        let next = bitpool.saturating_add(ABR_UP_STEP).min(self.ceiling);
+        if self.calm >= self.stalls.wait(bitpool, next, ABR_UP_TICKS) && bitpool < self.ceiling {
             self.calm = 0;
-            return bitpool.saturating_add(ABR_UP_STEP).min(self.ceiling);
+            return next;
         }
         bitpool
     }
@@ -499,7 +510,7 @@ impl Encoder for SbcEncoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::PeerParams;
+    use crate::{PeerParams, abr};
 
     fn config(sample_rate: u32, channels: u32, quality: Quality) -> EncoderConfig {
         EncoderConfig {
@@ -983,6 +994,11 @@ mod tests {
             bp = a.step(bp, 1);
         }
         assert_eq!(bp, 52);
+        // 53 is where the queue backed up: back to it only after 10 s
+        for _ in ABR_UP_TICKS..abr::STALL_TICKS {
+            bp = a.step(bp, 1);
+        }
+        assert_eq!(bp, 52);
         assert_eq!(a.step(bp, 1), 53);
         // Never above the ceiling
         for _ in 0..100 {
@@ -999,6 +1015,106 @@ mod tests {
         assert_eq!(steps, 34 * ABR_UP_TICKS);
     }
 
+    /// Steps of a drained queue until the bitpool changes: how many, and
+    /// to what
+    fn drained(a: &mut BitpoolAbr, bp: u8) -> (u32, u8) {
+        for n in 1..=10_000 {
+            let next = a.step(bp, 0);
+            if next != bp {
+                return (n, next);
+            }
+        }
+        panic!("bitpool {bp} never moves");
+    }
+
+    /// Congested from `bp` until the first step down
+    fn stall(a: &mut BitpoolAbr, bp: u8) -> u8 {
+        let next = a.step(bp, 64);
+        assert!(next < bp, "{bp} -> {next}");
+        next
+    }
+
+    #[test]
+    fn abr_policy_waits_longer_for_the_bitpool_that_stalled() {
+        let mut a = BitpoolAbr::new(19, 36);
+        assert_eq!(stall(&mut a, 36), 34);
+        // 35 as fast as ever, 36 only after 10 s
+        assert_eq!(drained(&mut a, 34), (ABR_UP_TICKS, 35));
+        assert_eq!(drained(&mut a, 35), (abr::STALL_TICKS, 36));
+        // Stalling there again: twice as long, and so on up to 2 minutes
+        let mut wait = abr::STALL_TICKS;
+        for _ in 0..6 {
+            wait = (wait * 2).min(abr::STALL_MAX_TICKS);
+            assert_eq!(stall(&mut a, 36), 34);
+            assert_eq!(drained(&mut a, 34), (ABR_UP_TICKS, 35));
+            assert_eq!(drained(&mut a, 35), (wait, 36));
+        }
+        assert_eq!(wait, abr::STALL_MAX_TICKS);
+    }
+
+    #[test]
+    fn abr_policy_one_stall_is_the_bitpool_it_began_at() {
+        // Several steps down without the queue draining: one stall, at 53
+        let mut a = BitpoolAbr::new(19, 53);
+        let mut bp = 53;
+        for _ in 0..3 * ABR_DOWN_TICKS {
+            bp = a.step(bp, 64);
+        }
+        assert_eq!(bp, 47);
+        assert_eq!(drained(&mut a, 47), (ABR_UP_TICKS, 48));
+        let mut bp = 48;
+        for _ in 48..52 {
+            let (n, next) = drained(&mut a, bp);
+            assert_eq!(n, ABR_UP_TICKS);
+            bp = next;
+        }
+        assert_eq!(drained(&mut a, 52), (abr::STALL_TICKS, 53));
+    }
+
+    #[test]
+    fn abr_policy_stall_below_waits_longer_above_starts_over() {
+        let mut a = BitpoolAbr::new(19, 40);
+        assert_eq!(stall(&mut a, 36), 34);
+        assert_eq!(drained(&mut a, 34), (ABR_UP_TICKS, 35));
+        // The link got worse: 36 stalls again (20 s), then 35 (40 s)
+        assert_eq!(drained(&mut a, 35), (abr::STALL_TICKS, 36));
+        let bp = stall(&mut a, 36);
+        let (_, bp) = drained(&mut a, bp);
+        assert_eq!(stall(&mut a, bp), 33);
+        assert_eq!(drained(&mut a, 33), (ABR_UP_TICKS, 34));
+        assert_eq!(drained(&mut a, 34), (4 * abr::STALL_TICKS, 35));
+        // A stall above the last one starts at 10 s again
+        let mut bp = 35;
+        while bp < 38 {
+            bp = drained(&mut a, bp).1;
+        }
+        assert_eq!(stall(&mut a, 38), 36);
+        let (_, bp) = drained(&mut a, 36);
+        assert_eq!(drained(&mut a, bp), (abr::STALL_TICKS, 38));
+    }
+
+    #[test]
+    fn abr_policy_forgets_a_stall_after_a_minute_without_one() {
+        let mut a = BitpoolAbr::new(19, 36);
+        stall(&mut a, 36);
+        let (_, bp) = drained(&mut a, 34);
+        assert_eq!(drained(&mut a, bp), (abr::STALL_TICKS, 36));
+        // A minute at 36: the next stall there is a first one again
+        for _ in 0..abr::FORGET_TICKS {
+            assert_eq!(a.step(36, 0), 36);
+        }
+        assert_eq!(stall(&mut a, 36), 34);
+        let (_, bp) = drained(&mut a, 34);
+        assert_eq!(drained(&mut a, bp), (abr::STALL_TICKS, 36));
+        // Less than a minute: it doubles
+        for _ in 0..abr::FORGET_TICKS - 1 {
+            a.step(36, 0);
+        }
+        assert_eq!(stall(&mut a, 36), 34);
+        let (_, bp) = drained(&mut a, 34);
+        assert_eq!(drained(&mut a, bp), (2 * abr::STALL_TICKS, 36));
+    }
+
     #[test]
     fn abr_policy_reset() {
         let mut a = BitpoolAbr::new(19, 53);
@@ -1007,6 +1123,9 @@ mod tests {
         assert_eq!(a.reset(), 53);
         // The pause after a step down is forgotten too
         assert_eq!(a.step(53, 64), 51);
+        // ... and the stall: 51 -> 53 at the old pace after a reset
+        a.reset();
+        assert_eq!(drained(&mut a, 52), (ABR_UP_TICKS, 53));
     }
 
     #[test]

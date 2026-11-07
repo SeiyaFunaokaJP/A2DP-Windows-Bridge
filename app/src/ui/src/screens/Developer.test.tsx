@@ -216,7 +216,7 @@ describe("Auracast tab", () => {
   it("shows why a broadcast did not start", async () => {
     const { core } = await open();
     // The core refuses a broadcast while developer mode is off
-    await expect(core.request("stream.start_broadcast", { name: "A2DPWB", quality: "hq", source: "tone" })).rejects.toMatchObject({
+    await expect(core.request("stream.start_broadcast", { name: "BlueCaster", quality: "hq", source: "tone" })).rejects.toMatchObject({
       code: "developer.off",
     });
     await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });

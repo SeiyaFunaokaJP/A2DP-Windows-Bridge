@@ -7,7 +7,7 @@ english_only: true
 
 # LE Audio (experimental) - developer note
 
-A2DPWB can stream to LE Audio devices as a **BAP unicast client** (audio
+BlueCaster can stream to LE Audio devices as a **BAP unicast client** (audio
 source): LC3 over Connected Isochronous Streams (CIS), on the same BTstack
 session and WinUSB adapter as A2DP. It is **experimental**, used only for a
 device's LE Audio entry (or `--le-audio` in CLI mode). `le_audio_experimental`
@@ -41,14 +41,15 @@ for reference (`git show b819893:app/src/le_audio/<file>`).
 | `app/src/core/src/cli.rs` | `--le-audio`, `--le-device`, `--le-preset`, `--le-low-latency`, `--le-scan`, `--le-sim-volume`, `--mcp-dry-run`, `--ccp-sim`, `--ccp-console` (v1 `le_audio_cli.cpp`'s flow and lines) |
 | `app/src/core/src/state.rs`, `resident.rs` | The UI's state: LE settings, LE devices, `le_scanning`, `StreamInfo.le`, `LinkSample.iso`, `settings.set`'s `le_audio_deferred`; diagnostics section `[LE Audio (experimental)]` (`crates/core/src/diag.rs`) |
 | `app/src/ui/src/` | The Codecs screen's LC3 card and GMAP low-latency check box (the profile's `le_low_latency`), DevicePicker's LE tags, Diagnostics' ISO counters; `?mock=le` mocks LE |
-| `tools/a2dp_decode/le_audio_decode.cpp` | `a2dpwb_decode --le-audio` |
+| `tools/a2dp_decode/le_audio_decode.cpp` | `bluecaster_decode --le-audio` |
 | `tools/emu/emu_le_audio_sink.py`, `tools/emu/le_audio/` | Bumble LE Audio sink(s); `le_audio/<profile>.py` = the sink side of each profile |
 | `tools/emu/le_audio_tests/` | `run_test.py --le-audio` cases and checks, one file per profile (`core.py`, `privacy.py`, `csip.py`, `vcp.py`, `mcp.py`, `ccp.py`, `tmap_gmap.py`, `bas.py`) |
 
-Files in the config folder (the same as v1): `le_audio_bonds.tlv` (LE bonds
-and the GATT server's persistent CCC values), `le_audio_csip.txt`
-(coordinated sets), `le_audio_devices.txt` (LE Audio entries of the device
-list).
+Files in the config folder (the formats are the same as v1; the paths are
+in [Settings and Files](architecture#settings-and-files)):
+`pairing\le_audio_bonds.tlv` (LE bonds and the GATT server's persistent CCC
+values), `pairing\le_audio_csip.txt` (coordinated sets),
+`devices\le_audio_devices.txt` (LE Audio entries of the device list).
 
 ## Threads - the one rule that matters
 
@@ -265,7 +266,7 @@ The UI's ISO counters (`LinkSample.iso`) come from `BtHost::le_stream_stats()`
 
 ## Emulator (`tools/emu`)
 
-`emu_le_audio_sink.py --port P --capture sink.pklg --layout L` runs A2DPWB's
+`emu_le_audio_sink.py --port P --capture sink.pklg --layout L` runs BlueCaster's
 controller (H4 over TCP) and one or two sinks on a Bumble `LocalLink`:
 
 | Layout | Sinks |
@@ -304,8 +305,8 @@ Once: `python tools/emu/setup_env.py` (Bumble venv in `tools/emu/.venv`).
 Then:
 
 ```
-pwsh ./build.ps1 -Decoder                       # a2dpwb_decode -> build/a2dp_decode/Release
-cargo build --release -p a2dpwb-core-exe        # target/release/a2dpwb-core.exe
+pwsh ./build.ps1 -Decoder                       # bluecaster_decode -> build/a2dp_decode/Release
+cargo build --release -p bluecaster-core-exe        # target/release/bluecaster-core.exe
 tools\emu\.venv\Scripts\python.exe tools\emu\run_test.py --le-audio
 tools\emu\.venv\Scripts\python.exe tools\emu\run_test.py --le-audio stereo earbuds --base-port 10200 --out $env:TEMP\le
 tools\emu\.venv\Scripts\python.exe tools\emu\run_test.py          # the A2DP codecs: must keep passing
@@ -313,11 +314,11 @@ tools\emu\.venv\Scripts\python.exe tools\emu\run_test.py          # the A2DP cod
 
 `--le-audio` without names runs all 41 cases; CI runs them after the A2DP set
 (`.github/workflows/ci.yml`, emulator job). Each case gets its own config
-folder (`A2DPWB_CONFIG_DIR=<out>/le-<case>/config`), so nothing touches
-`%APPDATA%\A2DPWB`. Parallel runs need distinct `--base-port`s (each case
+folder (`BLUECASTER_CONFIG_DIR=<out>/le-<case>/config`), so nothing touches
+`%APPDATA%\BlueCaster`. Parallel runs need distinct `--base-port`s (each case
 uses its own port from there). Per case `<out>/le-<case>/` has
-`a2dpwb.log`, `sink.log`, the captures and `sent_report.txt` /
-`received_report.txt` from `a2dpwb_decode --le-audio`.
+`bluecaster.log`, `sink.log`, the captures and `sent_report.txt` /
+`received_report.txt` from `bluecaster_decode --le-audio`.
 
 | File | Cases |
 |------|-------|
@@ -330,27 +331,27 @@ uses its own port from there). Per case `<out>/le-<case>/` has
 | `tmap_gmap.py` | `tmap-role`, `gmap-low-latency`, `gmap-earbuds`, `gmap-off`, `gmap-not-ugt`, `gmap-media-context` |
 | `bas.py` | `bas-level`, `bas-earbuds` |
 
-Each case checks: A2DPWB exits 0; one stream of the expected configuration
+Each case checks: BlueCaster exits 0; one stream of the expected configuration
 on both sides; no decoder problems (consecutive SDU sequence numbers,
-lengths, LC3 decoding); the sinks received every SDU A2DPWB sent; decoded
+lengths, LC3 decoding); the sinks received every SDU BlueCaster sent; decoded
 audio identical on both sides and the test tone (1 kHz left, 1.5 kHz right;
 mono: both) in every 100 ms of every stream but a short gap at its start and
-end; no `late SDU`; no underrun in A2DPWB's "stopped sending" counters (one
+end; no `late SDU`; no underrun in BlueCaster's "stopped sending" counters (one
 as the tone stopped is allowed) and most of the duration sent as audio; each
 CIS's channel allocation within the PACS locations of its sink; the
 teardown steps in the log; then the checks of every
 `le_audio_tests/<profile>.py`. `Case` fields: `le_audio_tests/case.py`.
 
-A case runs `a2dpwb-core.exe --cli --hci-tcp 127.0.0.1:<port> --le-audio -d
+A case runs `bluecaster-core.exe --cli --hci-tcp 127.0.0.1:<port> --le-audio -d
 <first sink> --le-device <other sinks> --test-tone --duration N
---hci-capture ...` plus its `a2dpwb_args` (`--hci-tcp` implies
+--hci-capture ...` plus its `bluecaster_args` (`--hci-tcp` implies
 `--mcp-dry-run`: MCP never controls the PC's real players).
 
 Unit tests: `cargo test -p le-audio -p lc3-sys -p bt-host -p pipeline -p
-a2dpwb-core` (BAP phases, GATT queue and server, ISO rounds, each module
+bluecaster-core` (BAP phases, GATT queue and server, ISO rounds, each module
 against a scripted peer, the CLI's parsing); btstack-sys's
 `tests/le_emulator.rs` is ignored by default and runs against a sink given in
-`A2DPWB_EMU_LE=host:port`.
+`BLUECASTER_EMU_LE=host:port`.
 
 ## The profiles
 
@@ -369,7 +370,7 @@ crypto self-check (CSIS appendix A) runs at stack init.
 **VCP (Volume Controller, `vcp.rs`).** Volume State read and notifications,
 Set Absolute Volume / Unmute with the Change Counter (one retry after 0x80),
 one group volume for all connected VCS devices (later members are aligned to
-it), button presses during A2DPWB's own write applied afterwards, 0-127 <->
+it), button presses during BlueCaster's own write applied afterwards, 0-127 <->
 0-255 with `vcp_scale`. `remote_volume` / `request_volume` feed VolumeSync,
 so the profile's volume sync applies as for A2DP. `--le-sim-volume` runs
 VolumeSync against a simulated Windows volume in the CLI.
@@ -383,7 +384,7 @@ of changing text: 0x80; notifications cut to ATT_MTU - 3 at a UTF-8
 boundary.
 
 **CCP (GTBS server, `ccp.rs`).** A spec-correct GTBS (16 characteristics,
-CCID 2) around `ccp_model::CallModel` with the simulation backend: A2DPWB has
+CCID 2) around `ccp_model::CallModel` with the simulation backend: BlueCaster has
 no telephony. `--ccp-sim "<t>:<cmd>;..."` runs commands after the first
 client subscribed to Call State, `--ccp-console` reads them from stdin.
 Notification order as Zephyr's `tbs.c`. Call indices restart at 1 with each
@@ -405,7 +406,7 @@ X% (reported Y%)"). Emulator option `--bas L[,L2]`, `--bas-change S:L`.
 
 ## Broadcast (Auracast source, developer mode)
 
-A2DPWB can also broadcast instead of streaming to a device: any LE Audio
+BlueCaster can also broadcast instead of streaming to a device: any LE Audio
 receiver nearby (earbuds, a speaker, a phone acting as an assistant) can
 pick it up. Started from the Developer screen's Auracast tab (name,
 password, high / standard quality, stereo / mono, test tone or system
@@ -430,8 +431,8 @@ replaces it.
   encode thread and the ISO sender are the unicast ones.
 - btstack-sys: `ENABLE_LE_PERIODIC_ADVERTISING`, `MAX_NR_BIS 2`; the shim
   keeps the advertising set, its data and the BIG statically
-  (`a2dpwb_broadcast_advertise`, `a2dpwb_big_create`, `a2dpwb_big_terminate`,
-  `a2dpwb_broadcast_advertise_stop`).
+  (`bluecaster_broadcast_advertise`, `bluecaster_big_create`, `bluecaster_big_terminate`,
+  `bluecaster_broadcast_advertise_stop`).
 - bt-host `le/broadcast.rs`: advertising + LE Create BIG ->
   GAP_SUBEVENT_BIG_CREATED -> `IsoSender::start_big`; stop: LE Terminate
   BIG -> GAP_SUBEVENT_BIG_TERMINATED -> advertising removed ("Auracast:
@@ -453,7 +454,7 @@ emulated controllers; `le_audio/broadcast_sink.py`: a Bumble host as the
 broadcast sink, parsing the announcements and the BASE with Bumble's own
 code). Checked by hand on 2026-11-05: open (all SDUs on both BIS, no late
 SDU), encrypted with the right code (synced) and a wrong one (MIC failure,
-no audio), mono 24_2_2. Not yet: `run_test.py` cases and `a2dpwb_decode`
+no audio), mono 24_2_2. Not yet: `run_test.py` cases and `bluecaster_decode`
 for BIS (the decoder change in `tools/a2dp_decode` is unfinished).
 Real hardware: not tried.
 
@@ -498,8 +499,8 @@ Users with the setting off get the behaviour of a build without LE:
 - LE ACL buffers can be small (27 bytes in the emulator): GATT writes are
   fragmented; BTstack negotiates the ATT MTU before the first query.
 - Connect with the address type the advertisement showed.
-- The device / CIS handles in captures differ between A2DPWB's and the
-  sink's controller; `a2dpwb_decode --le-audio` maps them by CIG / CIS id.
+- The device / CIS handles in captures differ between BlueCaster's and the
+  sink's controller; `bluecaster_decode --le-audio` maps them by CIG / CIS id.
 
 ## Known limitations
 
@@ -553,7 +554,7 @@ Verification
 Missing features
 - [ ] Source ASEs (microphone): needed for TMAP Call Gateway, real CCP calls
   and the GMAP `_gs` configurations.
-- [ ] Broadcast: emulator cases in `run_test.py`, BIS in `a2dpwb_decode`,
+- [ ] Broadcast: emulator cases in `run_test.py`, BIS in `bluecaster_decode`,
   real hardware; TMAP BMS / GMAP BGS roles.
 - [ ] CSIP: SIRK / size / rank change notifications, OOB-only SIRK; after a
   link loss the CLI reconnects only the address it was given; the 10 s

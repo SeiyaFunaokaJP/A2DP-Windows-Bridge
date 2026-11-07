@@ -18,11 +18,11 @@ use serde_json::Value;
 
 use crate::settings::Settings;
 
-pub const REPO: &str = "SeiyaFunaokaJP/A2DP-Windows-Bridge";
+pub const REPO: &str = "SeiyaFunaokaJP/BlueCaster";
 /// Releases page: the link when the API is unreachable
-pub const RELEASES_PAGE: &str = "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases";
+pub const RELEASES_PAGE: &str = "https://github.com/SeiyaFunaokaJP/BlueCaster/releases";
 
-const API: &str = "https://api.github.com/repos/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases";
+const API: &str = "https://api.github.com/repos/SeiyaFunaokaJP/BlueCaster/releases";
 /// Newest first; 20 reaches back past any run of pre-releases
 const LIST_PER_PAGE: u32 = 20;
 /// /releases/latest is a few kB, 20 list entries some 100 kB
@@ -164,7 +164,7 @@ pub fn parse_list(json: &str) -> Result<Release, UpdateError> {
 fn get(url: &str) -> Result<String, UpdateError> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_global(Some(TIMEOUT))
-        .user_agent(concat!("A2DPWB/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("BlueCaster/", env!("CARGO_PKG_VERSION")))
         .build()
         .into();
     let started = std::time::Instant::now();
@@ -286,22 +286,22 @@ mod tests {
     #[test]
     fn parses_latest() {
         let json = r#"{"url":"https://api.github.com/repos/x/y/releases/1","html_url":
-            "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/tag/v1.1.0","tag_name":"v1.1.0",
-            "name":"A2DPWB 1.1.0","draft":false,"prerelease":false,"assets":[]}"#;
+            "https://github.com/SeiyaFunaokaJP/BlueCaster/releases/tag/v1.1.0","tag_name":"v1.1.0",
+            "name":"BlueCaster 1.1.0","draft":false,"prerelease":false,"assets":[]}"#;
         let r = parse_latest(json).unwrap();
         assert_eq!(
             r,
             Release {
                 version: "1.1.0".into(),
                 tag: "v1.1.0".into(),
-                url: "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/tag/v1.1.0".into(),
+                url: "https://github.com/SeiyaFunaokaJP/BlueCaster/releases/tag/v1.1.0".into(),
                 prerelease: false,
                 notes: String::new(),
             }
         );
         assert_eq!(
             manifest_url(&r.tag),
-            "https://github.com/SeiyaFunaokaJP/A2DP-Windows-Bridge/releases/download/v1.1.0/latest.json"
+            "https://github.com/SeiyaFunaokaJP/BlueCaster/releases/download/v1.1.0/latest.json"
         );
         // No html_url: the releases page
         assert_eq!(parse_latest(r#"{"tag_name":"v1.0.0"}"#).unwrap().url, RELEASES_PAGE);
@@ -364,7 +364,7 @@ mod tests {
         assert!(!automatic_check_due(&s, "2099-01-01"));
     }
 
-    /// Really asks GitHub: `cargo test -p a2dpwb-core update -- --ignored`
+    /// Really asks GitHub: `cargo test -p bluecaster-core update -- --ignored`
     #[test]
     #[ignore = "network"]
     fn queries_github() {

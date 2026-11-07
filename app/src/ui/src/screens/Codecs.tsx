@@ -47,7 +47,7 @@ import { Banner, Button, Check, Dialog, Toggle } from "../components/controls";
 import { Icon } from "../components/Icon";
 import { stateLabel } from "../components/stream";
 import { t } from "../i18n";
-import type { Profile, Snapshot } from "../ipc/types";
+import type { AudioDevice, Profile, Snapshot } from "../ipc/types";
 import {
   AUTO_ORDER,
   autoKeepsCodecSettings,
@@ -68,6 +68,7 @@ import {
 } from "../lib/codecs";
 import {
   audioEntries,
+  captureDevice,
   codecsOnRequest,
   entryBase,
   entryByKey,
@@ -81,7 +82,7 @@ import {
 import { knownSbcCaps } from "../lib/sbc";
 import { entryState } from "./Home";
 
-const HIDE_KEY = "a2dpwb.codecs.hide_unsupported";
+const HIDE_KEY = "bluecaster.codecs.hide_unsupported";
 
 /** A "..." dialog's changes are saved this long after the last one: only
  *  the end of a quick series (a slider moved) */
@@ -261,6 +262,16 @@ export function Codecs() {
   // A card, or its "...", clicked under Auto-select (issue #86 round 8):
   // what follows once it is turned off (null: the dialog is closed)
   const [locked, setLocked] = createSignal<(() => void) | null>(null);
+  // The PC's output formats, read while Auto matches them (developer mode),
+  // again when the window comes back (changed in Windows meanwhile)
+  const matchSource = () => snap().settings.developer_mode && snap().settings.dev_overrides.match_source;
+  const [audioDevices, setAudioDevices] = createSignal<AudioDevice[]>([]);
+  const loadDevices = () => {
+    if (matchSource()) void core.request("audio.devices").then(setAudioDevices, () => {});
+  };
+  createEffect(on(matchSource, loadDevices));
+  window.addEventListener("focus", loadDevices);
+  onCleanup(() => window.removeEventListener("focus", loadDevices));
 
   return (
     <div class="page codecs">
@@ -297,7 +308,15 @@ export function Codecs() {
         <For each={entries().map((e) => e.key)}>
           {(key) => {
             const entry = entryByKey(entries, key);
-            return <DeviceCodecs entry={entry()} hide={hide()} auto={autoAll()} onLocked={(then) => setLocked(() => then)} />;
+            return (
+              <DeviceCodecs
+                entry={entry()}
+                hide={hide()}
+                auto={autoAll()}
+                audioDevices={audioDevices()}
+                onLocked={(then) => setLocked(() => then)}
+              />
+            );
           }}
         </For>
       </Show>
@@ -325,6 +344,9 @@ function DeviceCodecs(props: {
   entry: AudioEntry;
   hide: boolean;
   auto: boolean;
+  /** The PC's output devices with their formats (read only while Auto
+   *  matches them) */
+  audioDevices: readonly AudioDevice[];
   /** A card clicked while Auto-select is on: `then` once it is turned off */
   onLocked: (then: () => void) => void;
 }) {
@@ -334,7 +356,17 @@ function DeviceCodecs(props: {
   const [busy, setBusy] = createSignal(false);
   // The profile shown: the device's, or what it would start from
   const shown = (): Profile => e().profile ?? entryBase(e(), snap().profiles);
-  const known = () => knownCodecs(snap().devices, e().address);
+  // The format Windows plays its source in (one app: the default output, as
+  // the core reads it)
+  const sourceFormat = () => {
+    const p = shown();
+    const d =
+      p.capture_mode === "app"
+        ? props.audioDevices.find((x) => x.is_default)
+        : captureDevice(p, props.audioDevices);
+    return d && d.mix_rate !== null && d.mix_bits !== null ? { rate: d.mix_rate, bits: d.mix_bits } : null;
+  };
+  const known =() => knownCodecs(snap().devices, e().address);
   const onRequest = () => codecsOnRequest(snap().devices, e().address);
   const support = (id: string) => codecSupport(id, known(), onRequest());
   const refused = (id: string) => support(id) === "not_offered" && !forcesCodec(snap().settings);
@@ -714,6 +746,7 @@ function DeviceCodecs(props: {
           caps={capsForSettings(knownCodecCaps(snap().devices, e().address), snap().settings)}
           developer={snap().settings.developer_mode}
           matchSource={snap().settings.developer_mode && snap().settings.dev_overrides.match_source}
+          sourceFormat={sourceFormat()}
           deviceName={e().name}
           onForgetReport={() => void app.run(() => app.core.request("device.forget_codecs", { address: e().address }))}
           onChange={(values) => {

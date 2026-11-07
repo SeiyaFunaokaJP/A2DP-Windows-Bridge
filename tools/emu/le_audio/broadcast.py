@@ -3,7 +3,7 @@
 Bumble's virtual controller has no BIG support and ignores periodic
 advertising. BroadcastController adds both roles on the in-process link:
 
-  Broadcaster (A2DPWB's controller):
+  Broadcaster (BlueCaster's controller):
   - extended advertising sets advertise with their SID and properties
     (ExtAdvPdu), periodic advertising keeps its parameters and data
     (fragments joined) per set

@@ -1,6 +1,6 @@
 //! The link keys Windows' Bluetooth keeps for one radio, so that devices it
-//! paired with that radio (an adapter A2DPWB now drives with WinUSB) connect
-//! to A2DPWB without pairing again.
+//! paired with that radio (an adapter BlueCaster now drives with WinUSB) connect
+//! to BlueCaster without pairing again.
 //!
 //! Windows keeps them in
 //! HKLM\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Keys\<radio>,
@@ -8,7 +8,7 @@
 //! address (12 lowercase hex digits, as is the radio's key). LE devices are
 //! subkeys there and are not read. Only SYSTEM may read that key: an
 //! administrator gets in with the backup privilege (REG_OPTION_BACKUP_RESTORE),
-//! so the caller runs elevated (a2dpwb-driver.exe `windows-keys`).
+//! so the caller runs elevated (bluecaster-driver.exe `windows-keys`).
 //!
 //! The key bytes are in the order of HCI's Link Key Notification, the order
 //! BTstack and BlueZ keep them in too.

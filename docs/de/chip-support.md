@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # Unterstützung für Chips hinzufügen
 
-A2DP Windows Bridge steuert den Bluetooth-Adapter selbst (WinUSB) und muss daher erledigen, was sonst der Windows-Treiber des Herstellers tut, bevor der Adapter funktioniert: Bei vielen Chips heißt das, bei jedem Start eine Firmware in den Chip zu laden. Adapter von Realtek, Intel, Broadcom und CSR funktionieren bereits; MediaTek (MT7921, MT7922 und andere) und Qualcomm (QCA61x4) nicht, weil noch niemand ihren Loader geschrieben hat.
+BlueCaster steuert den Bluetooth-Adapter selbst (WinUSB) und muss daher erledigen, was sonst der Windows-Treiber des Herstellers tut, bevor der Adapter funktioniert: Bei vielen Chips heißt das, bei jedem Start eine Firmware in den Chip zu laden. Adapter von Realtek, Intel, Broadcom und CSR funktionieren bereits; MediaTek (MT7921, MT7922 und andere) und Qualcomm (QCA61x4) nicht, weil noch niemand ihren Loader geschrieben hat.
 
 Diese Seite beschreibt, wie man einen solchen Loader hinzufügt. Sie brauchen dafür einen Adapter mit dem betreffenden Chip; die Maintainer haben keinen. Auch ohne selbst Code zu schreiben, können Sie helfen: Die Schritte 1 und 2 liefern den Bericht, den ein Entwickler braucht.
 
@@ -25,20 +25,20 @@ Das Konzept dahinter und die offenen Punkte stehen in der [Entwicklernotiz](../c
 ## Was Sie brauchen
 
 - Den Adapter, angeschlossen an einen PC mit Windows 10 / 11
-- A2DP Windows Bridge 2.0.2 oder neuer (für die folgenden Schritte genügt die App)
+- BlueCaster 2.0.2 oder neuer (für die folgenden Schritte genügt die App)
 - Um den Loader zu schreiben: eine Build-Umgebung wie unter [Bauen](building) beschrieben sowie [USBPcap](https://desowin.org/usbpcap/) mit [Wireshark](https://www.wireshark.org/), um mitzuschneiden, was der Windows-eigene Treiber tut
 
-## Schritt 1: Den Adapter an A2DP Windows Bridge übergeben
+## Schritt 1: Den Adapter an BlueCaster übergeben
 
 1. **Einstellungen > Entwicklermodus**: an
-2. **Adapter**: auf der Karte des Adapters **Durch WinUSB-Treiber ersetzen** (Windows fragt nach Administratorrechten). Bei einem Chip, den A2DP Windows Bridge noch nicht verwenden kann, ist diese Schaltfläche nur im Entwicklermodus aktiv
+2. **Adapter**: auf der Karte des Adapters **Durch WinUSB-Treiber ersetzen** (Windows fragt nach Administratorrechten). Bei einem Chip, den BlueCaster noch nicht verwenden kann, ist diese Schaltfläche nur im Entwicklermodus aktiv
 3. Steht auf der Karte **Neu einstecken oder Windows neu starten**, tun Sie das
 
 Solange der Adapter WinUSB hat, kann das Bluetooth von Windows ihn nicht nutzen. Ist dieser Chip das einzige Bluetooth eines Notebooks, funktionieren über Windows verbundene Tastaturen, Mäuse und Headsets nicht mehr, bis Sie den Treiber zurückgeben: **Originaltreiber wiederherstellen** auf derselben Karte.
 
 ## Schritt 2: Auslesen, was der Chip meldet (Chip-Abfrage)
 
-Auf der Karte des Adapters, im Bereich **Firmware**: **Chip-Infos lesen**. Der Bluetooth-Stack hält kurz an, die Abfrage läuft, und der Explorer öffnet den Bericht, `probe-<date>_<time>.json` in `logs\probe\` im Einstellungsordner (`%APPDATA%\A2DPWB`). Die 10 neuesten werden aufbewahrt.
+Auf der Karte des Adapters, im Bereich **Firmware**: **Chip-Infos lesen**. Der Bluetooth-Stack hält kurz an, die Abfrage läuft, und der Explorer öffnet den Bericht, `probe-<date>_<time>.json` in `logs\probe\` im Einstellungsordner (`%APPDATA%\BlueCaster`). Die 10 neuesten werden aufbewahrt.
 
 Die Abfrage liest nur. Sie sendet kein HCI Reset und keinen Herstellerbefehl:
 
@@ -56,10 +56,10 @@ Außerdem hält sie die USB-Konfiguration fest, die Windows meldet (Interfaces, 
 Über die Kommandozeile, mit der VID:PID oder Instanz-ID des Adapters (die Adapterkarte zeigt beide an):
 
 ```bat
-"%LOCALAPPDATA%\A2DP Windows Bridge\a2dpwb-core.exe" --cli -u 0e8d:7961 --probe
+"%LOCALAPPDATA%\BlueCaster\bluecaster-core.exe" --cli -u 0e8d:7961 --probe
 ```
 
-Beenden Sie A2DP Windows Bridge vorher über den Infobereich, da nicht beide gleichzeitig den Adapter nutzen können.
+Beenden Sie BlueCaster vorher über den Infobereich, da nicht beide gleichzeitig den Adapter nutzen können.
 
 **Einen Bericht senden**: Nach **Chip-Infos lesen** zeigt die Karte des Adapters, was gelesen wurde, und eine Schaltfläche **Auf GitHub melden**. Sie eröffnet ein neues Issue, in dem Version, Adapter, diese Zusammenfassung und Ihr Windows-Build bereits eingetragen sind, und zeigt die Berichtsdatei im Explorer: Ziehen Sie sie in das Issue und ergänzen Sie, woher der Adapter stammt (bei einem im Notebook eingebauten Adapter: das Notebookmodell). Der Bericht enthält die Bluetooth-Adresse und den Namen des Adapters, aber nichts über Ihre Kopfhörer. Ein **Diagnosepaket** (Seite **Diagnose**) mit eingeschlossenen HCI-Mitschnitten enthält die Abfrageberichte ebenfalls, unter `probe/`.
 
@@ -78,18 +78,18 @@ Worauf Sie achten sollten, der Reihe nach:
 - **HCI-Befehle** (Class Requests, `bmRequestType` 0x20) mit Opcodes von 0xFC00 bis 0xFFFF: Herstellerbefehle. Eine lange Folge desselben Opcodes mit großen Parametern ist die Übertragung der Firmware; die Antworten darauf zeigen, wie jeder Teil bestätigt wird
 - **Events**, die weder Command Complete noch Command Status sind: Hersteller-Events (Code 0xFF oder ein eigener Code des Herstellers wie 0xE4), zum Beispiel „Firmware gestartet“ oder die Bestätigung jedes Firmwareteils anstelle eines Command Complete
 - **Bulk-OUT**-Daten vor dem ersten HCI Reset: Manche Chips nehmen die Firmware über die ACL-Pipe entgegen
-- Woher die Datei stammt: Vergleichen Sie die gesendeten Daten mit den Dateien im Ordner des Treibers (Geräte-Manager > Treiberdetails, oder `C:\Windows\System32\DriverStore\FileRepository\`) und mit den Dateien des Chips in [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) (`mediatek/`, `qca/`), die weitergegeben werden dürfen und die Nutzer von A2DP Windows Bridge herunterladen können
+- Woher die Datei stammt: Vergleichen Sie die gesendeten Daten mit den Dateien im Ordner des Treibers (Geräte-Manager > Treiberdetails, oder `C:\Windows\System32\DriverStore\FileRepository\`) und mit den Dateien des Chips in [linux-firmware](https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/) (`mediatek/`, `qca/`), die weitergegeben werden dürfen und die Nutzer von BlueCaster herunterladen können
 
 Notieren Sie jede Pause, die der Treiber zwischen den Schritten einhält (die Zeitstempel der Aufzeichnung): Ein Chip, der noch zurückgesetzt wird, antwortet nicht.
 
 {: .warning }
-Arbeiten Sie mit Aufzeichnungen, Abfrageberichten und Herstellerdokumentation. Kopieren Sie keinen GPL-Code und folgen Sie ihm nicht eng, etwa den Linux-Kernel-Treibern `btmtk` oder `btqca`: A2DP Windows Bridge steht unter der MIT-Lizenz, und ein davon abgeleiteter Loader könnte nicht aufgenommen werden.
+Arbeiten Sie mit Aufzeichnungen, Abfrageberichten und Herstellerdokumentation. Kopieren Sie keinen GPL-Code und folgen Sie ihm nicht eng, etwa den Linux-Kernel-Treibern `btmtk` oder `btqca`: BlueCaster steht unter der MIT-Lizenz, und ein davon abgeleiteter Loader könnte nicht aufgenommen werden.
 
 ## Ohne Build ausprobieren: Chip-Skripte {#chip-scripts}
 
 Probieren Sie, bevor Sie einen Loader schreiben, am Adapter aus, was die Aufzeichnung gezeigt hat: Ein **Chip-Skript** ist die Abfolge als Text, eine Anfrage pro Zeile, und läuft anstelle des Bluetooth-Stacks. Wer den Adapter nicht hat, kann eines schreiben und an jemanden schicken, der ihn hat; das Ergebnis kommt als Bericht zurück, ohne neuen Build.
 
-**Ein Skript ausführen**: Entwicklermodus, **Entwickler > Chip**: Adapter wählen (mit WinUSB), das Skript eingeben oder eine Datei öffnen, **Ausführen**. Die Antwort auf jede Zeile erscheint darunter, und **Bericht anzeigen** öffnet `script-<date>_<time>.json` in `logs\probe\` (das Skript ist darin enthalten). Über die Kommandozeile: `a2dpwb-core --cli -u <adapter> --script <file>`.
+**Ein Skript ausführen**: Entwicklermodus, **Entwickler > Chip**: Adapter wählen (mit WinUSB), das Skript eingeben oder eine Datei öffnen, **Ausführen**. Die Antwort auf jede Zeile erscheint darunter, und **Bericht anzeigen** öffnet `script-<date>_<time>.json` in `logs\probe\` (das Skript ist darin enthalten). Über die Kommandozeile: `bluecaster-core --cli -u <adapter> --script <file>`.
 
 ```text
 # eine Anfrage pro Zeile; Zahlen sind hexadezimal (0x optional), außer bei wait, timeout= und chunk=
@@ -119,8 +119,8 @@ Pfade sind ab hier relativ zum Wurzelverzeichnis des Repositorys. Drei Crates si
 | Crate (Paket) | Ordner | Inhalt |
 |:--|:--|:--|
 | `bt-host` | `app/src/crates/bt-host` | Der Bluetooth-Host: Loader, die Abfrage, Chip-Erkennung |
-| `a2dpwb-core` (Bibliothek) | `app/src/crates/core` | Einstellungen und Adapter: welcher Loader läuft |
-| `a2dpwb-core-exe` | `app/src/core` | Das Dienstprogramm (`a2dpwb-core.exe`): die Anfragen des Fensters, Hinweise zu Adaptern |
+| `bluecaster-core` (Bibliothek) | `app/src/crates/core` | Einstellungen und Adapter: welcher Loader läuft |
+| `bluecaster-core-exe` | `app/src/core` | Das Dienstprogramm (`bluecaster-core.exe`): die Anfragen des Fensters, Hinweise zu Adaptern |
 
 Die letzten beiden haben beide „core“ im Namen; `cargo -p` erwartet die oben genannten Paketnamen.
 
@@ -162,7 +162,7 @@ Hilfsfunktionen, damit ein Loader keine Bytes von Hand zerlegen muss:
 - `hci_command(opcode, params)` baut einen Befehl
 - `parse_event(event)` liefert `HciEvent::Complete { opcode, status, ret }` (Rückgabeparameter nach dem Status), `Status { opcode, status }`, `Vendor(params)` (Event 0xFF) oder `Other { code, params }` (jeder andere Code, auch ein eigener des Herstellers wie 0xE4)
 
-**Firmwaredateien**: Der Loader erhält einen `FileReader` und fragt ihn nach einem **Dateinamen ohne Ordner** (`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`). Die App sucht im Firmware-Ordner (`%APPDATA%\A2DPWB\firmware`) und dort im Unterordner des Herstellers (`firmware\mediatek\`), wie linux-firmware sie anordnet; Schritt 6 legt diesen Unterordner fest.
+**Firmwaredateien**: Der Loader erhält einen `FileReader` und fragt ihn nach einem **Dateinamen ohne Ordner** (`"BT_RAM_CODE_MT7961_1_2_hdr.bin"`). Die App sucht im Firmware-Ordner (`%APPDATA%\BlueCaster\firmware`) und dort im Unterordner des Herstellers (`firmware\mediatek\`), wie linux-firmware sie anordnet; Schritt 6 legt diesen Unterordner fest.
 
 ### Muster
 
@@ -234,15 +234,15 @@ Behalten Sie die Zeilenenden jeder Datei bei: Manche Quelldateien verwenden CRLF
 
 **Dokumentation**:
 
-13. Die Chiptabelle in `docs/setup.md` und `docs/*/setup.md` (alle Sprachen): eine Zeile wie die von Intel, mit den abgedeckten Chips, den Firmwaredateien und wohin sie gehören (der Firmware-Ordner: `%APPDATA%\A2DPWB\firmware` oder sein Unterordner `<vendor>`; ältere Zeilen sagen noch „config folder“) und *Experimental.* Nennen Sie die Schaltflächen des Fensters so, wie die jeweilige `app/lang/*.json` sie hat (`ui.nav.adapter` für die Seite Adapter, `firmware.open_folder` für die Schaltfläche, die diesen Ordner öffnet). Ganzer Hersteller: aus der Zeile „Not supported“ entfernen. Einige Chips: den Hersteller dort lassen und die weiterhin nicht unterstützten Chips nennen. Ergänzen Sie den Hersteller im Satz am Anfang des Abschnitts Firmware („Intel and Broadcom adapters (experimental) may need firmware files of their own“)
+13. Die Chiptabelle in `docs/setup.md` und `docs/*/setup.md` (alle Sprachen): eine Zeile wie die von Intel, mit den abgedeckten Chips, den Firmwaredateien und wohin sie gehören (der Firmware-Ordner: `%APPDATA%\BlueCaster\firmware` oder sein Unterordner `<vendor>`; ältere Zeilen sagen noch „config folder“) und *Experimental.* Nennen Sie die Schaltflächen des Fensters so, wie die jeweilige `app/lang/*.json` sie hat (`ui.nav.adapter` für die Seite Adapter, `firmware.open_folder` für die Schaltfläche, die diesen Ordner öffnet). Ganzer Hersteller: aus der Zeile „Not supported“ entfernen. Einige Chips: den Hersteller dort lassen und die weiterhin nicht unterstützten Chips nennen. Ergänzen Sie den Hersteller im Satz am Anfang des Abschnitts Firmware („Intel and Broadcom adapters (experimental) may need firmware files of their own“)
 14. [Getestete Hardware](hardware) (`docs/hardware.md`), sobald jemand ihn verwendet hat, und die Einleitung dieser Seite (`docs/chip-support.md`, alle Sprachen), die die Hersteller ohne Loader nennt (einige Chips: „the other <vendor> chips“)
 
 ## Schritt 7: Am Adapter ausprobieren
 
-Bauen Sie im Wurzelverzeichnis des Repositorys (`cargo build --release -p a2dpwb-core-exe`), beenden Sie die installierte App (über ihr Symbol im Infobereich) und starten Sie den Core über die Kommandozeile mit einer HCI-Aufzeichnung:
+Bauen Sie im Wurzelverzeichnis des Repositorys (`cargo build --release -p bluecaster-core-exe`), beenden Sie die installierte App (über ihr Symbol im Infobereich) und starten Sie den Core über die Kommandozeile mit einer HCI-Aufzeichnung:
 
 ```bat
-target\release\a2dpwb-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
+target\release\bluecaster-core.exe --cli -u 0e8d:7961 --scan 5 --hci-capture loader.pklg
 ```
 
 Das Protokoll zeigt jeden Schritt; `loader.pklg` öffnet sich in Wireshark mit jedem Befehl, jedem Event und jedem Control Transfer in der richtigen Reihenfolge. Ziehen Sie den Adapter ab (oder fahren Sie den PC herunter) und versuchen Sie es erneut: Der Download muss bei einem kalten Chip funktionieren und nichts tun, wenn die Firmware bereits läuft.
@@ -272,7 +272,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 python tools/check_lang.py
 ```
 
-Ohne Node.js führen Sie die Tests und Clippy stattdessen für die drei Crates oben aus (`-p bt-host -p a2dpwb-core -p a2dpwb-core-exe`), überlassen die UI-Prüfungen der CI des Pull Requests und vermerken das im Pull Request. `pwsh ./build.ps1 -Test` führt alles aus.
+Ohne Node.js führen Sie die Tests und Clippy stattdessen für die drei Crates oben aus (`-p bt-host -p bluecaster-core -p bluecaster-core-exe`), überlassen die UI-Prüfungen der CI des Pull Requests und vermerken das im Pull Request. `pwsh ./build.ps1 -Test` führt alles aus.
 
 Clippy prüft auch Namen: Eine `State`-Variante namens `PatchState` scheitert an `enum_variant_names`; nennen Sie sie `Patch`. `check_lang.py` meldet eventuell „long hints left“, die schon vor Ihrer Änderung da waren; nur Fehler und fehlende Schlüssel müssen Sie beheben.
 
