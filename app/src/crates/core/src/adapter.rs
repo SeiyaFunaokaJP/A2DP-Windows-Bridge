@@ -186,18 +186,28 @@ pub fn configure(config: &mut HostConfig, settings: &Settings, _config_dir: &Pat
         // One held by another program cannot be loaded either (v1 skipped
         // it too)
         config.intel_loader = winusb.iter().any(|a| a.vendor == ChipVendor::Intel && !a.device.in_use());
-        for a in winusb.iter().filter(|a| a.vendor == ChipVendor::Intel && a.device.in_use()) {
+        for a in
+            winusb.iter().filter(|a| matches!(a.vendor, ChipVendor::Intel | ChipVendor::MediaTek) && a.device.in_use())
+        {
             tracing::info!(
-                "Intel adapter {:04X}:{:04X} is in use by another program: no bootloader download for it",
+                "{} adapter {:04X}:{:04X} is in use by another program: no firmware download for it",
+                a.vendor.name(),
                 a.device.vid,
                 a.device.pid
             );
         }
+        // MediaTek: only the chips its loader knows, never one in use
+        config.mediatek_loader = winusb.iter().any(|a| {
+            a.vendor == ChipVendor::MediaTek
+                && chips::chip_supported(a.vendor, a.device.vid, a.device.pid)
+                && !a.device.in_use()
+        });
         config.broadcom_ids =
             winusb.iter().filter(|a| a.vendor == ChipVendor::Broadcom).map(|a| (a.device.vid, a.device.pid)).collect();
         tracing::debug!(
-            "adapter: intel bootloader download {}, broadcom patchram ids {:04X?}",
+            "adapter: intel bootloader download {}, mediatek download {}, broadcom patchram ids {:04X?}",
             config.intel_loader,
+            config.mediatek_loader,
             config.broadcom_ids
         );
         for a in &winusb {

@@ -83,8 +83,9 @@ pub static OEM_TABLE: &[OemChipMapping] = &[
 
 /// The controller vendor, guessed from the USB VID:PID. Decides which
 /// firmware loader (if any) runs before HCI init. Only Realtek is well
-/// tested; the Intel (crate::intel) and Broadcom loaders are experimental;
-/// MediaTek and Qualcomm need loaders BTstack does not have.
+/// tested; the Intel (crate::intel), MediaTek MT7925 (crate::mediatek) and
+/// Broadcom loaders are experimental; Qualcomm needs a loader BTstack does
+/// not have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChipVendor {
     #[default]
@@ -97,7 +98,8 @@ pub enum ChipVendor {
     Broadcom,
     /// ROM firmware, nothing to load
     Csr,
-    /// needs WMT firmware download: not supported
+    /// needs WMT firmware download: the chips in [`LOADER_CHIPS`] only
+    /// (experimental)
     MediaTek,
     /// needs rampatch/NVM download: not supported
     Qualcomm,
@@ -131,7 +133,11 @@ impl ChipVendor {
 /// Chips with a loader of a vendor that has none for its other chips
 /// (vendor, VID, PID): a loader that covers only some of a vendor's chips
 /// lists them here, and only they leave "unsupported" (docs/chip-support.md)
-pub const LOADER_CHIPS: &[(ChipVendor, u16, u16)] = &[];
+pub const LOADER_CHIPS: &[(ChipVendor, u16, u16)] = &[
+    // MT7925 (Wi-Fi 7 card, Bluetooth on its internal USB), crate::mediatek;
+    // the chip probe in #86
+    (ChipVendor::MediaTek, 0x0E8D, 0x7925),
+];
 
 /// BlueCaster can bring this adapter up: its vendor needs no loader or has one
 /// for every chip, or the chip is in [`LOADER_CHIPS`]

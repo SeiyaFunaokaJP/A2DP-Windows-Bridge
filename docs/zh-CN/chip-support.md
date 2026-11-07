@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # 添加芯片支持
 
-BlueCaster 自己驱动 Bluetooth 适配器（WinUSB），因此在适配器能工作之前，它必须完成厂商的 Windows 驱动程序所做的事：许多芯片需要在每次启动时加载固件。Realtek、Intel、Broadcom 和 CSR 适配器目前已可使用；MediaTek（MT7921、MT7922 等）和 Qualcomm（QCA61x4）还不行，因为还没有人为它们编写加载程序。
+BlueCaster 自己驱动 Bluetooth 适配器（WinUSB），因此在适配器能工作之前，它必须完成厂商的 Windows 驱动程序所做的事：许多芯片需要在每次启动时加载固件。Realtek、Intel、Broadcom 和 CSR 适配器目前已可使用，MediaTek MT7925 为实验性支持；其他 MediaTek 芯片（MT7921、MT7922 等）和 Qualcomm（QCA61x4）还不行，因为还没有人为它们编写加载程序。`app/src/crates/bt-host/src/mediatek.rs`（MT7925 的加载程序）是一个实际的加载程序，可作为支持其他 MediaTek 芯片的起点。
 
 本页介绍添加加载程序的步骤。你需要一个使用该芯片的适配器；维护者手上没有这些适配器。即使不写代码也能帮忙：第 1 步和第 2 步就能得到贡献者所需的报告。
 

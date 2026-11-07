@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # Añadir compatibilidad con chips
 
-BlueCaster controla por sí mismo el adaptador Bluetooth (WinUSB), así que tiene que hacer lo que hace el controlador de Windows del fabricante antes de que el adaptador funcione: en muchos chips, cargarle el firmware en cada inicio. Los adaptadores Realtek, Intel, Broadcom y CSR ya funcionan; los de MediaTek (MT7921, MT7922 y otros) y Qualcomm (QCA61x4) no, porque nadie ha escrito todavía su cargador.
+BlueCaster controla por sí mismo el adaptador Bluetooth (WinUSB), así que tiene que hacer lo que hace el controlador de Windows del fabricante antes de que el adaptador funcione: en muchos chips, cargarle el firmware en cada inicio. Los adaptadores Realtek, Intel, Broadcom y CSR ya funcionan, y el MediaTek MT7925 de forma experimental; los demás chips de MediaTek (MT7921, MT7922 y otros) y Qualcomm (QCA61x4) no, porque nadie ha escrito todavía su cargador. `app/src/crates/bt-host/src/mediatek.rs` (el del MT7925) es un cargador real del que partir para otro chip de MediaTek.
 
 Esta página describe cómo añadir uno. Necesita un adaptador con ese chip; los mantenedores no lo tienen. Aunque no escriba código, puede ayudar: los pasos 1 y 2 dan el informe que necesita quien lo escriba.
 

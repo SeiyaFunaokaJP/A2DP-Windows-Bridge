@@ -20,6 +20,7 @@ mod le;
 pub mod link_details;
 pub mod link_keys;
 pub mod media;
+pub mod mediatek;
 pub mod probe;
 pub mod rfcomm;
 pub mod script;
@@ -153,6 +154,8 @@ pub struct HostConfig {
     pub realtek_files: Option<(String, String)>,
     /// Run the Intel bootloader firmware download first (experimental)
     pub intel_loader: bool,
+    /// Run the MediaTek MT79xx firmware download first (experimental)
+    pub mediatek_loader: bool,
     /// VID:PID of present Broadcom adapters (PatchRAM file names)
     pub broadcom_ids: Vec<(u16, u16)>,
     /// Upper limit of the media payload (clamped)
@@ -202,6 +205,7 @@ impl HostConfig {
             realtek_pid: 0,
             realtek_files: None,
             intel_loader: false,
+            mediatek_loader: false,
             broadcom_ids: Vec::new(),
             media_payload_limit: media::MEDIA_PAYLOAD_LIMIT_DEFAULT,
             capture: HciCapture::new(),
@@ -499,11 +503,12 @@ impl BtHost {
         let le_on = config.le_audio.is_some();
         let le_shared = Arc::new(le::core::LeShared::default());
         tracing::debug!(
-            "host start: transport {:?}, realtek pid 0x{:04X} files {:?}, intel loader {}, broadcom {:04X?}, payload limit {}, le audio {}, battery {}",
+            "host start: transport {:?}, realtek pid 0x{:04X} files {:?}, intel loader {}, mediatek loader {}, broadcom {:04X?}, payload limit {}, le audio {}, battery {}",
             config.transport,
             config.realtek_pid,
             config.realtek_files,
             config.intel_loader,
+            config.mediatek_loader,
             config.broadcom_ids,
             config.media_payload_limit,
             le_on,
@@ -524,6 +529,7 @@ impl BtHost {
                         realtek_pid,
                         realtek_files,
                         intel_loader,
+                        mediatek_loader,
                         broadcom_ids,
                         media_payload_limit: _,
                         capture,
@@ -594,6 +600,11 @@ impl BtHost {
                             // loader is done at once if the firmware runs
                             stack.install_transport(backend);
                             app.start_intel_loader(stack);
+                        } else if mediatek_loader && !tcp {
+                            // MediaTek's ROM refuses HCI until its RAM
+                            // code is downloaded and Bluetooth switched on
+                            stack.install_transport(backend);
+                            app.start_mediatek_loader(stack);
                         } else {
                             app.setup_hci_and_power_on(stack, Some(backend));
                         }

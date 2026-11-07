@@ -443,7 +443,8 @@ fn vendor_note(vendor: ChipVendor, vid: u16, pid: u16) -> Option<Msg> {
         ChipVendor::Intel => "firmware.vendor_intel",
         ChipVendor::Broadcom => "firmware.vendor_broadcom",
         ChipVendor::Csr => "firmware.vendor_csr",
-        ChipVendor::MediaTek | ChipVendor::Qualcomm => "firmware.vendor_unsupported",
+        ChipVendor::MediaTek => "firmware.vendor_mediatek",
+        ChipVendor::Qualcomm => "firmware.vendor_unsupported",
         ChipVendor::Realtek | ChipVendor::Unknown => return None,
     };
     Some(Msg::new(key))
@@ -3764,6 +3765,9 @@ mod tests {
     fn vendors_get_their_notes() {
         assert_eq!(vendor_note(ChipVendor::Intel, 0x8087, 0x0033).unwrap().key, "firmware.vendor_intel");
         assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0CF3, 0xE300).unwrap().key, "firmware.vendor_unsupported");
+        // MediaTek: the MT7925 has a loader, the others none
+        assert_eq!(vendor_note(ChipVendor::MediaTek, 0x0E8D, 0x7925).unwrap().key, "firmware.vendor_mediatek");
+        assert_eq!(vendor_note(ChipVendor::MediaTek, 0x0E8D, 0x0608).unwrap().key, "firmware.vendor_unsupported");
         assert!(vendor_note(ChipVendor::Realtek, 0x0BDA, 0x8771).is_none());
     }
 

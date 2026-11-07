@@ -111,6 +111,7 @@ fn display_names_like_v1() {
     assert_eq!(display_name(0x2357, 0x0604, Some(0x8771), ChipVendor::Realtek), "RTL8761BU (0x2357:0x0604)");
     assert_eq!(display_name(0x8087, 0x0033, None, ChipVendor::Intel), "Intel (0x8087:0x0033) [experimental]");
     assert_eq!(display_name(0x0E8D, 0x0608, None, ChipVendor::MediaTek), "MediaTek (0x0E8D:0x0608) [unsupported]");
+    assert_eq!(display_name(0x0E8D, 0x7925, None, ChipVendor::MediaTek), "MediaTek (0x0E8D:0x7925) [experimental]");
     assert_eq!(display_name(0x0A12, 0x0001, None, ChipVendor::Csr), "CSR (0x0A12:0x0001)");
     assert_eq!(display_name(0x0BDA, 0x1234, None, ChipVendor::Realtek), "0x0BDA:0x1234");
     assert_eq!(display_name(0x1234, 0x5678, None, ChipVendor::Unknown), "0x1234:0x5678");

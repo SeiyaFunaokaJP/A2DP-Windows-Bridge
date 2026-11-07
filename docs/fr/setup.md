@@ -123,7 +123,7 @@ Le casque démarre avec **Auto** comme codec (**Codecs**) et l'audio du système
 
 ## Firmware (adaptateurs Realtek) {#firmware}
 
-Les adaptateurs Bluetooth USB à puce Realtek (p. ex. TP-Link UB500, dongles RTL8761BU) ont besoin d'un firmware propriétaire pour fonctionner. Les adaptateurs CSR n'ont besoin d'aucun firmware. Les adaptateurs Intel et Broadcom (expérimental) peuvent nécessiter leurs propres fichiers de firmware : voir [Adaptateurs recommandés](#adapters).
+Les adaptateurs Bluetooth USB à puce Realtek (p. ex. TP-Link UB500, dongles RTL8761BU) ont besoin d'un firmware propriétaire pour fonctionner. Les adaptateurs CSR n'ont besoin d'aucun firmware. Les adaptateurs Intel, MediaTek MT7925 et Broadcom (expérimental) peuvent nécessiter leurs propres fichiers de firmware : voir [Adaptateurs recommandés](#adapters).
 
 ### Dans l'application (téléchargement guidé)
 
@@ -168,7 +168,8 @@ Quels adaptateurs et casques ont réellement été utilisés avec BlueCaster, av
 | CSR | Dongles CSR8510 génériques | Fonctionne d'emblée, sans firmware |
 | Broadcom | ASUS BT400 (BCM20702) | *Expérimental.* Les adaptateurs qui annoncent la classe constructeur `FF/01/01` au lieu de la classe Bluetooth `E0/01/01` (dongles OEM BCM20702) sont aussi détectés. Fonctionne avec le firmware en ROM ; un fichier PatchRAM `.hcd` facultatif (p. ex. `BCM20702A1-0b05-17cb.hcd`) placé dans le dossier du firmware est envoyé au démarrage |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Expérimental.* En mode bootloader (p. ex. après un démarrage à froid), nécessite les fichiers `ibt-*.sfi` + `ibt-*.ddc` correspondants, issus de `intel/` dans linux-firmware, dans le dossier du firmware ; le journal indique lesquels (p. ex. `ibt-0180-0041.sfi`). Seul l'AX211 a été testé pour l'instant |
-| MediaTek, Qualcomm | MT7921/MT7922, QCA61x4 | Non pris en charge : nécessitent des chargeurs de firmware qu'BlueCaster ne possède pas ([aider à en ajouter](chip-support)) |
+| MediaTek | MT7925 (cartes Wi-Fi 7 comme l'AMD RZ717) | *Expérimental.* Nécessite `BT_RAM_CODE_MT7925_1_1_hdr.bin`, que BlueCaster lit dans le pilote Bluetooth Windows de MediaTek s'il est installé ; sinon, placez le fichier issu de `mediatek/mt7925/` dans linux-firmware dans le dossier du firmware. Pas encore testé sur le matériel |
+| MediaTek, Qualcomm | Autres puces MediaTek (MT7921/MT7922), QCA61x4 | Non pris en charge : nécessitent des chargeurs de firmware qu'BlueCaster ne possède pas ([aider à en ajouter](chip-support)) |
 
 Les adaptateurs Bluetooth USB 5.0+ donnent généralement les meilleurs résultats avec les codecs à haut débit comme LDAC.
 

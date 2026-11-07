@@ -20,7 +20,6 @@ use codec::sbc::{Allocation, ChannelMode};
 
 use crate::bringup::{self, ChipLoader};
 use crate::events::{addr_at, addr_str, event_type, hci_error_string, le16, le24, subevent, u8_at};
-use crate::intel;
 use crate::le::core::LeCore;
 use crate::le::iso_send::TIMER_ISO;
 use crate::link_details::{self, LinkTracker};
@@ -32,6 +31,7 @@ use crate::sdp_services::SdpServices;
 use crate::shared::Shared;
 use crate::stats::LinkStats;
 use crate::{AfhClassification, ConnectFailure, Controls, DiscoveredDevice, HostEvent, InitFailure, MediaKey};
+use crate::{intel, mediatek};
 
 pub(crate) type Job = Box<dyn FnOnce(&mut HostApp, &Stack) + Send>;
 
@@ -292,6 +292,17 @@ impl HostApp {
         let dir = self.setup.firmware_dir.clone();
         tracing::info!("Intel adapter: checking bootloader firmware (experimental), folder {}", dir.display());
         let loader = intel::Loader::new(Box::new(move |name| read_firmware_file(&dir, "intel", name)));
+        self.start_loader(stack, Box::new(loader));
+    }
+
+    /// The MediaTek MT79xx firmware download (crate::mediatek), then HCI
+    /// init: the firmware folder first, then MediaTek's Windows driver
+    pub fn start_mediatek_loader(&mut self, stack: &Stack) {
+        let dir = self.setup.firmware_dir.clone();
+        tracing::info!("MediaTek adapter: checking its firmware (experimental), folder {}", dir.display());
+        let loader = mediatek::Loader::new(Box::new(move |name| {
+            read_firmware_file(&dir, "mediatek", name).or_else(|| mediatek::from_windows_driver(name))
+        }));
         self.start_loader(stack, Box::new(loader));
     }
 
