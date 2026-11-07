@@ -228,6 +228,8 @@ thread_local! {
     /// A firmware loader in the app drives the transport (before HCI init):
     /// received packets go to it, not to BTstack
     static RAW: Cell<bool> = const { Cell::new(false) };
+    /// The open adapter's broken commands ([`broken_command_bits`])
+    static BROKEN: Cell<&'static [(usize, u8)]> = const { Cell::new(&[]) };
 }
 
 // ---- LE hidden: pure functions ----
@@ -296,6 +298,40 @@ pub fn le_hidden_patch_event(packet: &mut [u8]) {
         for (octet, bit) in LE_HIDDEN_COMMAND_BITS {
             params[octet] &= !(1u8 << bit);
         }
+    }
+}
+
+// ---- Controllers that list commands they cannot do ----
+
+/// Actions ATS2851 dongles ("Actions general adapter")
+pub const ATS2851: (u16, u16) = (0x10D7, 0xB012);
+
+/// The supported-commands bits (octet, bit) to clear for an adapter that
+/// lists commands it answers wrongly, so BTstack takes the path it has for a
+/// controller without them. ATS2851: Read Encryption Key Size (answered with
+/// a Command Status error, which BTstack never gets past; without it BTstack
+/// takes the key size as 16), Write Default Erroneous Data Reporting, LE Set
+/// Address Resolution Enable and LE Set Extended Advertising Enable
+/// (BTstack's switch to the extended LE commands, which the chip also
+/// refuses)
+pub fn broken_command_bits(vid: u16, pid: u16) -> &'static [(usize, u8)] {
+    match (vid, pid) {
+        ATS2851 => &[(18, 3), (20, 4), (35, 1), (36, 5)],
+        _ => &[],
+    }
+}
+
+/// Clears `bits` in a successful Read Local Supported Commands answer; other
+/// packets are left alone
+pub fn patch_broken_commands(packet: &mut [u8], bits: &[(usize, u8)]) {
+    if bits.is_empty() || packet.len() < 6 + 64 || packet[0] != HCI_EVENT_COMMAND_COMPLETE || packet[5] != 0 {
+        return;
+    }
+    if u16::from_le_bytes([packet[3], packet[4]]) != HCI_OPCODE_READ_LOCAL_SUPPORTED_COMMANDS {
+        return;
+    }
+    for &(octet, bit) in bits {
+        packet[6 + octet] &= !(1u8 << bit);
     }
 }
 
@@ -391,6 +427,7 @@ pub(crate) fn reset() {
     CONTROLLER_ISO.store(0, Ordering::Release);
     LE_HIDDEN.with(|h| h.set(true));
     RAW.with(|r| r.set(false));
+    BROKEN.with(|b| b.set(&[]));
 }
 
 pub(crate) fn failed() -> bool {
@@ -418,6 +455,19 @@ pub(crate) fn open() -> bool {
         Ok(()) => {
             tracing::debug!(target: "hci", "HCI transport opened");
             OPEN.with(|o| o.set(true));
+            // A USB adapter's ID from its device descriptor (none over H4)
+            let ids = usb_descriptors().and_then(|d| {
+                let b = d.device.get(8..12)?;
+                Some((u16::from_le_bytes([b[0], b[1]]), u16::from_le_bytes([b[2], b[3]])))
+            });
+            let bits = ids.map_or(&[][..], |(vid, pid)| broken_command_bits(vid, pid));
+            if let (Some((vid, pid)), false) = (ids, bits.is_empty()) {
+                tracing::info!(
+                    target: "hci",
+                    "{vid:04X}:{pid:04X} lists commands it cannot do: hidden from BTstack {bits:?}"
+                );
+            }
+            BROKEN.with(|b| b.set(bits));
             true
         }
         Err(e) => {
@@ -553,6 +603,7 @@ fn deliver(packet_type: u8, buf: &mut [u8], hidden: bool) {
             tracing::debug!(target: "hci", "supported commands: ISO {}", if iso { "yes" } else { "no" });
             CONTROLLER_ISO.store(if iso { 2 } else { 1 }, Ordering::Release);
         }
+        patch_broken_commands(buf, BROKEN.with(|b| b.get()));
         if hidden {
             le_hidden_patch_event(buf);
         }
@@ -656,6 +707,31 @@ mod tests {
         failed[5] = 1;
         assert_eq!(iso_commands_in(&failed), None);
         assert_eq!(iso_commands_in(&command_complete(0x1002, &[0xFF; 8])), None);
+    }
+
+    #[test]
+    fn the_ats2851_loses_the_commands_it_cannot_do() {
+        let bits = broken_command_bits(0x10D7, 0xB012);
+        // Read Encryption Key Size: BTstack then takes the key size as 16
+        assert!(bits.contains(&(20, 4)));
+        let mut p = command_complete(0x1002, &[0xFF; 64]);
+        patch_broken_commands(&mut p, bits);
+        for (octet, byte) in p[6..].iter().enumerate() {
+            let cleared: u8 = bits.iter().filter(|(o, _)| *o == octet).fold(0, |m, (_, b)| m | (1 << b));
+            assert_eq!(*byte, !cleared, "octet {octet}");
+        }
+        // Other adapters, other answers, a failed answer: untouched
+        assert!(broken_command_bits(0x0BDA, 0x8771).is_empty());
+        for opcode in [0x1001u16, 0x1003] {
+            let mut p = command_complete(opcode, &[0xFF; 64]);
+            patch_broken_commands(&mut p, bits);
+            assert!(p[6..].iter().all(|&b| b == 0xFF));
+        }
+        let mut failed = command_complete(0x1002, &[0xFF; 64]);
+        failed[5] = 1;
+        let before = failed.clone();
+        patch_broken_commands(&mut failed, bits);
+        assert_eq!(failed, before);
     }
 
     #[test]

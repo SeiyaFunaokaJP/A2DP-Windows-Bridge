@@ -168,6 +168,7 @@ BlueCaster 會偵測介面卡的晶片組，並顯示需要哪些韌體檔案。
 | CSR | 一般的 CSR8510 接收器 | 隨插即用，不需要韌體 |
 | Barrot | Bluetooth 5.4 / 6.0 接收器（`33FA:0010`、`33FA:0012`） | 以 ROM 韌體運作，不需要韌體。目前僅有一份使用者回報 |
 | Marvell | Microsoft Surface Pro / Surface Book 內建（88W8897） | *實驗性。* 不需要韌體檔案：Wi-Fi 驅動程式也會載入藍牙韌體，請保持 Wi-Fi 開啟。尚未在實際硬體上測試 |
+| Actions | ATS2851 介面卡（`10D7:B012`） | *實驗性。* 使用 ROM 韌體運作，不需要韌體。它宣稱支援一些實際無法執行的命令，BlueCaster 會將其隱藏。尚未在實際硬體上測試 |
 | Broadcom | ASUS BT400 (BCM20702) | *實驗性。* 回報廠商類別 `FF/01/01` 而非藍牙類別 `E0/01/01` 的介面卡（BCM20702 OEM 接收器）也能偵測。以 ROM 韌體運作；若韌體資料夾中有選用的 PatchRAM `.hcd`（例如 `BCM20702A1-0b05-17cb.hcd`），會在啟動時上傳 |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *實驗性。* 處於 bootloader 模式時（例如冷開機後），韌體資料夾中需要 linux-firmware `intel/` 內對應的 `ibt-*.sfi` + `ibt-*.ddc`，所需檔名會寫在記錄裡（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上測試過 |
 | MediaTek | MT7925、MT7922、MT7921、MT7902（AMD RZ717、RZ616、RZ608 等 Wi-Fi 網路卡） | *實驗性。* 需要該晶片的 `BT_RAM_CODE_MT*_hdr.bin`（例如 `BT_RAM_CODE_MT7925_1_1_hdr.bin`）：若已安裝 MediaTek 的 Windows 藍牙驅動程式，BlueCaster 會從中讀取；否則請將 linux-firmware `mediatek/` 中的該檔案放入韌體資料夾，所需檔名會寫在記錄裡。尚未在實際硬體上測試 |

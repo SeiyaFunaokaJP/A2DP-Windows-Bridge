@@ -124,6 +124,7 @@
   "firmware.vendor_csr": "CSR 适配器：无需固件文件。",
   "firmware.vendor_barrot": "Barrot 适配器：无需固件文件。",
   "firmware.vendor_marvell": "Marvell 适配器（实验性）。其固件由 Wi-Fi 驱动加载，请保持 Wi-Fi 开启。",
+  "firmware.vendor_actions": "Actions 适配器（实验性）：无需固件文件。",
   "firmware.chip_auto": "自动（%s）",
   "firmware.chip_auto_none": "未检测到 Realtek 适配器",
   "firmware.chip_non_realtek": "非 Realtek（Intel / Broadcom / CSR / 其他）",

@@ -85,8 +85,8 @@ pub static OEM_TABLE: &[OemChipMapping] = &[
 /// firmware loader (if any) runs before HCI init. Only Realtek is well
 /// tested; the Intel (crate::intel), MediaTek MT79xx (crate::mediatek) and
 /// Broadcom loaders are experimental; Qualcomm needs a loader BTstack does
-/// not have. CSR and Barrot run from ROM; Marvell's firmware comes from its
-/// Wi-Fi driver.
+/// not have. CSR, Barrot and Actions run from ROM; Marvell's firmware comes
+/// from its Wi-Fi driver.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChipVendor {
     #[default]
@@ -110,6 +110,10 @@ pub enum ChipVendor {
     /// the Wi-Fi driver downloads one image for both, nothing for us to
     /// load (experimental, untested)
     Marvell,
+    /// ROM firmware, nothing to load: the ATS2851 dongle, which lists
+    /// commands it cannot do (hidden from BTstack:
+    /// btstack_sys::transport::broken_command_bits; experimental, untested)
+    Actions,
 }
 
 impl ChipVendor {
@@ -124,6 +128,7 @@ impl ChipVendor {
             ChipVendor::Qualcomm => "Qualcomm",
             ChipVendor::Barrot => "Barrot",
             ChipVendor::Marvell => "Marvell",
+            ChipVendor::Actions => "Actions",
             ChipVendor::Unknown => "Unknown",
         }
     }
@@ -132,7 +137,9 @@ impl ChipVendor {
     /// for the whole vendor ([`chip_support_tag`] for one adapter)
     pub fn support_tag(self) -> Option<&'static str> {
         match self {
-            ChipVendor::Intel | ChipVendor::Broadcom | ChipVendor::Marvell => Some("experimental"),
+            ChipVendor::Intel | ChipVendor::Broadcom | ChipVendor::Marvell | ChipVendor::Actions => {
+                Some("experimental")
+            }
             ChipVendor::MediaTek | ChipVendor::Qualcomm => Some("unsupported"),
             _ => None,
         }
@@ -354,6 +361,8 @@ pub fn vendor_for_usb(vid: u16, pid: u16, realtek_pid: Option<u16>) -> ChipVendo
         // IDs, 0x204B/0x204C from Windows driver lists); the VID is also on
         // Marvell's Wi-Fi and other devices
         0x1286 if matches!(pid, 0x2044 | 0x2046 | 0x204B | 0x204C | 0x204E) => ChipVendor::Marvell,
+        // Actions ATS2851 ("Actions general adapter"); exact ID only
+        0x10D7 if pid == 0xB012 => ChipVendor::Actions,
         _ => ChipVendor::Unknown,
     }
 }

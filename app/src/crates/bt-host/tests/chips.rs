@@ -277,8 +277,11 @@ fn rom_dongles_and_wifi_loaded_combos() {
         assert!(!is_bluetooth_vendor_vid(0x1286, pid));
     }
     assert_eq!(display_name(0x1286, 0x204C, None, ChipVendor::Marvell), "Marvell (0x1286:0x204C) [experimental]");
-    // Actions ATS2851 is left out (doubtful with BTstack)
-    assert_eq!(vendor_for_usb(0x10D7, 0xB012, None), ChipVendor::Unknown);
+    // Actions ATS2851: runs from ROM, its broken commands hidden from BTstack
+    assert_eq!(vendor_for_usb(0x10D7, 0xB012, None), ChipVendor::Actions);
+    assert_eq!(vendor_for_usb(0x10D7, 0x1234, None), ChipVendor::Unknown);
+    assert!(chip_supported(ChipVendor::Actions, 0x10D7, 0xB012));
+    assert_eq!(display_name(0x10D7, 0xB012, None, ChipVendor::Actions), "Actions (0x10D7:0xB012) [experimental]");
     // None of them is taken as Realtek
     let table = bt_host::realtek_usb_firmware();
     for (vid, pid) in [(0x33FA, 0x0010), (0x33FA, 0x0012), (0x1286, 0x204C), (0x1286, 0x204E)] {

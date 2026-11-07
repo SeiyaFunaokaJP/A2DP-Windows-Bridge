@@ -124,6 +124,7 @@
   "firmware.vendor_csr": "CSR 介面卡: 不需要韌體檔案。",
   "firmware.vendor_barrot": "Barrot 介面卡: 不需要韌體檔案。",
   "firmware.vendor_marvell": "Marvell 介面卡 (實驗性)。其韌體由 Wi-Fi 驅動程式載入，請保持 Wi-Fi 開啟。",
+  "firmware.vendor_actions": "Actions 介面卡 (實驗性)：不需要韌體檔案。",
   "firmware.chip_auto": "自動 (%s)",
   "firmware.chip_auto_none": "未偵測到 Realtek 介面卡",
   "firmware.chip_non_realtek": "非 Realtek (Intel / Broadcom / CSR / 其他)",
