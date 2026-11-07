@@ -254,3 +254,37 @@ fn firmware_presence_and_scan() {
     );
     assert!(scan_firmware_files(&dir.join("missing")).is_empty());
 }
+
+#[test]
+fn rom_dongles_and_wifi_loaded_combos() {
+    // Barrot ROM dongles: by the exact ID, not the whole VID
+    for pid in [0x0010, 0x0012] {
+        assert_eq!(vendor_for_usb(0x33FA, pid, None), ChipVendor::Barrot);
+        assert!(is_bluetooth_vendor_vid(0x33FA, pid));
+        assert!(chip_supported(ChipVendor::Barrot, 0x33FA, pid));
+    }
+    assert_eq!(vendor_for_usb(0x33FA, 0x0001, None), ChipVendor::Unknown);
+    assert!(!is_bluetooth_vendor_vid(0x33FA, 0x0001));
+    assert_eq!(display_name(0x33FA, 0x0010, None, ChipVendor::Barrot), "Barrot (0x33FA:0x0010)");
+    // Marvell AVASTAR Bluetooth: the Wi-Fi driver loads the firmware
+    for pid in [0x2044, 0x2046, 0x204B, 0x204C, 0x204E] {
+        assert_eq!(vendor_for_usb(0x1286, pid, None), ChipVendor::Marvell);
+        assert!(chip_supported(ChipVendor::Marvell, 0x1286, pid));
+    }
+    // Marvell's Wi-Fi adapters and boot loader are no Bluetooth adapters
+    for pid in [0x2001, 0x203C, 0x8001] {
+        assert_eq!(vendor_for_usb(0x1286, pid, None), ChipVendor::Unknown);
+        assert!(!is_bluetooth_vendor_vid(0x1286, pid));
+    }
+    assert_eq!(display_name(0x1286, 0x204C, None, ChipVendor::Marvell), "Marvell (0x1286:0x204C) [experimental]");
+    // Actions ATS2851 is left out (doubtful with BTstack)
+    assert_eq!(vendor_for_usb(0x10D7, 0xB012, None), ChipVendor::Unknown);
+    // None of them is taken as Realtek
+    let table = bt_host::realtek_usb_firmware();
+    for (vid, pid) in [(0x33FA, 0x0010), (0x33FA, 0x0012), (0x1286, 0x204C), (0x1286, 0x204E)] {
+        assert_eq!(resolve_realtek_pid(vid, pid, table), None);
+    }
+    assert_eq!(company_name(0x08E7), Some("Barrot"));
+    assert_eq!(company_name(0x0048), Some("Marvell"));
+    assert_eq!(company_name(0x03E0), Some("Actions"));
+}

@@ -122,6 +122,8 @@
   "firmware.vendor_mediatek": "MediaTek アダプタ（試験的）。ファームウェアは MediaTek の Windows ドライバーから読み込みます。",
   "firmware.vendor_broadcom": "Broadcom アダプタ（試験的）: Realtek ファイルは不要です。",
   "firmware.vendor_csr": "CSR アダプタ: ファームウェアファイルは不要です。",
+  "firmware.vendor_barrot": "Barrot アダプタ: ファームウェアファイルは不要です。",
+  "firmware.vendor_marvell": "Marvell アダプタ（試験的）。ファームウェアは Wi-Fi ドライバーが読み込むため、Wi-Fi はオンのままにしてください。",
   "firmware.chip_auto": "自動（%s）",
   "firmware.chip_auto_none": "Realtek アダプタは未検出",
   "firmware.chip_non_realtek": "Realtek 以外（Intel / Broadcom / CSR / その他）",

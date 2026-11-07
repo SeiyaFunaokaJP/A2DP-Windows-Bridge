@@ -122,6 +122,8 @@
   "firmware.vendor_mediatek": "Adaptador MediaTek (experimental). Su firmware se lee del controlador de Windows de MediaTek.",
   "firmware.vendor_broadcom": "Adaptador Broadcom (experimental): no necesita archivos de Realtek.",
   "firmware.vendor_csr": "Adaptador CSR: no necesita archivos de firmware.",
+  "firmware.vendor_barrot": "Adaptador Barrot: no necesita archivos de firmware.",
+  "firmware.vendor_marvell": "Adaptador Marvell (experimental). El controlador de Wi-Fi carga su firmware: mantenga el Wi-Fi activado.",
   "firmware.chip_auto": "Automático (%s)",
   "firmware.chip_auto_none": "no se detectó ningún adaptador Realtek",
   "firmware.chip_non_realtek": "No Realtek (Intel / Broadcom / CSR / otro)",

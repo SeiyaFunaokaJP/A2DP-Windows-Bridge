@@ -85,7 +85,8 @@ pub static OEM_TABLE: &[OemChipMapping] = &[
 /// firmware loader (if any) runs before HCI init. Only Realtek is well
 /// tested; the Intel (crate::intel), MediaTek MT79xx (crate::mediatek) and
 /// Broadcom loaders are experimental; Qualcomm needs a loader BTstack does
-/// not have.
+/// not have. CSR and Barrot run from ROM; Marvell's firmware comes from its
+/// Wi-Fi driver.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChipVendor {
     #[default]
@@ -103,6 +104,12 @@ pub enum ChipVendor {
     MediaTek,
     /// needs rampatch/NVM download: not supported
     Qualcomm,
+    /// ROM firmware, nothing to load: cheap Bluetooth 5.4 / 6.0 dongles
+    Barrot,
+    /// Bluetooth part of a Wi-Fi combo (88W8897 in Surface Pro / Book):
+    /// the Wi-Fi driver downloads one image for both, nothing for us to
+    /// load (experimental, untested)
+    Marvell,
 }
 
 impl ChipVendor {
@@ -115,6 +122,8 @@ impl ChipVendor {
             ChipVendor::Csr => "CSR",
             ChipVendor::MediaTek => "MediaTek",
             ChipVendor::Qualcomm => "Qualcomm",
+            ChipVendor::Barrot => "Barrot",
+            ChipVendor::Marvell => "Marvell",
             ChipVendor::Unknown => "Unknown",
         }
     }
@@ -123,7 +132,7 @@ impl ChipVendor {
     /// for the whole vendor ([`chip_support_tag`] for one adapter)
     pub fn support_tag(self) -> Option<&'static str> {
         match self {
-            ChipVendor::Intel | ChipVendor::Broadcom => Some("experimental"),
+            ChipVendor::Intel | ChipVendor::Broadcom | ChipVendor::Marvell => Some("experimental"),
             ChipVendor::MediaTek | ChipVendor::Qualcomm => Some("unsupported"),
             _ => None,
         }
@@ -338,6 +347,13 @@ pub fn vendor_for_usb(vid: u16, pid: u16, realtek_pid: Option<u16>) -> ChipVendo
         0x0CF3 => ChipVendor::Qualcomm, // Qualcomm Atheros
         // OEM adapters with a Broadcom chip under their own VID
         0x0B05 if pid == 0x17CB => ChipVendor::Broadcom, // ASUS BT400
+        // Barrot ROM dongles (Linux btusb's Barrot entries); not the whole
+        // VID: no list says which other devices use it
+        0x33FA if matches!(pid, 0x0010 | 0x0012) => ChipVendor::Barrot,
+        // Marvell AVASTAR Bluetooth of Wi-Fi combos (Linux btusb's Marvell
+        // IDs, 0x204B/0x204C from Windows driver lists); the VID is also on
+        // Marvell's Wi-Fi and other devices
+        0x1286 if matches!(pid, 0x2044 | 0x2046 | 0x204B | 0x204C | 0x204E) => ChipVendor::Marvell,
         _ => ChipVendor::Unknown,
     }
 }

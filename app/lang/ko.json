@@ -122,6 +122,8 @@
   "firmware.vendor_mediatek": "MediaTek 어댑터(실험적). 펌웨어는 MediaTek의 Windows 드라이버에서 읽습니다.",
   "firmware.vendor_broadcom": "Broadcom 어댑터(실험적): Realtek 파일이 필요 없습니다.",
   "firmware.vendor_csr": "CSR 어댑터: 펌웨어 파일이 필요 없습니다.",
+  "firmware.vendor_barrot": "Barrot 어댑터: 펌웨어 파일이 필요 없습니다.",
+  "firmware.vendor_marvell": "Marvell 어댑터(실험적). 펌웨어를 Wi-Fi 드라이버가 불러오므로 Wi-Fi를 켜 두세요.",
   "firmware.chip_auto": "자동(%s)",
   "firmware.chip_auto_none": "Realtek 어댑터가 감지되지 않음",
   "firmware.chip_non_realtek": "Realtek 아님(Intel / Broadcom / CSR / 기타)",

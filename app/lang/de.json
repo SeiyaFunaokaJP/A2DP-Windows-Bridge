@@ -122,6 +122,8 @@
   "firmware.vendor_mediatek": "MediaTek-Adapter (experimentell). Seine Firmware wird aus dem Windows-Treiber von MediaTek gelesen.",
   "firmware.vendor_broadcom": "Broadcom-Adapter (experimentell): keine Realtek-Dateien nötig.",
   "firmware.vendor_csr": "CSR-Adapter: keine Firmwaredateien nötig.",
+  "firmware.vendor_barrot": "Barrot-Adapter: keine Firmwaredateien nötig.",
+  "firmware.vendor_marvell": "Marvell-Adapter (experimentell). Der WLAN-Treiber lädt seine Firmware: WLAN eingeschaltet lassen.",
   "firmware.chip_auto": "Automatisch (%s)",
   "firmware.chip_auto_none": "kein Realtek-Adapter erkannt",
   "firmware.chip_non_realtek": "Nicht Realtek (Intel / Broadcom / CSR / andere)",
