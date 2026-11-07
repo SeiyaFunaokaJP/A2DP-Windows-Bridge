@@ -6,7 +6,8 @@
 //! bluecaster-driver state <instance-id> [--out <file>]
 //! bluecaster-driver assign <instance-id> [--out <file>]
 //! bluecaster-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
-//! bluecaster-driver restore --records <dir> [--out <file>]
+//! bluecaster-driver restore --records <dir> [--unrecorded] [--out <file>]
+//! bluecaster-driver unrecorded --records <dir> [--out <file>]
 //! bluecaster-driver windows-keys <radio-address> [--out <file>]
 //! ```
 //!
@@ -37,6 +38,11 @@
 //! record in `<dir>` (the core keeps them in `<settings>\driver\`, one
 //! `assign` result per adapter) and deletes the records of the adapters
 //! given back. The uninstaller uses it: one UAC prompt for all adapters.
+//! With `--unrecorded` it also gives back the Bluetooth adapters on WinUSB
+//! that have no record (put there by Zadig, v1 or by hand): Windows chooses
+//! their driver. `unrecorded --records <dir>` lists those without a UAC
+//! prompt (exit code 4 when there is none), for the uninstaller to offer it
+//! (issue #86).
 
 #![forbid(unsafe_code)]
 
@@ -70,7 +76,8 @@ const USAGE: &str = "usage:
   bluecaster-driver state <instance-id> [--out <file>]
   bluecaster-driver assign <instance-id> [--out <file>]
   bluecaster-driver restore <instance-id> [--previous <json> | --previous @<file>] [--out <file>]
-  bluecaster-driver restore --records <dir> [--out <file>]
+  bluecaster-driver restore --records <dir> [--unrecorded] [--out <file>]
+  bluecaster-driver unrecorded --records <dir> [--out <file>]
   bluecaster-driver windows-keys <radio-address> [--out <file>]
 every command: [--log <file>] [--verbose]";
 
@@ -80,7 +87,8 @@ enum Command {
     State { instance_id: String },
     Assign { instance_id: String },
     Restore { instance_id: String, previous: Option<String> },
-    RestoreRecords { dir: PathBuf },
+    RestoreRecords { dir: PathBuf, unrecorded: bool },
+    Unrecorded { dir: PathBuf },
     WindowsKeys { radio: [u8; 6] },
 }
 
@@ -176,6 +184,7 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
     let mut previous = None;
     let mut records = None;
     let mut all = false;
+    let mut unrecorded = false;
     let mut it = argv.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -183,6 +192,7 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
             "--previous" => previous = Some(it.next().ok_or("--previous needs a value")?.clone()),
             "--records" => records = Some(PathBuf::from(it.next().ok_or("--records needs a folder")?)),
             "--all" => all = true,
+            "--unrecorded" => unrecorded = true,
             s if s.starts_with("--") => return Err(format!("unknown option {s}")),
             s => positional.push(s.to_string()),
         }
@@ -195,8 +205,10 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
         "state" => Command::State { instance_id: instance_id()? },
         "assign" => Command::Assign { instance_id: instance_id()? },
         "restore" if previous.is_none() && records.is_some() => {
-            Command::RestoreRecords { dir: records.take().unwrap_or_default() }
+            let dir = records.take().unwrap_or_default();
+            Command::RestoreRecords { dir, unrecorded: std::mem::take(&mut unrecorded) }
         }
+        "unrecorded" => Command::Unrecorded { dir: records.take().ok_or("unrecorded needs --records <dir>")? },
         "restore" => Command::Restore { instance_id: instance_id()?, previous: previous.take() },
         "windows-keys" => {
             let a = positional.next().ok_or("windows-keys needs the radio's address")?;
@@ -213,6 +225,9 @@ fn parse_args(argv: &[String]) -> Result<Args, String> {
     if records.is_some() {
         return Err("--records is for restore without an instance ID or --previous only".into());
     }
+    if unrecorded {
+        return Err("--unrecorded is for restore --records only".into());
+    }
     Ok(Args { command, out })
 }
 
@@ -225,7 +240,8 @@ fn run(command: &Command) -> (u8, Value) {
         },
         Command::Assign { instance_id } => assign(instance_id),
         Command::Restore { instance_id, previous } => restore(instance_id, previous.as_deref()),
-        Command::RestoreRecords { dir } => restore_records(dir),
+        Command::RestoreRecords { dir, unrecorded } => restore_records(dir, *unrecorded),
+        Command::Unrecorded { dir } => list_unrecorded(dir),
         Command::WindowsKeys { radio } => windows_keys(radio),
     }
 }
@@ -378,20 +394,18 @@ fn worse(a: u8, b: u8) -> u8 {
     if rank(b) > rank(a) { b } else { a }
 }
 
-/// `restore --records <dir>`: every recorded adapter; a record is deleted
-/// once its adapter is back on its own driver. An unplugged adapter keeps
-/// its record (exit code 4 for the whole run).
-fn restore_records(dir: &std::path::Path) -> (u8, Value) {
+/// The records in `dir` and what to do with each (no folder: none)
+fn read_records(dir: &std::path::Path) -> Result<Vec<(PathBuf, RecordPlan)>, (u8, Value)> {
     let mut paths: Vec<PathBuf> = match std::fs::read_dir(dir) {
         Ok(entries) => entries
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("json")))
             .collect(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-        Err(e) => return (exit::FAILED, error_json("records", &format!("cannot read {}: {e}", dir.display()))),
+        Err(e) => return Err((exit::FAILED, error_json("records", &format!("cannot read {}: {e}", dir.display())))),
     };
     paths.sort();
-    let plans: Vec<(PathBuf, RecordPlan)> = paths
+    Ok(paths
         .into_iter()
         .map(|p| {
             let plan = match std::fs::read_to_string(&p) {
@@ -400,8 +414,70 @@ fn restore_records(dir: &std::path::Path) -> (u8, Value) {
             };
             (p, plan)
         })
+        .collect())
+}
+
+/// A Bluetooth adapter on WinUSB: by its Bluetooth class, or its interface
+/// read through WinUSB. Not `looks_like_bluetooth`, which takes any WinUSB
+/// device: a device put on WinUSB for something else is not ours to touch.
+fn winusb_bluetooth(d: &UsbDevice) -> bool {
+    d.driver_kind == driver::DriverKind::WinUsb
+        && (d.has_bluetooth_compat_id()
+            || d.usb_class == Some(usb_adapters::UsbClass::BLUETOOTH)
+            || d.winusb_bluetooth().is_some())
+}
+
+/// Of the Bluetooth adapters on WinUSB, those no record gives back
+fn without_record(on_winusb: Vec<String>, plans: &[(PathBuf, RecordPlan)]) -> Vec<String> {
+    let recorded: Vec<&str> = plans
+        .iter()
+        .filter_map(|(_, plan)| match plan {
+            RecordPlan::Restore { instance_id } => Some(instance_id.as_str()),
+            RecordPlan::Skip { .. } => None,
+        })
         .collect();
-    if plans.iter().any(|(_, plan)| matches!(plan, RecordPlan::Restore { .. })) && !win_sys::elevation::is_elevated() {
+    on_winusb.into_iter().filter(|id| !recorded.iter().any(|r| r.eq_ignore_ascii_case(id))).collect()
+}
+
+fn unrecorded_adapters(plans: &[(PathBuf, RecordPlan)]) -> Result<Vec<String>, (u8, Value)> {
+    let devices =
+        usb_adapters::enumerate(true).map_err(|e| (exit::FAILED, error_json("enumeration", &e.to_string())))?;
+    let ids = devices.iter().filter(|d| winusb_bluetooth(d)).map(|d| d.instance_id.clone()).collect();
+    Ok(without_record(ids, plans))
+}
+
+/// `unrecorded --records <dir>`: the Bluetooth adapters on WinUSB without
+/// a record; exit code 4 when there is none
+fn list_unrecorded(dir: &std::path::Path) -> (u8, Value) {
+    let ids = match read_records(dir).and_then(|plans| unrecorded_adapters(&plans)) {
+        Ok(ids) => ids,
+        Err(e) => return e,
+    };
+    let code = if ids.is_empty() { exit::NO_DEVICE } else { exit::OK };
+    (code, json!({ "ok": true, "command": "unrecorded", "adapters": ids }))
+}
+
+/// `restore --records <dir>`: every recorded adapter; a record is deleted
+/// once its adapter is back on its own driver. An unplugged adapter keeps
+/// its record (exit code 4 for the whole run). `unrecorded`: also the
+/// Bluetooth adapters on WinUSB without a record, Windows choosing their
+/// driver.
+fn restore_records(dir: &std::path::Path, unrecorded: bool) -> (u8, Value) {
+    let plans = match read_records(dir) {
+        Ok(p) => p,
+        Err(e) => return e,
+    };
+    let others = if unrecorded {
+        match unrecorded_adapters(&plans) {
+            Ok(ids) => ids,
+            Err(e) => return e,
+        }
+    } else {
+        Vec::new()
+    };
+    if (!others.is_empty() || plans.iter().any(|(_, plan)| matches!(plan, RecordPlan::Restore { .. })))
+        && !win_sys::elevation::is_elevated()
+    {
         return driver_error("restore", &DriverError::NotElevated);
     }
     let mut code = exit::OK;
@@ -418,6 +494,13 @@ fn restore_records(dir: &std::path::Path) -> (u8, Value) {
             tracing::warn!("cannot delete the record {}: {e}", path.display());
         }
         result["record"] = json!(path.display().to_string());
+        result["exit_code"] = json!(one);
+        code = worse(code, one);
+        adapters.push(result);
+    }
+    for id in others {
+        let (one, mut result) = restore(&id, None);
+        result["unrecorded"] = json!(true);
         result["exit_code"] = json!(one);
         code = worse(code, one);
         adapters.push(result);
@@ -640,6 +723,17 @@ mod tests {
     }
 
     #[test]
+    fn unrecorded_are_those_no_record_restores() {
+        let plans = vec![
+            (PathBuf::from("a.json"), RecordPlan::Restore { instance_id: r"USB\VID_0BDA&PID_8771\A".into() }),
+            (PathBuf::from("b.json"), RecordPlan::Skip { reason: "winusb_before", remove: true }),
+        ];
+        let on_winusb = vec![r"usb\vid_0bda&pid_8771\a".to_string(), r"USB\VID_0A12&PID_0001\B".to_string()];
+        assert_eq!(without_record(on_winusb, &plans), [r"USB\VID_0A12&PID_0001\B"]);
+        assert!(without_record(Vec::new(), &plans).is_empty());
+    }
+
+    #[test]
     fn log_options_come_out_first() {
         let argv: Vec<String> = ["assign", "--log", r"C:\l\bluecaster-driver.log", "X", "--verbose", "--out", "o.json"]
             .map(String::from)
@@ -681,7 +775,7 @@ mod tests {
         assert_eq!(
             args(&["restore", "--records", r"C:\u\BlueCaster\driver", "--out", "o.json"]).unwrap(),
             Args {
-                command: Command::RestoreRecords { dir: PathBuf::from(r"C:\u\BlueCaster\driver") },
+                command: Command::RestoreRecords { dir: PathBuf::from(r"C:\u\BlueCaster\driver"), unrecorded: false },
                 out: Some(PathBuf::from("o.json"))
             }
         );
@@ -689,6 +783,17 @@ mod tests {
         assert!(args(&["restore", "X", "--records", "D"]).is_err());
         assert!(args(&["restore", "--records", "D", "--previous", "{}"]).is_err());
         assert!(args(&["list", "--records", "D"]).is_err());
+        assert_eq!(
+            args(&["restore", "--records", "D", "--unrecorded"]).unwrap().command,
+            Command::RestoreRecords { dir: PathBuf::from("D"), unrecorded: true }
+        );
+        assert_eq!(
+            args(&["unrecorded", "--records", "D"]).unwrap().command,
+            Command::Unrecorded { dir: PathBuf::from("D") }
+        );
+        assert!(args(&["unrecorded"]).is_err());
+        assert!(args(&["restore", "X", "--unrecorded"]).is_err());
+        assert!(args(&["list", "--unrecorded"]).is_err());
         assert_eq!(
             args(&["windows-keys", "00:1A:7D:da:71:13"]).unwrap().command,
             Command::WindowsKeys { radio: [0x00, 0x1A, 0x7D, 0xDA, 0x71, 0x13] }
@@ -729,7 +834,7 @@ mod tests {
     fn records_folder_without_work() {
         // A missing folder, and records with nothing to restore: no elevation
         // needed, the useless record goes, the unreadable one stays
-        let (code, v) = restore_records(std::path::Path::new(r"Z:\no\such\folder"));
+        let (code, v) = restore_records(std::path::Path::new(r"Z:\no\such\folder"), false);
         assert_eq!(code, exit::OK);
         assert_eq!(v["adapters"].as_array().unwrap().len(), 0);
         let dir = std::env::temp_dir().join(format!("bluecaster_driver_records_{}", std::process::id()));
@@ -737,7 +842,7 @@ mod tests {
         std::fs::write(dir.join("a.json"), r#"{"instance_id":"USB\\X","already_winusb":true}"#).unwrap();
         std::fs::write(dir.join("b.json"), "not json").unwrap();
         std::fs::write(dir.join("c.txt"), "ignored").unwrap();
-        let (code, v) = restore_records(&dir);
+        let (code, v) = restore_records(&dir, false);
         assert_eq!(code, exit::OK);
         assert_eq!(v["adapters"].as_array().unwrap().len(), 2);
         assert!(!dir.join("a.json").exists());

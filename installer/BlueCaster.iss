@@ -253,6 +253,15 @@ ko.RestoreChoiceText=WinUSB 드라이버를 제거하고 블루투스 어댑터�
 zhcn.RestoreChoiceText=移除 WinUSB 驱动程序，将蓝牙适配器还给 Windows。Windows 会请求管理员权限。
 zhtw.RestoreChoiceText=移除 WinUSB 驅動程式，將藍牙介面卡交還給 Windows。Windows 會要求系統管理員權限。
 
+en.RestoreChoiceUnrecordedText=The original driver was not recorded: removes WinUSB from the Bluetooth adapters on it and lets Windows choose their driver (administrator access is required).
+ja.RestoreChoiceUnrecordedText=元のドライバーの記録がありません。WinUSB になっている Bluetooth アダプターから WinUSB を外し、ドライバーは Windows が選びます。Windows が管理者の許可を求めます。
+de.RestoreChoiceUnrecordedText=Der ursprüngliche Treiber wurde nicht aufgezeichnet: Entfernt WinUSB von den Bluetooth-Adaptern, die es nutzen, und lässt Windows ihren Treiber wählen. Windows fragt nach Administratorrechten.
+fr.RestoreChoiceUnrecordedText=Le pilote d'origine n'a pas été enregistré : retire WinUSB des adaptateurs Bluetooth qui l'utilisent et laisse Windows choisir leur pilote. Windows demande les droits d'administrateur.
+es.RestoreChoiceUnrecordedText=No se registró el controlador original: quita WinUSB de los adaptadores Bluetooth que lo usan y deja que Windows elija su controlador. Windows pedirá permisos de administrador.
+ko.RestoreChoiceUnrecordedText=원래 드라이버 기록이 없습니다. WinUSB를 쓰는 블루투스 어댑터에서 WinUSB를 제거하고 드라이버는 Windows가 선택합니다. Windows가 관리자 권한을 요청합니다.
+zhcn.RestoreChoiceUnrecordedText=没有原来驱动程序的记录：从使用 WinUSB 的蓝牙适配器上移除 WinUSB，由 Windows 选择驱动程序。Windows 会请求管理员权限。
+zhtw.RestoreChoiceUnrecordedText=沒有原本驅動程式的記錄：從使用 WinUSB 的藍牙介面卡移除 WinUSB，由 Windows 選擇驅動程式。Windows 會要求系統管理員權限。
+
 en.DeleteChoice=Delete user data
 ja.DeleteChoice=ユーザーデータを削除する
 de.DeleteChoice=Benutzerdaten löschen
@@ -544,7 +553,7 @@ const
   WebView2Key = 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
 
 var
-  UpdateMode, PassiveMode, KeepV1, CoreWasRunning, RunWasSet, HadDesktopIcon, DeleteData, RestoreChosen: Boolean;
+  UpdateMode, PassiveMode, KeepV1, CoreWasRunning, RunWasSet, HadDesktopIcon, DeleteData, RestoreChosen, RestoreUnrecorded: Boolean;
   { Setup replaces an installation: this one, 2.0.x (Inno Setup or NSIS) or v1 }
   IsUpgrade: Boolean;
   { An earlier version is uninstalled first: v1, the NSIS one of 2.0.x,
@@ -1277,6 +1286,19 @@ begin
   Result := FileExists(ExpandConstant('{app}\{#DriverExe}')) and HasRecords(DriverRecords);
 end;
 
+{ Bluetooth adapters on WinUSB that no record gives back (put there by
+  Zadig, v1 or by hand): `bluecaster-driver unrecorded` lists them without a
+  UAC prompt, exit code 0 when there is one (issue #86) }
+function HasUnrecordedAdapters: Boolean;
+var
+  Code: Integer;
+begin
+  Result := FileExists(ExpandConstant('{app}\{#DriverExe}')) and
+    Exec(ExpandConstant('{app}\{#DriverExe}'), 'unrecorded --records "' + DriverRecords + '"', '', SW_HIDE, ewWaitUntilTerminated, Code) and
+    (Code = 0);
+  Log(Format('Bluetooth adapters on WinUSB without a record: %d', [Ord(Result)]));
+end;
+
 { Adds a choice of the uninstall page below Top, from Left and Width wide:
   a bold check box and the text under it; returns the box, and Top below
   the text }
@@ -1308,8 +1330,11 @@ end;
 
 { The uninstall's choices on a page of the uninstall wizard itself (issue
   86: a dialog box of its own looked out of place), before anything is
-  removed: give the adapters back to Windows (only when BlueCaster put one on
-  WinUSB) and delete the user data, both on by default. No word of v1: Setup
+  removed: give the adapters back to Windows and delete the user data. The
+  first is on when BlueCaster put an adapter on WinUSB (it has the record),
+  off when only adapters without a record are on WinUSB (Windows then
+  chooses their driver; one may be on WinUSB for something else), and not
+  shown with neither. The user data is on by default. No word of v1: Setup
   uninstalled it, and the running v2 core holds v1's mutex too (issue #86:
   "v1 is still on this PC" with no v1). The choices line up with the page
   description, as on Setup's pages. Uninstall goes on, Cancel stops the
@@ -1325,6 +1350,7 @@ var
   Left, Width, Top: Integer;
 begin
   RestoreChosen := False;
+  RestoreUnrecorded := False;
   DeleteData := False;
   if UninstallSilent then
     Exit;
@@ -1344,7 +1370,11 @@ begin
   Top := 0;
   RestoreBox := nil;
   if CanRestoreDrivers then
-    RestoreBox := AddChoice(Page, CustomMessage('RestoreChoice'), CustomMessage('RestoreChoiceText'), True, Left, Width, Top);
+    RestoreBox := AddChoice(Page, CustomMessage('RestoreChoice'), CustomMessage('RestoreChoiceText'), True, Left, Width, Top)
+  else if HasUnrecordedAdapters then begin
+    RestoreUnrecorded := True;
+    RestoreBox := AddChoice(Page, CustomMessage('RestoreChoice'), CustomMessage('RestoreChoiceUnrecordedText'), False, Left, Width, Top);
+  end;
   { Only the settings folder itself, not one BLUECASTER_CONFIG_DIR names }
   DeleteBox := AddChoice(Page, CustomMessage('DeleteChoice'),
     FmtMessage(CustomMessage('DeleteChoiceText'), [ExpandConstant('{userappdata}\BlueCaster')]), True, Left, Width, Top);
@@ -1376,7 +1406,7 @@ begin
 
   RestoreChosen := (RestoreBox <> nil) and RestoreBox.Checked;
   DeleteData := DeleteBox.Checked;
-  Log(Format('Uninstall choices: restore drivers %d, delete user data %d', [Ord(RestoreChosen), Ord(DeleteData)]));
+  Log(Format('Uninstall choices: restore drivers %d (without records %d), delete user data %d', [Ord(RestoreChosen), Ord(RestoreUnrecorded), Ord(DeleteData)]));
   { Back to the progress page }
   UninstallButton.Visible := False;
   UninstallProgressForm.CancelButton.Enabled := False;
@@ -1392,12 +1422,17 @@ end;
   closed already. }
 procedure RestoreDrivers;
 var
-  Records: String;
+  Records, Params: String;
   Code: Integer;
 begin
   Records := DriverRecords;
-  Log('Restoring the drivers of the adapters recorded in ' + Records);
-  if not ShellExec('runas', ExpandConstant('{app}\{#DriverExe}'), 'restore --records "' + Records + '"', '', SW_HIDE, ewWaitUntilTerminated, Code) then
+  Params := 'restore --records "' + Records + '"';
+  { Without a record: the Bluetooth adapters on WinUSB, Windows choosing
+    their driver }
+  if RestoreUnrecorded then
+    Params := Params + ' --unrecorded';
+  Log('Restoring the drivers of the adapters recorded in ' + Records + ': ' + Params);
+  if not ShellExec('runas', ExpandConstant('{app}\{#DriverExe}'), Params, '', SW_HIDE, ewWaitUntilTerminated, Code) then
     { 1223: UAC cancelled }
     Log(Format('%s did not start (%d): the adapters stay on WinUSB', ['{#DriverExe}', Code]))
   { 0: all given back (or nothing to do) }
@@ -1420,7 +1455,7 @@ begin
         WaitForAppExit;
         if RestoreChosen then
           RestoreDrivers
-        else if CanRestoreDrivers then
+        else if CanRestoreDrivers or RestoreUnrecorded then
           Log('The adapters stay on WinUSB');
       end;
     usPostUninstall:

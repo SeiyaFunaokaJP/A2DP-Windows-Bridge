@@ -985,6 +985,24 @@ describe("SBC settings", () => {
     );
   });
 
+  it("SBC XQ's highest bitpool follows the sample rate (issue #86)", async () => {
+    start("#/codecs");
+    fireEvent.click(await screen.findByRole("switch", { name: (n) => n.startsWith(t("ui.profile.codecs_hide")) }));
+    const dialog = await codecSettings(await section("WH-1000XM5"), "codec.sbc_xq");
+    const high = within(dialog).getByRole("slider", { name: t("ui.profile.sbc_bitpool_max") });
+    const rate = within(dialog).getByLabelText(t("connection.sample_rate"));
+    // 43 at 48 kHz, as the core streams it
+    expect(high).toHaveAttribute("max", "43");
+    fireEvent.change(rate, { target: { value: "44100" } });
+    await waitFor(() => expect(high).toHaveAttribute("max", "47"));
+    fireEvent.input(high, { target: { value: "47" } });
+    // 47 per channel at 44.1 kHz
+    await waitFor(() => expect(within(dialog).getByRole("status")).toHaveTextContent("≈ 551 kbps"));
+    // Back at 48 kHz the bitpool comes down with the range
+    fireEvent.change(rate, { target: { value: "48000" } });
+    await waitFor(() => expect(high).toHaveValue("43"));
+  });
+
   it("SBC XQ shows its bit rate at its own bitpool", async () => {
     start("#/codecs");
     // Not among what the mock's WH-1000XM5 supported: shown when not hidden
@@ -1066,9 +1084,10 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     expect(within(virtual).getByRole("option", { name: "CABLE Input (VB-Audio Virtual Cable)" })).toBeInTheDocument();
     const apps = await within(select).findByRole("group", { name: t("capture.app") });
     expect(within(apps).getByRole("option", { name: "Spotify" })).toBeInTheDocument();
-    // With the default output it records (issue #86)
+    // With the default output it records, in its own group as the others (issue #86)
+    const loopback = within(select).getByRole("group", { name: t("capture.loopback") });
     expect(
-      within(select).getByRole("option", { name: t("capture.loopback_device", "Speakers (Realtek(R) Audio)") }),
+      within(loopback).getByRole("option", { name: t("capture.loopback_default", "Speakers (Realtek(R) Audio)") }),
     ).toBeInTheDocument();
     // What the source does, below it, with no info button (issue #86)
     expect(within(entry).queryByRole("button", { name: t("ui.more_info", t("capture.mode")) })).toBeNull();

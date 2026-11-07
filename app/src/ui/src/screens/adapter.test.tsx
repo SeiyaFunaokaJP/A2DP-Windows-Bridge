@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@solidjs/testing-library";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../app/App";
+import { t } from "../i18n";
 import { MockCore, type MockScenario, sampleSnapshot } from "../ipc/mock";
 import { createCore } from "../ipc/store";
 import { adapterExperimental, adapterIds, adapterIdsHint, adapterName, driverText } from "./Adapter";
@@ -24,10 +25,12 @@ afterEach(() => {
 });
 
 describe("AFH", () => {
-  it("has its mode and channels in the heading: Auto and Off read only, Manual typed (issue #86)", async () => {
+  it("has its mode and channels beside its text: Auto and Off read only, Manual typed (issue #86)", async () => {
     const { calls, mock } = start();
     const section = (await screen.findByRole("heading", { level: 2, name: "Avoid Wi-Fi channels" })).closest("section")!;
-    const head = section.querySelector(".section-head") as HTMLElement;
+    // The text in a block of its own, the controls in another (issue #86)
+    expect(section.querySelector(".afh-text")).toHaveTextContent(t("receiver.afh_tooltip"));
+    const head = section.querySelector(".afh-control") as HTMLElement;
     const box = within(head).getByRole("textbox", { name: "Wi-Fi ch" }) as HTMLInputElement;
     // One set of controls only
     expect(within(section).getAllByRole("radiogroup")).toHaveLength(1);

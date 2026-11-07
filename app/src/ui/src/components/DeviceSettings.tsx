@@ -131,10 +131,15 @@ export function DeviceSettings(props: { device: Device }) {
     if (list.length === 0 && apps() !== null && !p.le_audio && appSupport() !== "no") {
       list.push({ value: "app:", label: t("capture.no_app_playing"), group: t("capture.app"), disabled: true });
     }
-    // The Windows default output it records, by name (issue #86)
+    // The Windows default output it records, by name, in its own group as
+    // the other sources (issue #86)
     const output = (devices() ?? []).find((d) => d.is_default)?.name;
-    const loopback = output ? t("capture.loopback_device", output) : t("capture.loopback");
-    return [{ value: "loopback", label: loopback }, ...virtual, ...outputs, ...list];
+    const loopback: Option<string> = {
+      value: "loopback",
+      label: output ? t("capture.loopback_default", output) : t("capture.loopback_default_none"),
+      group: t("capture.loopback"),
+    };
+    return [loopback, ...virtual, ...outputs, ...list];
   });
   const chooseSource = (value: string) => {
     const p = shown();

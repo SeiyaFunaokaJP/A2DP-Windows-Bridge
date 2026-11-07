@@ -559,10 +559,18 @@ function AfhSection() {
   // nothing, both read only; Manual takes the user's
   const shown = () => (manual() ? channels() : mode() === "auto" || mode() === "blend" ? avoided() : "");
   return (
-    <Section
-      id={AFH_SECTION}
-      title={t("receiver.afh")}
-      actions={
+    <Section id={AFH_SECTION} title={t("receiver.afh")}>
+      {/* The text in a block of its own, the controls beside it (issue #86) */}
+      <div class="afh-body">
+        <div class="afh-text">
+          <p class="hint">{t("receiver.afh_tooltip")}</p>
+          <Show when={bad()}>
+            <span class="field-error" id="afh-channels-err" role="alert">
+              <Icon name="error_circle" />
+              {t("ui.adapter.afh_bad")}
+            </span>
+          </Show>
+        </div>
         <div class="afh-control">
           <div class="afh-row">
             <Segmented
@@ -607,15 +615,7 @@ function AfhSection() {
             />
           </Show>
         </div>
-      }
-    >
-      <p class="hint">{t("receiver.afh_tooltip")}</p>
-      <Show when={bad()}>
-        <span class="field-error" id="afh-channels-err" role="alert">
-          <Icon name="error_circle" />
-          {t("ui.adapter.afh_bad")}
-        </span>
-      </Show>
+      </div>
     </Section>
   );
 }
