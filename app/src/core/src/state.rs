@@ -299,6 +299,7 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
         battery_low_percent: s.battery_low_percent,
         check_updates_on_startup: s.check_updates_on_startup,
         include_prereleases: s.include_prereleases,
+        include_alphas: s.include_alphas,
         media_keys: s.media_keys,
         auto_reconnect: s.auto_reconnect,
         volume_sync: s.volume_sync,
@@ -370,6 +371,7 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
     c.battery_low_percent = s.battery_low_percent;
     c.check_updates_on_startup = s.check_updates_on_startup;
     c.include_prereleases = s.include_prereleases;
+    c.include_alphas = s.include_alphas;
     c.media_keys = s.media_keys;
     c.auto_reconnect = s.auto_reconnect;
     c.volume_sync = s.volume_sync;
@@ -2948,9 +2950,9 @@ impl CoreState {
         use bluecaster_core::update;
         let (_, s) = self.snapshot();
         self.publish(Event::Update(UpdateState { checking: true, ..s.update.clone() }));
-        let prereleases = self.service.settings().include_prereleases;
+        let channel = self.service.settings().update_channel();
         let current_version = update::current_version().to_string();
-        match update::check(update::current_version(), prereleases) {
+        match update::check(update::current_version(), channel) {
             Ok(r) => {
                 let available = r.map(|r| ipc::UpdateInfo {
                     manifest_url: update::manifest_url(&r.tag),

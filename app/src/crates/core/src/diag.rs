@@ -1440,7 +1440,11 @@ pub fn diag_text(d: &DiagInput<'_>) -> String {
         on_off(s.auto_codec),
         s.afh,
         on_off(s.check_updates_on_startup),
-        if s.include_prereleases { " (pre-releases too)" } else { "" }
+        match s.update_channel() {
+            crate::update::Channel::Alpha => " (alphas too)",
+            crate::update::Channel::Beta => " (pre-releases too)",
+            crate::update::Channel::Stable => "",
+        }
     );
     if let Some(l) = d.logging {
         let _ = writeln!(out, "Logging      : {l}");

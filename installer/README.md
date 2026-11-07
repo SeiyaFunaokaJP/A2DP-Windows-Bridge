@@ -22,6 +22,24 @@ Attach all of them to the GitHub release `v<ver>` (`gh release create v<ver> ...
 pre-release). The version comes from `version` in `Cargo.toml` (`[workspace.package]`);
 `app/src/ui/package.json` must have the same one, and the tag must be `v` + that version.
 
+### Alphas
+
+An alpha (for example a chip loader that wants testers soon) is a version with an `alpha`
+identifier: `3.0.0-beta.2.alpha.1` between 3.0.0-beta.2 and beta.3, `3.0.1-alpha.1` after 3.0.0.
+Publish it with `--prerelease --latest=false`; build and check it as any release (signed, Defender,
+VirusTotal). Who is offered it:
+
+| Copy | Offered |
+| --- | --- |
+| A release (2.0.1, 3.0.0, …): `/releases/latest` | Never |
+| With the alpha channel (developer mode + **Include Alphas in Update Checks**) | Yes |
+| With it, beta channel only | No: the beta channel skips alphas |
+| 3.0.0-beta.2 and older on the beta channel (no alpha channel yet) | Yes, when it is the highest version |
+
+The beta channel reads the newest 100 releases (3.0.0-beta.2 and older: 20). Delete old alphas
+(`gh release delete <tag> --cleanup-tag`) before they push the betas out of the newest 20, or old
+beta copies stop finding the next beta.
+
 Prerequisites: Rust with the target (`rustup target add aarch64-pc-windows-msvc`), pnpm and
 `pnpm install` in `app/src/ui`, the submodules (`git submodule update --init --recursive`),
 `cargo install cargo-about`, and Inno Setup 7.1.0 (`winget install JRSoftware.InnoSetup.7 --version 7.1.0`;

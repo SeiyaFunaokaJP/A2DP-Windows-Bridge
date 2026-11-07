@@ -30,6 +30,11 @@ notify_connected: boolean,
  */
 battery_low_percent: number, check_updates_on_startup: boolean, include_prereleases: boolean, 
 /**
+ * Developer > alphas too, in force while developer_mode is on (an
+ * older core has none: off)
+ */
+include_alphas: boolean, 
+/**
  * The headphones' buttons act as Windows media keys (every device)
  */
 media_keys: boolean, 

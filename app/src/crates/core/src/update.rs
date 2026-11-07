@@ -2,8 +2,16 @@
 //!
 //! Stable channel: `/releases/latest` (GitHub never returns a pre-release
 //! there). Beta channel (`include_prereleases`): the highest version among
-//! the last 20 published releases, pre-release or not. Versions compare with
-//! semver precedence, so 2.0.0-beta.1 < 2.0.0-beta.10 < 2.0.0-rc.1 < 2.0.0.
+//! the last 100 published releases, pre-release or not, alphas left out.
+//! Alpha channel (developer mode): the highest of them all. Versions compare
+//! with semver precedence, so 2.0.0-beta.1 < 2.0.0-beta.10 < 2.0.0-rc.1 <
+//! 2.0.0.
+//!
+//! An alpha is a version with an `alpha` identifier in its pre-release part
+//! ([`is_alpha`]). Before 3.0.0 it sits between two betas
+//! (3.0.0-beta.2 < 3.0.0-beta.2.alpha.1 < 3.0.0-beta.3), after it before the
+//! next betas (3.0.1-alpha.1 < 3.0.1-beta.1). Copies before the alpha channel
+//! (3.0.0-beta.2 and older) take alphas on their beta channel.
 //!
 //! Blocking (ureq with rustls; the system proxy as v1's WinHTTP): call from a
 //! worker thread. The automatic check runs at most once a day
@@ -23,11 +31,23 @@ pub const REPO: &str = "SeiyaFunaokaJP/BlueCaster";
 pub const RELEASES_PAGE: &str = "https://github.com/SeiyaFunaokaJP/BlueCaster/releases";
 
 const API: &str = "https://api.github.com/repos/SeiyaFunaokaJP/BlueCaster/releases";
-/// Newest first; 20 reaches back past any run of pre-releases
-const LIST_PER_PAGE: u32 = 20;
-/// /releases/latest is a few kB, 20 list entries some 100 kB
-const MAX_RESPONSE: u64 = 1 << 20;
+/// Newest first, GitHub's largest page: reaches back past a run of alphas
+const LIST_PER_PAGE: u32 = 100;
+/// /releases/latest is some 15 kB, a list entry as much (with its notes and
+/// assets; 40 releases were 640 kB in 2026-11): 100 of them up to 2.5 MB
+const MAX_RESPONSE: u64 = 4 << 20;
 const TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Which releases an update check offers
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Channel {
+    /// Releases only (`/releases/latest`)
+    Stable,
+    /// Pre-releases too, alphas not
+    Beta,
+    /// Everything, alphas too (developer mode)
+    Alpha,
+}
 
 /// A published release
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -77,6 +97,12 @@ pub fn parse_version(s: &str) -> Option<Version> {
         padded.push_str(".0");
     }
     Version::parse(&format!("{padded}{rest}")).ok()
+}
+
+/// An alpha: an `alpha` identifier in the pre-release part
+/// ("3.0.0-beta.2.alpha.1", "3.0.1-alpha.1")
+pub fn is_alpha(version: &str) -> bool {
+    parse_version(version).is_some_and(|v| v.pre.split('.').any(|i| i.eq_ignore_ascii_case("alpha")))
 }
 
 /// Semver precedence (build metadata ignored); a version that does not
@@ -147,14 +173,15 @@ pub fn parse_latest(json: &str) -> Result<Release, UpdateError> {
 }
 
 /// The answer of `/releases?per_page=n`: the highest version among the
-/// published releases, pre-release or not (drafts are listed only to
-/// maintainers; tags that are no version are skipped)
-pub fn parse_list(json: &str) -> Result<Release, UpdateError> {
+/// published releases, pre-release or not, alphas only with `alphas` (drafts
+/// are listed only to maintainers; tags that are no version are skipped)
+pub fn parse_list(json: &str, alphas: bool) -> Result<Release, UpdateError> {
     let j: Value = serde_json::from_str(json).map_err(|e| UpdateError::Response(format!("JSON: {e}")))?;
     let list = j.as_array().ok_or_else(|| UpdateError::Response("not a list".into()))?;
     list.iter()
         .filter(|r| !r.get("draft").and_then(Value::as_bool).unwrap_or(false))
         .filter_map(release_of)
+        .filter(|r| alphas || !is_alpha(&r.version))
         .filter_map(|r| parse_version(&r.version).map(|v| (v, r)))
         .max_by(|(a, _), (b, _)| a.cmp_precedence(b))
         .map(|(_, r)| r)
@@ -193,18 +220,19 @@ fn get(url: &str) -> Result<String, UpdateError> {
 }
 
 /// The newest release of the channel (blocking)
-pub fn latest_release(include_prereleases: bool) -> Result<Release, UpdateError> {
-    if include_prereleases {
-        parse_list(&get(&format!("{API}?per_page={LIST_PER_PAGE}"))?)
-    } else {
-        parse_latest(&get(&format!("{API}/latest"))?)
+pub fn latest_release(channel: Channel) -> Result<Release, UpdateError> {
+    match channel {
+        Channel::Stable => parse_latest(&get(&format!("{API}/latest"))?),
+        Channel::Beta | Channel::Alpha => {
+            parse_list(&get(&format!("{API}?per_page={LIST_PER_PAGE}"))?, channel == Channel::Alpha)
+        }
     }
 }
 
 /// A release newer than `current_version`, if there is one (blocking)
-pub fn check(current_version: &str, include_prereleases: bool) -> Result<Option<Release>, UpdateError> {
-    tracing::debug!("update check: running {current_version}, pre-releases {include_prereleases}");
-    let latest = latest_release(include_prereleases)?;
+pub fn check(current_version: &str, channel: Channel) -> Result<Option<Release>, UpdateError> {
+    tracing::debug!("update check: running {current_version}, channel {channel:?}");
+    let latest = latest_release(channel)?;
     tracing::info!(
         "update check: latest {}{} (running {current_version})",
         latest.version,
@@ -318,16 +346,43 @@ mod tests {
             {"tag_name":"le-audio-preview","html_url":"x","draft":false,"prerelease":true},
             {"tag_name":"v1.1.0","html_url":"u110","draft":false,"prerelease":false}
         ]"#;
-        let r = parse_list(json).unwrap();
+        let r = parse_list(json, false).unwrap();
         assert_eq!((r.version.as_str(), r.url.as_str(), r.prerelease), ("2.0.0-beta.10", "u10", true));
 
         // The release outranks its pre-releases
         let json = r#"[{"tag_name":"v2.0.0-rc.1","prerelease":true},{"tag_name":"v2.0.0","prerelease":false}]"#;
-        let r = parse_list(json).unwrap();
+        let r = parse_list(json, false).unwrap();
         assert_eq!((r.version.as_str(), r.prerelease), ("2.0.0", false));
 
-        assert!(parse_list("[]").is_err());
-        assert!(parse_list(r#"{"tag_name":"v1.0.0"}"#).is_err());
+        assert!(parse_list("[]", false).is_err());
+        assert!(parse_list(r#"{"tag_name":"v1.0.0"}"#, false).is_err());
+    }
+
+    #[test]
+    fn alphas_only_on_the_alpha_channel() {
+        assert!(is_alpha("3.0.0-beta.2.alpha.1"));
+        assert!(is_alpha("v3.0.1-alpha.1"));
+        assert!(is_alpha("3.0.1-alpha"));
+        assert!(!is_alpha("3.0.0-beta.2"));
+        assert!(!is_alpha("3.0.0"));
+        assert!(!is_alpha("3.0.0-alphabet.1"));
+        assert!(!is_alpha("garbage"));
+        // Between two betas, and before the next ones after a release
+        assert!(is_newer("3.0.0-beta.2.alpha.1", "3.0.0-beta.2"));
+        assert!(is_newer("3.0.0-beta.3", "3.0.0-beta.2.alpha.9"));
+        assert!(is_newer("3.0.0-beta.2.alpha.10", "3.0.0-beta.2.alpha.9"));
+        assert!(is_newer("3.0.1-alpha.1", "3.0.0"));
+        assert!(is_newer("3.0.1-beta.1", "3.0.1-alpha.3"));
+
+        let json = r#"[
+            {"tag_name":"v3.0.0-beta.2.alpha.2","prerelease":true},
+            {"tag_name":"v3.0.0-beta.2.alpha.1","prerelease":true},
+            {"tag_name":"v3.0.0-beta.2","prerelease":true}
+        ]"#;
+        assert_eq!(parse_list(json, true).unwrap().version, "3.0.0-beta.2.alpha.2");
+        assert_eq!(parse_list(json, false).unwrap().version, "3.0.0-beta.2");
+        // Only alphas listed: nothing for the beta channel
+        assert!(parse_list(r#"[{"tag_name":"v3.0.1-alpha.1","prerelease":true}]"#, false).is_err());
     }
 
     #[test]
@@ -368,18 +423,21 @@ mod tests {
     #[test]
     #[ignore = "network"]
     fn queries_github() {
-        let stable = latest_release(false).unwrap();
+        let stable = latest_release(Channel::Stable).unwrap();
         assert!(parse_version(&stable.version).is_some(), "{stable:?}");
         assert!(!stable.prerelease);
         assert!(stable.url.starts_with("https://github.com/"));
-        let beta = latest_release(true).unwrap();
+        let beta = latest_release(Channel::Beta).unwrap();
+        assert!(!is_alpha(&beta.version), "{beta:?}");
+        let alpha = latest_release(Channel::Alpha).unwrap();
         eprintln!(
             "stable channel: {stable:?}
-beta channel: {beta:?}"
+beta channel: {beta:?}
+alpha channel: {alpha:?}"
         );
         assert_ne!(compare_versions(&beta.version, &stable.version), Ordering::Less, "{beta:?} {stable:?}");
-        // Whatever is out, the running alpha is not newer than itself
-        let _ = check(current_version(), true).unwrap();
+        assert_ne!(compare_versions(&alpha.version, &beta.version), Ordering::Less, "{alpha:?} {beta:?}");
+        let _ = check(current_version(), Channel::Alpha).unwrap();
     }
 
     #[test]

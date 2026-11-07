@@ -722,6 +722,10 @@ pub struct Settings {
     pub battery_low_percent: u8,
     pub check_updates_on_startup: bool,
     pub include_prereleases: bool,
+    /// Developer > alphas too, in force while developer_mode is on (an
+    /// older core has none: off)
+    #[serde(default)]
+    pub include_alphas: bool,
     /// The headphones' buttons act as Windows media keys (every device)
     pub media_keys: bool,
     /// Connect a device that went away again by itself (on by default).

@@ -81,6 +81,11 @@ fn default_prereleases() -> bool {
 fn is_prerelease(version: &str) -> bool {
     version.contains('-')
 }
+/// An alpha build ("3.0.0-beta.2.alpha.1") offers alphas by default
+/// (developer mode on)
+fn default_alphas() -> bool {
+    crate::update::is_alpha(env!("CARGO_PKG_VERSION"))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -120,6 +125,10 @@ pub struct Settings {
     /// on by default in a pre-release build
     #[serde(default = "default_prereleases")]
     pub include_prereleases: bool,
+    /// Developer > also offer alphas (in force only while debug_mode is
+    /// on); on by default in an alpha build
+    #[serde(default = "default_alphas")]
+    pub include_alphas: bool,
 
     /// The headphones' buttons act as Windows media keys (every device)
     #[serde(default = "default_true")]
@@ -295,6 +304,7 @@ impl Default for Settings {
             check_updates_on_startup: true,
             last_update_check: String::new(),
             include_prereleases: default_prereleases(),
+            include_alphas: default_alphas(),
             media_keys: true,
             auto_reconnect: true,
             awaiting_vb_cable: false,
@@ -386,6 +396,19 @@ impl Settings {
         let r = std::fs::rename(&tmp, &path);
         tracing::debug!("settings: saved {}: {r:?}", path.display());
         r
+    }
+
+    /// The releases an update check offers: alphas in developer mode only,
+    /// and they bring the pre-releases with them
+    pub fn update_channel(&self) -> crate::update::Channel {
+        use crate::update::Channel;
+        if self.include_alphas && self.debug_mode {
+            Channel::Alpha
+        } else if self.include_prereleases {
+            Channel::Beta
+        } else {
+            Channel::Stable
+        }
     }
 
     /// Whether a stream mutes the default output device
@@ -556,6 +579,23 @@ mod tests {
         // A saved choice stays
         let s: Settings = serde_json::from_str(r#"{"include_prereleases":false}"#).unwrap();
         assert!(!s.include_prereleases);
+    }
+
+    #[test]
+    fn alphas_only_in_developer_mode() {
+        use crate::update::Channel;
+        let alpha = crate::update::is_alpha(env!("CARGO_PKG_VERSION"));
+        assert_eq!(Settings::default().include_alphas, alpha);
+        let mut s: Settings = serde_json::from_str(r#"{"include_prereleases":false,"include_alphas":true}"#).unwrap();
+        assert_eq!(s.update_channel(), Channel::Stable);
+        s.include_prereleases = true;
+        assert_eq!(s.update_channel(), Channel::Beta);
+        s.debug_mode = true;
+        assert_eq!(s.update_channel(), Channel::Alpha);
+        s.include_prereleases = false;
+        assert_eq!(s.update_channel(), Channel::Alpha);
+        s.include_alphas = false;
+        assert_eq!(s.update_channel(), Channel::Stable);
     }
 
     #[test]
