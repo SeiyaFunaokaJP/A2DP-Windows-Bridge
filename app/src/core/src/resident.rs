@@ -384,7 +384,13 @@ pub fn run(args: &[String]) -> i32 {
     let (tx, rx) = mpsc::channel();
     let capture = HciCapture::new();
     // Now that the 2.0.x core and v1 have been stopped: moves their folder
-    // if the first call (main, before the log) had to leave it
+    // if the first call (main, before the log) had to leave it. This
+    // process holds their mutexes itself now, which the check would take
+    // for the old program; while one of them still runs the folder waits
+    // for the next start.
+    if holds_old_core_mutex && !watches_v1 {
+        bluecaster_core::paths::old_apps_stopped();
+    }
     let config_dir = bluecaster_core::paths::config_dir();
     if let Some(note) = bluecaster_core::paths::take_folder_note() {
         tracing::info!("{note}");

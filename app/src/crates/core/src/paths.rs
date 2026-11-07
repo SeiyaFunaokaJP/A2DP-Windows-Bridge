@@ -22,7 +22,7 @@
 //! so it uses only std, tracing and time.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 /// The settings folder's name in %APPDATA%
 pub const FOLDER_NAME: &str = "BlueCaster";
@@ -42,16 +42,22 @@ static FOLDER_NOTE: Mutex<Option<String>> = Mutex::new(None);
 /// register the check at start ([`set_old_app_check`]: it needs win-sys'
 /// mutexes, which this std-only file has not); without one the folder is
 /// moved at once (tests, tools).
-static OLD_APP_RUNS: OnceLock<fn() -> bool> = OnceLock::new();
+static OLD_APP_RUNS: Mutex<Option<fn() -> bool>> = Mutex::new(None);
 
 /// Registers the check [`move_old_folder`] makes before it touches the
-/// folder of 2.0.x; the first registration counts
+/// folder of 2.0.x
 pub fn set_old_app_check(check: fn() -> bool) {
-    let _ = OLD_APP_RUNS.set(check);
+    *OLD_APP_RUNS.lock().unwrap_or_else(|e| e.into_inner()) = Some(check);
+}
+
+/// Drops the check: the old programs have been stopped, and this process
+/// holds their mutexes itself now (the check would see its own hold)
+pub fn old_apps_stopped() {
+    *OLD_APP_RUNS.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 fn old_app_runs() -> bool {
-    OLD_APP_RUNS.get().is_some_and(|check| check())
+    OLD_APP_RUNS.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|check| check())
 }
 
 pub fn config_dir() -> PathBuf {
