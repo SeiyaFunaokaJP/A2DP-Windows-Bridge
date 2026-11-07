@@ -31,7 +31,7 @@ use crate::sdp_services::SdpServices;
 use crate::shared::Shared;
 use crate::stats::LinkStats;
 use crate::{AfhClassification, ConnectFailure, Controls, DiscoveredDevice, HostEvent, InitFailure, MediaKey};
-use crate::{intel, mediatek};
+use crate::{intel, mediatek, qualcomm};
 
 pub(crate) type Job = Box<dyn FnOnce(&mut HostApp, &Stack) + Send>;
 
@@ -302,6 +302,17 @@ impl HostApp {
         tracing::info!("MediaTek adapter: checking its firmware (experimental), folder {}", dir.display());
         let loader = mediatek::Loader::new(Box::new(move |name| {
             read_firmware_file(&dir, "mediatek", name).or_else(|| mediatek::from_windows_driver(name))
+        }));
+        self.start_loader(stack, Box::new(loader));
+    }
+
+    /// The Qualcomm rampatch and NVM download (crate::qualcomm), then HCI
+    /// init: the firmware folder first, then Qualcomm's Windows driver
+    pub fn start_qualcomm_loader(&mut self, stack: &Stack) {
+        let dir = self.setup.firmware_dir.clone();
+        tracing::info!("Qualcomm adapter: checking its firmware (experimental), folder {}", dir.display());
+        let loader = qualcomm::Loader::new(Box::new(move |name| {
+            read_firmware_file(&dir, "qca", name).or_else(|| qualcomm::from_windows_driver(name))
         }));
         self.start_loader(stack, Box::new(loader));
     }

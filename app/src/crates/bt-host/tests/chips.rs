@@ -116,6 +116,10 @@ fn display_names_like_v1() {
     assert_eq!(vendor_for_usb(0x13D3, 0x3563, None), ChipVendor::MediaTek);
     assert_eq!(vendor_for_usb(0x13D3, 0x1234, None), ChipVendor::Unknown);
     assert_eq!(display_name(0x0E8D, 0x7925, None, ChipVendor::MediaTek), "MediaTek (0x0E8D:0x7925) [experimental]");
+    // Qualcomm ROME and WCN6855, also under a module maker's VID; not the QCA6290
+    assert_eq!(display_name(0x0CF3, 0xE300, None, ChipVendor::Qualcomm), "Qualcomm (0x0CF3:0xE300) [experimental]");
+    assert_eq!(vendor_for_usb(0x0489, 0xE0C7, None), ChipVendor::Qualcomm);
+    assert_eq!(display_name(0x0CF3, 0xE400, None, ChipVendor::Qualcomm), "Qualcomm (0x0CF3:0xE400) [unsupported]");
     assert_eq!(display_name(0x0A12, 0x0001, None, ChipVendor::Csr), "CSR (0x0A12:0x0001)");
     assert_eq!(display_name(0x0BDA, 0x1234, None, ChipVendor::Realtek), "0x0BDA:0x1234");
     assert_eq!(display_name(0x1234, 0x5678, None, ChipVendor::Unknown), "0x1234:0x5678");
