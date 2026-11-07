@@ -913,6 +913,9 @@ option {
   gap: var(--s3);
   animation: rise var(--t-mid) var(--ease);
 }
+.dialog-wide {
+  width: min(46rem, 100%);
+}
 .dialog > h2,
 .dialog-actions {
   flex: none;
@@ -999,7 +1002,7 @@ option {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-/* A tag that opens something (developer mode: a device's pairing), above
+/* A tag that opens something (a device's services and keys), above
    the row's full-size radio input */
 .tag-button {
   position: relative;
@@ -1021,15 +1024,34 @@ option {
 .pairing-part + .pairing-part {
   margin-top: var(--s4);
 }
+/* The byte order switch and what it does, apart from the keys below */
+.pairing-order {
+  display: grid;
+  gap: var(--s1);
+  margin: var(--s2) 0 var(--s4);
+}
+.pairing-order .check {
+  justify-self: start;
+}
+.pairing-order .hint {
+  margin: 0;
+}
 .pairing-key {
   overflow-wrap: anywhere;
   user-select: all;
+}
+/* Key, tag and copy button on one line */
+.pairing-key-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  max-width: 100%;
 }
 .pairing-keys {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: var(--s2) var(--s3);
-  align-items: baseline;
+  align-items: center;
   margin: var(--s2) 0;
 }
 .pairing-keys dt {

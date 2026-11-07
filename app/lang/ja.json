@@ -925,6 +925,7 @@
   "ui.pairing.no_key": "リンクキーは保存されていません",
   "ui.pairing.copy_key": "キーをコピー",
   "ui.pairing.reverse_bytes": "バイト順を反転",
+  "ui.pairing.reverse_bytes_hint": "各キーを最後のバイトから表示します。この順序で読むツール向けです。オフでは Bluetooth が送る順です。",
   "ui.pairing.copied": "クリップボードにコピーしました",
   "ui.pairing.secret": "これらのキーがあれば誰でもこのデバイスになりすませます。",
   "ui.pairing.services": "サービス",

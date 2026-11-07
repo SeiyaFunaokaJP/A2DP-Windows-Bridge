@@ -767,6 +767,7 @@ export class MockCore implements Transport {
             { uuids: ["0000110e-0000-1000-8000-00805f9b34fb", "0000110f-0000-1000-8000-00805f9b34fb"], name: null },
             { uuids: ["00001101-0000-1000-8000-00805f9b34fb"], name: "GAIA" },
             { uuids: ["df21fe2c-2515-4fdb-8886-f12c4d67927c"], name: null },
+            { uuids: ["00001101-d102-11e1-9b23-00025b00a5a5"], name: null },
             { uuids: ["0000fff0-1234-5678-9abc-def012345678"], name: null },
           ],
           from_last_connection: false,

@@ -430,6 +430,32 @@ impl UsbTransport {
     }
 }
 
+const MEDIATEK_VID: u16 = 0x0E8D;
+
+/// GET_STATUS of an endpoint: halted, or no answer
+fn halted(interface: &Interface, addr: u8) -> bool {
+    let status = interface
+        .control_in(
+            ControlIn {
+                control_type: ControlType::Standard,
+                recipient: Recipient::Endpoint,
+                request: 0x00,
+                value: 0,
+                index: addr.into(),
+                length: 2,
+            },
+            COMMAND_TIMEOUT,
+        )
+        .wait();
+    match status {
+        Ok(s) => s.first().is_some_and(|b| b & 1 != 0),
+        Err(e) => {
+            tracing::debug!("USB: GET_STATUS of endpoint 0x{addr:02x}: {e}");
+            true
+        }
+    }
+}
+
 /// Endpoint addresses of the HCI pipes on interface 0
 fn hci_endpoints(interface: &Interface) -> Option<(u8, u8, u8)> {
     let desc = interface.descriptor()?;
@@ -631,16 +657,22 @@ impl HciBackend for UsbTransport {
         );
         // A halted endpoint or a data toggle left from an earlier session
         // keeps the controller from answering HCI Reset
+        // A MediaTek controller seems to keep its data toggle on a clear: a
+        // clear of a running pipe cost the first event after a restart
+        // (#86). Its pipes are cleared only when halted.
+        let keep = |addr: u8| vid == MEDIATEK_VID && !halted(&interface, addr);
         for (name, r) in [
-            ("event", event_in.clear_halt().wait()),
-            ("ACL in", acl_in.clear_halt().wait()),
-            ("ACL out", acl_out.clear_halt().wait()),
+            ("event", (!keep(event_addr)).then(|| event_in.clear_halt().wait())),
+            ("ACL in", (!keep(acl_in_addr)).then(|| acl_in.clear_halt().wait())),
+            ("ACL out", (!keep(acl_out_addr)).then(|| acl_out.clear_halt().wait())),
         ] {
-            if let Err(e) = r {
-                tracing::warn!(target: "hci", "USB: clearing the {name} pipe failed: {e}");
-                tracing::debug!("USB: clear halt on the {name} pipe: {e:?}");
-            } else {
-                tracing::debug!("USB: {name} pipe cleared");
+            match r {
+                Some(Err(e)) => {
+                    tracing::warn!(target: "hci", "USB: clearing the {name} pipe failed: {e}");
+                    tracing::debug!("USB: clear halt on the {name} pipe: {e:?}");
+                }
+                Some(Ok(())) => tracing::debug!("USB: {name} pipe cleared"),
+                None => tracing::debug!("USB: {name} pipe not halted, left as it is"),
             }
         }
         STATS.take();
