@@ -71,7 +71,7 @@ BlueCaster 通过 WinUSB（Windows 自带的通用 USB 驱动程序）直接与 
 {: .warning }
 分配 WinUSB 期间，Windows 自带的 Bluetooth 将不再识别该适配器：通过它与 Windows 配对的设备在恢复驱动程序之前都无法使用。键盘、鼠标等普通外设请使用内置 Bluetooth。属于 USB 设备的内置适配器（许多笔记本电脑上的 Realtek 适配器）也可以交给 BlueCaster 使用，但在恢复其驱动程序之前，**PC 将完全无法使用 Windows Bluetooth**（Bluetooth 设置、鼠标、键盘、其他音频设备）。
 
-同一页面上的**恢复原始驱动程序**会将适配器交还给 Windows：Windows 会重新为其选择自己的驱动程序（通常是其 Bluetooth 驱动程序），适配器即可配合 Windows 的 Bluetooth 使用。在重新分配 WinUSB 之前，BlueCaster 无法通过它串流。Windows 一次只运行一个 Bluetooth 适配器：如果另一个适配器正在使用中，BlueCaster 会在恢复后给出提示；只有在设备管理器中禁用那个适配器并重新插拔此适配器后，它才能在 Windows 中使用。BlueCaster 重新配对过的耳机使用的是新密钥，因此 Windows 原有的配对可能失效：对话框会列出 Windows 也配对过的设备；如果其中某台无法连接，请在 Windows 设置中删除它并重新配对。卸载程序也提供同样的操作：卸载向导的一个页面上有**恢复原来的蓝牙驱动程序**（当 BlueCaster 为适配器分配了 WinUSB 时；只请求一次管理员权限）和**删除用户数据**（`%APPDATA%\BlueCaster` 中的设置、编解码器、配对和固件，以及窗口记住的内容，例如**仅显示支持的编解码器**），两者默认都已开启。更新时以及静默卸载（`/S`）时会保留 WinUSB。
+同一页面上的**恢复原始驱动程序**会将适配器交还给 Windows：Windows 会重新为其选择自己的驱动程序（通常是其 Bluetooth 驱动程序），适配器即可配合 Windows 的 Bluetooth 使用。在重新分配 WinUSB 之前，BlueCaster 无法通过它串流。Windows 一次只运行一个 Bluetooth 适配器：如果另一个适配器正在使用中，BlueCaster 会在恢复后给出提示；只有在设备管理器中禁用那个适配器并重新插拔此适配器后，它才能在 Windows 中使用。BlueCaster 重新配对过的耳机使用的是新密钥，因此 Windows 原有的配对可能失效：对话框会列出 Windows 也配对过的设备；如果其中某台无法连接，请在 Windows 设置中删除它并重新配对。卸载程序也提供同样的操作：卸载向导的一个页面上有**恢复原来的蓝牙驱动程序**（当 BlueCaster 为适配器分配了 WinUSB 时；只请求一次管理员权限）和**删除用户数据**（`%APPDATA%\BlueCaster` 中的设置、编解码器、配对和固件，以及窗口记住的内容，例如**仅显示支持的编解码器**），两者默认都已开启。如果只有没有该记录的适配器（用 Zadig 或 v1 设置的）在使用 WinUSB，第一项会显示但默认关闭：选择后由 Windows 选择驱动程序。更新时以及静默卸载（`/S`）时会保留 WinUSB。
 
 ### 改用 Zadig {#zadig}
 
@@ -123,7 +123,7 @@ bluecaster-core.exe --cli --scan
 
 ## 固件（Realtek 适配器） {#firmware}
 
-基于 Realtek 的 USB Bluetooth 适配器（如 TP-Link UB500、RTL8761BU 适配器）需要专有固件才能工作。CSR 适配器无需固件。Intel 和 Broadcom 适配器（实验性）可能需要各自的固件文件：请参阅[推荐适配器](#adapters)。
+基于 Realtek 的 USB Bluetooth 适配器（如 TP-Link UB500、RTL8761BU 适配器）需要专有固件才能工作。CSR 适配器无需固件。Intel、MediaTek MT79xx、Qualcomm 和 Broadcom 适配器（实验性）可能需要各自的固件文件：请参阅[推荐适配器](#adapters)。
 
 ### 在应用中（下载引导）
 
@@ -166,9 +166,14 @@ BlueCaster 会检测适配器的芯片组，并显示需要哪些固件文件。
 |:--------|:-----------------|:------|
 | Realtek | TP-Link UB500、RTL8761BU | 需要下载固件（见上文）。测试最充分 |
 | CSR | 通用 CSR8510 适配器 | 开箱即用，无需固件 |
+| Barrot | Bluetooth 5.4 / 6.0 适配器（`33FA:0010`、`33FA:0012`） | 使用 ROM 固件运行，无需固件。目前仅有一份用户报告 |
+| Marvell | Microsoft Surface Pro / Surface Book 内置（88W8897） | *实验性。* 无需固件文件：Wi-Fi 驱动也会加载蓝牙固件，请保持 Wi-Fi 开启。尚未在实际硬件上测试 |
+| Actions | ATS2851 适配器（`10D7:B012`） | *实验性。* 使用 ROM 固件运行，无需固件。它声称支持一些实际无法执行的命令，BlueCaster 会将其隐藏。尚未在实际硬件上测试 |
 | Broadcom | ASUS BT400 (BCM20702) | *实验性。* 报告厂商类 `FF/01/01` 而非 Bluetooth 类 `E0/01/01` 的适配器（BCM20702 OEM 适配器）也能被检测到。使用 ROM 固件运行；如果固件文件夹中有可选的 PatchRAM `.hcd` 文件（如 `BCM20702A1-0b05-17cb.hcd`），会在启动时上传 |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *实验性。* 处于 bootloader 模式时（如冷启动后），需要将 linux-firmware `intel/` 中对应的 `ibt-*.sfi` + `ibt-*.ddc` 放入固件文件夹，所需文件名会写在日志里（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上测试过 |
-| MediaTek、Qualcomm | MT7921/MT7922、QCA61x4 | 不支持：需要 BlueCaster 所没有的固件加载程序（[帮助添加支持](chip-support)） |
+| Intel | Intel 7260 / 3160 / 7265 / 3165 / 3168 / 8260 / 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *实验性。* 处于 bootloader 模式时（如冷启动后），需要将 linux-firmware `intel/` 中对应的 `ibt-*.sfi` + `ibt-*.ddc` 放入固件文件夹，所需文件名会写在日志里（例如 `ibt-0180-0041.sfi`）。7260 / 3160 / 7265 / 3165 / 3168 由 ROM 运行，无需文件；同一文件夹中有对应的 `ibt-hw-*.bseq` 补丁时会加载。目前只在 AX211 上测试过 |
+| MediaTek | MT7925、MT7922、MT7921、MT7902（AMD RZ717、RZ616、RZ608 等 Wi-Fi 网卡） | *实验性。* 需要该芯片的 `BT_RAM_CODE_MT*_hdr.bin`（例如 `BT_RAM_CODE_MT7925_1_1_hdr.bin`）：如果装有 MediaTek 的 Windows Bluetooth 驱动程序，BlueCaster 会从中读取；否则请将 linux-firmware `mediatek/` 中的该文件放入固件文件夹，所需文件名会写在日志里。尚未在实际硬件上测试 |
+| Qualcomm | QCA61x4、QCA9377（ROME）、WCN6855（FastConnect 6900） | *实验性。* 需要该芯片的 rampatch 和 NVM（例如 `AthrBT_0x00000302.dfu` 和 `ramps_0x00000302_48.dfu`）：如果装有 Qualcomm 的 Windows Bluetooth 驱动程序，BlueCaster 会从中读取；否则请将 linux-firmware `qca/` 中的文件（`rampatch_usb_*.bin`、`nvm_usb_*.bin`）放入固件文件夹，所需文件名会写在日志里。尚未在实际硬件上测试 |
+| MediaTek、Qualcomm | 其他 MediaTek 芯片（MT7927）、其他 Qualcomm 芯片（QCA6290、WCN785x） | 不支持：需要 BlueCaster 所没有的固件加载程序（[帮助添加支持](chip-support)） |
 
 对于 LDAC 等高比特率编解码器，USB Bluetooth 5.0+ 适配器通常效果最好。
 

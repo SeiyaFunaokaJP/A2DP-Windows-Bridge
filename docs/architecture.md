@@ -279,7 +279,11 @@ result. Listing adapters and their driver needs no elevation.
 - Picks the codec: Auto takes the codec with the highest sound quality the
   remote offers; a requested codec the remote does not offer is replaced by
   the same codec Auto would take (always for a profile, since issue #86; the
-  command line only with `--fallback`), and is an error otherwise
+  command line only with `--fallback`), and is an error otherwise. A codec
+  chosen on its card while the remote did not offer it (the profile's
+  `codec_forced`) is asked for anyway with no fallback (`RemoteCaps::forcing`),
+  and a codec whose card offers more than the remote lists
+  (`unlisted_options`) is configured from `RemoteCaps::unlisted`
 - Leaves the experimental codecs (aptX HD, aptX LL, Opus, Opus 05,
   FastStream) out of Auto and the fallback with the command line's
   `--no-experimental`; the app always uses them (the `experimental_codecs`
@@ -536,4 +540,4 @@ uninstaller and `licenses\` (`licenses\README.txt`, `licenses\bluecaster\LICENSE
   dedicated USB adapter for BlueCaster
 - Some Bluetooth adapters' firmware limits achievable bitrate
 - USB Bluetooth 5.0+ adapters generally work well for LDAC
-- Auto codec selection priority (by sound quality, issue #86): LHDC V5 > LDAC > aptX Adaptive > Opus > aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC (FastStream and Opus 05 only when chosen); a chosen codec the device does not offer falls back to the first one in the device's order it offers
+- Auto codec selection priority (by sound quality, issue #86): LHDC V5 > LDAC > aptX Adaptive > Opus > aptX HD > aptX > aptX LL > AAC > SBC XQ > SBC (FastStream and Opus 05 only when chosen); a chosen codec the device no longer offers falls back to the first one in the device's order it offers; one chosen on its card while the device did not offer it is asked for anyway (`codec_forced`, no fallback)
