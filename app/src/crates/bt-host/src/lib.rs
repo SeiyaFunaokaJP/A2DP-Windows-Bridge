@@ -39,7 +39,7 @@ use codec::caps::{Configuration, RemoteCaps};
 use hci_transport::{TcpH4, UsbSelector, UsbTransport};
 
 use app::{HostApp, Job, Setup};
-pub use btstack_sys::expect_transport_loss;
+pub use btstack_sys::{LeKeys, expect_transport_loss, set_ctkd};
 pub use capture::HciCapture;
 pub use events::{addr_str, parse_addr};
 pub use le::{
@@ -1559,6 +1559,13 @@ impl BtHost {
     /// stack did not answer.
     pub fn store_link_key(&self, addr: [u8; 6], key: [u8; 16], key_type: i32) -> bool {
         self.call(Duration::from_secs(2), move |_, s| s.store_link_key(&addr, &key, key_type)).is_some()
+    }
+
+    /// The LE keys of the classic device `addr` (derived from its link key,
+    /// see [`set_ctkd`]); None without LE Audio, without keys, or when the
+    /// stack did not answer
+    pub fn le_keys(&self, addr: [u8; 6]) -> Option<LeKeys> {
+        self.call(Duration::from_secs(2), move |_, s| s.le_keys_of_classic(&addr)).flatten()
     }
 
     /// The service records `addr` lists in SDP, asked over the link the

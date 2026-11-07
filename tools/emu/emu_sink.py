@@ -50,6 +50,8 @@ from bumble.device import Device
 from bumble.core import BT_BR_EDR_TRANSPORT, UUID
 from bumble.host import Host
 from bumble.link import LocalLink
+from bumble.pairing import PairingConfig, PairingDelegate
+from bumble.smp import SMP_BR_CID
 from bumble.rfcomm import Server, make_service_sdp_records
 from bumble.snoop import Snooper
 from bumble.transport import open_transport
@@ -133,6 +135,23 @@ class EmuController(Controller):
     REMOTE_VERSION = (12, 0x0094, 0x2209)  # Bluetooth 5.3, Airoha
     # Leave Read Remote Version without any answer, as Bumble itself does
     silent_remote_version = False
+    # Report encryption as AES-CCM (Secure Connections), not E0 (--ctkd)
+    aes_ccm = False
+    # Authentication asks the host for its link key first, as a real
+    # controller (--ctkd): a device paired before connects without pairing
+    # again. Bumble's controller always pairs anew.
+    link_key_request = False
+
+    def on_hci_authentication_requested_command(self, command):
+        connection = self.find_classic_connection_by_handle(command.connection_handle)
+        if not self.link_key_request or connection is None:
+            return super().on_hci_authentication_requested_command(command)
+        self._send_hci_command_status(hci.HCI_COMMAND_STATUS_PENDING, command.op_code)
+        # Link Key Request Reply: Bumble sends Authentication Complete;
+        # Negative Reply: it pairs
+        connection.ssp_state.is_initiator = True
+        self.send_hci_packet(hci.HCI_Link_Key_Request_Event(bd_addr=connection.peer_address))
+        return None
 
     def _complete(self, command, data):
         self.send_hci_packet(hci.HCI_Command_Complete_Event(
@@ -262,6 +281,9 @@ class EmuController(Controller):
             return None
         self._send_hci_command_status(hci.HCI_COMMAND_STATUS_PENDING, command.op_code)
         enabled = command.encryption_enable
+        if enabled and self.aes_ccm:
+            # Secure Connections: AES-CCM, as a real link after SC pairing
+            enabled = 2
         self.send_hci_packet(
             hci.HCI_Encryption_Change_Event(
                 status=0, connection_handle=connection.handle, encryption_enabled=enabled
@@ -575,7 +597,42 @@ async def main(args):
     if args.oppo:
         oppo = OppoEarbuds(device, args.oppo == 'on', args.oppo_drop, args.oppo_product, args.oppo_no_change,
                            args.oppo_spatial, args.oppo_codec_write, args.oppo_no_write)
+    if args.ctkd:
+        bluecaster_controller.aes_ccm = sink_controller.aes_ccm = True
+        bluecaster_controller.link_key_request = True
+        # Earbuds' LE identity: an IRK, and a random static address unless
+        # --ctkd-public-identity (then the classic one)
+        device.irk = bytes.fromhex('a0a1a2a3a4a5a6a7a8a9aaabacadaeaf')
+        device.static_address = hci.Address('C3:5A:11:22:33:44', hci.Address.RANDOM_DEVICE_ADDRESS)
+
+        class Refuse(PairingDelegate):
+            async def accept(self):
+                print('CTKD: refusing the pairing request', flush=True)
+                return False
+        make_config = device.pairing_config_factory
+
+        def ctkd_config(connection):
+            config = make_config(connection)
+            config.identity_address_type = (PairingConfig.AddressType.PUBLIC if args.ctkd_public_identity
+                                            else PairingConfig.AddressType.RANDOM)
+            if args.ctkd_refuse:
+                config.delegate = Refuse()
+            return config
+        device.pairing_config_factory = ctkd_config
     await device.power_on()
+    # SMP over BR/EDR (Bumble serves it by default): with --ctkd as from
+    # --ctkd-from's connection on (none before, as a device without it),
+    # answering nothing with --ctkd-silent
+    smp_handler = device.l2cap_channel_manager.fixed_channels.get(SMP_BR_CID)
+    if args.ctkd_silent:
+        smp_handler = lambda handle, pdu: print(f'CTKD: ignoring SMP PDU 0x{pdu[0]:02X}', flush=True)
+
+    def smp_over_br_edr(connections):
+        on = smp_handler is not None and connections >= args.ctkd_from
+        device.l2cap_channel_manager.deregister_fixed_channel(SMP_BR_CID)
+        if on:
+            device.l2cap_channel_manager.register_fixed_channel(SMP_BR_CID, smp_handler)
+        print(f'SMP over BR/EDR {"listed" if on else "not listed"} (connection {connections})', flush=True)
     await device.set_discoverable(True)
     await device.set_connectable(True)
 
@@ -703,10 +760,20 @@ async def main(args):
     def on_connection(connection):
         log.info('ACL connection from %s', connection.peer_address)
         connection.on('disconnection', lambda reason: print(f'link down (0x{reason:02X})', flush=True))
+        on_connection.count += 1
+        if args.ctkd:
+            smp_over_br_edr(on_connection.count)
+            # The keys as the sink has them (virtual ones: printed for run_test.py)
+            identity = SINK_ADDRESS if args.ctkd_public_identity else str(device.static_address)
+            connection.on('pairing', lambda keys: print(
+                f'CTKD: keys LTK {keys.ltk.value.hex() if keys.ltk else "-"} IRK {device.irk.hex()} '
+                f'identity {identity}', flush=True))
+            connection.on('pairing_failure', lambda reason: print(f'CTKD: pairing failed 0x{reason:02X}', flush=True))
         if args.turn_off_after and not on_connection.turned_off:
             on_connection.turned_off = True
             asyncio.ensure_future(turn_off_and_on(connection))
     on_connection.turned_off = False
+    on_connection.count = 0
 
     device.on('connection', on_connection)
     print(f'READY 127.0.0.1:{args.port} sink={SINK_ADDRESS}', flush=True)
@@ -771,5 +838,14 @@ if __name__ == '__main__':
     parser.add_argument('--oppo-spatial', action='store_true', help='report spatial audio on')
     parser.add_argument('--oppo-codec-write', action='store_true', help='advertise the codec write')
     parser.add_argument('--oppo-no-write', action='store_true', help='advertise no feature write')
+    parser.add_argument('--ctkd', action='store_true',
+                        help='encrypt with AES-CCM (Secure Connections) and answer SMP over BR/EDR: the LE keys '
+                             'derived from the link key (cross-transport key derivation, issue #86)')
+    parser.add_argument('--ctkd-from', type=int, default=1, metavar='N',
+                        help='with --ctkd, list SMP over BR/EDR only from the Nth connection on')
+    parser.add_argument('--ctkd-refuse', action='store_true', help='with --ctkd, refuse the pairing request')
+    parser.add_argument('--ctkd-public-identity', action='store_true',
+                        help='with --ctkd, give the classic address as identity (default: a random static one)')
+    parser.add_argument('--ctkd-silent', action='store_true', help='with --ctkd, list SMP over BR/EDR, answer nothing')
     bumble.logging.setup_basic_logging(parser.parse_known_args()[0].log_level)
     asyncio.run(main(parser.parse_args()))
