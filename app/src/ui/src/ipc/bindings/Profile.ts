@@ -22,7 +22,9 @@ sample_rate: number,
  */
 bit_depth: number, 
 /**
- * loopback, virtual, app
+ * loopback, virtual, output, app. "output" (developer mode, issue
+ * #193): the output device audio_device_id, whichever is the Windows
+ * default; outside developer mode it streams System Loopback
  */
 capture_mode: string, audio_device_id: string, audio_device_name: string, auto_switch_device: boolean, app_exe: string, app_name: string, 
 /**

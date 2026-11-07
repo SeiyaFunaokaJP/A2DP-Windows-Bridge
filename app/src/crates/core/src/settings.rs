@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use bt_host::media::{MEDIA_PAYLOAD_LIMIT_DEFAULT, clamp_media_payload_limit};
 
+use crate::stream::SourceRequest;
+
 /// settings.json's format: 1 is v1's (which wrote no schema_version), 2 is
 /// v2's, 3 has LE Audio on by default, 4 remembers each device's volume by
 /// default, 5 has one Auto-select for every device, 6 one Windows Volume
@@ -397,6 +399,19 @@ impl Settings {
         if self.debug_mode { wanted } else { Default::default() }
     }
 
+    /// The source a stream takes from its profile: a chosen output device
+    /// counts in developer mode only (issue #193), System Loopback outside
+    /// it; the profile keeps its choice
+    pub fn capture_source(&self, wanted: SourceRequest) -> SourceRequest {
+        match wanted {
+            SourceRequest::OutputDevice { .. } if !self.debug_mode => {
+                tracing::info!("audio source: {wanted} is chosen in developer mode only, capturing System Loopback");
+                SourceRequest::SystemLoopback
+            }
+            other => other,
+        }
+    }
+
     /// The media packet size limit of a settings file from before v1.1, for
     /// profiles saved without one
     pub fn legacy_max_media_payload(&self) -> u16 {
@@ -446,6 +461,18 @@ mod tests {
         s.dev_log.always_verbose = "trace".into();
         s.dev_log.day_cap_mb = 1 << 20;
         assert_eq!((s.log().always_verbose.as_str(), s.log().day_cap_mb), ("trace", 10240));
+    }
+
+    #[test]
+    fn an_output_device_counts_only_in_developer_mode() {
+        let output = SourceRequest::OutputDevice { id: "{speakers}".into(), name: "Speakers".into() };
+        let virt = SourceRequest::VirtualDevice { id: "{cable}".into(), name: "CABLE".into(), auto_switch: true };
+        let mut s = Settings::default();
+        assert_eq!(s.capture_source(output.clone()), SourceRequest::SystemLoopback);
+        assert_eq!(s.capture_source(virt.clone()), virt);
+        s.debug_mode = true;
+        assert_eq!(s.capture_source(output.clone()), output);
+        assert_eq!(s.capture_source(virt.clone()), virt);
     }
 
     #[test]

@@ -620,6 +620,8 @@ function sourceOf(mode: string, id: string, name: string): SourceInfo {
       return { kind: "tone", name: "", waiting: false };
     case "virtual":
       return { kind: "virtual", name: name || id, waiting: false };
+    case "output":
+      return { kind: "output", name: name || id, waiting: false };
     case "app":
       return { kind: "app", name: id, waiting: false };
     default:
@@ -1238,7 +1240,12 @@ export class MockCore implements Transport {
       le: profile.le_audio,
       codec: profile.le_audio ? "lc3" : profile.codec,
       profile: name,
-      source: sourceOf(profile.capture_mode, profile.capture_mode === "app" ? profile.app_exe : profile.audio_device_id, profile.audio_device_name),
+      source: sourceOf(
+        // A chosen output device counts in developer mode only (settings.rs capture_source)
+        profile.capture_mode === "output" && !this.snap.settings.developer_mode ? "loopback" : profile.capture_mode,
+        profile.capture_mode === "app" ? profile.app_exe : profile.audio_device_id,
+        profile.audio_device_name,
+      ),
       sampleRate: profile.sample_rate || null,
       abr: profile.abr,
     });

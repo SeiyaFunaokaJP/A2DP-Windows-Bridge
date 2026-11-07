@@ -256,6 +256,8 @@ In Virtual Device mode, **Set as Windows default output while connected** makes 
 - Some apps keep playing on the previous device until they are restarted.
 - If BlueCaster exits unexpectedly, the default device is not switched back. Change it in Windows Sound settings.
 
+In developer mode, the **Output Source** list also has **Output Device**: each output device Windows has (speakers, a USB headset, a TV, ...). BlueCaster then records what that device plays, whichever device is the Windows default output, and never makes it the default; **Windows Volume Sync** syncs that device's volume. If it is missing when connecting (unplugged or disabled), BlueCaster sends System Loopback instead and the connection status says so; **Audio Devices** shows it as not connected. With developer mode off, such a device captures System Loopback: the choice stays saved and counts again once developer mode is back on.
+
 ### Application mode {#application-mode}
 
 Application mode sends the audio of one app, for example a music player, a browser or an effects app. Choose the app in the **Output Source** list, under Application. It shows the apps that are playing audio right now; if yours is missing, start playback in it and click **Refresh** beside the list. The app's child processes are included, so a browser that plays audio from a separate process works too.

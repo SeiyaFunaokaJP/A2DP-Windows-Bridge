@@ -45,6 +45,21 @@ describe("choices", () => {
     expect(captureChoices(sampleProfile(), DEVICES, APPS, false).apps).toEqual([]);
   });
 
+  it("offers the other output devices in developer mode only (issue #193)", () => {
+    const p = sampleProfile();
+    expect(captureChoices(p, DEVICES, APPS, true).output).toEqual([]);
+    // Each device once: the virtual one stays under Virtual Device
+    expect(captureChoices(p, DEVICES, APPS, true, true).output).toEqual([{ value: "output:spk", label: "Speakers" }]);
+    const gone = sampleProfile({ capture_mode: "output", audio_device_id: "usb", audio_device_name: "USB Speakers" });
+    expect(captureChoices(gone, DEVICES, APPS, true, true).output[0]).toEqual({
+      value: "output:usb",
+      label: "USB Speakers (not connected)",
+    });
+    const o = withCapture(p, "output:spk", DEVICES, APPS);
+    expect(o).toMatchObject({ capture_mode: "output", audio_device_id: "spk", audio_device_name: "Speakers" });
+    expect(captureValue(o)).toBe("output:spk");
+  });
+
   it("sets what the capture source needs", () => {
     const p = sampleProfile();
     expect(withCapture(p, "virtual:cable", DEVICES, APPS)).toMatchObject({

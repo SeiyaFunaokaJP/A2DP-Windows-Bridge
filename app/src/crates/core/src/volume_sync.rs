@@ -152,13 +152,16 @@ pub enum EndpointChoice {
 impl EndpointChoice {
     /// The device of a stream's volume sync setting, None = no sync. Auto is
     /// the device the audio comes from: the virtual device in virtual device
-    /// mode, else the default output device (in application mode that is
+    /// mode, the chosen output device in output device mode, else the
+    /// default output device (in application mode that is
     /// where the volume keys act). The test tone has no Windows volume.
     pub fn for_stream(sync: &VolumeSync, source: &SourceRequest) -> Option<EndpointChoice> {
         match (sync, source) {
             (VolumeSync::Off, _) | (_, SourceRequest::TestTone) => None,
             (VolumeSync::Device(id), _) if !id.is_empty() => Some(EndpointChoice::Device(id.clone())),
-            (VolumeSync::Auto, SourceRequest::VirtualDevice { id, .. }) if !id.is_empty() => {
+            (VolumeSync::Auto, SourceRequest::VirtualDevice { id, .. } | SourceRequest::OutputDevice { id, .. })
+                if !id.is_empty() =>
+            {
                 Some(EndpointChoice::Device(id.clone()))
             }
             // A "device" profile without a device: the default one, as v1
@@ -910,6 +913,11 @@ mod tests {
             Some(EndpointChoice::Default)
         );
         assert_eq!(EndpointChoice::for_stream(&VolumeSync::Auto, &app), Some(EndpointChoice::Default));
+        let output = SourceRequest::OutputDevice { id: "{speakers}".into(), name: "Speakers".into() };
+        assert_eq!(
+            EndpointChoice::for_stream(&VolumeSync::Auto, &output),
+            Some(EndpointChoice::Device("{speakers}".into()))
+        );
         assert_eq!(EndpointChoice::for_stream(&VolumeSync::Auto, &virt), Some(EndpointChoice::Device("cable".into())));
         assert_eq!(
             EndpointChoice::for_stream(&VolumeSync::Device("spk".into()), &virt),

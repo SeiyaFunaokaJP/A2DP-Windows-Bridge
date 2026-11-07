@@ -61,7 +61,9 @@ pub struct Profile {
     pub sample_rate: u32,
     /// 0 = auto, 16, 24
     pub bit_depth: u32,
-    /// loopback, virtual, app
+    /// loopback, virtual, output, app. "output": loopback of the output
+    /// device `audio_device_id` (Windows' endpoint ID) whichever is the
+    /// default, set in developer mode (issue #193)
     #[serde(default = "loopback")]
     pub capture_mode: String,
     pub audio_device_id: String,
@@ -323,8 +325,12 @@ impl Profile {
                 name: self.audio_device_name.clone(),
                 auto_switch: self.auto_switch_device,
             },
+            "output" if !self.audio_device_id.is_empty() => {
+                SourceRequest::OutputDevice { id: self.audio_device_id.clone(), name: self.audio_device_name.clone() }
+            }
             "app" => SourceRequest::Application { exe: self.app_exe.clone() },
-            // "loopback", and v1's legacy "apo"
+            // "loopback", "output" without a device (none chosen: the
+            // default output), and v1's legacy "apo"
             _ => SourceRequest::SystemLoopback,
         }
     }
@@ -616,6 +622,26 @@ mod tests {
         assert_eq!(list[1].capture_mode, "app");
         // A second time changes nothing
         assert_eq!(use_virtual_device(&mut list, "{cable}", "CABLE Input"), 0);
+    }
+
+    #[test]
+    fn an_output_device_profile_captures_that_device() {
+        let p = Profile {
+            capture_mode: "output".into(),
+            audio_device_id: "{0.0.0.00000000}.{speakers}".into(),
+            audio_device_name: "Speakers".into(),
+            ..Profile::default()
+        };
+        assert_eq!(
+            p.source(),
+            SourceRequest::OutputDevice { id: "{0.0.0.00000000}.{speakers}".into(), name: "Speakers".into() }
+        );
+        // None chosen: the default output
+        let none = Profile { audio_device_id: String::new(), ..p.clone() };
+        assert_eq!(none.source(), SourceRequest::SystemLoopback);
+        // Kept as saved
+        let back: Profile = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
     }
 
     #[test]

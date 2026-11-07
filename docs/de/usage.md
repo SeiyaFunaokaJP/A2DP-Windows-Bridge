@@ -257,6 +257,8 @@ Im Modus Virtuelles Gerät macht **Bei Verbindung als Windows-Standardausgabe fe
 - Manche Apps geben weiterhin auf dem vorherigen Gerät wieder, bis sie neu gestartet werden.
 - Wird BlueCaster unerwartet beendet, wird das Standardgerät nicht zurückgestellt. Ändern Sie es dann in den Windows-Soundeinstellungen.
 
+Im Entwicklermodus bietet die Liste **Ausgabequelle** außerdem **Ausgabegerät**: jedes Ausgabegerät von Windows (Lautsprecher, ein USB-Headset, ein Fernseher, ...). BlueCaster nimmt dann auf, was dieses Gerät wiedergibt, egal welches Gerät die Windows-Standardausgabe ist, und macht es nie zum Standard; **Windows-Lautstärke-Sync** gleicht die Lautstärke dieses Geräts ab. Fehlt es beim Verbinden (ausgesteckt oder deaktiviert), sendet BlueCaster stattdessen System-Loopback, und der Verbindungsstatus sagt das; **Audiogeräte** zeigt es als nicht verbunden. Ohne Entwicklermodus nimmt ein solches Gerät System-Loopback auf: Die Auswahl bleibt gespeichert und gilt wieder, sobald der Entwicklermodus an ist.
+
 ### Modus Anwendung {#application-mode}
 
 Der Modus Anwendung sendet das Audio einer einzelnen App, zum Beispiel eines Musikplayers, eines Browsers oder einer Effekt-App. Wählen Sie die App in der Liste **Ausgabequelle** unter Anwendung. Sie zeigt die Apps, die gerade Audio wiedergeben; fehlt Ihre, starten Sie darin die Wiedergabe und klicken Sie auf **Aktualisieren** neben der Liste. Untergeordnete Prozesse der App sind eingeschlossen, daher funktioniert auch ein Browser, der Audio aus einem separaten Prozess wiedergibt.

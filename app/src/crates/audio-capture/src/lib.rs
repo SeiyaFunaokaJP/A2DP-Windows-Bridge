@@ -1,5 +1,5 @@
 //! Audio sources for BlueCaster: WASAPI loopback of the default output device
-//! or a chosen one (virtual device mode), per-application loopback, and the
+//! or a chosen one (virtual or output device mode), per-application loopback, and the
 //! test tone; plus the device list, endpoint volume and app list the UI and
 //! core need around them.
 //!
@@ -43,7 +43,7 @@ pub enum Source {
     /// the capture is opened. A later change of the default device is not
     /// followed; reopen to follow it.
     SystemLoopback,
-    /// Loopback of this render endpoint (virtual device mode)
+    /// Loopback of this render endpoint (virtual or output device mode)
     RenderDevice { id: String },
     /// Process loopback of this process and its child processes (Windows
     /// build >= [`APP_CAPTURE_MIN_BUILD`]). Float stereo at the requested

@@ -439,10 +439,11 @@ pub struct LeStreamInfo {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 
 pub struct SourceInfo {
-    /// "loopback" (what Windows plays), "virtual" (a virtual device), "app"
-    /// (one application), "tone" (the test tone)
+    /// "loopback" (what Windows plays), "virtual" (a virtual device),
+    /// "output" (a chosen output device), "app" (one application), "tone"
+    /// (the test tone)
     pub kind: String,
-    /// The virtual device's name or the application's executable; empty
+    /// The virtual or output device's name, or the application's executable; empty
     /// for loopback and the tone
     pub name: String,
     /// Application capture: the application is not running; the stream
@@ -488,7 +489,9 @@ pub struct Profile {
     pub sample_rate: u32,
     /// 0 = auto, 16, 24
     pub bit_depth: u32,
-    /// loopback, virtual, app
+    /// loopback, virtual, output, app. "output" (developer mode, issue
+    /// #193): the output device audio_device_id, whichever is the Windows
+    /// default; outside developer mode it streams System Loopback
     pub capture_mode: String,
     pub audio_device_id: String,
     pub audio_device_name: String,

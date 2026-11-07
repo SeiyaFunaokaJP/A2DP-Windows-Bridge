@@ -274,6 +274,7 @@ fn logging_line(config: &std::path::Path) -> String {
 fn core_source(s: Option<&ipc::SourceInfo>) -> bluecaster_core::SourceInfo {
     let kind = match s.map(|s| s.kind.as_str()) {
         Some("virtual") => "virtual",
+        Some("output") => "output",
         Some("app") => "app",
         Some("tone") => "tone",
         _ => "loopback",
