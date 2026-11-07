@@ -985,6 +985,24 @@ describe("SBC settings", () => {
     );
   });
 
+  it("SBC XQ's highest bitpool follows the sample rate (issue #86)", async () => {
+    start("#/codecs");
+    fireEvent.click(await screen.findByRole("switch", { name: (n) => n.startsWith(t("ui.profile.codecs_hide")) }));
+    const dialog = await codecSettings(await section("WH-1000XM5"), "codec.sbc_xq");
+    const high = within(dialog).getByRole("slider", { name: t("ui.profile.sbc_bitpool_max") });
+    const rate = within(dialog).getByLabelText(t("connection.sample_rate"));
+    // 43 at 48 kHz, as the core streams it
+    expect(high).toHaveAttribute("max", "43");
+    fireEvent.change(rate, { target: { value: "44100" } });
+    await waitFor(() => expect(high).toHaveAttribute("max", "47"));
+    fireEvent.input(high, { target: { value: "47" } });
+    // 47 per channel at 44.1 kHz
+    await waitFor(() => expect(within(dialog).getByRole("status")).toHaveTextContent("≈ 551 kbps"));
+    // Back at 48 kHz the bitpool comes down with the range
+    fireEvent.change(rate, { target: { value: "48000" } });
+    await waitFor(() => expect(high).toHaveValue("43"));
+  });
+
   it("SBC XQ shows its bit rate at its own bitpool", async () => {
     start("#/codecs");
     // Not among what the mock's WH-1000XM5 supported: shown when not hidden
