@@ -796,7 +796,7 @@
   "ui.setup.step_device": "查找音频设备",
   "ui.setup.adapter_intro": "请选择系统未在使用的受支持蓝牙适配器：",
   "ui.setup.supported": "支持",
-  "ui.setup.unsupported_note": "BlueCaster 无法使用 Qualcomm 适配器和大多数 MediaTek 适配器。请选择其他适配器，例如 Realtek 的。",
+  "ui.setup.unsupported_note": "BlueCaster 无法使用 Qualcomm 适配器和部分 MediaTek 适配器。请选择其他适配器，例如 Realtek 的。",
   "ui.setup.driver_ok": "适配器已可供 BlueCaster 使用",
   "ui.setup.auto_explain": "要使用此适配器，此设置将：",
   "ui.setup.auto_will_driver": "将适配器的原始驱动程序替换为通用 WinUSB 驱动程序。适配器将从 Windows 中移除。",

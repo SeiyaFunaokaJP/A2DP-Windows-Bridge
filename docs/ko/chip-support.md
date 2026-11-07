@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # 칩 지원 추가
 
-BlueCaster는 Bluetooth 어댑터를 직접(WinUSB로) 다루므로, 어댑터가 작동하기 전에 제조사의 Windows 드라이버가 하는 일을 대신 해야 합니다. 많은 칩에서는 시작할 때마다 펌웨어를 칩에 로드하는 일입니다. 현재 Realtek, Intel, Broadcom, CSR 어댑터는 작동하고 MediaTek MT7925는 실험적으로 작동하지만, 그 밖의 MediaTek 칩(MT7921, MT7922 등)과 Qualcomm(QCA61x4)은 아직 아무도 로더를 작성하지 않아 작동하지 않습니다. `app/src/crates/bt-host/src/mediatek.rs`(MT7925용)는 실제 로더이므로 다른 MediaTek 칩을 지원할 때 출발점으로 삼을 수 있습니다.
+BlueCaster는 Bluetooth 어댑터를 직접(WinUSB로) 다루므로, 어댑터가 작동하기 전에 제조사의 Windows 드라이버가 하는 일을 대신 해야 합니다. 많은 칩에서는 시작할 때마다 펌웨어를 칩에 로드하는 일입니다. 현재 Realtek, Intel, Broadcom, CSR 어댑터는 작동하고 MediaTek MT7925, MT7922, MT7921, MT7902는 실험적으로 작동하지만, 그 밖의 MediaTek 칩(MT7927 및 이전 칩)과 Qualcomm(QCA61x4)은 아직 아무도 로더를 작성하지 않아 작동하지 않습니다. `app/src/crates/bt-host/src/mediatek.rs`(MT79xx용)는 실제 로더이므로 다른 MediaTek 칩을 지원할 때 출발점으로 삼을 수 있습니다.
 
 이 페이지는 로더를 추가하는 절차를 설명합니다. 해당 칩을 쓰는 어댑터가 필요하며, 메인테이너는 이런 어댑터를 가지고 있지 않습니다. 코드를 작성하지 않더라도 도울 수 있습니다. 1단계와 2단계를 거치면 기여자에게 필요한 보고서를 만들 수 있습니다.
 

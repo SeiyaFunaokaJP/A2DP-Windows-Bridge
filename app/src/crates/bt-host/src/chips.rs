@@ -83,7 +83,7 @@ pub static OEM_TABLE: &[OemChipMapping] = &[
 
 /// The controller vendor, guessed from the USB VID:PID. Decides which
 /// firmware loader (if any) runs before HCI init. Only Realtek is well
-/// tested; the Intel (crate::intel), MediaTek MT7925 (crate::mediatek) and
+/// tested; the Intel (crate::intel), MediaTek MT79xx (crate::mediatek) and
 /// Broadcom loaders are experimental; Qualcomm needs a loader BTstack does
 /// not have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -134,9 +134,110 @@ impl ChipVendor {
 /// (vendor, VID, PID): a loader that covers only some of a vendor's chips
 /// lists them here, and only they leave "unsupported" (docs/chip-support.md)
 pub const LOADER_CHIPS: &[(ChipVendor, u16, u16)] = &[
-    // MT7925 (Wi-Fi 7 card, Bluetooth on its internal USB), crate::mediatek;
-    // the chip probe in #86
+    // MediaTek MT79xx (crate::mediatek, experimental): the Bluetooth USB IDs
+    // of MediaTek's Windows driver 1.1147.0.616 (MT7902, MT7920, MT7921,
+    // MT7922, MT7925) and the MT7925 section of 26.40.3.69. The loader reads
+    // the chip ID itself and refuses another chip before sending anything.
+    // Only the MT7925 (0E8D:7925) has been seen (#86). Left out: the other IDs
+    // of 26.40.3.69, which also covers the MT6639 (MT7927)
+    (ChipVendor::MediaTek, 0x0489, 0xE0C8),
+    (ChipVendor::MediaTek, 0x0489, 0xE0CD),
+    (ChipVendor::MediaTek, 0x0489, 0xE0D7),
+    (ChipVendor::MediaTek, 0x0489, 0xE0D8),
+    (ChipVendor::MediaTek, 0x0489, 0xE0D9),
+    (ChipVendor::MediaTek, 0x0489, 0xE0E0),
+    (ChipVendor::MediaTek, 0x0489, 0xE0E2),
+    (ChipVendor::MediaTek, 0x0489, 0xE0E4),
+    (ChipVendor::MediaTek, 0x0489, 0xE0E5),
+    (ChipVendor::MediaTek, 0x0489, 0xE0E6),
+    (ChipVendor::MediaTek, 0x0489, 0xE0F1),
+    (ChipVendor::MediaTek, 0x0489, 0xE0F2),
+    (ChipVendor::MediaTek, 0x0489, 0xE0F4),
+    (ChipVendor::MediaTek, 0x0489, 0xE0F5),
+    (ChipVendor::MediaTek, 0x0489, 0xE0F6),
+    (ChipVendor::MediaTek, 0x0489, 0xE102),
+    (ChipVendor::MediaTek, 0x0489, 0xE10B),
+    (ChipVendor::MediaTek, 0x0489, 0xE11D),
+    (ChipVendor::MediaTek, 0x0489, 0xE134),
+    (ChipVendor::MediaTek, 0x0489, 0xE135),
+    (ChipVendor::MediaTek, 0x0489, 0xE139),
+    (ChipVendor::MediaTek, 0x0489, 0xE149),
+    (ChipVendor::MediaTek, 0x0489, 0xE14E),
+    (ChipVendor::MediaTek, 0x0489, 0xE14F),
+    (ChipVendor::MediaTek, 0x0489, 0xE150),
+    (ChipVendor::MediaTek, 0x0489, 0xE151),
+    (ChipVendor::MediaTek, 0x0489, 0xE152),
+    (ChipVendor::MediaTek, 0x0489, 0xE153),
+    (ChipVendor::MediaTek, 0x0489, 0xE156),
+    (ChipVendor::MediaTek, 0x0489, 0xE158),
+    (ChipVendor::MediaTek, 0x0489, 0xE15E),
+    (ChipVendor::MediaTek, 0x0489, 0xE174),
+    (ChipVendor::MediaTek, 0x0489, 0xE18E),
+    (ChipVendor::MediaTek, 0x04CA, 0x3802),
+    (ChipVendor::MediaTek, 0x04CA, 0x3804),
+    (ChipVendor::MediaTek, 0x04CA, 0x3806),
+    (ChipVendor::MediaTek, 0x04CA, 0x3807),
+    (ChipVendor::MediaTek, 0x04CA, 0x3812),
+    (ChipVendor::MediaTek, 0x04CA, 0x38E4),
+    (ChipVendor::MediaTek, 0x0E8D, 0x0608),
+    (ChipVendor::MediaTek, 0x0E8D, 0x0616),
+    (ChipVendor::MediaTek, 0x0E8D, 0x0717),
+    (ChipVendor::MediaTek, 0x0E8D, 0x1EDE),
+    (ChipVendor::MediaTek, 0x0E8D, 0x223C),
+    (ChipVendor::MediaTek, 0x0E8D, 0x7900),
+    (ChipVendor::MediaTek, 0x0E8D, 0x7902),
+    (ChipVendor::MediaTek, 0x0E8D, 0x7920),
+    (ChipVendor::MediaTek, 0x0E8D, 0x7922),
     (ChipVendor::MediaTek, 0x0E8D, 0x7925),
+    (ChipVendor::MediaTek, 0x0E8D, 0x7961),
+    (ChipVendor::MediaTek, 0x0E8D, 0xA608),
+    (ChipVendor::MediaTek, 0x0E8D, 0xC608),
+    (ChipVendor::MediaTek, 0x0E8D, 0xC616),
+    (ChipVendor::MediaTek, 0x0E8D, 0xD616),
+    (ChipVendor::MediaTek, 0x0E8D, 0xE020),
+    (ChipVendor::MediaTek, 0x0E8D, 0xE02D),
+    (ChipVendor::MediaTek, 0x0E8D, 0xE0CD),
+    (ChipVendor::MediaTek, 0x0E8D, 0xE0D7),
+    (ChipVendor::MediaTek, 0x0E8D, 0xE0D8),
+    (ChipVendor::MediaTek, 0x0E8D, 0xE0D9),
+    (ChipVendor::MediaTek, 0x0E8D, 0xE616),
+    (ChipVendor::MediaTek, 0x13D3, 0x3563),
+    (ChipVendor::MediaTek, 0x13D3, 0x3564),
+    (ChipVendor::MediaTek, 0x13D3, 0x3567),
+    (ChipVendor::MediaTek, 0x13D3, 0x3568),
+    (ChipVendor::MediaTek, 0x13D3, 0x3569),
+    (ChipVendor::MediaTek, 0x13D3, 0x3575),
+    (ChipVendor::MediaTek, 0x13D3, 0x3576),
+    (ChipVendor::MediaTek, 0x13D3, 0x3578),
+    (ChipVendor::MediaTek, 0x13D3, 0x3579),
+    (ChipVendor::MediaTek, 0x13D3, 0x3580),
+    (ChipVendor::MediaTek, 0x13D3, 0x3583),
+    (ChipVendor::MediaTek, 0x13D3, 0x3584),
+    (ChipVendor::MediaTek, 0x13D3, 0x3585),
+    (ChipVendor::MediaTek, 0x13D3, 0x3594),
+    (ChipVendor::MediaTek, 0x13D3, 0x3596),
+    (ChipVendor::MediaTek, 0x13D3, 0x3597),
+    (ChipVendor::MediaTek, 0x13D3, 0x3605),
+    (ChipVendor::MediaTek, 0x13D3, 0x3606),
+    (ChipVendor::MediaTek, 0x13D3, 0x3607),
+    (ChipVendor::MediaTek, 0x13D3, 0x3609),
+    (ChipVendor::MediaTek, 0x13D3, 0x3610),
+    (ChipVendor::MediaTek, 0x13D3, 0x3614),
+    (ChipVendor::MediaTek, 0x13D3, 0x3615),
+    (ChipVendor::MediaTek, 0x13D3, 0x3620),
+    (ChipVendor::MediaTek, 0x13D3, 0x3621),
+    (ChipVendor::MediaTek, 0x13D3, 0x3622),
+    (ChipVendor::MediaTek, 0x13D3, 0x3625),
+    (ChipVendor::MediaTek, 0x13D3, 0x3628),
+    (ChipVendor::MediaTek, 0x13D3, 0x3630),
+    (ChipVendor::MediaTek, 0x13D3, 0x3632),
+    (ChipVendor::MediaTek, 0x13D3, 0x3633),
+    (ChipVendor::MediaTek, 0x13D3, 0x3634),
+    (ChipVendor::MediaTek, 0x1435, 0x0835),
+    (ChipVendor::MediaTek, 0x1435, 0x7902),
+    (ChipVendor::MediaTek, 0x15A9, 0x0047),
+    (ChipVendor::MediaTek, 0x2C7C, 0x7009),
+    (ChipVendor::MediaTek, 0x2C7C, 0x700A),
 ];
 
 /// BlueCaster can bring this adapter up: its vendor needs no loader or has one
@@ -222,6 +323,11 @@ pub fn resolve_realtek_pid(vid: u16, pid: u16, btstack_table: &[(u16, u16, &str)
 pub fn vendor_for_usb(vid: u16, pid: u16, realtek_pid: Option<u16>) -> ChipVendor {
     if realtek_pid.is_some() {
         return ChipVendor::Realtek;
+    }
+    // Modules under their maker's VID (AzureWave, Foxconn, ...), which
+    // other vendors' chips use too: by the exact ID
+    if let Some(&(vendor, _, _)) = LOADER_CHIPS.iter().find(|&&(_, v, p)| v == vid && p == pid) {
+        return vendor;
     }
     match vid {
         0x0BDA => ChipVendor::Realtek,

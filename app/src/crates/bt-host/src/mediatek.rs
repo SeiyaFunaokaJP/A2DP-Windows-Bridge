@@ -78,11 +78,17 @@ const REGISTER_CHIP_ID: u32 = 0x7001_0200;
 const REGISTER_CHIP_ID_79XX: u32 = 0x8000_0008;
 /// The ROM version: its low byte + 1 is the firmware file's last number
 const REGISTER_FW_VERSION: u32 = 0x8002_1004;
+/// The MT7961's flavor: bit 7 set takes the "1a" file
+/// (BT_RAM_CODE_MT7961_1a_2_hdr.bin)
+const REGISTER_FLAVOR: u32 = 0x7001_0020;
+const FLAVOR_1A: u32 = 0x80;
+const CHIP_FLAVORED: u16 = 0x7961;
 
-/// Chips this loader takes (the chip ID's low half), as in
-/// chips::LOADER_CHIPS. MediaTek's driver ships MT7902, MT7922 and MT7961
-/// files of the same layout, but those chips wait for a chip report.
-const CHIPS: &[u16] = &[0x7925];
+/// Chips this loader takes (the chip ID's low half): the MT79xx of
+/// MediaTek's Windows driver, whose files share one layout. The MT7921
+/// reports 0x7961. USB IDs in chips::LOADER_CHIPS; only the MT7925 has been
+/// seen (#86), the others are untested.
+pub const CHIPS: &[u16] = &[0x7925, 0x7922, 0x7961, 0x7902];
 
 /// The firmware file's layout
 const HEADER_SIZE: usize = 32;
@@ -192,9 +198,11 @@ fn read_wmt_event() -> ControlRequest {
     }
 }
 
-/// The firmware file of a chip: "BT_RAM_CODE_MT7925_1_1_hdr.bin"
-pub fn firmware_name(chip: u16, fw_version: u32) -> String {
-    format!("BT_RAM_CODE_MT{chip:04X}_1_{:x}_hdr.bin", (fw_version & 0xFF) + 1)
+/// The firmware file of a chip: "BT_RAM_CODE_MT7925_1_1_hdr.bin", the
+/// MT7961's "1a" flavor "BT_RAM_CODE_MT7961_1a_2_hdr.bin"
+pub fn firmware_name(chip: u16, fw_version: u32, flavor_a: bool) -> String {
+    let flavor = if flavor_a { "1a" } else { "1" };
+    format!("BT_RAM_CODE_MT{chip:04X}_{flavor}_{:x}_hdr.bin", (fw_version & 0xFF) + 1)
 }
 
 /// What a WMT command is for: what its answer moves on to
@@ -217,6 +225,10 @@ enum State {
     ChipId79xx,
     FwVersion {
         chip: u16,
+    },
+    Flavor {
+        chip: u16,
+        fw_version: u32,
     },
     /// A WMT command sent: its event is read with control transfers
     Waiting {
@@ -374,18 +386,22 @@ impl Loader {
         }
     }
 
-    fn on_chip(&mut self, chip: u16, fw_version: u32) -> Vec<Action> {
-        let mut file = firmware_name(chip, fw_version);
-        let mut data = (self.read_file)(&file);
-        if data.is_none() && fw_version & 0xFF != 0 {
-            // MediaTek's Windows driver ships the "_1_1" file only
-            let first = firmware_name(chip, 0);
-            if let Some(d) = (self.read_file)(&first) {
-                tracing::info!("mediatek: {file} not found, using {first}");
-                (file, data) = (first, Some(d));
+    /// The ROM version (and flavor) known: the file, else the chip's other
+    /// file numbers MediaTek's driver ships ("_1_1", the MT7961's "_1_2")
+    fn on_chip(&mut self, chip: u16, fw_version: u32, flavor_a: bool) -> Vec<Action> {
+        let wanted = firmware_name(chip, fw_version, flavor_a);
+        let mut names = vec![wanted.clone()];
+        for v in [0, 1] {
+            let n = firmware_name(chip, v, flavor_a);
+            if !names.contains(&n) {
+                names.push(n);
             }
         }
-        let Some(data) = data else { return self.finish(Err(LoadError::MissingFile(file))) };
+        let found = names.into_iter().find_map(|n| (self.read_file)(&n).map(|d| (n, d)));
+        let Some((file, data)) = found else { return self.finish(Err(LoadError::MissingFile(wanted))) };
+        if file != wanted {
+            tracing::info!("mediatek: {wanted} not found, using {file}");
+        }
         match parse_firmware(&data) {
             Ok(sections) => {
                 self.total_chunks = sections.iter().map(Self::chunk_count).sum();
@@ -400,6 +416,15 @@ impl Loader {
             }
             Err(why) => self.finish(Err(LoadError::BadFile { file, why })),
         }
+    }
+
+    /// The MT7961 also tells its flavor; the others pick their file now
+    fn after_version(&mut self, chip: u16, fw_version: u32) -> Vec<Action> {
+        if chip == CHIP_FLAVORED {
+            self.state = State::Flavor { chip, fw_version };
+            return vec![Action::UsbControl(read_register(REGISTER_FLAVOR))];
+        }
+        self.on_chip(chip, fw_version, false)
     }
 
     fn on_register(&mut self, value: u32) -> Vec<Action> {
@@ -420,7 +445,11 @@ impl Loader {
             }
             State::FwVersion { chip } => {
                 tracing::info!("mediatek: ROM version 0x{value:08X}");
-                self.on_chip(chip, value)
+                self.after_version(chip, value)
+            }
+            State::Flavor { chip, fw_version } => {
+                tracing::info!("mediatek: flavor register 0x{value:08X}");
+                self.on_chip(chip, fw_version, value & FLAVOR_1A != 0)
             }
             state => {
                 self.state = state;
@@ -517,21 +546,30 @@ impl ChipLoader for Loader {
     }
 
     fn on_control(&mut self, result: Result<Vec<u8>, String>) -> Vec<Action> {
-        let reading_register = matches!(self.state, State::ChipId | State::ChipId79xx | State::FwVersion { .. });
+        let reading_register =
+            matches!(self.state, State::ChipId | State::ChipId79xx | State::FwVersion { .. } | State::Flavor { .. });
+        // The ROM version and the flavor only pick the file: without them,
+        // the chip's first file
+        let unread = |state: &State| match *state {
+            State::FwVersion { chip } => Some((chip, 0, true)),
+            State::Flavor { chip, fw_version } => Some((chip, fw_version, false)),
+            _ => None,
+        };
         match result {
             Ok(d) if reading_register && d.len() == 4 => self.on_register(u32::from_le_bytes([d[0], d[1], d[2], d[3]])),
-            Ok(_) if reading_register => {
-                if let State::FwVersion { chip } = self.state {
-                    // The ROM version only picks the file: take the first
-                    return self.on_chip(chip, 0);
-                }
-                self.finish(Err(LoadError::Unsupported("chip ID register of another size")))
-            }
+            Ok(_) if reading_register => match unread(&self.state) {
+                Some((chip, v, true)) => self.after_version(chip, v),
+                Some((chip, v, false)) => self.on_chip(chip, v, false),
+                None => self.finish(Err(LoadError::Unsupported("chip ID register of another size"))),
+            },
             Ok(d) => self.on_poll(d),
             Err(e) => {
-                if let State::FwVersion { chip } = self.state {
-                    tracing::warn!("mediatek: reading the ROM version failed: {e}");
-                    return self.on_chip(chip, 0);
+                if let Some((chip, v, version)) = unread(&self.state) {
+                    tracing::warn!(
+                        "mediatek: reading the {} failed: {e}",
+                        if version { "ROM version" } else { "flavor" }
+                    );
+                    return if version { self.after_version(chip, v) } else { self.on_chip(chip, v, false) };
                 }
                 if matches!(self.state, State::Idle | State::Done | State::Version | State::Pause { .. }) {
                     return Vec::new();
@@ -551,7 +589,7 @@ impl ChipLoader for Loader {
     fn step(&self) -> &'static str {
         match self.state {
             State::Version => "version",
-            State::ChipId | State::ChipId79xx | State::FwVersion { .. } => "chip ID",
+            State::ChipId | State::ChipId79xx | State::FwVersion { .. } | State::Flavor { .. } => "chip ID",
             State::Waiting { what: Wmt::FuncOn, .. } | State::Pause { then: Wmt::FuncOn } => "start",
             State::Waiting { .. } | State::Pause { .. } => "download",
             State::Idle | State::Done => "",
@@ -673,6 +711,7 @@ mod tests {
         chip_id: u32,
         id_79xx: u32,
         fw_version: Result<u32, String>,
+        flavor: Result<u32, String>,
         /// Sections it has already; answered "in progress" this often first
         has: Vec<usize>,
         busy: u32,
@@ -698,6 +737,7 @@ mod tests {
                 chip_id: 0,
                 id_79xx: 0x0000_7925,
                 fw_version: Ok(0x0000_8a00),
+                flavor: Ok(0),
                 has: Vec::new(),
                 busy: 0,
                 empty_reads: 2,
@@ -786,6 +826,10 @@ mod tests {
                 (REQUEST_READ_REGISTER, 0x8002, 0x1004, ControlData::In(4)) => {
                     self.fw_version.clone().map(|v| v.to_le_bytes().to_vec())
                 }
+                (REQUEST_READ_REGISTER, 0x7001, 0x0020, ControlData::In(4)) => {
+                    assert_eq!(self.id_79xx as u16, CHIP_FLAVORED, "only the MT7961 is asked its flavor");
+                    self.flavor.clone().map(|v| v.to_le_bytes().to_vec())
+                }
                 (REQUEST_WMT_EVENT, WMT_EVENT_VALUE, 0, ControlData::In(WMT_EVENT_MAX)) => {
                     if self.empty_left > 0 {
                         self.empty_left -= 1;
@@ -811,16 +855,48 @@ mod tests {
 
     #[test]
     fn names_the_file_by_chip_and_rom_version() {
-        assert_eq!(firmware_name(0x7925, 0x0000_8a00), NAME);
-        assert_eq!(firmware_name(0x7961, 0x0000_0001), "BT_RAM_CODE_MT7961_1_2_hdr.bin");
+        assert_eq!(firmware_name(0x7925, 0x0000_8a00, false), NAME);
+        assert_eq!(firmware_name(0x7961, 0x0000_0001, false), "BT_RAM_CODE_MT7961_1_2_hdr.bin");
+        assert_eq!(firmware_name(0x7961, 0x0000_0001, true), "BT_RAM_CODE_MT7961_1a_2_hdr.bin");
+    }
+
+    /// An MT7961 (MT7921) of each flavor gets its own file
+    #[test]
+    fn the_mt7961_takes_the_file_of_its_flavor() {
+        let both = |_: ()| {
+            HashMap::from([
+                ("BT_RAM_CODE_MT7961_1_2_hdr.bin".to_owned(), firmware(&[10])),
+                ("BT_RAM_CODE_MT7961_1a_2_hdr.bin".to_owned(), firmware(&[20])),
+            ])
+        };
+        let mt7961 = |flavor| Chip { id_79xx: 0x7961, fw_version: Ok(1), flavor, ..Chip::new() };
+        for (flavor, file) in [
+            (Ok(0x0000_0080), "BT_RAM_CODE_MT7961_1a_2_hdr.bin"),
+            (Ok(0), "BT_RAM_CODE_MT7961_1_2_hdr.bin"),
+            (Err("stall".to_owned()), "BT_RAM_CODE_MT7961_1_2_hdr.bin"),
+        ] {
+            let r = run(&mut mt7961(flavor), both(()));
+            assert_eq!(r.result, Ok(Outcome::Loaded { firmware: file.into(), detail: None }));
+        }
+        // The MT7925 is never asked
+        assert!(run(&mut Chip::new(), files(&[10])).controls.iter().all(|c| c.index != 0x0020));
     }
 
     #[test]
-    fn takes_exactly_the_chips_listed_for_it() {
-        use crate::chips::{ChipVendor, LOADER_CHIPS};
-        let listed: Vec<u16> =
-            LOADER_CHIPS.iter().filter(|(v, _, _)| *v == ChipVendor::MediaTek).map(|&(_, _, pid)| pid).collect();
-        assert_eq!(listed, CHIPS);
+    fn every_chip_has_mediatek_usb_ids_listed() {
+        use crate::chips::{ChipVendor, LOADER_CHIPS, vendor_for_usb};
+        let ids: Vec<(u16, u16)> = LOADER_CHIPS
+            .iter()
+            .filter(|(v, _, _)| *v == ChipVendor::MediaTek)
+            .map(|&(_, vid, pid)| (vid, pid))
+            .collect();
+        for (vid, pid) in [(0x0E8D, 0x7925), (0x0E8D, 0x7922), (0x0E8D, 0x7961), (0x0E8D, 0x7902), (0x0E8D, 0x0608)] {
+            assert!(ids.contains(&(vid, pid)), "{vid:04X}:{pid:04X}");
+        }
+        // Every listed ID is taken as MediaTek
+        for (vid, pid) in ids {
+            assert_eq!(vendor_for_usb(vid, pid, None), ChipVendor::MediaTek, "{vid:04X}:{pid:04X}");
+        }
     }
 
     #[test]
@@ -994,17 +1070,25 @@ mod tests {
     /// cargo test -p bt-host --lib real_driver -- --ignored`
     #[test]
     #[ignore = "needs MediaTek's mtkbt_v2.dat (MTKBT_DAT)"]
-    fn real_driver_container_has_a_loadable_mt7925_file() {
+    fn real_driver_container_has_loadable_files() {
         let path = std::env::var("MTKBT_DAT").expect("MTKBT_DAT");
         let container = std::fs::read(path).unwrap();
-        let file = driver_container_file(&container, NAME).expect("the MT7925 file");
-        let sections = parse_firmware(&file).unwrap();
-        assert_eq!(sections.len(), 3);
-        let mut chip = Chip::new();
-        let r = run(&mut chip, HashMap::from([(NAME.to_owned(), file)]));
-        assert_eq!(r.result, Ok(Outcome::Loaded { firmware: NAME.into(), detail: None }));
-        let sent: Vec<Vec<u8>> = sections.into_iter().map(|s| s.data).collect();
-        assert_eq!(chip.received, sent);
+        // Chip, ROM version, flavor of each file the driver may have
+        let cases = [(0x7925u16, 0u32, 0u32), (0x7922, 0, 0), (0x7902, 0, 0), (0x7961, 1, 0), (0x7961, 1, FLAVOR_1A)];
+        let mut loaded = 0;
+        for (chip_id, version, flavor) in cases {
+            let name = firmware_name(chip_id, version, flavor != 0);
+            let Some(file) = driver_container_file(&container, &name) else { continue };
+            let sections = parse_firmware(&file).unwrap();
+            let mut chip = Chip { id_79xx: chip_id as u32, fw_version: Ok(version), flavor: Ok(flavor), ..Chip::new() };
+            let r = run(&mut chip, HashMap::from([(name.clone(), file)]));
+            assert_eq!(r.result, Ok(Outcome::Loaded { firmware: name.clone(), detail: None }), "{name}");
+            let sent: Vec<Vec<u8>> = sections.into_iter().map(|s| s.data).collect();
+            assert_eq!(chip.received, sent, "{name}");
+            eprintln!("{name}: {} sections loaded", chip.received.len());
+            loaded += 1;
+        }
+        assert!(loaded > 0, "no MT79xx file in the container");
     }
 
     #[test]

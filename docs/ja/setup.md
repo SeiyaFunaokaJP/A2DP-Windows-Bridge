@@ -123,7 +123,7 @@ bluecaster-core.exe --cli --scan
 
 ## ファームウェア（Realtek アダプター） {#firmware}
 
-Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU ドングル等）は動作に専用ファームウェアが必要です。CSR アダプターはファームウェア不要です。Intel、MediaTek MT7925、Broadcom のアダプター（試験的）は、それぞれのファームウェアファイルが必要な場合があります。[推奨アダプター](#adapters)を参照してください。
+Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU ドングル等）は動作に専用ファームウェアが必要です。CSR アダプターはファームウェア不要です。Intel、MediaTek MT79xx、Broadcom のアダプター（試験的）は、それぞれのファームウェアファイルが必要な場合があります。[推奨アダプター](#adapters)を参照してください。
 
 ### アプリでの案内（ガイド付きダウンロード）
 
@@ -168,8 +168,8 @@ BlueCaster で実際に使われたアダプターとヘッドホンは、コー
 | CSR | CSR8510 汎用ドングル | そのまま動作、ファームウェア不要 |
 | Broadcom | ASUS BT400 (BCM20702) | *試験的。* Bluetooth クラス `E0/01/01` ではなくベンダークラス `FF/01/01` を名乗るアダプタ（BCM20702 の OEM ドングル）も検出。ROM ファームウェアで動作。ファームウェアフォルダに PatchRAM `.hcd`（例: `BCM20702A1-0b05-17cb.hcd`）があれば起動時に適用 |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *試験的。* ブートローダーモード（コールドブート後など）では linux-firmware `intel/` の対応する `ibt-*.sfi` + `ibt-*.ddc` をファームウェアフォルダに配置する必要あり。必要なファイル名はログに出ます（例: `ibt-0180-0041.sfi`）。検証済みは今のところ AX211 のみ |
-| MediaTek | MT7925（AMD RZ717 などの Wi-Fi 7 カード） | *試験的。* `BT_RAM_CODE_MT7925_1_1_hdr.bin` が必要。MediaTek の Windows 用 Bluetooth ドライバーが入っていれば BlueCaster がそこから読み込み、なければ linux-firmware `mediatek/mt7925/` のファイルをファームウェアフォルダに配置。実機では未検証 |
-| MediaTek、Qualcomm | ほかの MediaTek チップ（MT7921/MT7922）、QCA61x4 | 未対応: BlueCaster にないファームウェアローダーが必要（[対応の追加に協力する](chip-support)） |
+| MediaTek | MT7925、MT7922、MT7921、MT7902（AMD RZ717、RZ616、RZ608 などの Wi-Fi カード） | *試験的。* チップごとの `BT_RAM_CODE_MT*_hdr.bin`（例: `BT_RAM_CODE_MT7925_1_1_hdr.bin`）が必要。MediaTek の Windows 用 Bluetooth ドライバーが入っていれば BlueCaster がそこから読み込み、なければ linux-firmware `mediatek/` のファイルをファームウェアフォルダに配置。必要なファイル名はログに出ます。実機では未検証 |
+| MediaTek、Qualcomm | ほかの MediaTek チップ（MT7927）、QCA61x4 | 未対応: BlueCaster にないファームウェアローダーが必要（[対応の追加に協力する](chip-support)） |
 
 USB Bluetooth 5.0 以上のアダプターは、LDAC のような高ビットレートコーデックに最適です。
 

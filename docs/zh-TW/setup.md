@@ -123,7 +123,7 @@ bluecaster-core.exe --cli --scan
 
 ## 韌體（Realtek 介面卡） {#firmware}
 
-採用 Realtek 晶片的 USB 藍牙介面卡（例如 TP-Link UB500、RTL8761BU 接收器）需要專有韌體才能運作。CSR 介面卡不需要韌體。Intel、MediaTek MT7925 與 Broadcom 介面卡（實驗性）可能需要各自的韌體檔案：請參閱 [建議的介面卡](#adapters)。
+採用 Realtek 晶片的 USB 藍牙介面卡（例如 TP-Link UB500、RTL8761BU 接收器）需要專有韌體才能運作。CSR 介面卡不需要韌體。Intel、MediaTek MT79xx 與 Broadcom 介面卡（實驗性）可能需要各自的韌體檔案：請參閱 [建議的介面卡](#adapters)。
 
 ### 在應用程式中（下載引導）
 
@@ -168,8 +168,8 @@ BlueCaster 會偵測介面卡的晶片組，並顯示需要哪些韌體檔案。
 | CSR | 一般的 CSR8510 接收器 | 隨插即用，不需要韌體 |
 | Broadcom | ASUS BT400 (BCM20702) | *實驗性。* 回報廠商類別 `FF/01/01` 而非藍牙類別 `E0/01/01` 的介面卡（BCM20702 OEM 接收器）也能偵測。以 ROM 韌體運作；若韌體資料夾中有選用的 PatchRAM `.hcd`（例如 `BCM20702A1-0b05-17cb.hcd`），會在啟動時上傳 |
 | Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *實驗性。* 處於 bootloader 模式時（例如冷開機後），韌體資料夾中需要 linux-firmware `intel/` 內對應的 `ibt-*.sfi` + `ibt-*.ddc`，所需檔名會寫在記錄裡（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上測試過 |
-| MediaTek | MT7925（AMD RZ717 等 Wi-Fi 7 網路卡） | *實驗性。* 需要 `BT_RAM_CODE_MT7925_1_1_hdr.bin`：若已安裝 MediaTek 的 Windows 藍牙驅動程式，BlueCaster 會從中讀取；否則請將 linux-firmware `mediatek/mt7925/` 中的該檔案放入韌體資料夾。尚未在實際硬體上測試 |
-| MediaTek, Qualcomm | 其他 MediaTek 晶片（MT7921/MT7922）, QCA61x4 | 不支援：需要 BlueCaster 沒有的韌體載入程式（[協助加入支援](chip-support)） |
+| MediaTek | MT7925、MT7922、MT7921、MT7902（AMD RZ717、RZ616、RZ608 等 Wi-Fi 網路卡） | *實驗性。* 需要該晶片的 `BT_RAM_CODE_MT*_hdr.bin`（例如 `BT_RAM_CODE_MT7925_1_1_hdr.bin`）：若已安裝 MediaTek 的 Windows 藍牙驅動程式，BlueCaster 會從中讀取；否則請將 linux-firmware `mediatek/` 中的該檔案放入韌體資料夾，所需檔名會寫在記錄裡。尚未在實際硬體上測試 |
+| MediaTek, Qualcomm | 其他 MediaTek 晶片（MT7927）, QCA61x4 | 不支援：需要 BlueCaster 沒有的韌體載入程式（[協助加入支援](chip-support)） |
 
 USB 藍牙 5.0 以上的介面卡通常最適合 LDAC 等高位元率轉碼器。
 

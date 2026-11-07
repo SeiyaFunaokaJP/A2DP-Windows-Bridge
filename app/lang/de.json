@@ -796,7 +796,7 @@
   "ui.setup.step_device": "Audiogeräte finden",
   "ui.setup.adapter_intro": "Wählen Sie einen unterstützten Bluetooth-Adapter, den Ihr System nicht verwendet:",
   "ui.setup.supported": "Unterstützt",
-  "ui.setup.unsupported_note": "BlueCaster kann weder Qualcomm-Adapter noch die meisten MediaTek-Adapter verwenden. Wählen Sie einen anderen, etwa einen von Realtek.",
+  "ui.setup.unsupported_note": "BlueCaster kann weder Qualcomm-Adapter noch einige MediaTek-Adapter verwenden. Wählen Sie einen anderen, etwa einen von Realtek.",
   "ui.setup.driver_ok": "Der Adapter ist bereit für BlueCaster",
   "ui.setup.auto_explain": "Für diesen Adapter führt die Einrichtung Folgendes aus:",
   "ui.setup.auto_will_driver": "Den Originaltreiber des Adapters durch den generischen WinUSB-Treiber ersetzen. Dadurch verschwindet der Adapter aus Windows.",

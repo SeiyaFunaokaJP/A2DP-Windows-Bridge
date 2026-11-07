@@ -796,7 +796,7 @@
   "ui.setup.step_device": "尋找音訊裝置",
   "ui.setup.adapter_intro": "請選擇系統未在使用的受支援藍牙介面卡：",
   "ui.setup.supported": "支援",
-  "ui.setup.unsupported_note": "BlueCaster 無法使用 Qualcomm 介面卡和大多數 MediaTek 介面卡。請選擇其他介面卡，例如 Realtek 的。",
+  "ui.setup.unsupported_note": "BlueCaster 無法使用 Qualcomm 介面卡和部分 MediaTek 介面卡。請選擇其他介面卡，例如 Realtek 的。",
   "ui.setup.driver_ok": "介面卡已可供 BlueCaster 使用",
   "ui.setup.auto_explain": "要使用此介面卡，此設定將：",
   "ui.setup.auto_will_driver": "將介面卡的原始驅動程式替換為通用 WinUSB 驅動程式。介面卡將從 Windows 中移除。",
