@@ -283,12 +283,6 @@ export function autoKeepsCodecSettings(s: Pick<Settings, "developer_mode" | "dev
   return s.developer_mode && s.dev_overrides.auto_codec_settings;
 }
 
-/** Developer mode's override: a codec the device does not offer can be
- *  chosen, and the core asks for it instead of falling back */
-export function forcesCodec(s: Pick<Settings, "developer_mode" | "dev_overrides">): boolean {
-  return s.developer_mode && s.dev_overrides.force_codec;
-}
-
 /** Developer mode's override: every codec runs at its quality's bit rate,
  *  whatever maximum the device lists (core: DevOverrides::ignore_sink_max) */
 export function ignoresSinkMax(s: Pick<Settings, "developer_mode" | "dev_overrides">): boolean {
@@ -449,6 +443,14 @@ export interface CodecCaps {
   max_bitrate: number;
 }
 
+/** What a codec's settings go by with its card's "Show only supported
+ *  options" off (issue #86): everything the codec has, as when the device's
+ *  caps are not known (core: RemoteCaps::unlisted). aptX Adaptive's 96 kHz
+ *  stays the device's: it needs an R2 bitstream */
+export function unlistedCaps(codec: string, caps: CodecCaps | null): CodecCaps | null {
+  return codec === "aptxad" ? caps : null;
+}
+
 /** The caps of `codec` among a device's (null: not known) */
 export function capsOf(caps: readonly CodecCaps[], codec: string): CodecCaps | null {
   return caps.find((c) => c.codec.toLowerCase() === codec.toLowerCase()) ?? null;
@@ -559,6 +561,8 @@ export function carryToCodec<T extends CodecFields>(p: T, to: string): T {
     ...p,
     codec: to,
     abr: abrCarries(p.codec, to) ? p.abr : false,
+    // Each codec's own: its card's "Show only supported options"
+    ...(same || p.unlisted_options === undefined ? {} : { unlisted_options: false }),
     ...(same || p.sbc_blocks === undefined ? {} : { sbc_blocks: 0 }),
     ...(same || p.sbc_subbands === undefined ? {} : { sbc_subbands: 0 }),
     ...(same || p.sbc_allocation === undefined ? {} : { sbc_allocation: "" }),
@@ -679,6 +683,7 @@ interface CodecFields {
   sbc_subbands?: number;
   sbc_allocation?: string;
   sbc_channel_mode?: string;
+  unlisted_options?: boolean;
 }
 
 /** Values the codec cannot use go back to the defaults (v1 did the same when the codec changed) */

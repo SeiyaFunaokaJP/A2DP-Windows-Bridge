@@ -131,14 +131,18 @@ CTKD_ON = {'debug_mode': True, 'le_audio_experimental': True}
 # more BlueCaster arguments)
 NEGOTIATION = {
     'sbcxq-44k': ('sbcxq', [], 'sbcxq', ['--rate', '44100']),            # bitpool 47
-    # Developer mode's force_codec (DEV_SETTINGS): LDAC to a sink that lists SBC only
-    'force-ldac': ('ldac', ['--codecs', 'sbc'], 'ldac', []),
+    # A codec chosen on its card that the sink does not list (the profile's
+    # codec_forced, issue #86): LDAC to a sink that lists SBC only
+    'force-ldac': ('ldac', ['--codecs', 'sbc'], 'ldac', ['--force-codec']),
     'auto-sbcxq': ('auto', ['--codecs', 'sbc'], 'sbcxq', []),            # Auto takes SBC XQ over SBC
     'auto-sbc-no-xq': ('auto', ['--codecs', 'sbc', '--sbc-no-dual'], 'sbc', []),  # no dual channel: SBC
     # Dual channel listed but refused: SBC XQ falls back to SBC
     'auto-sbcxq-refused': ('auto', ['--codecs', 'sbc', '--sbc-reject-dual'], 'sbc', []),
     # Max bitpool 35: SBC capped there
     'sbc-bp35': ('sbc', ['--codecs', 'sbc', '--sbc-max-bitpool', '35'], 'sbc-bp35', []),
+    # ... unless its card shows more than the sink lists (the profile's
+    # unlisted_options, issue #86): BlueCaster's own range
+    'sbc-bp35-unlisted': ('sbc', ['--codecs', 'sbc', '--sbc-max-bitpool', '35'], 'sbc', ['--unlisted-options']),
     # Max bitpool 39 with dual channel (Moto buds+, issue #86): Auto takes
     # SBC XQ capped at 39, as PipeWire; below 29 it does not (plain SBC)
     'auto-sbcxq-bp39': ('auto', ['--codecs', 'sbc', '--sbc-max-bitpool', '39'], 'sbcxq-bp39', []),
@@ -281,7 +285,6 @@ NEGOTIATION = {
 }
 # The settings.json a case starts with (developer mode)
 DEV_SETTINGS = {
-    'force-ldac': {'debug_mode': True, 'dev_overrides': {'force_codec': True}},
     'sbcxq-abr-hold': {'debug_mode': True, 'dev_overrides': {'encode_at_send': True}},
     'ldac-hold': {'debug_mode': True, 'dev_overrides': {'encode_at_send': True}},
     'oppo-always': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'always'}}},

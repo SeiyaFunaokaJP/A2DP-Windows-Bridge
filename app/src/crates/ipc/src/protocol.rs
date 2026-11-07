@@ -485,6 +485,14 @@ pub struct Profile {
     pub quality: String,
     pub abr: bool,
     pub codec_fallback: bool,
+    /// The codec was chosen on its card while the device did not offer it:
+    /// asked for anyway, no fallback (issue #86)
+    #[serde(default)]
+    pub codec_forced: bool,
+    /// The codec's settings are not held to what the device lists (its
+    /// card's "Show only supported options" off, issue #86)
+    #[serde(default)]
+    pub unlisted_options: bool,
     /// 0 = auto
     pub sample_rate: u32,
     /// 0 = auto, 16, 24
@@ -573,6 +581,7 @@ pub struct CodecValues {
     pub sbc_subbands: u8,
     pub sbc_allocation: String,
     pub sbc_channel_mode: String,
+    pub unlisted_options: bool,
 }
 
 impl Default for CodecValues {
@@ -590,6 +599,7 @@ impl Default for CodecValues {
             sbc_subbands: 0,
             sbc_allocation: String::new(),
             sbc_channel_mode: String::new(),
+            unlisted_options: false,
         }
     }
 }
@@ -614,7 +624,6 @@ pub struct DevOverrides {
     pub aac_no_peak: bool,
     pub aac_no_afterburner: bool,
     pub aac_latm_v0: bool,
-    pub force_codec: bool,
     /// Auto-select uses each codec's own settings
     pub auto_codec_settings: bool,
     /// Rate and bit depth on Auto follow the captured output's format

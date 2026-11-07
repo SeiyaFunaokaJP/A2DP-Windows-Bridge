@@ -1099,8 +1099,51 @@ impl RemoteCaps {
         }
     }
 
+    /// These capabilities with `kind`'s settings no longer held to what the
+    /// sink lists (its codec card's "Show only supported options" off, issue
+    /// #86): every rate and bit depth BlueCaster has for it, no largest bit
+    /// rate or bitpool, SBC's whole frame setup. aptX Adaptive keeps its 96
+    /// kHz to an R2 sink (an R1 bitstream has none), Opus has nothing to
+    /// widen. The sink may refuse what it did not list.
+    pub fn unlisted(&self, kind: CodecKind) -> RemoteCaps {
+        let mut caps = self.clone();
+        match kind {
+            CodecKind::Sbc | CodecKind::SbcXq => {
+                if let Some(c) = caps.sbc_caps.as_mut() {
+                    c.sampling_frequency |= SBC_FREQ_44100 | SBC_FREQ_48000;
+                    c.channel_mode |= 0x0F;
+                    c.block_length |= 0x0F;
+                    c.subbands |= 0x03;
+                    c.allocation_method |= 0x03;
+                    c.min_bitpool = 2;
+                    c.max_bitpool = u8::MAX;
+                }
+            }
+            CodecKind::Aac => {
+                if let Some(c) = caps.aac_caps.as_mut() {
+                    c.sampling_frequency |= AAC_FREQ_44100 | AAC_FREQ_48000;
+                    c.bit_rate = 0;
+                    c.vbr = true;
+                }
+            }
+            CodecKind::Ldac => caps.ldac_rates = 0,
+            CodecKind::Aptx => caps.aptx_caps |= APTX_FREQ_44100 | APTX_FREQ_48000,
+            CodecKind::AptxHd => caps.aptxhd_caps |= APTX_FREQ_44100 | APTX_FREQ_48000,
+            CodecKind::AptxLl => caps.aptxll_caps |= APTX_FREQ_44100 | APTX_FREQ_48000,
+            CodecKind::FastStream => caps.faststream_rates |= FASTSTREAM_SINK_44100 | FASTSTREAM_SINK_48000,
+            CodecKind::LhdcV5 => {
+                caps.lhdcv5_info[6] |= LHDCV5_SR_MASK;
+                caps.lhdcv5_info[7] = (caps.lhdcv5_info[7] | LHDCV5_BITS_16 | LHDCV5_BITS_24) & !0x30;
+            }
+            CodecKind::Opus05 => caps.opus05_bitrate = 0,
+            CodecKind::AptxAdaptive | CodecKind::Opus => {}
+        }
+        caps
+    }
+
     /// These capabilities with `kind` usable even though the sink does not
-    /// list it (developer mode's force_codec): it is taken to list what
+    /// list it (a codec chosen on its card that the device does not offer,
+    /// issue #86): it is taken to list what
     /// BlueCaster offers itself, and the SET_CONFIGURATION goes to the SEP
     /// that has the codec in a form BlueCaster does not use, else to any SEP
     /// (SBC's first). None without an encoder for it or a SEP to ask.
@@ -1657,6 +1700,43 @@ mod tests {
             assert!(forced.has(kind), "{kind}");
             assert_eq!(forced.configuration(kind, 48000, 2, 16).unwrap().remote_seid, 3, "{kind}");
         }
+    }
+
+    #[test]
+    fn unlisted_takes_every_setting_of_the_codec_and_leaves_the_others() {
+        // LHDC V5 at 48 kHz, 16-bit, at most 400 kbps; AAC 44.1 kHz at 128 kbps
+        let mut caps = RemoteCaps { lhdcv5: Some(RemoteSep { seid: 1 }), ..Default::default() };
+        caps.lhdcv5_info[6] = LHDCV5_SR_48000;
+        caps.lhdcv5_info[7] = LHDCV5_BITS_16 | 0x10;
+        caps.add_aac_caps(
+            2,
+            AacCapabilities {
+                object_types: AAC_OBJ_MPEG2_LC,
+                sampling_frequency: AAC_FREQ_44100,
+                channels: AAC_CH_2,
+                bit_rate: 128_000,
+                vbr: false,
+            },
+        );
+        caps.add_sbc_caps(3, SbcCapabilities { sampling_frequency: SBC_FREQ_48000, max_bitpool: 35, ..sbc_all() });
+        let lhdc = caps.unlisted(CodecKind::LhdcV5);
+        assert_eq!(lhdc.listed_sample_rates(CodecKind::LhdcV5), vec![44100, 48000, 96000, 192000]);
+        assert_eq!(lhdc.listed_bit_depths(CodecKind::LhdcV5), vec![16, 24]);
+        assert_eq!(lhdc.listed_max_bitrate(CodecKind::LhdcV5), 0);
+        assert!(lhdc.configuration_with(CodecKind::LhdcV5, 96000, 2, 24, false, Default::default()).is_ok());
+        // The other codecs as listed
+        assert_eq!(lhdc.aac_caps, caps.aac_caps);
+        assert_eq!(lhdc.sbc_caps, caps.sbc_caps);
+        let aac = caps.unlisted(CodecKind::Aac);
+        assert_eq!(aac.listed_sample_rates(CodecKind::Aac), vec![44100, 48000]);
+        assert_eq!(aac.aac_max_bitrate(), AAC_MAX_BITRATE);
+        assert!(aac.aac_vbr());
+        assert_eq!(aac.lhdcv5_info, caps.lhdcv5_info);
+        let sbc = caps.unlisted(CodecKind::Sbc);
+        assert_eq!(sbc.sbc_max_bitpool(), u8::MAX);
+        assert_eq!(sbc.listed_sample_rates(CodecKind::Sbc), vec![44100, 48000]);
+        // The configuration still keeps to what BlueCaster encodes
+        assert_eq!(sbc.sbc_bitpool_range(SBC_MAX_BITPOOL).1, SBC_MAX_BITPOOL);
     }
 
     #[test]

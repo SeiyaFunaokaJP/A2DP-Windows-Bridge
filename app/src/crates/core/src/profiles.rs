@@ -52,11 +52,20 @@ pub struct Profile {
     pub abr: bool,
     /// Legacy (v1, and v2 before issue #86's Codecs redesign): whether a
     /// codec the device does not offer falls back to another. Kept in the
-    /// file but no longer used: a profile always falls back, to the first
-    /// codec in its order the device offers (an unsupported codec is never
-    /// tried)
+    /// file but no longer used: a profile falls back to the first codec in
+    /// its order the device offers, unless `codec_forced`
     #[serde(default = "yes")]
     pub codec_fallback: bool,
+    /// The codec was chosen on its card while the device did not offer it
+    /// (issue #86): it is asked for anyway and the stream stops with an
+    /// error if the device refuses it. A codec chosen while offered and no
+    /// longer offered later (earbuds switched to another codec) falls back.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub codec_forced: bool,
+    /// The codec's settings are not held to what the device lists (its
+    /// card's "Show only supported options" off, issue #86)
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unlisted_options: bool,
     /// 0 = auto
     pub sample_rate: u32,
     /// 0 = auto, 16, 24
@@ -148,6 +157,8 @@ impl Default for Profile {
             quality: hq(),
             abr: false,
             codec_fallback: true,
+            codec_forced: false,
+            unlisted_options: false,
             sample_rate: 0,
             bit_depth: 0,
             capture_mode: loopback(),
@@ -202,6 +213,9 @@ pub struct CodecValues {
     pub sbc_allocation: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub sbc_channel_mode: String,
+    /// Not held to what the device lists ([`Profile::unlisted_options`])
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub unlisted_options: bool,
 }
 
 impl CodecValues {
@@ -244,6 +258,7 @@ impl Default for CodecValues {
             sbc_subbands: 0,
             sbc_allocation: String::new(),
             sbc_channel_mode: String::new(),
+            unlisted_options: false,
         }
     }
 }
@@ -270,6 +285,7 @@ impl Profile {
             sbc_subbands: self.sbc_subbands,
             sbc_allocation: self.sbc_allocation.clone(),
             sbc_channel_mode: self.sbc_channel_mode.clone(),
+            unlisted_options: self.unlisted_options,
         }
     }
 
@@ -306,6 +322,8 @@ impl Profile {
             sbc_subbands: d.sbc_subbands,
             sbc_allocation: d.sbc_allocation,
             sbc_channel_mode: d.sbc_channel_mode,
+            unlisted_options: false,
+            codec_forced: false,
             // Auto-select's order is the default one
             codec_order: Vec::new(),
             ..self.clone()
@@ -409,6 +427,8 @@ impl Profile {
             device_name: self.device_name.clone(),
             codec: CodecKind::from_key(&self.codec),
             codec_fallback: true,
+            codec_forced: self.codec_forced,
+            unlisted_options: self.unlisted_options,
             // The setting's, filled in by whoever starts the stream
             experimental_codecs: true,
             auto_order: self.order(),
@@ -699,6 +719,24 @@ mod tests {
         assert_eq!(a.to_request(1023).unwrap().codec, None);
         let le = Profile { le_audio: true, ..p };
         assert_eq!(le.as_auto(), le);
+    }
+
+    #[test]
+    fn a_forced_codec_and_unlisted_options_reach_the_request_but_not_auto() {
+        let p = Profile {
+            device_address: "AA:BB:CC:DD:EE:FF".into(),
+            codec: "aptx".into(),
+            codec_forced: true,
+            unlisted_options: true,
+            ..Profile::default()
+        };
+        let r = p.to_request(1023).unwrap();
+        assert!(r.codec_forced && r.unlisted_options);
+        let a = p.as_auto().to_request(1023).unwrap();
+        assert!(!a.codec_forced && !a.unlisted_options);
+        // Written only when set
+        let text = serde_json::to_string(&Profile::default()).unwrap();
+        assert!(!text.contains("codec_forced") && !text.contains("unlisted_options"));
     }
 
     #[test]
