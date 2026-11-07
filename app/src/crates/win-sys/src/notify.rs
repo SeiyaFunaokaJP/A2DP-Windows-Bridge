@@ -28,12 +28,15 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetSystemMetricsForDpi};
 use windows::Win32::UI::Shell::{
     DefSubclassProc, NIF_GUID, NIF_INFO, NIIF_ERROR, NIIF_INFO, NIIF_NONE, NIIF_WARNING, NIM_MODIFY,
     NIN_BALLOONUSERCLICK, NOTIFY_ICON_INFOTIP_FLAGS, NOTIFYICONDATAW, RemoveWindowSubclass, SetWindowSubclass,
     Shell_NotifyIconW, ShellExecuteW,
 };
-use windows::Win32::UI::WindowsAndMessaging::{ASFW_ANY, AllowSetForegroundWindow, SW_SHOWNORMAL, WM_NCDESTROY};
+use windows::Win32::UI::WindowsAndMessaging::{
+    ASFW_ANY, AllowSetForegroundWindow, SM_CXSMICON, SW_SHOWNORMAL, WM_NCDESTROY,
+};
 use windows::core::{GUID, HSTRING, w};
 
 /// The icon's callback message in tray-icon (`WM_USER_TRAYICON` in its
@@ -312,6 +315,17 @@ pub fn open_url(url: &str) {
     if r.0 as usize <= 32 {
         tracing::warn!("cannot open {url} (ShellExecute {})", r.0 as usize);
     }
+}
+
+/// The size the taskbar shows a tray icon at: the small icon size at the
+/// system DPI (16 px at 100 %, 20 at 125 %, 24 at 150 %). Loading the icon
+/// at this size takes the .ico's own image for it; loaded at the default
+/// size, Windows takes the large icon (32 px at 100 %) and the taskbar
+/// shrinks it, which blurs it into a blue square (issue #86).
+pub fn tray_icon_size() -> u32 {
+    // SAFETY: plain queries without pointers
+    let size = unsafe { GetSystemMetricsForDpi(SM_CXSMICON, GetDpiForSystem()) };
+    u32::try_from(size).ok().filter(|&s| s >= 16).unwrap_or(16)
 }
 
 #[cfg(test)]
