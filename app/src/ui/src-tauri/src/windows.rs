@@ -117,6 +117,7 @@ fn main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     }
     let w =
         builder(app, MAIN).inner_size(960.0, 640.0).min_inner_size(MAIN_MIN_WIDTH, MAIN_MIN_HEIGHT).center().build()?;
+    set_icons(&w.as_ref().window());
     crate::recovery::watch(&w);
     Ok(w)
 }
@@ -349,8 +350,22 @@ pub fn toggle_flyout(app: &AppHandle) -> tauri::Result<()> {
 
 /// Close hides (see the module comment); the flyout also hides when it
 /// loses the focus, as the system flyouts do
+/// The icon resource tauri-build embeds icons/icon.ico as
+const ICON_RESOURCE: u16 = 32512;
+
+/// The title bar and taskbar icons at their own sizes from icon.ico, not
+/// Tauri's one image shrunk (issue #86: a blue square at 100 % scaling)
+fn set_icons(window: &tauri::Window) {
+    match window.hwnd() {
+        Ok(h) if win_sys::app_icon::set_window_icons(h.0 as isize, ICON_RESOURCE) => {}
+        _ => tracing::warn!("[{}] window icons not set", window.label()),
+    }
+}
+
 pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
     match event {
+        // Another screen's scale: the icons at its sizes
+        WindowEvent::ScaleFactorChanged { .. } if window.label() == MAIN => set_icons(window),
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             let _ = window.hide();

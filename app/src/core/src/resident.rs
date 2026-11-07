@@ -506,7 +506,7 @@ pub fn run(args: &[String]) -> i32 {
                 });
                 // At the tray's own size: its image from the .ico, not the
                 // large one shrunk (issue #86)
-                let size = win_sys::notify::tray_icon_size();
+                let size = win_sys::app_icon::tray_icon_size();
                 let icon = tray_icon::Icon::from_resource(101, Some((size, size))).ok();
                 tracing::info!("tray icon: {size} px");
                 let mut b = TrayIconBuilder::new()
