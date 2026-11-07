@@ -431,6 +431,8 @@ export function Dialog(props: {
   cancel?: string;
   danger?: boolean;
   busy?: boolean;
+  /** Room for a table whose rows should not wrap */
+  wide?: boolean;
   onConfirm?: () => void;
   onCancel: () => void;
 }) {
@@ -472,7 +474,14 @@ export function Dialog(props: {
     <Show when={props.open}>
       <Portal>
         <div class="backdrop" onClick={(e) => e.target === e.currentTarget && cancel()}>
-          <div class="dialog card" role="dialog" aria-modal="true" aria-labelledby={id} ref={box} onKeyDown={onKey}>
+          <div
+            class={props.wide ? "dialog dialog-wide card" : "dialog card"}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={id}
+            ref={box}
+            onKeyDown={onKey}
+          >
             <div class="dialog-head">
               <div class="dialog-heading">
                 <h2 id={id}>{props.title}</h2>
