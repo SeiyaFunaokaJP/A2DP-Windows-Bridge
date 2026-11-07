@@ -13,7 +13,7 @@ has_toc: false
 
 WinUSB 모드의 USB Bluetooth 어댑터를 사용하여 시스템 오디오를 **LHDC V5, LDAC, aptX Adaptive, aptX HD, aptX, aptX Low Latency, AAC, SBC** 및 (실험적) **Opus**, PipeWire의 **Opus 05**로 스트리밍합니다. 커널 드라이버나 테스트 서명이 필요 없습니다.
 
-![BlueCaster streaming LDAC 990 kbps / 96 kHz to Sony WH-1000XM4 (Home screen)](../images/app_sample.png)
+![BlueCaster's Codecs screen, streaming LDAC 990 kbps / 48 kHz to Sony WH-1000XM4](../images/app_sample.png)
 
 [시작하기](setup){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [GitHub](https://github.com/SeiyaFunaokaJP/BlueCaster){: .btn .fs-5 .mb-4 .mb-md-0 }

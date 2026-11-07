@@ -71,7 +71,7 @@ BlueCaster は、Windows に標準で入っている汎用 USB ドライバー W
 {: .warning }
 WinUSB を割り当てている間、Windows の Bluetooth からそのアダプターは見えなくなり、そのアダプターで Windows にペアリングしたデバイスはドライバーを戻すまで使えません。通常の周辺機器（キーボード、マウス等）には内蔵 Bluetooth を使用してください。USB 接続の内蔵アダプター（多くのノート PC の Realtek 製など）を BlueCaster に使うこともできますが、ドライバーを戻すまで **PC で Windows の Bluetooth がまったく使えなくなります**（Bluetooth 設定、マウス、キーボード、ほかのオーディオ機器）。
 
-同じ画面の **元のドライバに戻す** で、アダプターを Windows に戻せます。Windows がドライバー（通常は Windows の Bluetooth ドライバー）を選び直し、Windows の Bluetooth でそのアダプターを使えるようになります。WinUSB を割り当て直すまで、BlueCaster はそのアダプターで配信できません。Windows が動かす Bluetooth アダプターは一度に 1 つだけです。ほかのアダプターが使われているときは、戻したあとに BlueCaster がその旨を表示します。このアダプターを Windows で使えるのは、デバイス マネージャーでそちらを無効にし、このアダプターを挿し直してからです。BlueCaster でペアリングし直したヘッドホンはキーが新しくなっているため、Windows の古いペアリングでは接続できないことがあります。ダイアログには Windows でもペアリングしている機器の名前が出ます。接続できないものは Windows の設定で削除して、ペアリングし直してください。アンインストーラーも同じことができます。アンインストール ウィザードの 1 ページに **元の Bluetooth ドライバーに戻す**（BlueCaster が WinUSB を割り当てたアダプターがあるとき。管理者の許可を一度求めます）と **ユーザーデータを削除する**（`%APPDATA%\BlueCaster` の設定、コーデック、ペアリング、ファームウェアと、**対応しているコーデックのみ表示** などウィンドウが覚えている内容）があり、どちらも最初からオンです。更新のときと、サイレントでのアンインストール（`/S`）では WinUSB のまま残ります。
+同じ画面の **元のドライバに戻す** で、アダプターを Windows に戻せます。Windows がドライバー（通常は Windows の Bluetooth ドライバー）を選び直し、Windows の Bluetooth でそのアダプターを使えるようになります。WinUSB を割り当て直すまで、BlueCaster はそのアダプターで配信できません。Windows が動かす Bluetooth アダプターは一度に 1 つだけです。ほかのアダプターが使われているときは、戻したあとに BlueCaster がその旨を表示します。このアダプターを Windows で使えるのは、デバイス マネージャーでそちらを無効にし、このアダプターを挿し直してからです。BlueCaster でペアリングし直したヘッドホンはキーが新しくなっているため、Windows の古いペアリングでは接続できないことがあります。ダイアログには Windows でもペアリングしている機器の名前が出ます。接続できないものは Windows の設定で削除して、ペアリングし直してください。アンインストーラーも同じことができます。アンインストール ウィザードの 1 ページに **元の Bluetooth ドライバーに戻す**（BlueCaster が WinUSB を割り当てたアダプターがあるとき。管理者の許可を一度求めます）と **ユーザーデータを削除する**（`%APPDATA%\BlueCaster` の設定、コーデック、ペアリング、ファームウェアと、**対応しているコーデックのみ表示** などウィンドウが覚えている内容）があり、どちらも最初からオンです。記録のないアダプター（Zadig や v1 で WinUSB にしたもの）だけが WinUSB のときは、1 つ目の項目はオフで表示され、選ぶとドライバーは Windows が選びます。更新のときと、サイレントでのアンインストール（`/S`）では WinUSB のまま残ります。
 
 ### Zadig を使う場合 {#zadig}
 
@@ -123,7 +123,7 @@ bluecaster-core.exe --cli --scan
 
 ## ファームウェア（Realtek アダプター） {#firmware}
 
-Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU ドングル等）は動作に専用ファームウェアが必要です。CSR アダプターはファームウェア不要です。Intel と Broadcom のアダプター（試験的）は、それぞれのファームウェアファイルが必要な場合があります。[推奨アダプター](#adapters)を参照してください。
+Realtek ベースの USB Bluetooth アダプター（TP-Link UB500、RTL8761BU ドングル等）は動作に専用ファームウェアが必要です。CSR アダプターはファームウェア不要です。Intel、MediaTek MT79xx、Qualcomm、Broadcom のアダプター（試験的）は、それぞれのファームウェアファイルが必要な場合があります。[推奨アダプター](#adapters)を参照してください。
 
 ### アプリでの案内（ガイド付きダウンロード）
 
@@ -166,9 +166,14 @@ BlueCaster で実際に使われたアダプターとヘッドホンは、コー
 |:-------------|:-------|:-----|
 | Realtek | TP-Link UB500、RTL8761BU | ファームウェアのダウンロードが必要（上記参照）。最も検証済み |
 | CSR | CSR8510 汎用ドングル | そのまま動作、ファームウェア不要 |
+| Barrot | Bluetooth 5.4 / 6.0 ドングル（`33FA:0010`、`33FA:0012`） | ROM ファームウェアで動作、ファームウェア不要。ユーザー報告は今のところ 1 件 |
+| Marvell | Microsoft Surface Pro / Surface Book 内蔵（88W8897） | *試験的。* ファームウェアファイルは不要: Bluetooth のファームウェアも Wi-Fi ドライバーが読み込むため、Wi-Fi はオンのままにしてください。実機では未テスト |
+| Actions | ATS2851 ドングル（`10D7:B012`） | *試験的。* ROM のファームウェアで動作し、ファームウェアは不要。実際には使えないコマンドを対応と申告するため、BlueCaster がそれらを隠します。実機では未検証 |
 | Broadcom | ASUS BT400 (BCM20702) | *試験的。* Bluetooth クラス `E0/01/01` ではなくベンダークラス `FF/01/01` を名乗るアダプタ（BCM20702 の OEM ドングル）も検出。ROM ファームウェアで動作。ファームウェアフォルダに PatchRAM `.hcd`（例: `BCM20702A1-0b05-17cb.hcd`）があれば起動時に適用 |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *試験的。* ブートローダーモード（コールドブート後など）では linux-firmware `intel/` の対応する `ibt-*.sfi` + `ibt-*.ddc` をファームウェアフォルダに配置する必要あり。必要なファイル名はログに出ます（例: `ibt-0180-0041.sfi`）。検証済みは今のところ AX211 のみ |
-| MediaTek、Qualcomm | MT7921/MT7922、QCA61x4 | 未対応: BlueCaster にないファームウェアローダーが必要（[対応の追加に協力する](chip-support)） |
+| Intel | Intel 7260 / 3160 / 7265 / 3165 / 3168 / 8260 / 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *試験的。* ブートローダーモード（コールドブート後など）では linux-firmware `intel/` の対応する `ibt-*.sfi` + `ibt-*.ddc` をファームウェアフォルダに配置する必要あり。必要なファイル名はログに出ます（例: `ibt-0180-0041.sfi`）。7260 / 3160 / 7265 / 3165 / 3168 は ROM で動作しファイル不要。同じフォルダに対応する `ibt-hw-*.bseq` パッチがあれば適用します。検証済みは今のところ AX211 のみ |
+| MediaTek | MT7925、MT7922、MT7921、MT7902（AMD RZ717、RZ616、RZ608 などの Wi-Fi カード） | *試験的。* チップごとの `BT_RAM_CODE_MT*_hdr.bin`（例: `BT_RAM_CODE_MT7925_1_1_hdr.bin`）が必要。MediaTek の Windows 用 Bluetooth ドライバーが入っていれば BlueCaster がそこから読み込み、なければ linux-firmware `mediatek/` のファイルをファームウェアフォルダに配置。必要なファイル名はログに出ます。実機では未検証 |
+| Qualcomm | QCA61x4、QCA9377（ROME）、WCN6855（FastConnect 6900） | *試験的。* チップの rampatch と NVM（例: `AthrBT_0x00000302.dfu` と `ramps_0x00000302_48.dfu`）が必要。Qualcomm の Windows 用 Bluetooth ドライバーが入っていれば BlueCaster がそこから読み込み、なければ linux-firmware `qca/` のファイル（`rampatch_usb_*.bin`、`nvm_usb_*.bin`）をファームウェアフォルダに配置。必要なファイル名はログに出ます。実機では未検証 |
+| MediaTek、Qualcomm | ほかの MediaTek チップ（MT7927）、ほかの Qualcomm チップ（QCA6290、WCN785x） | 未対応: BlueCaster にないファームウェアローダーが必要（[対応の追加に協力する](chip-support)） |
 
 USB Bluetooth 5.0 以上のアダプターは、LDAC のような高ビットレートコーデックに最適です。
 
