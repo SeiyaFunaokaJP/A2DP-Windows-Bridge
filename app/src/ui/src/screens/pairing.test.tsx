@@ -56,10 +56,37 @@ describe("device pairing", () => {
     // The key in the same dialog, with no Linux file
     expect(await within(dialog).findByText("00112233445566778899AABBCCDDEEFF")).toBeInTheDocument();
     expect(within(dialog).getByText(t("ui.pairing.key_type", 4))).toBeInTheDocument();
-    expect(within(dialog).getByText(t("ui.pairing.no_le_keys"))).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: t("ui.pairing.copy_key") })).toBeInTheDocument();
+    expect(within(dialog).getAllByRole("button", { name: t("ui.pairing.copy_key") })).toHaveLength(1);
     expect(within(dialog).getAllByRole("button").map((b) => b.textContent)).not.toContain("Copy for Linux");
     expect(calls.filter((c) => c.method === "device.services")).toHaveLength(1);
+    // No LE keys: both rows say so, never a made-up value
+    expect(within(dialog).getByText(t("ui.pairing.ltk"))).toBeInTheDocument();
+    expect(within(dialog).getByText(t("ui.pairing.irk"))).toBeInTheDocument();
+    expect(within(dialog).getAllByText(t("ui.pairing.not_available"))).toHaveLength(2);
+    expect(within(dialog).getByText(t("ui.pairing.le_keys_hint"))).toBeInTheDocument();
+    expect(within(dialog).queryByText(t("ui.pairing.identity_address"))).toBeNull();
+  });
+
+  it("shows the LE keys derived from the link key (issue #86)", async () => {
+    await open("#/devices", true);
+    mock!.leKeys = {
+      long_term_key: "0f0e0d0c0b0a09080706050403020100",
+      key_size: 16,
+      identity_resolving_key: "a0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+      identity_address: "C0:11:22:33:44:55",
+      identity_random: true,
+    };
+    const [tag] = await screen.findAllByRole("button", { name: t("ui.pairing.services") });
+    fireEvent.click(tag);
+    const dialog = await screen.findByRole("dialog", { name: t("ui.pairing.services") });
+    expect(await within(dialog).findByText("0F0E0D0C0B0A09080706050403020100")).toBeInTheDocument();
+    expect(within(dialog).getByText("A0A1A2A3A4A5A6A7A8A9AAABACADAEAF")).toBeInTheDocument();
+    expect(within(dialog).getByText(t("ui.pairing.key_size", 16))).toBeInTheDocument();
+    expect(within(dialog).getByText("C0:11:22:33:44:55")).toBeInTheDocument();
+    expect(within(dialog).getByText(t("ui.pairing.random"))).toBeInTheDocument();
+    expect(within(dialog).getAllByRole("button", { name: t("ui.pairing.copy_key") })).toHaveLength(3);
+    expect(within(dialog).queryByText(t("ui.pairing.not_available"))).toBeNull();
+    expect(within(dialog).queryByText(t("ui.pairing.le_keys_hint"))).toBeNull();
   });
 
   it("imports Windows' pairings on Audio Devices, without developer mode (issue #86)", async () => {

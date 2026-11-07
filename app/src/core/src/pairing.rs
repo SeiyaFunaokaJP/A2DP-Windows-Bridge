@@ -1,4 +1,5 @@
-//! Developer mode: a classic device's pairing as BlueCaster keeps it and the
+//! Developer mode: a classic device's pairing as BlueCaster keeps it (the
+//! link key, and the LE keys derived from it while LE Audio is on) and the
 //! services the device lists. For everyone: taking over the link keys
 //! Windows' Bluetooth kept for the adapter BlueCaster now uses (issue #86:
 //! devices paired in Windows then connect without pairing again; the audio
@@ -14,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use bt_host::ServicesError;
 use bt_host::link_keys::FileLinkKeyStore;
-use ipc::{DevicePairing, DeviceService, ErrorInfo, LinkKeyInfo, Msg, ServiceList, WindowsImport};
+use ipc::{DevicePairing, DeviceService, ErrorInfo, LeKeysInfo, LinkKeyInfo, Msg, ServiceList, WindowsImport};
 use serde_json::Value;
 
 use crate::state::CoreState;
@@ -52,7 +53,26 @@ pub fn pairing(state: &CoreState, addr: &str) -> Result<Value, ErrorInfo> {
         .iter()
         .find(|e| e.addr == addr)
         .map(|e| LinkKeyInfo { key: hex(&e.key), key_type: e.key_type.clamp(0, 255) as u8 });
-    Ok(serde_json::to_value(DevicePairing { link_key }).unwrap_or(Value::Null))
+    // Held by the running stack (its bond file is open there)
+    let le_keys = state.service.host().and_then(|h| h.le_keys(addr)).map(le_keys_info);
+    Ok(serde_json::to_value(DevicePairing { link_key, le_keys }).unwrap_or(Value::Null))
+}
+
+/// BTstack keeps the LTK and IRK most significant octet first: shown least
+/// significant first, the order SMP and HCI carry them in (as the link key)
+fn le_keys_info(k: bt_host::LeKeys) -> LeKeysInfo {
+    let wire = |key: [u8; 16]| {
+        let mut key = key;
+        key.reverse();
+        hex(&key)
+    };
+    LeKeysInfo {
+        long_term_key: k.ltk.map(wire),
+        key_size: k.key_size,
+        identity_resolving_key: k.irk.map(wire),
+        identity_address: bt_host::addr_str(&k.identity_addr),
+        identity_random: k.identity_addr_type & 0x01 != 0,
+    }
 }
 
 /// Each device's services from its last answer since the core started (by
@@ -190,6 +210,25 @@ fn add_audio_devices(state: &Arc<CoreState>, instance_id: &str, with_key: &[Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn le_keys_shown_in_wire_order() {
+        let mut ltk = [0u8; 16];
+        ltk[0] = 0xAB; // most significant, as BTstack keeps it
+        let k = bt_host::LeKeys {
+            identity_addr_type: 1,
+            identity_addr: [0xC0, 0x11, 0x22, 0x33, 0x44, 0x55],
+            irk: None,
+            ltk: Some(ltk),
+            key_size: 16,
+        };
+        let info = le_keys_info(k);
+        assert_eq!(info.long_term_key.as_deref(), Some("000000000000000000000000000000ab"));
+        assert_eq!(info.identity_resolving_key, None);
+        assert_eq!(info.identity_address, "C0:11:22:33:44:55");
+        assert!(info.identity_random);
+        assert_eq!(info.key_size, 16);
+    }
 
     #[test]
     fn helper_keys_are_read_strictly() {

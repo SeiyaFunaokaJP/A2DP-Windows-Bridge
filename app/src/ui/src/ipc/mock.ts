@@ -22,6 +22,7 @@ import type {
   CaptureState,
   CodecDetails,
   Device,
+  DevicePairing,
   ErrorInfo,
   Event,
   FirmwareFile,
@@ -631,6 +632,8 @@ export class MockCore implements Transport {
   private mixer = MIXER_APPS;
   /** Addresses paired in Windows' Bluetooth (device.windows_paired) */
   windowsPaired: string[] = [];
+  /** LE keys of the saved devices (device.pairing), as derived with LE Audio on */
+  leKeys: DevicePairing["le_keys"] = null;
   readonly window: WindowKind;
   readonly mica = false;
   readonly version = "2.0.0-alpha.1";
@@ -740,12 +743,13 @@ export class MockCore implements Transport {
       // One radio here: the adapter's pairings are all of Windows'
       case "device.windows_paired_through":
         return this.windowsPaired;
-      case "device.pairing":
+      case "device.pairing": {
+        const saved = this.snap.devices.some((d) => d.saved && d.address === String(p.address));
         return {
-          link_key: this.snap.devices.some((d) => d.saved && d.address === String(p.address))
-            ? { key: "00112233445566778899aabbccddeeff", key_type: 4 }
-            : null,
+          link_key: saved ? { key: "00112233445566778899aabbccddeeff", key_type: 4 } : null,
+          le_keys: saved ? this.leKeys : null,
         };
+      }
       case "device.services":
         return {
           services: [

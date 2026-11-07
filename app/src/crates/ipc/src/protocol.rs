@@ -1919,6 +1919,26 @@ pub struct ReceiverState {
 pub struct DevicePairing {
     /// The link key BlueCaster keeps, None when it has none (not paired)
     pub link_key: Option<LinkKeyInfo>,
+    /// The LE keys BlueCaster has of the device (derived from the link key
+    /// while LE Audio and developer mode are on, issue #86), None when it
+    /// has none or no stack with LE Audio runs
+    pub le_keys: Option<LeKeysInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+
+pub struct LeKeysInfo {
+    /// The LTK: 32 hex digits, least significant octet first (the order
+    /// SMP and HCI carry it in, as the link key); None when there is none
+    pub long_term_key: Option<String>,
+    /// The LTK's encryption key size in octets (0 without an LTK)
+    pub key_size: u8,
+    /// The device's IRK, in the same order; None when it gave none
+    pub identity_resolving_key: Option<String>,
+    /// The identity address the IRK belongs to ("XX:XX:XX:XX:XX:XX")
+    pub identity_address: String,
+    /// The identity address is a random static one (else public)
+    pub identity_random: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

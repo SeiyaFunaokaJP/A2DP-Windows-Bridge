@@ -538,7 +538,7 @@ bluecaster-core.exe --cli --remote-sink auto -c ldac --test-tone
 在開發者模式下，**音訊裝置** 中已儲存的傳統裝置有一個 **服務** 標籤。點選後會開啟：
 
 - 裝置公開的服務，以 **名稱**（藍牙名稱，沒有則為裝置自己的名稱；兩者皆無的廠商自有服務顯示為 **未知服務**）與 **GUID** 兩欄的表格顯示。裝置連線時查詢；未連線時顯示 BlueCaster 啟動後上次連線時的清單
-- 下方為 **配對金鑰**：BlueCaster 為該裝置保存的連結金鑰及其類型。**複製金鑰** 複製金鑰，例如讓同一台電腦上的另一個系統以同一介面卡使用同一配對。透過傳統藍牙配對的裝置沒有 LE 金鑰（Long Term Key、Identity Resolving Key）。任何取得金鑰的人都能冒充該裝置：請勿分享
+- 下方為 **配對金鑰**：**LinkKey**（BlueCaster 為該裝置保存的連結金鑰及其類型）、**LongTermKey**（附大小）與 **IdentityResolvingKey**（裝置的 LE 金鑰），以及裝置的 **身分位址**（隨機靜態位址時標示 **隨機**）。LE 金鑰來自連結金鑰：在開發人員模式下，BlueCaster 會在配對後立即向裝置索取，已配對的裝置則在其下次連線時索取（每台裝置、每次啟動藍牙一次）；雙方由連結金鑰推導出 LongTermKey（跨傳輸金鑰推導），裝置提供其 IdentityResolvingKey。只有支援此功能的裝置才會提供，且僅限由 BlueCaster 主導的連線（通常是它發起的連線）；設定 `"le_audio_experimental": false` 時不會索取。BlueCaster 沒有的金鑰顯示為 **無**，絕不會捏造數值。金鑰依藍牙傳送的順序顯示（最低有效位元組在前）。**複製金鑰** 逐一複製，例如讓同一台電腦上的另一個系統以同一介面卡使用同一配對。任何取得這些金鑰的人都能冒充該裝置：請勿分享
 
 **音訊裝置** 和初始設定的裝置步驟中的 **匯入 Windows 的配對**（使用 WinUSB 的介面卡；當 Windows 曾透過它配對 BlueCaster 尚未儲存的裝置時顯示）會接手 Windows Bluetooth 在該介面卡改用 WinUSB 之前為其儲存的連結金鑰：透過它與 Windows 配對過的耳機無需重新配對即可連線 BlueCaster。只有系統能讀取這些金鑰，因此 Windows 會要求系統管理員權限。BlueCaster 已有金鑰的裝置保留自己的金鑰（它之後與 BlueCaster 配對過，Windows 的金鑰是舊的）。Windows 用其他介面卡（例如電腦內建 Bluetooth）建立的金鑰無法使用：配對屬於介面卡的位址。Windows 不儲存金鑰類型，匯入的金鑰類型為 4。不匯入 LE 裝置。匯入的耳機會以 Windows 中的名稱加入已儲存的裝置，可直接連線。
 

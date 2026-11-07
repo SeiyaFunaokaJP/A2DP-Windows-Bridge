@@ -57,8 +57,9 @@ const CLASSIC: &[&str] = &[
 ];
 
 /// src/ble/*.c not built: LE bonds are kept in a TLV file
-/// (le_device_db_tlv.c), as in v1
-const BLE_EXCLUDE: &[&str] = &["le_device_db_memory.c"];
+/// (le_device_db_tlv.c), as in v1; sm.c is built from a patched copy
+/// ([`patched_sm`])
+const BLE_EXCLUDE: &[&str] = &["le_device_db_memory.c", "sm.c"];
 
 /// Bluedroid SBC encoder (Apache-2.0), feature "sbc-reference"
 const SBC_ENCODER: &[&str] = &[
@@ -133,6 +134,7 @@ fn main() {
         .collect();
     ble.sort();
     build.files(&ble);
+    build.file(patched_sm(&btstack));
     build.files(CLASSIC.iter().map(|f| match *f {
         "a2dp.c" => patched_a2dp(&btstack),
         f => btstack.join("src/classic").join(f),
@@ -202,6 +204,72 @@ fn patched_a2dp(btstack: &Path) -> PathBuf {
         );
     }
     let path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("a2dp.c");
+    std::fs::write(&path, source).unwrap();
+    path
+}
+
+fn replace_once(source: &mut String, file: &str, from: &str, to: &str) {
+    assert_eq!(source.matches(from).count(), 1, "{file} patch: `{from}` not found once (BTstack changed?)");
+    *source = source.replacen(from, to, 1);
+}
+
+/// src/ble/sm.c with Cross-Transport Key Derivation from BR/EDR (issue #86),
+/// written to OUT_DIR.
+///
+/// ENABLE_CROSS_TRANSPORT_KEY_DERIVATION is defined for this file only: the
+/// rest of BTstack (L2CAP's fixed channel mask) stays as before, so a
+/// device is never told BlueCaster takes SMP over BR/EDR. Of what the flag
+/// brings, BlueCaster uses one direction: after a classic link is encrypted
+/// with Secure Connections, BlueCaster as Central asks the device over the
+/// BR/EDR security manager channel (CID 7) for its IRK and identity
+/// address, and both sides derive the LE LTK from the link key. That runs
+/// only while the shim says so (bluecaster_ctkd_enabled: developer mode;
+/// SM itself runs only with LE Audio on), after a new pairing (BTstack's
+/// own trigger) or on a connection of a device with no keys from it yet
+/// (bluecaster_ctkd_wanted). A device that does not list CID 7 is not
+/// asked; a failure ends SMP on that link only, never the link.
+///
+/// The other direction (a BR/EDR link key derived from an LE pairing) stays
+/// off, as before: BTstack would derive and store it whether or not the
+/// device distributes one, replacing the device's classic key. LE pairing
+/// keeps its key distribution and AuthReq of today (no LinkKey, no CT2),
+/// and SM never stores a link key.
+fn patched_sm(btstack: &Path) -> PathBuf {
+    const FILE: &str = "sm.c";
+    let mut source = std::fs::read_to_string(btstack.join("src/ble/sm.c")).unwrap();
+    source.insert_str(
+        0,
+        "/* BlueCaster: patched by btstack-sys build.rs (patched_sm) */\n\
+         #define ENABLE_CROSS_TRANSPORT_KEY_DERIVATION\n\
+         int bluecaster_ctkd_enabled(void);\n\
+         int bluecaster_ctkd_wanted(const unsigned char *addr);\n",
+    );
+    // Only while enabled; off, the state stays SM_BR_EDR_W4_ENCRYPTION_COMPLETE,
+    // where a Pairing Request from the device is refused
+    let handler =
+        "static void sm_event_handle_classic_encryption_event(sm_connection_t * sm_conn, hci_con_handle_t con_handle){";
+    replace_once(&mut source, FILE, handler, &format!("{handler}\n    if (!bluecaster_ctkd_enabled()) return;"));
+    // Also for a device paired before (BTstack asks only after a pairing)
+    replace_once(
+        &mut source,
+        FILE,
+        "} else if (sm_conn->sm_pairing_requested){",
+        "} else if (sm_conn->sm_pairing_requested || bluecaster_ctkd_wanted(sm_conn->sm_peer_address)){",
+    );
+    // No link key derived from an LE pairing, none offered in it
+    let from_le = "static bool sm_ctkd_from_le(void) {";
+    replace_once(&mut source, FILE, from_le, &format!("{from_le}\n    if (setup != NULL) return false;"));
+    replace_once(&mut source, FILE, "flags |= SM_KEYDIST_LINK_KEY;", "/* BlueCaster: no LinkKey over LE */");
+    replace_once(&mut source, FILE, "auth_req |= SM_AUTHREQ_CT2;", "/* BlueCaster: no CT2 over LE */");
+    // Nor stored: after a derivation from BR/EDR, BTstack 1.8.1 stores the
+    // link key it read for it (setup->sm_link_key, most significant octet
+    // first for h6 / h7) back as a link key, byte-reversed and under the
+    // device's identity address. With a public identity that replaces the
+    // device's link key with a wrong one (the next connection fails
+    // authentication); with a random one it adds a stray key.
+    let store = "static void sm_store_classic_bonding_information(sm_connection_t * sm_conn) {";
+    replace_once(&mut source, FILE, store, &format!("{store}\n    if (sm_conn != NULL) return;"));
+    let path = PathBuf::from(env::var("OUT_DIR").unwrap()).join("sm.c");
     std::fs::write(&path, source).unwrap();
     path
 }

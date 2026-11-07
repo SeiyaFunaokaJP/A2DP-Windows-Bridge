@@ -80,6 +80,11 @@ int bluecaster_rs_att_write(uint16_t con, uint16_t handle, uint16_t mode, uint16
                         uint16_t size);
 void bluecaster_rs_att_can_send(uint16_t con);
 void bluecaster_rs_le_disconnected(uint16_t con);
+/* Called by the patched sm.c (btstack-sys build.rs, patched_sm) */
+int bluecaster_rs_ctkd_enabled(void);
+int bluecaster_rs_ctkd_wanted(const uint8_t *addr);
+int bluecaster_ctkd_enabled(void) { return bluecaster_rs_ctkd_enabled(); }
+int bluecaster_ctkd_wanted(const unsigned char *addr) { return bluecaster_rs_ctkd_wanted(addr); }
 
 static void cig_slot_release(uint8_t cig_id);
 
@@ -735,6 +740,14 @@ uint8_t bluecaster_cmd_read_link_supervision_timeout(uint16_t con_handle) {
 int bluecaster_acl_packets_in_controller(uint16_t con_handle) {
     hci_connection_t *c = hci_connection_for_handle(con_handle);
     return c ? (int)c->num_packets_sent : -1;
+}
+
+/* The remote address of a connection; 0 when there is none */
+int bluecaster_connection_address(uint16_t con_handle, uint8_t *addr) {
+    hci_connection_t *c = hci_connection_for_handle(con_handle);
+    if (c == NULL) return 0;
+    memcpy(addr, c->address, 6);
+    return 1;
 }
 
 int bluecaster_acl_role(uint16_t con_handle) {
