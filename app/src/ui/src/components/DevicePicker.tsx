@@ -303,7 +303,7 @@ export function DevicePicker(props: {
           <span class="mono muted">{d.address}</span>
         </span>
         <span class="tags">
-          <Show when={d.saved && !props.savedOnly && snap().settings.developer_mode && !d.le_audio}>
+          <Show when={d.saved && !props.savedOnly && !d.le_audio}>
             <button type="button" class="tag tag-button" onClick={() => setPairingOf(d)}>
               {t("ui.pairing.services")}
             </button>

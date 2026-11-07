@@ -923,6 +923,7 @@
   "ui.pairing.no_key": "No hay clave de enlace guardada",
   "ui.pairing.copy_key": "Copiar clave",
   "ui.pairing.reverse_bytes": "Invertir el orden de bytes",
+  "ui.pairing.reverse_bytes_hint": "Muestra cada clave empezando por el último byte, para herramientas que lo esperan así. Apagado: como la envía Bluetooth.",
   "ui.pairing.copied": "Copiado al portapapeles",
   "ui.pairing.secret": "Cualquiera con estas claves puede hacerse pasar por este dispositivo.",
   "ui.pairing.services": "Servicios",

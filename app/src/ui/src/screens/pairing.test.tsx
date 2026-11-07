@@ -1,4 +1,5 @@
-// Developer mode: a saved device's pairing (Audio Devices) and taking over
+// A saved device's services and, in developer mode, its keys (Audio Devices)
+// and taking over
 // Windows' pairings (Adapter), issue #86
 
 import { cleanup, fireEvent, render, screen, within } from "@solidjs/testing-library";
@@ -30,15 +31,21 @@ async function open(hash: string, developer: boolean) {
 }
 
 describe("device pairing", () => {
-  it("has no Services tag without developer mode", async () => {
-    await open("#/devices", false);
+  it("shows the Services tag without developer mode, with no keys (issue #86)", async () => {
+    const { calls } = await open("#/devices", false);
+    // The Saved tag is a tag, not a button
     await screen.findAllByText(t("device.tag_saved"));
-    expect(screen.queryByRole("button", { name: t("ui.pairing.services") })).toBeNull();
-    // The tag is a tag, not a button (issue #86)
     expect(screen.queryByRole("button", { name: t("device.tag_saved") })).toBeNull();
+    const [tag] = await screen.findAllByRole("button", { name: t("ui.pairing.services") });
+    fireEvent.click(tag);
+    const dialog = await screen.findByRole("dialog", { name: t("ui.pairing.services") });
+    expect(await within(dialog).findByRole("table")).toBeInTheDocument();
+    expect(within(dialog).queryByText(t("ui.pairing.key_title"))).toBeNull();
+    expect(within(dialog).queryByRole("switch")).toBeNull();
+    expect(calls.some((c) => c.method === "device.pairing")).toBe(false);
   });
 
-  it("lists the services as a table, the key below them (issue #86)", async () => {
+  it("lists the keys first, the services as a table below them (issue #86)", async () => {
     const { calls } = await open("#/devices", true);
     const [tag] = await screen.findAllByRole("button", { name: t("ui.pairing.services") });
     expect(tag).toHaveClass("tag");
@@ -57,11 +64,16 @@ describe("device pairing", () => {
     expect(dialog).toHaveClass("dialog-wide");
     expect(within(table).getByText(t("ui.pairing.unknown_service"))).toBeInTheDocument();
     expect(within(table).getByText("Google Fast Pair")).toBeInTheDocument();
-    // The key in the same dialog, with no Linux file
-    expect(await within(dialog).findByText("00112233445566778899AABBCCDDEEFF")).toBeInTheDocument();
+    // The key in the same dialog, above the services (they grow), with no
+    // Linux file
+    const key = await within(dialog).findByText("00112233445566778899AABBCCDDEEFF");
+    expect(key.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(dialog).getByText(t("ui.pairing.reverse_bytes_hint"))).toBeInTheDocument();
     expect(within(dialog).getByText(t("ui.pairing.key_type", 4))).toBeInTheDocument();
+    const [copy] = within(dialog).getAllByRole("button", { name: t("ui.pairing.copy_key") });
     expect(within(dialog).getAllByRole("button", { name: t("ui.pairing.copy_key") })).toHaveLength(1);
-    expect(within(dialog).getAllByRole("button").map((b) => b.textContent)).not.toContain("Copy for Linux");
+    expect(copy.textContent).toBe("");
+    expect(within(dialog).queryByText("Copy for Linux")).toBeNull();
     expect(calls.filter((c) => c.method === "device.services")).toHaveLength(1);
     // No LE keys: both rows say so, never a made-up value
     expect(within(dialog).getByText(t("ui.pairing.ltk"))).toBeInTheDocument();

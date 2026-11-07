@@ -94,9 +94,9 @@ fn list(services: Vec<DeviceService>, from_last_connection: bool) -> Value {
 }
 
 /// device.services: over the link the running stack has to the device; not
-/// connected, the list it gave last
+/// connected, the list it gave last (not developer mode only since issue
+/// #86: the tag is out of the way, the keys stay in developer mode)
 pub fn services(state: &CoreState, addr: &str) -> Result<Value, ErrorInfo> {
-    developer(state)?;
     let addr = address(addr)?;
     let not_connected = || match seen().get(&addr) {
         Some(last) => Ok(list(last.clone(), true)),

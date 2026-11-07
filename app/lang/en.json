@@ -924,6 +924,7 @@
   "ui.pairing.no_key": "No link key saved",
   "ui.pairing.copy_key": "Copy key",
   "ui.pairing.reverse_bytes": "Reverse byte order",
+  "ui.pairing.reverse_bytes_hint": "Shows each key last byte first, for tools that expect that order. Off: the order Bluetooth sends.",
   "ui.pairing.copied": "Copied to the clipboard",
   "ui.pairing.secret": "Anyone with these keys can pose as this device.",
   "ui.pairing.services": "Services",

@@ -923,6 +923,7 @@
   "ui.pairing.no_key": "未儲存連結金鑰",
   "ui.pairing.copy_key": "複製金鑰",
   "ui.pairing.reverse_bytes": "反轉位元組順序",
+  "ui.pairing.reverse_bytes_hint": "從最後一個位元組開始顯示每個金鑰，供需要此順序的工具使用。關閉時為 Bluetooth 傳送的順序。",
   "ui.pairing.copied": "已複製到剪貼簿",
   "ui.pairing.secret": "任何持有這些金鑰的人都能冒充此裝置。",
   "ui.pairing.services": "服務",
