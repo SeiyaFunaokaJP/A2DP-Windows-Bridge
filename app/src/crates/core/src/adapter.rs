@@ -42,8 +42,22 @@ pub fn adapters(probe_winusb: bool) -> Vec<Adapter> {
         .filter_map(|d| {
             let realtek_pid = chips::resolve_realtek_pid(d.vid, d.pid, ids);
             let vendor = chips::vendor_for_usb(d.vid, d.pid, realtek_pid);
-            let bluetooth =
-                d.looks_like_bluetooth() || realtek_pid.is_some() || chips::is_bluetooth_vendor_vid(d.vid, d.pid);
+            // A chip maker's VID alone (a vendor-class adapter without a
+            // driver) unless the device says it is something else: a CSR
+            // headset charging, a MediaTek phone
+            let by_vid = chips::is_bluetooth_vendor_vid(d.vid, d.pid);
+            let bluetooth = d.looks_like_bluetooth() || realtek_pid.is_some() || (by_vid && !d.other_class());
+            if by_vid && !bluetooth {
+                tracing::debug!(
+                    "adapter: {:04X}:{:04X} {:?} skipped: {} VID, but class {:?} / functions {:?}",
+                    d.vid,
+                    d.pid,
+                    d.name,
+                    vendor.name(),
+                    d.usb_class,
+                    d.function_classes
+                );
+            }
             if bluetooth {
                 tracing::debug!(
                     "adapter: {:04X}:{:04X} {:?} driver {:?}, realtek pid {realtek_pid:04X?}, vendor {}, class {:?}, problem {:?}, probe {:?}",
@@ -526,6 +540,7 @@ mod tests {
             hardware_ids: Vec::new(),
             compatible_ids: Vec::new(),
             usb_class: None,
+            function_classes: Vec::new(),
             driver: DriverInfo::default(),
             driver_kind: DriverKind::WinUsb,
             problem_code: None,
