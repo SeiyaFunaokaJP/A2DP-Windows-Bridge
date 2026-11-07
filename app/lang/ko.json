@@ -923,6 +923,7 @@
   "ui.pairing.no_key": "저장된 링크 키 없음",
   "ui.pairing.copy_key": "키 복사",
   "ui.pairing.reverse_bytes": "바이트 순서 뒤집기",
+  "ui.pairing.reverse_bytes_hint": "각 키를 마지막 바이트부터 표시합니다. 이 순서를 쓰는 도구용입니다. 끄면 Bluetooth가 보내는 순서입니다.",
   "ui.pairing.copied": "클립보드에 복사했습니다",
   "ui.pairing.secret": "이 키가 있으면 누구나 이 기기로 위장할 수 있습니다.",
   "ui.pairing.services": "서비스",

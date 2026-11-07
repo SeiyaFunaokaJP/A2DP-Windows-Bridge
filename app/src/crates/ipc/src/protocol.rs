@@ -1463,7 +1463,7 @@ pub enum Method {
     DevicePairing { address: String },
     /// -> ServiceList: the services a classic device lists, asked over the
     /// connection BlueCaster has to it, else the list from its last connection
-    /// since the core started (developer mode only)
+    /// since the core started
     #[serde(rename = "device.services")]
     DeviceServices { address: String },
     /// -> string[]: the addresses of the classic devices Windows' Bluetooth

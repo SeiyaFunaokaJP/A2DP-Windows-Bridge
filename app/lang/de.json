@@ -923,6 +923,7 @@
   "ui.pairing.no_key": "Kein Verbindungsschlüssel gespeichert",
   "ui.pairing.copy_key": "Schlüssel kopieren",
   "ui.pairing.reverse_bytes": "Bytereihenfolge umkehren",
+  "ui.pairing.reverse_bytes_hint": "Zeigt jeden Schlüssel mit dem letzten Byte zuerst, für Tools, die diese Reihenfolge erwarten. Aus: wie Bluetooth sendet.",
   "ui.pairing.copied": "In die Zwischenablage kopiert",
   "ui.pairing.secret": "Wer diese Schlüssel hat, kann sich als dieses Gerät ausgeben.",
   "ui.pairing.services": "Dienste",

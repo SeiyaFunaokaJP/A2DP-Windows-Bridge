@@ -1,8 +1,9 @@
-// A saved classic device's services and pairing keys (developer mode, issue
-// #86), from the Services tag of its row: the services it lists as a table
-// (the last connection's while it is not connected), and below them the
-// link key BlueCaster keeps for it and the LE keys derived from it (LE
-// Audio on), each "not available" when BlueCaster has none.
+// A saved classic device's services and pairing keys (issue #86), from the
+// Services tag of its row. In developer mode the link key BlueCaster keeps
+// for it and the LE keys derived from it (LE Audio on) come first, each
+// "not available" when BlueCaster has none; below them the services it
+// lists as a table (the last connection's while it is not connected), the
+// part that grows.
 
 import { createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import { errorText, useApp } from "../app/context";
@@ -10,7 +11,7 @@ import { t } from "../i18n";
 import { IpcError, type Device, type DeviceService } from "../ipc/types";
 import { copyText } from "../lib/format";
 import { reverseBytes, serviceLabel } from "../lib/pairing";
-import { Button, Check, Dialog } from "./controls";
+import { Check, Dialog, IconButton } from "./controls";
 
 /** How often and how long the services are asked again while another
  *  query runs (issue #86: the stack's own SDP queries while connecting, or
@@ -22,7 +23,9 @@ export function PairingDialog(props: { device: Device | null; onClose: () => voi
   const app = useApp();
   const address = () => props.device?.address ?? null;
   // An error is the answer here (not connected, no answer): shown in place
-  const [pairing] = createResource(address, (a) =>
+  // The keys only in developer mode (the core refuses them otherwise)
+  const keysOf = () => (app.core.state.snap?.settings.developer_mode ? address() : null);
+  const [pairing] = createResource(keysOf, (a) =>
     app.core
       .request("device.pairing", { address: a })
       .then((p) => ({ key: p.link_key, le: p.le_keys, error: null as string | null }))
@@ -58,7 +61,69 @@ export function PairingDialog(props: { device: Device | null; onClose: () => voi
       wide
       onCancel={() => props.onClose()}
     >
+      <Show when={keysOf()}>
+        <section class="pairing-part">
+          <h3 class="field-label">{t("ui.pairing.key_title")}</h3>
+          <Show when={pairing()}>
+            {(p) => (
+              <Show when={!p().error} fallback={<p class="hint">{p().error}</p>}>
+                <Show when={p().key || p().le}>
+                  <div class="pairing-order">
+                    <Check label={t("ui.pairing.reverse_bytes")} checked={reversed()} onChange={setReversed} />
+                    <p class="hint">{t("ui.pairing.reverse_bytes_hint")}</p>
+                  </div>
+                </Show>
+                <dl class="pairing-keys">
+                  <KeyRow
+                    name={t("ui.pairing.link_key")}
+                    value={p().key?.key}
+                    tag={p().key ? t("ui.pairing.key_type", p().key!.key_type) : undefined}
+                    reversed={reversed()}
+                    copy={copy}
+                  />
+                  <KeyRow
+                    name={t("ui.pairing.ltk")}
+                    value={p().le?.long_term_key}
+                    tag={p().le ? t("ui.pairing.key_size", p().le!.key_size) : undefined}
+                    reversed={reversed()}
+                    copy={copy}
+                  />
+                  <KeyRow
+                    name={t("ui.pairing.irk")}
+                    value={p().le?.identity_resolving_key}
+                    reversed={reversed()}
+                    copy={copy}
+                  />
+                  <Show when={p().le}>
+                    {(le) => (
+                      <>
+                        <dt>{t("ui.pairing.identity_address")}</dt>
+                        <dd>
+                          <span class="mono">{le().identity_address}</span>
+                          <Show when={le().identity_random}>
+                            {" "}
+                            <span class="tag">{t("ui.pairing.random")}</span>
+                          </Show>
+                        </dd>
+                      </>
+                    )}
+                  </Show>
+                </dl>
+                <Show when={p().key}>
+                  <p class="hint">{t("ui.pairing.secret")}</p>
+                  <Show when={!p().le}>
+                    <p class="hint">{t("ui.pairing.le_keys_hint")}</p>
+                  </Show>
+                </Show>
+              </Show>
+            )}
+          </Show>
+        </section>
+      </Show>
       <section class="pairing-part">
+        <Show when={keysOf()}>
+          <h3 class="field-label">{t("ui.pairing.services")}</h3>
+        </Show>
         <Show when={services()} fallback={<p class="hint">{t("ui.pairing.services_loading")}</p>}>
           {(s) => (
             <Show when={!s().error} fallback={<p class="hint">{s().error}</p>}>
@@ -91,60 +156,6 @@ export function PairingDialog(props: { device: Device | null; onClose: () => voi
           )}
         </Show>
       </section>
-      <section class="pairing-part">
-        <h3 class="field-label">{t("ui.pairing.key_title")}</h3>
-        <Show when={pairing()}>
-          {(p) => (
-            <Show when={!p().error} fallback={<p class="hint">{p().error}</p>}>
-              <Show when={p().key || p().le}>
-                <Check label={t("ui.pairing.reverse_bytes")} checked={reversed()} onChange={setReversed} />
-              </Show>
-              <dl class="pairing-keys">
-                <KeyRow
-                  name={t("ui.pairing.link_key")}
-                  value={p().key?.key}
-                  tag={p().key ? t("ui.pairing.key_type", p().key!.key_type) : undefined}
-                  reversed={reversed()}
-                  copy={copy}
-                />
-                <KeyRow
-                  name={t("ui.pairing.ltk")}
-                  value={p().le?.long_term_key}
-                  tag={p().le ? t("ui.pairing.key_size", p().le!.key_size) : undefined}
-                  reversed={reversed()}
-                  copy={copy}
-                />
-                <KeyRow
-                  name={t("ui.pairing.irk")}
-                  value={p().le?.identity_resolving_key}
-                  reversed={reversed()}
-                  copy={copy}
-                />
-                <Show when={p().le}>
-                  {(le) => (
-                    <>
-                      <dt>{t("ui.pairing.identity_address")}</dt>
-                      <dd>
-                        <span class="mono">{le().identity_address}</span>
-                        <Show when={le().identity_random}>
-                          {" "}
-                          <span class="tag">{t("ui.pairing.random")}</span>
-                        </Show>
-                      </dd>
-                    </>
-                  )}
-                </Show>
-              </dl>
-              <Show when={p().key}>
-                <p class="hint">{t("ui.pairing.secret")}</p>
-                <Show when={!p().le}>
-                  <p class="hint">{t("ui.pairing.le_keys_hint")}</p>
-                </Show>
-              </Show>
-            </Show>
-          )}
-        </Show>
-      </section>
     </Dialog>
   );
 }
@@ -167,15 +178,13 @@ function KeyRow(props: {
           {(v) => {
             const shown = () => (props.reversed ? reverseBytes(v()) : v()).toUpperCase();
             return (
-              <>
-                <code class="mono pairing-key">{shown()}</code>{" "}
+              <span class="pairing-key-row">
+                <code class="mono pairing-key">{shown()}</code>
                 <Show when={props.tag}>
-                  <span class="tag">{props.tag}</span>{" "}
+                  <span class="tag">{props.tag}</span>
                 </Show>
-                <Button icon="copy" onClick={() => void props.copy(shown())}>
-                  {t("ui.pairing.copy_key")}
-                </Button>
-              </>
+                <IconButton icon="copy" label={t("ui.pairing.copy_key")} onClick={() => void props.copy(shown())} />
+              </span>
             );
           }}
         </Show>
