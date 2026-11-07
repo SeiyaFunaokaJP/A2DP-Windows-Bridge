@@ -1,7 +1,7 @@
 {
   "name": "bluecaster-ui",
   "private": true,
-  "version": "3.0.0-beta.1",
+  "version": "3.0.0-beta.2",
   "type": "module",
   "packageManager": "pnpm@11.14.0",
   "license": "Apache-2.0 OR MIT",
