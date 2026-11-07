@@ -1067,10 +1067,14 @@ option {
 .pairing-services td {
   vertical-align: top;
 }
+/* A GUID on one line; the name column wraps instead (issue #86) */
+.pairing-services td:last-child {
+  width: 1%;
+}
 .pairing-services .mono {
   display: block;
   font-size: var(--fs-12);
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .notice-region {
