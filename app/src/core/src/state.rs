@@ -447,7 +447,7 @@ fn vendor_note(vendor: ChipVendor, vid: u16, pid: u16) -> Option<Msg> {
         ChipVendor::Marvell => "firmware.vendor_marvell",
         ChipVendor::Actions => "firmware.vendor_actions",
         ChipVendor::MediaTek => "firmware.vendor_mediatek",
-        ChipVendor::Qualcomm => "firmware.vendor_unsupported",
+        ChipVendor::Qualcomm => "firmware.vendor_qualcomm",
         ChipVendor::Realtek | ChipVendor::Unknown => return None,
     };
     Some(Msg::new(key))
@@ -1900,6 +1900,7 @@ impl CoreState {
         req.volume_sync = effective_volume_sync(settings.volume_sync, req.volume_sync);
         req.mute_output = settings.mutes_output();
         req.sbc = settings.sbc_frame(req.sbc);
+        req.source = settings.capture_source(req.source);
         if auto.is_some() && settings.debug_mode {
             req.codec_values = p.all_codec_values();
         }
@@ -2501,7 +2502,7 @@ impl CoreState {
                 let order_keeps_codec = order_only && (order_unused || !restart_for_order(&s.stream, &in_order));
                 if restart_after_save(&s.stream, &key) && !order_keeps_codec && !kept_only {
                     let in_place = source_changes_in_place(&s.stream, before.as_ref(), &in_order)
-                        && self.service.change_source(in_order.source());
+                        && self.service.change_source(self.service.settings().capture_source(in_order.source()));
                     let bitpools_in_place = !self.service.settings().auto_codec
                         && bitpools_change_in_place(&s.stream, before.as_ref(), &in_order)
                         && self.service.change_bitpools(in_order.bitpools());
@@ -3767,7 +3768,10 @@ mod tests {
     #[test]
     fn vendors_get_their_notes() {
         assert_eq!(vendor_note(ChipVendor::Intel, 0x8087, 0x0033).unwrap().key, "firmware.vendor_intel");
-        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0CF3, 0xE300).unwrap().key, "firmware.vendor_unsupported");
+        // Qualcomm: ROME and WCN6855 have a loader, the others none (QCA6290)
+        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0CF3, 0xE300).unwrap().key, "firmware.vendor_qualcomm");
+        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0489, 0xE0C7).unwrap().key, "firmware.vendor_qualcomm");
+        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0CF3, 0xE400).unwrap().key, "firmware.vendor_unsupported");
         // MediaTek: the MT79xx have a loader, the others none (MT6639)
         assert_eq!(vendor_note(ChipVendor::MediaTek, 0x0E8D, 0x7925).unwrap().key, "firmware.vendor_mediatek");
         assert_eq!(vendor_note(ChipVendor::MediaTek, 0x0E8D, 0x0608).unwrap().key, "firmware.vendor_mediatek");

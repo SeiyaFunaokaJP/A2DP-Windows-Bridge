@@ -83,10 +83,10 @@ pub static OEM_TABLE: &[OemChipMapping] = &[
 
 /// The controller vendor, guessed from the USB VID:PID. Decides which
 /// firmware loader (if any) runs before HCI init. Only Realtek is well
-/// tested; the Intel (crate::intel), MediaTek MT79xx (crate::mediatek) and
-/// Broadcom loaders are experimental; Qualcomm needs a loader BTstack does
-/// not have. CSR, Barrot and Actions run from ROM; Marvell's firmware comes
-/// from its Wi-Fi driver.
+/// tested; the Intel (crate::intel), MediaTek MT79xx (crate::mediatek),
+/// Qualcomm ROME / WCN6855 (crate::qualcomm) and Broadcom loaders are
+/// experimental. CSR, Barrot and Actions run from ROM; Marvell's firmware
+/// comes from its Wi-Fi driver.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChipVendor {
     #[default]
@@ -102,7 +102,8 @@ pub enum ChipVendor {
     /// needs WMT firmware download: the chips in [`LOADER_CHIPS`] only
     /// (experimental)
     MediaTek,
-    /// needs rampatch/NVM download: not supported
+    /// needs rampatch/NVM download: the chips in [`LOADER_CHIPS`] only
+    /// (experimental)
     Qualcomm,
     /// ROM firmware, nothing to load: cheap Bluetooth 5.4 / 6.0 dongles
     Barrot,
@@ -254,8 +255,113 @@ pub const LOADER_CHIPS: &[(ChipVendor, u16, u16)] = &[
     (ChipVendor::MediaTek, 0x15A9, 0x0047),
     (ChipVendor::MediaTek, 0x2C7C, 0x7009),
     (ChipVendor::MediaTek, 0x2C7C, 0x700A),
+    // Qualcomm ROME and WCN6855 (crate::qualcomm, experimental): the USB IDs
+    // of Qualcomm's Windows drivers 10.0.0.1272 (QCA61x4, QCA9377; not its
+    // QCA6290, 0CF3:E400) and 2.0.0.1400 (WCN6855, FastConnect 6900). The
+    // loader reads the ROM version itself and refuses another chip before
+    // sending anything. None has been tried yet.
+    (ChipVendor::Qualcomm, 0x0489, 0xE092),
+    (ChipVendor::Qualcomm, 0x0489, 0xE09C),
+    (ChipVendor::Qualcomm, 0x0489, 0xE09F),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0A2),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0A3),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0A4),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0A8),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0A9),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0C7),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0C9),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0CA),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0CB),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0CC),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0CE),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0D0),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0D6),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0DF),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0E1),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0E3),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0EA),
+    (ChipVendor::Qualcomm, 0x0489, 0xE0EC),
+    (ChipVendor::Qualcomm, 0x0489, 0xE115),
+    (ChipVendor::Qualcomm, 0x04C5, 0x14B2),
+    (ChipVendor::Qualcomm, 0x04C5, 0x14DE),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3011),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3012),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3013),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3015),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3016),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3017),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3019),
+    (ChipVendor::Qualcomm, 0x04CA, 0x301A),
+    (ChipVendor::Qualcomm, 0x04CA, 0x301B),
+    (ChipVendor::Qualcomm, 0x04CA, 0x301C),
+    (ChipVendor::Qualcomm, 0x04CA, 0x301E),
+    (ChipVendor::Qualcomm, 0x04CA, 0x301F),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3020),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3022),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3023),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3024),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3A22),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3A24),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3A26),
+    (ChipVendor::Qualcomm, 0x04CA, 0x3A27),
+    (ChipVendor::Qualcomm, 0x0B05, 0x1825),
+    (ChipVendor::Qualcomm, 0x0B05, 0x182B),
+    (ChipVendor::Qualcomm, 0x0B05, 0x1868),
+    (ChipVendor::Qualcomm, 0x0CF3, 0x3200),
+    (ChipVendor::Qualcomm, 0x0CF3, 0xE300),
+    (ChipVendor::Qualcomm, 0x0CF3, 0xE301),
+    (ChipVendor::Qualcomm, 0x0CF3, 0xE302),
+    (ChipVendor::Qualcomm, 0x0CF3, 0xE303),
+    (ChipVendor::Qualcomm, 0x0CF3, 0xE360),
+    (ChipVendor::Qualcomm, 0x0CF3, 0xE370),
+    (ChipVendor::Qualcomm, 0x0CF3, 0xE500),
+    (ChipVendor::Qualcomm, 0x0CF3, 0xE600),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9008),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9108),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9109),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9208),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9209),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9308),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9309),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9408),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9409),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9508),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9509),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9608),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9609),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9801),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9802),
+    (ChipVendor::Qualcomm, 0x10AB, 0x9F09),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3491),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3493),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3496),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3497),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3500),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3501),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3502),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3503),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3506),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3511),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3512),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3513),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3514),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3517),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3519),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3520),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3521),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3522),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3523),
+    (ChipVendor::Qualcomm, 0x13D3, 0x3534),
+    (ChipVendor::Qualcomm, 0x1690, 0x0783),
+    (ChipVendor::Qualcomm, 0x1690, 0x0784),
+    (ChipVendor::Qualcomm, 0x1690, 0x0785),
+    (ChipVendor::Qualcomm, 0x1690, 0x0786),
+    (ChipVendor::Qualcomm, 0x1690, 0x0789),
+    (ChipVendor::Qualcomm, 0x28DE, 0x1401),
+    (ChipVendor::Qualcomm, 0x2C7C, 0x0137),
+    (ChipVendor::Qualcomm, 0x3641, 0x0902),
+    (ChipVendor::Qualcomm, 0x3641, 0x0904),
 ];
-
 /// BlueCaster can bring this adapter up: its vendor needs no loader or has one
 /// for every chip, or the chip is in [`LOADER_CHIPS`]
 pub fn chip_supported(vendor: ChipVendor, vid: u16, pid: u16) -> bool {

@@ -169,6 +169,9 @@ extern "C" fn bluecaster_rs_on_packet(source: u8, packet_type: u8, channel: u16,
         };
         let stack = Stack::new();
         let source = Source::from_raw(source);
+        if source == Source::Sm {
+            crate::ctkd::on_sm_event(&stack, data);
+        }
         // Delivered directly (no copy) unless the app is busy
         let delivered = APP.with(|a| match a.try_borrow_mut() {
             Ok(mut slot) => match slot.as_mut() {

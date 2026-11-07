@@ -1009,6 +1009,19 @@ option {
   overflow-wrap: anywhere;
   user-select: all;
 }
+.pairing-keys {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--s2) var(--s3);
+  align-items: baseline;
+  margin: var(--s2) 0;
+}
+.pairing-keys dt {
+  color: var(--text-2);
+}
+.pairing-keys dd {
+  margin: 0;
+}
 .pairing-services {
   margin-top: var(--s2);
   font-size: var(--fs-14);

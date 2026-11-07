@@ -123,7 +123,7 @@ Le casque démarre avec **Auto** comme codec (**Codecs**) et l'audio du système
 
 ## Firmware (adaptateurs Realtek) {#firmware}
 
-Les adaptateurs Bluetooth USB à puce Realtek (p. ex. TP-Link UB500, dongles RTL8761BU) ont besoin d'un firmware propriétaire pour fonctionner. Les adaptateurs CSR n'ont besoin d'aucun firmware. Les adaptateurs Intel, MediaTek MT79xx et Broadcom (expérimental) peuvent nécessiter leurs propres fichiers de firmware : voir [Adaptateurs recommandés](#adapters).
+Les adaptateurs Bluetooth USB à puce Realtek (p. ex. TP-Link UB500, dongles RTL8761BU) ont besoin d'un firmware propriétaire pour fonctionner. Les adaptateurs CSR n'ont besoin d'aucun firmware. Les adaptateurs Intel, MediaTek MT79xx, Qualcomm et Broadcom (expérimental) peuvent nécessiter leurs propres fichiers de firmware : voir [Adaptateurs recommandés](#adapters).
 
 ### Dans l'application (téléchargement guidé)
 
@@ -170,9 +170,10 @@ Quels adaptateurs et casques ont réellement été utilisés avec BlueCaster, av
 | Marvell | Intégré aux Microsoft Surface Pro / Surface Book (88W8897) | *Expérimental.* Aucun fichier firmware : le pilote Wi-Fi charge aussi le firmware Bluetooth, laissez donc le Wi-Fi activé. Pas encore testé sur le matériel |
 | Actions | Dongles ATS2851 (`10D7:B012`) | *Expérimental.* Fonctionne avec le firmware de sa ROM, aucun firmware nécessaire. Il annonce des commandes qu'il ne sait pas exécuter ; BlueCaster les masque. Pas encore testé sur le matériel |
 | Broadcom | ASUS BT400 (BCM20702) | *Expérimental.* Les adaptateurs qui annoncent la classe constructeur `FF/01/01` au lieu de la classe Bluetooth `E0/01/01` (dongles OEM BCM20702) sont aussi détectés. Fonctionne avec le firmware en ROM ; un fichier PatchRAM `.hcd` facultatif (p. ex. `BCM20702A1-0b05-17cb.hcd`) placé dans le dossier du firmware est envoyé au démarrage |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Expérimental.* En mode bootloader (p. ex. après un démarrage à froid), nécessite les fichiers `ibt-*.sfi` + `ibt-*.ddc` correspondants, issus de `intel/` dans linux-firmware, dans le dossier du firmware ; le journal indique lesquels (p. ex. `ibt-0180-0041.sfi`). Seul l'AX211 a été testé pour l'instant |
+| Intel | Intel 7260 / 3160 / 7265 / 3165 / 3168 / 8260 / 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Expérimental.* En mode bootloader (p. ex. après un démarrage à froid), nécessite les fichiers `ibt-*.sfi` + `ibt-*.ddc` correspondants, issus de `intel/` dans linux-firmware, dans le dossier du firmware ; le journal indique lesquels (p. ex. `ibt-0180-0041.sfi`). Les 7260 / 3160 / 7265 / 3165 / 3168 fonctionnent depuis leur ROM sans fichier ; le correctif `ibt-hw-*.bseq` correspondant est appliqué s'il est dans le même dossier. Seul l'AX211 a été testé pour l'instant |
 | MediaTek | MT7925, MT7922, MT7921, MT7902 (cartes Wi-Fi comme l'AMD RZ717, RZ616, RZ608) | *Expérimental.* Nécessite le `BT_RAM_CODE_MT*_hdr.bin` de la puce (p. ex. `BT_RAM_CODE_MT7925_1_1_hdr.bin`), que BlueCaster lit dans le pilote Bluetooth Windows de MediaTek s'il est installé ; sinon, placez le fichier issu de `mediatek/` dans linux-firmware dans le dossier du firmware ; le journal indique lequel. Pas encore testé sur le matériel |
-| MediaTek, Qualcomm | Autres puces MediaTek (MT7927), QCA61x4 | Non pris en charge : nécessitent des chargeurs de firmware qu'BlueCaster ne possède pas ([aider à en ajouter](chip-support)) |
+| Qualcomm | QCA61x4, QCA9377 (ROME), WCN6855 (FastConnect 6900) | *Expérimental.* Nécessite le rampatch et la NVM de la puce (p. ex. `AthrBT_0x00000302.dfu` et `ramps_0x00000302_48.dfu`), que BlueCaster lit dans le pilote Bluetooth Windows de Qualcomm s'il est installé ; sinon, placez les fichiers issus de `qca/` dans linux-firmware (`rampatch_usb_*.bin`, `nvm_usb_*.bin`) dans le dossier du firmware ; le journal indique lesquels. Pas encore testé sur le matériel |
+| MediaTek, Qualcomm | Autres puces MediaTek (MT7927), autres puces Qualcomm (QCA6290, WCN785x) | Non pris en charge : nécessitent des chargeurs de firmware qu'BlueCaster ne possède pas ([aider à en ajouter](chip-support)) |
 
 Les adaptateurs Bluetooth USB 5.0+ donnent généralement les meilleurs résultats avec les codecs à haut débit comme LDAC.
 

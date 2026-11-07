@@ -368,6 +368,8 @@ export function sourceText(src: SourceInfo, profile: Profile | null): { icon: Ic
       return { icon: "music_note_2", text: t("receiver.source_tone"), waiting: false };
     case "virtual":
       return { icon: "desktop_speaker", text: src.name || t("capture.virtual"), waiting: false };
+    case "output":
+      return { icon: "speaker_2", text: src.name || t("capture.output"), waiting: false };
     case "app": {
       const known = profile && profile.app_exe && profile.app_exe.toLowerCase() === src.name.toLowerCase() ? profile.app_name : "";
       const name = known || src.name || t("capture.app");

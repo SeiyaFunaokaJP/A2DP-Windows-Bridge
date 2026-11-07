@@ -186,9 +186,9 @@ pub fn configure(config: &mut HostConfig, settings: &Settings, _config_dir: &Pat
         // One held by another program cannot be loaded either (v1 skipped
         // it too)
         config.intel_loader = winusb.iter().any(|a| a.vendor == ChipVendor::Intel && !a.device.in_use());
-        for a in
-            winusb.iter().filter(|a| matches!(a.vendor, ChipVendor::Intel | ChipVendor::MediaTek) && a.device.in_use())
-        {
+        for a in winusb.iter().filter(|a| {
+            matches!(a.vendor, ChipVendor::Intel | ChipVendor::MediaTek | ChipVendor::Qualcomm) && a.device.in_use()
+        }) {
             tracing::info!(
                 "{} adapter {:04X}:{:04X} is in use by another program: no firmware download for it",
                 a.vendor.name(),
@@ -202,12 +202,19 @@ pub fn configure(config: &mut HostConfig, settings: &Settings, _config_dir: &Pat
                 && chips::chip_supported(a.vendor, a.device.vid, a.device.pid)
                 && !a.device.in_use()
         });
+        // Qualcomm: the same
+        config.qualcomm_loader = winusb.iter().any(|a| {
+            a.vendor == ChipVendor::Qualcomm
+                && chips::chip_supported(a.vendor, a.device.vid, a.device.pid)
+                && !a.device.in_use()
+        });
         config.broadcom_ids =
             winusb.iter().filter(|a| a.vendor == ChipVendor::Broadcom).map(|a| (a.device.vid, a.device.pid)).collect();
         tracing::debug!(
-            "adapter: intel bootloader download {}, mediatek download {}, broadcom patchram ids {:04X?}",
+            "adapter: intel bootloader download {}, mediatek download {}, qualcomm download {}, broadcom patchram ids {:04X?}",
             config.intel_loader,
             config.mediatek_loader,
+            config.qualcomm_loader,
             config.broadcom_ids
         );
         for a in &winusb {

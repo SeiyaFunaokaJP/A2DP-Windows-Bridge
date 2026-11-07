@@ -423,13 +423,14 @@ impl Inner {
             let _ = events.lock().unwrap_or_else(|e| e.into_inner()).send(ServiceEvent::Loader(p.clone()));
         }));
         tracing::debug!(
-            "host config: transport {:?}, firmware dir {:?}, realtek pid {:04x} files {:?}, intel loader {}, mediatek loader {}, broadcom ids {}, LE {} (cli {:?})",
+            "host config: transport {:?}, firmware dir {:?}, realtek pid {:04x} files {:?}, intel loader {}, mediatek loader {}, qualcomm loader {}, broadcom ids {}, LE {} (cli {:?})",
             c.transport,
             c.firmware_dir,
             c.realtek_pid,
             c.realtek_files,
             c.intel_loader,
             c.mediatek_loader,
+            c.qualcomm_loader,
             c.broadcom_ids.len(),
             c.le_audio.is_some(),
             cli
@@ -852,8 +853,10 @@ fn afh_policy(settings: &Settings) -> &str {
 }
 
 /// The developer overrides (and the health log's interval) count only while
-/// developer mode is on
+/// developer mode is on; so does asking classic devices for their LE keys
+/// (issue #86, for the Services popup; it needs LE Audio on as well)
 fn apply_dev_overrides(settings: &Settings) {
+    bt_host::set_ctkd(settings.debug_mode);
     codec::dev::set_overrides(if settings.debug_mode { settings.dev_overrides } else { Default::default() });
     crate::vendor::set_overrides(if settings.debug_mode { settings.dev_vendors.clone() } else { Default::default() });
     crate::health::set_every_interval(settings.log().health_every_interval);

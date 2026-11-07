@@ -123,7 +123,7 @@ Los auriculares empiezan con **Automático** como códec (**Códecs**) y el audi
 
 ## Firmware (adaptadores Realtek) {#firmware}
 
-Los adaptadores Bluetooth USB basados en Realtek (p. ej., TP-Link UB500, llaves RTL8761BU) necesitan firmware propietario para funcionar. Los adaptadores CSR no necesitan firmware. Los adaptadores Intel, MediaTek MT79xx y Broadcom (experimentales) pueden necesitar sus propios archivos de firmware: consulte [Adaptadores recomendados](#adapters).
+Los adaptadores Bluetooth USB basados en Realtek (p. ej., TP-Link UB500, llaves RTL8761BU) necesitan firmware propietario para funcionar. Los adaptadores CSR no necesitan firmware. Los adaptadores Intel, MediaTek MT79xx, Qualcomm y Broadcom (experimentales) pueden necesitar sus propios archivos de firmware: consulte [Adaptadores recomendados](#adapters).
 
 ### En la aplicación (descarga guiada)
 
@@ -170,9 +170,10 @@ Qué adaptadores y auriculares se han usado realmente con BlueCaster, con los c�
 | Marvell | Integrado en Microsoft Surface Pro / Surface Book (88W8897) | *Experimental.* Sin archivos de firmware: el controlador de Wi-Fi carga también el firmware de Bluetooth, así que mantenga el Wi-Fi activado. Aún no probado en el hardware |
 | Actions | Adaptadores ATS2851 (`10D7:B012`) | *Experimental.* Funciona con el firmware de su ROM, sin firmware adicional. Declara comandos que no puede ejecutar; BlueCaster los oculta. Aún no probado en el hardware |
 | Broadcom | ASUS BT400 (BCM20702) | *Experimental.* También se detectan los adaptadores que indican la clase de fabricante `FF/01/01` en lugar de la clase Bluetooth `E0/01/01` (llaves OEM BCM20702). Funciona con el firmware en ROM; un archivo PatchRAM `.hcd` opcional (p. ej. `BCM20702A1-0b05-17cb.hcd`) en la carpeta de firmware se carga al iniciar |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimental.* En modo bootloader (p. ej. tras un arranque en frío) necesita los archivos `ibt-*.sfi` + `ibt-*.ddc` correspondientes de `intel/` de linux-firmware en la carpeta de firmware; el registro indica cuáles (p. ej. `ibt-0180-0041.sfi`). Por ahora solo se ha probado el AX211 |
+| Intel | Intel 7260 / 3160 / 7265 / 3165 / 3168 / 8260 / 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *Experimental.* En modo bootloader (p. ej. tras un arranque en frío) necesita los archivos `ibt-*.sfi` + `ibt-*.ddc` correspondientes de `intel/` de linux-firmware en la carpeta de firmware; el registro indica cuáles (p. ej. `ibt-0180-0041.sfi`). Los 7260 / 3160 / 7265 / 3165 / 3168 funcionan desde la ROM sin archivos; si el parche `ibt-hw-*.bseq` correspondiente está en la misma carpeta, se aplica. Por ahora solo se ha probado el AX211 |
 | MediaTek | MT7925, MT7922, MT7921, MT7902 (tarjetas Wi-Fi como la AMD RZ717, RZ616, RZ608) | *Experimental.* Necesita el `BT_RAM_CODE_MT*_hdr.bin` del chip (p. ej. `BT_RAM_CODE_MT7925_1_1_hdr.bin`), que BlueCaster lee del controlador Bluetooth de Windows de MediaTek si está instalado; si no, coloque el archivo de `mediatek/` de linux-firmware en la carpeta de firmware; el registro indica cuál. Aún no se ha probado en el hardware |
-| MediaTek, Qualcomm | Otros chips MediaTek (MT7927), QCA61x4 | No compatibles: necesitan cargadores de firmware que BlueCaster no tiene ([ayuda a añadirlos](chip-support)) |
+| Qualcomm | QCA61x4, QCA9377 (ROME), WCN6855 (FastConnect 6900) | *Experimental.* Necesita el rampatch y el NVM del chip (p. ej. `AthrBT_0x00000302.dfu` y `ramps_0x00000302_48.dfu`), que BlueCaster lee del controlador Bluetooth de Windows de Qualcomm si está instalado; si no, coloque los archivos de `qca/` de linux-firmware (`rampatch_usb_*.bin`, `nvm_usb_*.bin`) en la carpeta de firmware; el registro indica cuáles. Aún no se ha probado en el hardware |
+| MediaTek, Qualcomm | Otros chips MediaTek (MT7927), otros chips Qualcomm (QCA6290, WCN785x) | No compatibles: necesitan cargadores de firmware que BlueCaster no tiene ([ayuda a añadirlos](chip-support)) |
 
 Por lo general, los adaptadores USB Bluetooth 5.0+ funcionan mejor con códecs de alta tasa de bits como LDAC.
 

@@ -22,6 +22,7 @@ pub mod link_keys;
 pub mod media;
 pub mod mediatek;
 pub mod probe;
+pub mod qualcomm;
 pub mod rfcomm;
 pub mod script;
 pub mod sdp_services;
@@ -39,7 +40,7 @@ use codec::caps::{Configuration, RemoteCaps};
 use hci_transport::{TcpH4, UsbSelector, UsbTransport};
 
 use app::{HostApp, Job, Setup};
-pub use btstack_sys::expect_transport_loss;
+pub use btstack_sys::{LeKeys, expect_transport_loss, set_ctkd};
 pub use capture::HciCapture;
 pub use events::{addr_str, parse_addr};
 pub use le::{
@@ -156,6 +157,8 @@ pub struct HostConfig {
     pub intel_loader: bool,
     /// Run the MediaTek MT79xx firmware download first (experimental)
     pub mediatek_loader: bool,
+    /// Run the Qualcomm rampatch and NVM download first (experimental)
+    pub qualcomm_loader: bool,
     /// VID:PID of present Broadcom adapters (PatchRAM file names)
     pub broadcom_ids: Vec<(u16, u16)>,
     /// Upper limit of the media payload (clamped)
@@ -206,6 +209,7 @@ impl HostConfig {
             realtek_files: None,
             intel_loader: false,
             mediatek_loader: false,
+            qualcomm_loader: false,
             broadcom_ids: Vec::new(),
             media_payload_limit: media::MEDIA_PAYLOAD_LIMIT_DEFAULT,
             capture: HciCapture::new(),
@@ -503,12 +507,13 @@ impl BtHost {
         let le_on = config.le_audio.is_some();
         let le_shared = Arc::new(le::core::LeShared::default());
         tracing::debug!(
-            "host start: transport {:?}, realtek pid 0x{:04X} files {:?}, intel loader {}, mediatek loader {}, broadcom {:04X?}, payload limit {}, le audio {}, battery {}",
+            "host start: transport {:?}, realtek pid 0x{:04X} files {:?}, intel loader {}, mediatek loader {}, qualcomm loader {}, broadcom {:04X?}, payload limit {}, le audio {}, battery {}",
             config.transport,
             config.realtek_pid,
             config.realtek_files,
             config.intel_loader,
             config.mediatek_loader,
+            config.qualcomm_loader,
             config.broadcom_ids,
             config.media_payload_limit,
             le_on,
@@ -530,6 +535,7 @@ impl BtHost {
                         realtek_files,
                         intel_loader,
                         mediatek_loader,
+                        qualcomm_loader,
                         broadcom_ids,
                         media_payload_limit: _,
                         capture,
@@ -605,6 +611,11 @@ impl BtHost {
                             // code is downloaded and Bluetooth switched on
                             stack.install_transport(backend);
                             app.start_mediatek_loader(stack);
+                        } else if qualcomm_loader && !tcp {
+                            // Qualcomm's ROM needs its rampatch and NVM (sent
+                            // with USB requests) before it is used
+                            stack.install_transport(backend);
+                            app.start_qualcomm_loader(stack);
                         } else {
                             app.setup_hci_and_power_on(stack, Some(backend));
                         }
@@ -1559,6 +1570,13 @@ impl BtHost {
     /// stack did not answer.
     pub fn store_link_key(&self, addr: [u8; 6], key: [u8; 16], key_type: i32) -> bool {
         self.call(Duration::from_secs(2), move |_, s| s.store_link_key(&addr, &key, key_type)).is_some()
+    }
+
+    /// The LE keys of the classic device `addr` (derived from its link key,
+    /// see [`set_ctkd`]); None without LE Audio, without keys, or when the
+    /// stack did not answer
+    pub fn le_keys(&self, addr: [u8; 6]) -> Option<LeKeys> {
+        self.call(Duration::from_secs(2), move |_, s| s.le_keys_of_classic(&addr)).flatten()
     }
 
     /// The service records `addr` lists in SDP, asked over the link the
