@@ -167,7 +167,7 @@ BlueCaster 会检测适配器的芯片组，并显示需要哪些固件文件。
 | Realtek | TP-Link UB500、RTL8761BU | 需要下载固件（见上文）。测试最充分 |
 | CSR | 通用 CSR8510 适配器 | 开箱即用，无需固件 |
 | Broadcom | ASUS BT400 (BCM20702) | *实验性。* 报告厂商类 `FF/01/01` 而非 Bluetooth 类 `E0/01/01` 的适配器（BCM20702 OEM 适配器）也能被检测到。使用 ROM 固件运行；如果固件文件夹中有可选的 PatchRAM `.hcd` 文件（如 `BCM20702A1-0b05-17cb.hcd`），会在启动时上传 |
-| Intel | Intel 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *实验性。* 处于 bootloader 模式时（如冷启动后），需要将 linux-firmware `intel/` 中对应的 `ibt-*.sfi` + `ibt-*.ddc` 放入固件文件夹，所需文件名会写在日志里（例如 `ibt-0180-0041.sfi`）。目前只在 AX211 上测试过 |
+| Intel | Intel 7260 / 3160 / 7265 / 3165 / 3168 / 8260 / 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *实验性。* 处于 bootloader 模式时（如冷启动后），需要将 linux-firmware `intel/` 中对应的 `ibt-*.sfi` + `ibt-*.ddc` 放入固件文件夹，所需文件名会写在日志里（例如 `ibt-0180-0041.sfi`）。7260 / 3160 / 7265 / 3165 / 3168 由 ROM 运行，无需文件；同一文件夹中有对应的 `ibt-hw-*.bseq` 补丁时会加载。目前只在 AX211 上测试过 |
 | MediaTek | MT7925、MT7922、MT7921、MT7902（AMD RZ717、RZ616、RZ608 等 Wi-Fi 网卡） | *实验性。* 需要该芯片的 `BT_RAM_CODE_MT*_hdr.bin`（例如 `BT_RAM_CODE_MT7925_1_1_hdr.bin`）：如果装有 MediaTek 的 Windows Bluetooth 驱动程序，BlueCaster 会从中读取；否则请将 linux-firmware `mediatek/` 中的该文件放入固件文件夹，所需文件名会写在日志里。尚未在实际硬件上测试 |
 | MediaTek、Qualcomm | 其他 MediaTek 芯片（MT7927）、QCA61x4 | 不支持：需要 BlueCaster 所没有的固件加载程序（[帮助添加支持](chip-support)） |
 
