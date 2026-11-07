@@ -125,18 +125,24 @@ OPPO_SINK = ['--codecs', 'sbc', 'aac', 'lhdcv5', '--log-level', 'INFO', '--name'
 OTHER_NAME = ['--name', 'Other Buds']
 OPPO_NAME = ['--device-name', 'OPPO Enco Free4']
 OPPO_TWICE = OPPO_NAME + ['--sessions', '2']
+CTKD_SINK = ['--codecs', 'sbc', '--ctkd', '--log-level', 'INFO']
+CTKD_ON = {'debug_mode': True, 'le_audio_experimental': True}
 # Further cases: name -> (BlueCaster -c, emu_sink.py arguments, the codec expected,
 # more BlueCaster arguments)
 NEGOTIATION = {
     'sbcxq-44k': ('sbcxq', [], 'sbcxq', ['--rate', '44100']),            # bitpool 47
-    # Developer mode's force_codec (DEV_SETTINGS): LDAC to a sink that lists SBC only
-    'force-ldac': ('ldac', ['--codecs', 'sbc'], 'ldac', []),
+    # A codec chosen on its card that the sink does not list (the profile's
+    # codec_forced, issue #86): LDAC to a sink that lists SBC only
+    'force-ldac': ('ldac', ['--codecs', 'sbc'], 'ldac', ['--force-codec']),
     'auto-sbcxq': ('auto', ['--codecs', 'sbc'], 'sbcxq', []),            # Auto takes SBC XQ over SBC
     'auto-sbc-no-xq': ('auto', ['--codecs', 'sbc', '--sbc-no-dual'], 'sbc', []),  # no dual channel: SBC
     # Dual channel listed but refused: SBC XQ falls back to SBC
     'auto-sbcxq-refused': ('auto', ['--codecs', 'sbc', '--sbc-reject-dual'], 'sbc', []),
     # Max bitpool 35: SBC capped there
     'sbc-bp35': ('sbc', ['--codecs', 'sbc', '--sbc-max-bitpool', '35'], 'sbc-bp35', []),
+    # ... unless its card shows more than the sink lists (the profile's
+    # unlisted_options, issue #86): BlueCaster's own range
+    'sbc-bp35-unlisted': ('sbc', ['--codecs', 'sbc', '--sbc-max-bitpool', '35'], 'sbc', ['--unlisted-options']),
     # Max bitpool 39 with dual channel (Moto buds+, issue #86): Auto takes
     # SBC XQ capped at 39, as PipeWire; below 29 it does not (plain SBC)
     'auto-sbcxq-bp39': ('auto', ['--codecs', 'sbc', '--sbc-max-bitpool', '39'], 'sbcxq-bp39', []),
@@ -263,19 +269,39 @@ NEGOTIATION = {
     'oppo-never': ('lhdcv5', OPPO_SINK + ['--oppo', 'off'], 'lhdcv5', OPPO_NAME),
     # (earbuds that keep their limit: each stream asks, gains nothing, undoes it)
     'oppo-every-connection': ('lhdcv5', OPPO_SINK + ['--oppo', 'off', '--oppo-no-change'], 'lhdcv5', OPPO_TWICE),
+    # LE keys derived from the link key (issue #86; developer mode and LE
+    # Audio on, DEV_SETTINGS): asked after pairing, and the sink's LTK, IRK
+    # and identity address kept (CTKD_CASES); the next connection, from a
+    # sink that lists SMP over BR/EDR only from then on; none from a sink
+    # without it, one that refuses or one that never answers, and none with
+    # developer mode off; the stream as always
+    'ctkd': ('sbc', CTKD_SINK, 'sbc', ['--sessions', '2']),
+    'ctkd-next-connection': ('sbc', CTKD_SINK + ['--ctkd-from', '2', '--ctkd-public-identity'], 'sbc',
+                             ['--sessions', '3']),
+    'ctkd-unlisted': ('sbc', CTKD_SINK + ['--ctkd-from', '99'], 'sbc', []),
+    'ctkd-refused': ('sbc', CTKD_SINK + ['--ctkd-refuse'], 'sbc', []),
+    'ctkd-silent': ('sbc', CTKD_SINK + ['--ctkd-silent'], 'sbc', []),
+    'ctkd-developer-off': ('sbc', CTKD_SINK, 'sbc', []),
 }
 # The settings.json a case starts with (developer mode)
 DEV_SETTINGS = {
-    'force-ldac': {'debug_mode': True, 'dev_overrides': {'force_codec': True}},
     'sbcxq-abr-hold': {'debug_mode': True, 'dev_overrides': {'encode_at_send': True}},
     'ldac-hold': {'debug_mode': True, 'dev_overrides': {'encode_at_send': True}},
     'oppo-always': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'always'}}},
     'oppo-never': {'debug_mode': True, 'dev_vendors': {'oppo': {'mode': 'never'}}},
     'oppo-every-connection': {'debug_mode': True, 'dev_vendors': {'oppo': {'options': ['every_connection']}}},
+    'ctkd': CTKD_ON,
+    'ctkd-next-connection': CTKD_ON,
+    'ctkd-unlisted': CTKD_ON,
+    'ctkd-refused': CTKD_ON,
+    'ctkd-silent': CTKD_ON,
+    'ctkd-developer-off': {'debug_mode': False, 'le_audio_experimental': True},
 }
 QUALITY_ON, QUALITY_OFF = 'Huawei control: 2BA2 010101', 'Huawei control: 2BA2 010100'
 HI_RES_ON, HI_RES_OFF, HI_RES_CODEC = 'OPPO control: 0403 1801', 'OPPO control: 0403 1800', 'OPPO control: 041A 080100'
 ENCODED_1000, ENCODED_400 = 'encoder ready: LHDC V5 1000 kbps', 'encoder ready: LHDC V5 400 kbps'
+CTKD_GIVEN, CTKD_ASKING = f'CTKD: {SINK_ADDRESS} gave its LE keys', f'CTKD: asking {SINK_ADDRESS} for its LE keys'
+PAIRED = f'new link key from pairing with {SINK_ADDRESS}'
 # What these cases' logs must, and must not, have: name -> (log, text, whether
 # it is there, or how many times)
 LOG_CHECKS = {
@@ -312,7 +338,24 @@ LOG_CHECKS = {
     'oppo-never': [('sink.log', 'OPPO control', False), ('bluecaster.log', ENCODED_400, True)],
     'oppo-every-connection': [('sink.log', HI_RES_ON, 2), ('sink.log', HI_RES_OFF, 2), ('bluecaster.log', ENCODED_400, 2),
                               ('sink.log', 'AVDTP connection', 4)],
+    # Paired once: the link key stays valid after the keys (a later
+    # connection authenticates with it), and they are asked for only once
+    'ctkd': [('bluecaster.log', CTKD_GIVEN, 1), ('sink.log', 'CTKD: keys LTK', 1), ('bluecaster.log', PAIRED, 1),
+             ('bluecaster.log', CTKD_ASKING, False)],
+    'ctkd-next-connection': [('sink.log', 'SMP over BR/EDR not listed (connection 1)', 1),
+                             ('sink.log', 'SMP over BR/EDR listed (connection 2)', 1),
+                             ('bluecaster.log', CTKD_ASKING, 1), ('bluecaster.log', CTKD_GIVEN, 1),
+                             ('sink.log', 'CTKD: keys LTK', 1), ('bluecaster.log', PAIRED, 1)],
+    'ctkd-unlisted': [('sink.log', 'SMP over BR/EDR not listed', True), ('bluecaster.log', CTKD_GIVEN, False),
+                      ('sink.log', 'CTKD:', False)],
+    'ctkd-refused': [('sink.log', 'CTKD: refusing', 1), ('bluecaster.log', CTKD_GIVEN, False),
+                     ('sink.log', 'CTKD: keys LTK', False)],
+    'ctkd-silent': [('sink.log', 'CTKD: ignoring SMP PDU', True), ('bluecaster.log', CTKD_GIVEN, False)],
+    'ctkd-developer-off': [('sink.log', 'SMP over BR/EDR listed', True), ('sink.log', 'CTKD:', False),
+                           ('bluecaster.log', 'CTKD', False)],
 }
+# Cases whose LE keys BlueCaster keeps must equal the sink's (ctkd_check)
+CTKD_CASES = {'ctkd', 'ctkd-next-connection'}
 TONES = ((1000.0, 0.5), (1500.0, 0.5))  # (frequency, amplitude) per channel, as --test-tone
 LATE_SDU_FAILURE = 'reached the controller after their SDU interval began'  # LE Audio cases run once more
 
@@ -496,6 +539,63 @@ def start_sink(port, capture, log_path, script='emu_sink.py', extra=()):
     raise RuntimeError(f'virtual sink did not start, see {log_path}')
 
 
+def read_tlv(path):
+    """BTstack's TLV file (btstack_tlv_windows): tag -> value, the last write
+    of each tag (an empty one deletes it)"""
+    with open(path, 'rb') as f:
+        data = f.read()
+    if not data.startswith(b'BTstack'):
+        return {}
+    tags, i = {}, 8
+    while i + 8 <= len(data):
+        tag, size = struct.unpack_from('>II', data, i)
+        value = data[i + 8:i + 8 + size]
+        i += 8 + size
+        if size:
+            tags[tag] = value
+        else:
+            tags.pop(tag, None)
+    return tags
+
+
+def ctkd_check(out):
+    """The LE keys BlueCaster keeps of the sink (its bond file: le_device_db's
+    'BTD' entry beside the 'AWK' note of the classic address) are the ones the
+    sink has: LTK and IRK (BTstack keeps them most significant octet first,
+    the sink in wire order) and its identity address"""
+    m = re.search(r'CTKD: keys LTK ([0-9a-f]{32}) IRK ([0-9a-f]{32}) identity ([0-9A-F:]{17})',
+                  read_text(os.path.join(out, 'sink.log')))
+    if not m:
+        return ['sink.log: no CTKD keys']
+    ltk, irk, identity = m.groups()
+    # No link key of the identity address (BTstack would store one, see
+    # btstack-sys build.rs patched_sm)
+    keys = [line.split()[0] for line in read_text(os.path.join(out, 'config', 'pairing', 'link_keys.txt')).splitlines()
+            if line.strip() and not line.startswith('#')]
+    if keys != [SINK_ADDRESS.replace(':', '-')]:
+        return [f'link_keys.txt holds {keys}']
+    path = os.path.join(out, 'config', 'pairing', 'le_audio_bonds.tlv')
+    if not os.path.exists(path):
+        return [f'no {path}']
+    tags = read_tlv(path)
+    classic = bytes.fromhex(SINK_ADDRESS.replace(':', ''))
+    for tag, value in tags.items():
+        if tag >> 8 != int.from_bytes(b'AWK', 'big') or value[:6] != classic:
+            continue
+        entry = tags.get(int.from_bytes(b'BTD', 'big') << 8 | (tag & 0xFF))
+        if entry is None or len(entry) < 46:
+            return [f'no LE bond {tag & 0xFF} for the note of {SINK_ADDRESS}']
+        failures = []
+        if entry[8:14].hex(':').upper() != identity or value[7:13] != entry[8:14]:
+            failures.append(f'identity {entry[8:14].hex(":").upper()} kept, the sink gave {identity}')
+        if entry[14:30][::-1].hex() != irk:
+            failures.append('the IRK kept is not the sink\'s')
+        if entry[30:46][::-1].hex() != ltk:
+            failures.append('the LTK kept is not the sink\'s')
+        return failures
+    return [f'no LE keys noted for {SINK_ADDRESS} in {path}']
+
+
 def run_codec(args, codec, port):
     out = os.path.join(args.out, codec)
     shutil.rmtree(out, ignore_errors=True)
@@ -534,6 +634,8 @@ def run_codec(args, codec, port):
             failures.append(f'{name}: "{text}" {"missing" if present else "found"}')
         elif not isinstance(present, bool) and found != present:
             failures.append(f'{name}: "{text}" {found} times, not {present}')
+    if codec in CTKD_CASES:
+        failures.extend(ctkd_check(out))
 
     reports = {}
     for side, capture, extra in (('sent', src_capture, []), ('received', sink_capture, ['--received'])):

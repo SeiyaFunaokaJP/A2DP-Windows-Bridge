@@ -54,6 +54,13 @@ function xqBitpool(quality: string, rate: number): number {
   return rate === 44100 ? at44 : at48;
 }
 
+/** SBC XQ's largest bitpool per channel at a rate: 47 at 44.1 kHz, 43 at
+ *  48 kHz (the core's xq_max_bitpool; issue #86: a slider up to 47 at
+ *  48 kHz changed nothing past 43) */
+export function xqMaxBitpool(rate: number): number {
+  return xqBitpool("hq", rate);
+}
+
 /**
  * Bytes of one SBC frame: the A2DP specification's formula (12.9), with the
  * bitpool limited to what the channel mode allows
@@ -95,7 +102,7 @@ export function sbcSetup(p: SbcFields, rate: number, caps: SbcCaps | null): SbcS
     : SBC_CHANNEL_MODES.includes(p.sbc_channel_mode) && sbcOffered(caps, "channel_modes", p.sbc_channel_mode)
       ? p.sbc_channel_mode
       : "joint_stereo";
-  const max = xq ? xqBitpool("hq", rate) : 53;
+  const max = xq ? xqMaxBitpool(rate) : 53;
   const asked = xq ? p.sbcxq_bitpool : p.sbc_bitpool;
   const auto = xq ? xqBitpool(p.quality, rate) : qualityBitpool(p.quality);
   // Never below the profile's minimum (issue #86)

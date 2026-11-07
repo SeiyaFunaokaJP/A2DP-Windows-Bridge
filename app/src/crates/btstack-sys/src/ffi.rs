@@ -90,6 +90,7 @@ unsafe extern "C" {
     pub fn bluecaster_cmd_read_link_supervision_timeout(con_handle: u16) -> u8;
     pub fn bluecaster_acl_packets_in_controller(con_handle: u16) -> c_int;
     pub fn bluecaster_acl_role(con_handle: u16) -> c_int;
+    pub fn bluecaster_connection_address(con_handle: u16, addr: *mut u8) -> c_int;
     pub fn bluecaster_acl_encryption_key_size(con_handle: u16) -> c_int;
     pub fn bluecaster_remote_features_query(con_handle: u16);
     pub fn bluecaster_max_acl_data_packet_length() -> u16;

@@ -30,6 +30,7 @@
 mod att;
 mod callbacks;
 pub mod consts;
+mod ctkd;
 pub mod events;
 mod ffi;
 mod le;
@@ -38,6 +39,7 @@ mod timer_resolution;
 mod transport;
 
 pub use att::AttWriteRequest;
+pub use ctkd::{LeKeys, ctkd_enabled, set_ctkd};
 pub use le::{BigParams, CigParams, CisParams, ConnectionType, LeDbEntry, LeEncryption};
 pub use stack::{AclState, AvdtpState, HciState, Stack};
 pub use timer_resolution::HighTimerResolution;
@@ -242,6 +244,7 @@ where
     transport::reset();
     att::reset();
     le::reset();
+    ctkd::reset();
 
     // SAFETY: first BTstack calls of this run, on this thread; nothing else
     // uses BTstack (RUNNING).

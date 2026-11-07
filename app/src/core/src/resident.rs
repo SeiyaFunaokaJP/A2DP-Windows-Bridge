@@ -504,7 +504,11 @@ pub fn run(args: &[String]) -> i32 {
                     active_profile: None,
                     language: "en".into(),
                 });
-                let icon = tray_icon::Icon::from_resource(101, None).ok();
+                // At the tray's own size: its image from the .ico, not the
+                // large one shrunk (issue #86)
+                let size = win_sys::app_icon::tray_icon_size();
+                let icon = tray_icon::Icon::from_resource(101, Some((size, size))).ok();
+                tracing::info!("tray icon: {size} px");
                 let mut b = TrayIconBuilder::new()
                     .with_menu(Box::new(build_menu(&v)))
                     .with_menu_on_left_click(false)

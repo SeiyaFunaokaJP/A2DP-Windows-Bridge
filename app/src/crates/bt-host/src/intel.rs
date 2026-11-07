@@ -37,6 +37,14 @@
 //! known before the answer, until the operational firmware runs. A failed
 //! download leaves it on: the controller is still in its bootloader.
 //!
+//! ROM controllers (7260 / 3160: WP, 7265 / 3165 / 3168: StP) run their
+//! firmware from ROM and take an optional patch (ibt-hw-*.bseq), which
+//! Intel's Windows driver also applies at every start (ibtusb.sys carries
+//! patches of this format, keyed by the same version fields). The .bseq is a list of HCI commands, each with
+//! the events it is answered with; it is sent in manufacturer mode
+//! (0xFC11), whose exit then resets the controller with the patch active.
+//! Without the file the ROM firmware runs as it is. ([`parse_bseq`])
+//!
 //! Not done (Linux takes them from ACPI / UEFI, or they are for debugging):
 //! the unlocker image of API-locked controllers, SAR / PPAG / DSBR tables,
 //! offload use cases, and a reset to the bootloader to replace a running
@@ -56,6 +64,21 @@ const OP_READ_BOOT_PARAMS: u16 = 0xFC0D;
 const OP_WRITE_BOOT_PARAMS: u16 = 0xFC0E;
 const OP_SET_EVENT_MASK: u16 = 0xFC52;
 const OP_WRITE_DDC: u16 = 0xFC8B;
+/// Manufacturer mode: enter (01 00) or exit (00 and one of the MFG_EXIT_*)
+const OP_MFG_MODE: u16 = 0xFC11;
+/// A piece of a ROM patch
+const OP_PATCH: u16 = 0xFC8E;
+
+/// Leave manufacturer mode without a reset
+const MFG_EXIT: u8 = 0x00;
+/// Leave it with a reset, the patch sent dropped
+const MFG_EXIT_RESET_PATCH_OFF: u8 = 0x01;
+/// Leave it with a reset, the patch sent active
+const MFG_EXIT_RESET_PATCH_ON: u8 = 0x02;
+
+/// .bseq record types
+const BSEQ_COMMAND: u8 = 0x01;
+const BSEQ_EVENT: u8 = 0x02;
 
 const EVENT_COMMAND_COMPLETE: u8 = 0x0E;
 const EVENT_COMMAND_STATUS: u8 = 0x0F;
@@ -517,6 +540,104 @@ pub fn parse_ddc(data: &[u8]) -> Result<Vec<Vec<u8>>, &'static str> {
 }
 
 // ==========================================================================
+// ROM patch
+// ==========================================================================
+
+/// The ROM patch file names of a ROM controller, the matching one first:
+/// "ibt-hw-37.7.10-fw-1.0.2.3.d.bseq" (platform, variant, hardware
+/// revision, firmware variant, revision, build number, week, year), then
+/// the generation's default "ibt-hw-37.7.bseq"
+pub fn rom_patch_files(v: &LegacyVersion) -> [String; 2] {
+    [
+        format!(
+            "ibt-hw-{:x}.{:x}.{:x}-fw-{:x}.{:x}.{:x}.{:x}.{:x}.bseq",
+            v.hw_platform,
+            v.hw_variant,
+            v.hw_revision,
+            v.fw_variant,
+            v.fw_revision,
+            v.fw_build_num,
+            v.fw_build_ww,
+            v.fw_build_yy
+        ),
+        format!("ibt-hw-{:x}.{:x}.bseq", v.hw_platform, v.hw_variant),
+    ]
+}
+
+/// A command of a .bseq and the event that ends it
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchStep {
+    /// Opcode, length, parameters
+    pub command: Vec<u8>,
+    /// The last event the file lists for the command (code, length,
+    /// parameters): a Command Status may come first, as for 0xFC2F
+    pub event: Vec<u8>,
+}
+
+impl PatchStep {
+    fn opcode(&self) -> u16 {
+        u16::from_le_bytes([self.command[0], self.command[1]])
+    }
+}
+
+/// Reads a .bseq: records of a type byte (0x01 HCI command, 0x02 HCI
+/// event) and the packet as sent (opcode, length, parameters) or received
+/// (code, length, parameters); every command is followed by its events
+pub fn parse_bseq(data: &[u8]) -> Result<Vec<PatchStep>, &'static str> {
+    let mut steps: Vec<PatchStep> = Vec::new();
+    let mut at = 0;
+    while at < data.len() {
+        let (kind, header) = match data[at] {
+            BSEQ_COMMAND => (BSEQ_COMMAND, 3),
+            BSEQ_EVENT => (BSEQ_EVENT, 2),
+            _ => return Err("unknown record type"),
+        };
+        let start = at + 1;
+        let Some(&len) = data.get(start + header - 1) else { return Err("file ends inside a record") };
+        let end = start + header + len as usize;
+        if end > data.len() {
+            return Err("file ends inside a record");
+        }
+        let packet = data[start..end].to_vec();
+        if kind == BSEQ_COMMAND {
+            if steps.last().is_some_and(|s| s.event.is_empty()) {
+                return Err("a command without its event");
+            }
+            steps.push(PatchStep { command: packet, event: Vec::new() });
+        } else {
+            let Some(step) = steps.last_mut() else { return Err("an event before the first command") };
+            step.event = packet;
+        }
+        at = end;
+    }
+    match steps.last() {
+        None => Err("no commands"),
+        Some(s) if s.event.is_empty() => Err("a command without its event"),
+        Some(_) => Ok(steps),
+    }
+}
+
+/// Whether `got` is the event `expected` stands for (None: another event)
+/// and has its content. The command-credit byte of Command Complete and
+/// Command Status is not compared; a vendor event is told apart by its
+/// first parameter (the sub-event).
+fn patch_event_matches(expected: &[u8], got: &[u8]) -> Option<bool> {
+    let params = |e: &[u8]| e.get(2..2 + *e.get(1)? as usize).map(<[u8]>::to_vec);
+    let (want, have) = (params(expected)?, params(got)?);
+    if expected[0] != got[0] {
+        return None;
+    }
+    match expected[0] {
+        // ncmd, opcode, return parameters
+        EVENT_COMMAND_COMPLETE => (want.get(1..3)? == have.get(1..3)?).then_some(want.get(3..) == have.get(3..)),
+        // status, ncmd, opcode
+        EVENT_COMMAND_STATUS => (want.get(2..4)? == have.get(2..4)?).then_some(want.first() == have.first()),
+        EVENT_VENDOR => (want.first() == have.first()).then_some(want == have),
+        _ => Some(want == have),
+    }
+}
+
+// ==========================================================================
 // The loader
 // ==========================================================================
 
@@ -539,6 +660,28 @@ struct Download {
     result: Option<u8>,
     then: AfterBoot,
     started: Instant,
+}
+
+/// A ROM patch being sent
+#[derive(Debug)]
+struct RomPatch {
+    file: String,
+    steps: Vec<PatchStep>,
+    /// The step sent, whose event is awaited
+    at: usize,
+    started: Instant,
+}
+
+/// How manufacturer mode is left after a ROM patch
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PatchEnd {
+    /// Reset with the patch active
+    Active,
+    /// The file had no patch, only settings (a generation's default file):
+    /// no reset
+    Settings,
+    /// Reset with the patch dropped: the ROM firmware runs as it is
+    Dropped,
 }
 
 #[derive(Debug)]
@@ -564,6 +707,16 @@ enum State {
     EventMask {
         ddc: bool,
     },
+    /// ROM controller: manufacturer mode entered for the patch
+    RomMfgEnter(RomPatch),
+    /// The patch's commands, one after the other's event
+    RomPatching(RomPatch),
+    RomMfgExit {
+        file: String,
+        end: PatchEnd,
+    },
+    /// Read Version after the patch: its number
+    RomVersion(String),
     Done,
 }
 
@@ -577,20 +730,27 @@ impl State {
             State::Booting(_) => OP_RESET,
             State::Ddc { .. } => OP_WRITE_DDC,
             State::EventMask { .. } => OP_SET_EVENT_MASK,
-            State::Idle | State::Checking(_) | State::Done => return None,
+            State::RomMfgEnter(_) | State::RomMfgExit { .. } => OP_MFG_MODE,
+            State::RomVersion(_) => OP_READ_VERSION,
+            // Its events go to on_patch_event
+            State::Idle | State::Checking(_) | State::RomPatching(_) | State::Done => return None,
         })
     }
 
     fn step(&self) -> &'static str {
         match self {
             State::Idle | State::Done => "idle",
-            State::Version(_) | State::LegacyVersion | State::VersionAfterBoot(_) => "Read Version",
+            State::Version(_) | State::LegacyVersion | State::VersionAfterBoot(_) | State::RomVersion(_) => {
+                "Read Version"
+            }
             State::BootParams(_) => "Read Secure Boot Params",
             State::Sending(_) => "Secure Send",
             State::Checking(_) => "firmware check",
             State::Booting(_) => "boot",
             State::Ddc { .. } => "Write DDC",
             State::EventMask { .. } => "Set Event Mask",
+            State::RomMfgEnter(_) | State::RomMfgExit { .. } => "manufacturer mode",
+            State::RomPatching(_) => "ROM patch",
         }
     }
 }
@@ -668,12 +828,34 @@ impl Loader {
             self.state = State::Version(tries + 1);
             return vec![Action::Command(command(OP_READ_VERSION, &[0xFF])), Action::Timer(VERSION_RETRY_MS)];
         }
+        match std::mem::replace(&mut self.state, State::Idle) {
+            // The ROM firmware still works: leave manufacturer mode without
+            // the patch
+            State::RomPatching(p) => {
+                tracing::warn!(
+                    "Intel ROM patch {}: no answer to command {} of {} (0x{:04X}); the ROM firmware runs unpatched",
+                    p.file,
+                    p.at + 1,
+                    p.steps.len(),
+                    p.steps[p.at].opcode()
+                );
+                return self.exit_mfg(p.file, PatchEnd::Dropped);
+            }
+            State::RomVersion(file) => {
+                tracing::warn!("Intel Read Version after the ROM patch: no answer");
+                return self.finish(Ok(Outcome::Loaded { firmware: file, detail: Some("patch sent") }));
+            }
+            state => self.state = state,
+        }
         let step = self.state.step();
         self.finish(Err(LoadError::Timeout(step)))
     }
 
     /// An HCI event from the controller (either pipe)
     pub fn on_event(&mut self, event: &[u8]) -> Vec<Action> {
+        if matches!(self.state, State::RomPatching(_)) {
+            return self.on_patch_event(event);
+        }
         match classify(event) {
             Event::Complete { opcode, ret } if Some(opcode) == self.state.awaited() => self.on_complete(opcode, ret),
             Event::Status { opcode, status } if status != 0 && Some(opcode) == self.state.awaited() => {
@@ -790,7 +972,44 @@ impl Loader {
                 let detail = if ddc { "DDC applied" } else { "DDC not applied" };
                 self.finish(Ok(Outcome::Loaded { firmware, detail: Some(detail) }))
             }
-            state @ (State::Idle | State::Checking(_) | State::Done) => {
+            State::RomMfgEnter(p) => {
+                if status != 0 {
+                    tracing::warn!(
+                        "Intel manufacturer mode: status 0x{status:02X}; the ROM firmware runs without {}",
+                        p.file
+                    );
+                    return self.finish(Ok(Outcome::Rom));
+                }
+                let first = p.steps[0].command.clone();
+                self.state = State::RomPatching(p);
+                vec![Action::Command(first), Action::Timer(COMMAND_TIMEOUT_MS)]
+            }
+            State::RomMfgExit { file, end } => {
+                if status != 0 {
+                    tracing::warn!("Intel manufacturer mode exit: status 0x{status:02X}");
+                }
+                match end {
+                    PatchEnd::Active => {
+                        self.state = State::RomVersion(file);
+                        vec![Action::Command(command(OP_READ_VERSION, &[])), Action::Timer(COMMAND_TIMEOUT_MS)]
+                    }
+                    PatchEnd::Settings => {
+                        self.finish(Ok(Outcome::Loaded { firmware: file, detail: Some("settings only, no patch") }))
+                    }
+                    PatchEnd::Dropped => self.finish(Ok(Outcome::Rom)),
+                }
+            }
+            State::RomVersion(file) => {
+                match parse_legacy_version(ret) {
+                    Some(v) if v.fw_patch_num != 0 => {
+                        tracing::info!("Intel ROM patch {file} active: patch number 0x{:02X}", v.fw_patch_num)
+                    }
+                    Some(_) => tracing::warn!("Intel ROM patch {file}: the controller reports no patch"),
+                    None => tracing::warn!("Intel Read Version after the ROM patch: unreadable answer"),
+                }
+                self.finish(Ok(Outcome::Loaded { firmware: file, detail: Some("patch applied") }))
+            }
+            state @ (State::Idle | State::Checking(_) | State::RomPatching(_) | State::Done) => {
                 self.state = state;
                 Vec::new()
             }
@@ -816,8 +1035,13 @@ impl Loader {
             v.fw_revision
         );
         match v.hw_variant {
-            // WP, StP: ROM firmware (Linux patches it with a .bseq; not done)
-            0x07 | 0x08 => self.finish(Ok(Outcome::Rom)),
+            // WP (7260, 3160), StP (7265, 3165, 3168): ROM firmware, which
+            // answers HCI normally: no bootloader mode
+            0x07 | 0x08 => {
+                let mut actions = vec![self.bootloader(false)];
+                actions.extend(self.rom(v));
+                actions
+            }
             0x0B | 0x0C | 0x11..=0x14 => match v.fw_variant {
                 FW_VARIANT_OPERATIONAL => self.finish(Ok(Outcome::AlreadyRunning)),
                 FW_VARIANT_BOOTLOADER => {
@@ -853,6 +1077,90 @@ impl Loader {
             return self.finish(Err(LoadError::UnsupportedVariant(v.hw_variant)));
         };
         self.download(&stem, v.hw_variant, 0, AfterBoot::Ddc(stem.clone()))
+    }
+
+    // ---- ROM ----
+
+    /// A ROM controller: its patch when the firmware folder has one
+    fn rom(&mut self, v: LegacyVersion) -> Vec<Action> {
+        if v.fw_patch_num != 0 {
+            tracing::info!("Intel ROM firmware is patched already (patch number 0x{:02X})", v.fw_patch_num);
+            return self.finish(Ok(Outcome::AlreadyRunning));
+        }
+        let names = rom_patch_files(&v);
+        let Some((file, data)) = names.iter().find_map(|f| (self.read_file)(f).map(|d| (f.clone(), d))) else {
+            tracing::info!(
+                "Intel ROM patch {} (or {}) not in the firmware folder; the ROM firmware runs unpatched",
+                names[0],
+                names[1]
+            );
+            return self.finish(Ok(Outcome::Rom));
+        };
+        let steps = match parse_bseq(&data) {
+            Ok(steps) => steps,
+            Err(why) => {
+                tracing::warn!("Intel ROM patch {file}: {why}; the ROM firmware runs unpatched");
+                return self.finish(Ok(Outcome::Rom));
+            }
+        };
+        tracing::info!("Intel ROM patch {file}: {} bytes, {} commands", data.len(), steps.len());
+        self.state = State::RomMfgEnter(RomPatch { file, steps, at: 0, started: Instant::now() });
+        vec![Action::Command(command(OP_MFG_MODE, &[0x01, 0x00])), Action::Timer(COMMAND_TIMEOUT_MS)]
+    }
+
+    /// An event while a patch command waits for its event: the next
+    /// command once it came as the file has it
+    fn on_patch_event(&mut self, event: &[u8]) -> Vec<Action> {
+        let State::RomPatching(mut p) = std::mem::replace(&mut self.state, State::Idle) else { return Vec::new() };
+        let step = &p.steps[p.at];
+        let matched = match patch_event_matches(&step.event, event) {
+            Some(m) => m,
+            // Another event; an error answer to the command is a mismatch
+            None => match classify(event) {
+                Event::Complete { opcode, ret } if opcode == step.opcode() && ret.first() != Some(&0) => false,
+                Event::Status { opcode, status } if opcode == step.opcode() && status != 0 => false,
+                _ => {
+                    self.state = State::RomPatching(p);
+                    return Vec::new();
+                }
+            },
+        };
+        if !matched {
+            tracing::warn!(
+                "Intel ROM patch {}: command {} of {} (0x{:04X}) answered with {:02X?}, the file has {:02X?}; the ROM firmware runs unpatched",
+                p.file,
+                p.at + 1,
+                p.steps.len(),
+                step.opcode(),
+                event,
+                step.event
+            );
+            return self.exit_mfg(p.file, PatchEnd::Dropped);
+        }
+        p.at += 1;
+        if let Some(next) = p.steps.get(p.at) {
+            let next = next.command.clone();
+            self.state = State::RomPatching(p);
+            return vec![Action::Command(next), Action::Timer(COMMAND_TIMEOUT_MS)];
+        }
+        tracing::info!(
+            "Intel ROM patch {}: {} commands sent in {} ms",
+            p.file,
+            p.steps.len(),
+            p.started.elapsed().as_millis()
+        );
+        let end = if p.steps.iter().any(|s| s.opcode() == OP_PATCH) { PatchEnd::Active } else { PatchEnd::Settings };
+        self.exit_mfg(p.file, end)
+    }
+
+    fn exit_mfg(&mut self, file: String, end: PatchEnd) -> Vec<Action> {
+        let how = match end {
+            PatchEnd::Active => MFG_EXIT_RESET_PATCH_ON,
+            PatchEnd::Settings => MFG_EXIT,
+            PatchEnd::Dropped => MFG_EXIT_RESET_PATCH_OFF,
+        };
+        self.state = State::RomMfgExit { file, end };
+        vec![Action::Command(command(OP_MFG_MODE, &[0x00, how])), Action::Timer(COMMAND_TIMEOUT_MS)]
     }
 
     // ---- TLV ----
@@ -1049,10 +1357,11 @@ impl ChipLoader for Loader {
         }
     }
 
-    /// Secure Send: the commands sent of the image's
+    /// Secure Send: the commands sent of the image's; a ROM patch: its commands answered
     fn progress(&self) -> Option<(usize, usize)> {
         match &self.state {
             State::Sending(d) => Some((d.next, d.commands.len())),
+            State::RomPatching(p) => Some((p.at, p.steps.len())),
             _ => None,
         }
     }

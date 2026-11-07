@@ -773,10 +773,26 @@ option {
   display: flex;
   gap: var(--s2);
 }
-/* AFH: the mode and its channels in the heading (issue #86); Auto and Off
-   show theirs read only */
+/* AFH: the text on the left, the mode and its channels on the right, the
+   controls below the text when narrow (issue #86); Auto and Off show their
+   channels read only */
+.afh-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3) var(--s4);
+}
+.afh-text {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: var(--s2);
+  min-width: 0;
+}
 .afh-control {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
   align-items: flex-end;
   gap: var(--s2);
@@ -1008,6 +1024,19 @@ option {
 .pairing-key {
   overflow-wrap: anywhere;
   user-select: all;
+}
+.pairing-keys {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--s2) var(--s3);
+  align-items: baseline;
+  margin: var(--s2) 0;
+}
+.pairing-keys dt {
+  color: var(--text-2);
+}
+.pairing-keys dd {
+  margin: 0;
 }
 .pairing-services {
   margin-top: var(--s2);

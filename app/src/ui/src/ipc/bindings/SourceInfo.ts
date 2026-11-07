@@ -5,12 +5,13 @@
  */
 export type SourceInfo = { 
 /**
- * "loopback" (what Windows plays), "virtual" (a virtual device), "app"
- * (one application), "tone" (the test tone)
+ * "loopback" (what Windows plays), "virtual" (a virtual device),
+ * "output" (a chosen output device), "app" (one application), "tone"
+ * (the test tone)
  */
 kind: string, 
 /**
- * The virtual device's name or the application's executable; empty
+ * The virtual or output device's name, or the application's executable; empty
  * for loopback and the tone
  */
 name: string, 

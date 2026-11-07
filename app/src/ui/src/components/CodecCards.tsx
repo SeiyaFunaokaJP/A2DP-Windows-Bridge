@@ -23,13 +23,13 @@ import {
   matchedBitDepth,
   matchedSampleRate,
   BITPOOL_MAX,
-  BITPOOL_MAX_XQ,
   BITPOOL_MIN,
   offeredBitDepths,
   offeredQualities,
   offeredSampleRates,
   onlyChoice,
   qualityIgnored,
+  unlistedCaps,
   type CodecCaps,
   type CodecSpec,
   type CodecSupport,
@@ -43,6 +43,7 @@ import {
   sbcOffered,
   sbcRate,
   sbcSetup,
+  xqMaxBitpool,
   type SbcCaps,
 } from "../lib/sbc";
 import { Button, Dialog, Field, IconButton, Select, Toggle } from "./controls";
@@ -173,6 +174,7 @@ export type CodecChoice = Pick<
   | "sbc_subbands"
   | "sbc_allocation"
   | "sbc_channel_mode"
+  | "unlisted_options"
 >;
 
 export function codecChoice(p: CodecChoice): CodecChoice {
@@ -190,14 +192,16 @@ export function codecChoice(p: CodecChoice): CodecChoice {
     sbc_subbands: p.sbc_subbands,
     sbc_allocation: p.sbc_allocation,
     sbc_channel_mode: p.sbc_channel_mode,
+    unlisted_options: p.unlisted_options,
   };
 }
 
-/** The SBC / SBC XQ bitpool range the dialog offers: the codec's, within
- *  the device's when known (issue #86: a device of max bitpool 39 is not
- *  offered 53; the core keeps the encoder within it the same way) */
-export function bitpoolRange(codec: string, caps: SbcCaps | null): { min: number; max: number } {
-  const local = codec === "sbcxq" ? BITPOOL_MAX_XQ : BITPOOL_MAX;
+/** The SBC / SBC XQ bitpool range the dialog offers at a rate: the
+ *  codec's (SBC XQ's lower at 48 kHz), within the device's when known
+ *  (issue #86: a device of max bitpool 39 is not offered 53; the core keeps
+ *  the encoder within it the same way) */
+export function bitpoolRange(codec: string, caps: SbcCaps | null, rate: number): { min: number; max: number } {
+  const local = codec === "sbcxq" ? xqMaxBitpool(rate) : BITPOOL_MAX;
   if (!caps || caps.max_bitpool < BITPOOL_MIN) return { min: BITPOOL_MIN, max: local };
   const max = Math.max(Math.min(local, caps.max_bitpool), BITPOOL_MIN);
   return { min: Math.min(Math.max(caps.min_bitpool, BITPOOL_MIN), max), max };
@@ -292,7 +296,10 @@ export function BitpoolSlider(props: {
  * for the chosen codec); SBC and SBC XQ also their bitpool and, in developer
  * mode, frame setup, offering only what the device listed when it last
  * connected (`sbcCaps`, and for every codec its rates, bit depths and largest
- * bit rate: `caps`, issue #86), with the bit rate that gives. A codec with one quality shows
+ * bit rate: `caps`, issue #86), with the bit rate that gives; with "Show
+ * only supported options" turned off at its top, everything the codec has
+ * (the profile's unlisted_options, issue #86), what the device did not list
+ * marked. A codec with one quality shows
  * it rather than a choice. It starts from the profile's values fitted
  * to the codec, or from what that codec was last set to (`kept`: the
  * profile's codec_settings); each change goes to `onChange` at once
@@ -312,7 +319,8 @@ export function CodecSettings(props: {
   matchSource?: boolean;
   /** The format Windows plays the profile's source in (null: not known) */
   sourceFormat?: { rate: number; bits: number } | null;
-  /** Who listed what is offered, once it did */
+  /** Who listed what is offered, once it did: "Show only supported
+   *  options" names it */
   deviceName?: string;
   /** Forgets what the device listed (LHDC V5: OPPO earbuds are then asked
    *  for Hi-Res again, issue #237) */
@@ -334,7 +342,30 @@ export function CodecSettings(props: {
     sbc_subbands: 0,
     sbc_allocation: "",
     sbc_channel_mode: "",
+    unlisted_options: false,
   });
+  /** `from` with what the device does not list back to Auto, a bitpool
+   *  above the device's largest down to it, a quality capped like a higher
+   *  one to High (issue #86); all of it kept with unlisted options */
+  const fitted = (from: CodecChoice): CodecChoice => {
+    const s = codecSpec(from.codec);
+    const out = { ...from };
+    if (out.unlisted_options) return out;
+    const caps = capsOf(props.caps ?? [], s.id);
+    if (!offeredSampleRates(s.id, caps).includes(out.sample_rate)) out.sample_rate = 0;
+    if (!offeredBitDepths(s.id, caps).includes(out.bit_depth)) out.bit_depth = 0;
+    if (s.qualities.length > 0 && !offeredQualities(s.id, out.sample_rate, caps?.max_bitrate).some((q) => q.id === out.quality))
+      out.quality = "hq";
+    const range = bitpoolRange(s.id, props.sbcCaps, sbcRate(out, props.sbcCaps));
+    const key = s.id === "sbcxq" ? "sbcxq_bitpool" : "sbc_bitpool";
+    const minKey = s.id === "sbcxq" ? "sbcxq_min_bitpool" : "sbc_min_bitpool";
+    if (s.bitpool && out[key] > range.max) out[key] = range.max;
+    // The minimum likewise, and never above the maximum
+    if (s.bitpool && out[minKey] > range.max) out[minKey] = range.max;
+    if (s.bitpool && out[minKey] < range.min && out[minKey] !== 0) out[minKey] = range.min;
+    if (s.bitpool && out[key] && out[minKey] > out[key]) out[minKey] = out[key];
+    return out;
+  };
   createEffect(
     on(
       () => props.spec,
@@ -346,35 +377,23 @@ export function CodecSettings(props: {
         // (SBC and SBC XQ apart, issue #86)
         const from = carryToCodec(codecChoice(p), s.id);
         // SBC / SBC XQ: no quality to choose, Auto is the highest bitpool
-        const fitted = s.bitpool ? { ...from, quality: "hq" } : from;
-        // What the device does not list goes back
-        // to Auto, a bitpool above the device's largest down to it, a
-        // quality capped like a higher one to High (issue #86)
-        const caps = capsOf(props.caps ?? [], s.id);
-        if (!offeredSampleRates(s.id, caps).includes(fitted.sample_rate)) fitted.sample_rate = 0;
-        if (!offeredBitDepths(s.id, caps).includes(fitted.bit_depth)) fitted.bit_depth = 0;
-        if (s.qualities.length > 0 && !offeredQualities(s.id, fitted.sample_rate, caps?.max_bitrate).some((q) => q.id === fitted.quality))
-          fitted.quality = "hq";
-        const range = bitpoolRange(s.id, props.sbcCaps);
-        const key = s.id === "sbcxq" ? "sbcxq_bitpool" : "sbc_bitpool";
-        const minKey = s.id === "sbcxq" ? "sbcxq_min_bitpool" : "sbc_min_bitpool";
-        if (s.bitpool && fitted[key] > range.max) fitted[key] = range.max;
-        // The minimum likewise, and never above the maximum
-        if (s.bitpool && fitted[minKey] > range.max) fitted[minKey] = range.max;
-        if (s.bitpool && fitted[key] && fitted[minKey] > fitted[key]) fitted[minKey] = fitted[key];
-        setV(fitted);
+        setV(fitted(s.bitpool ? { ...from, quality: "hq" } : from));
       },
     ),
   );
   const spec = () => codecSpec(v.codec);
   const name = () => t(spec().label);
   /** What the device listed for this codec (null: not known) */
-  const caps = () => capsOf(props.caps ?? [], v.codec);
+  const listedCaps = () => capsOf(props.caps ?? [], v.codec);
+  /** What the dialog offers: what the device listed, or with "Show only
+   *  supported options" off everything the codec has */
+  const caps = () => (v.unlisted_options ? unlistedCaps(v.codec, listedCaps()) : listedCaps());
+  const sbcCaps = () => (v.unlisted_options ? null : props.sbcCaps);
   const maxBitrate = () => caps()?.max_bitrate ?? 0;
   // SBC and SBC XQ keep their own bitpool
   const bpKey = () => (v.codec === "sbcxq" ? "sbcxq_bitpool" : "sbc_bitpool");
   const bp = () => v[bpKey()];
-  const bpRange = () => bitpoolRange(v.codec, props.sbcCaps);
+  const bpRange = () => bitpoolRange(v.codec, sbcCaps(), sbcRate(v, sbcCaps()));
   const bpMin = () => bpRange().min;
   const bpMax = () => bpRange().max;
   // ... and their own minimum (issue #86: the slider's two handles)
@@ -388,8 +407,8 @@ export function CodecSettings(props: {
   /** Where Auto puts the highest bitpool: the quality's (High) within the
    *  device's range, as the core does */
   const autoMax = () => {
-    const r = sbcRate(v, props.sbcCaps);
-    const at = sbcSetup({ ...v, [bpKey()]: 0, [bpMinKey()]: 0 }, r, props.sbcCaps).bitpool;
+    const r = sbcRate(v, sbcCaps());
+    const at = sbcSetup({ ...v, [bpKey()]: 0, [bpMinKey()]: 0 }, r, sbcCaps()).bitpool;
     return Math.min(Math.max(at, bpMin()), bpMax());
   };
   // The qualities with their bit rates on this device; one is shown, not chosen
@@ -437,11 +456,11 @@ export function CodecSettings(props: {
     auto: CodecChoice[K],
   ) => {
     const none = (typeof v[key] === "number" ? 0 : "") as CodecChoice[K];
-    const only = () => onlyChoice(values.filter((x) => sbcOffered(props.sbcCaps, field, x)), v[key], none);
+    const only = () => onlyChoice(values.filter((x) => sbcOffered(sbcCaps(), field, x)), v[key], none);
     const options = () => [
       { value: none, label: t("codec.auto_value", label(auto)) },
       ...values
-        .filter((x) => x === v[key] || sbcOffered(props.sbcCaps, field, x))
+        .filter((x) => x === v[key] || sbcOffered(sbcCaps(), field, x))
         .map((x) => ({
           value: x,
           label: sbcOffered(props.sbcCaps, field, x) ? label(x) : t("ui.profile.sbc_not_offered", label(x)),
@@ -461,24 +480,44 @@ export function CodecSettings(props: {
   const streamed = (): CodecChoice =>
     props.developer ? v : { ...v, sbc_blocks: 0, sbc_subbands: 0, sbc_allocation: "", sbc_channel_mode: "" };
   // The bit rate it gives, as the core works it out (one figure, issue #86)
-  const sbcBitrate = () => (bitpoolError() ? "" : sbcKbpsText(streamed(), props.sbcCaps));
-  const sbcMode = () => sbcSetup(streamed(), sbcRate(v, props.sbcCaps), props.sbcCaps).mode;
+  const sbcBitrate = () => (bitpoolError() ? "" : sbcKbpsText(streamed(), sbcCaps()));
+  const sbcMode = () => sbcSetup(streamed(), sbcRate(v, sbcCaps()), sbcCaps()).mode;
   const changed = () => {
     if (!bitpoolError()) props.onChange({ ...v });
   };
   const set = <K extends keyof CodecChoice>(key: K, value: CodecChoice[K]) => {
     setV(key as "codec", value as string);
+    // SBC XQ's top bitpool is lower at 48 kHz: a higher one comes down to it
+    if (key === "sample_rate" && spec().bitpool) {
+      const top = bpMax();
+      if (bp() > top) setV(bpKey(), top);
+      if (bpLow() > top) setV(bpMinKey(), top);
+    }
     changed();
   };
-  const listed = () => !!props.deviceName && !!(spec().bitpool ? props.sbcCaps : caps());
+  const listed = () => !!props.deviceName && !!(spec().bitpool ? props.sbcCaps : listedCaps());
+  // "Show only supported options" turned on again: back within what the
+  // device lists
+  const setUnlisted = (on: boolean) => {
+    setV(fitted({ ...v, unlisted_options: on }));
+    changed();
+  };
   return (
     <Dialog
       open={props.spec !== null}
       title={t("ui.profile.codec_settings", name())}
-      subtitle={listed() ? t("ui.profile.codec_settings_device", props.deviceName!) : undefined}
       onCancel={() => props.onClose()}
     >
       <div class="codec-settings">
+        {/* What the device listed, or everything the codec has (issue #86:
+            the user's choice, the device may refuse it) */}
+        <Show when={listed()}>
+          <Toggle
+            label={t("ui.profile.codec_options_listed", props.deviceName!)}
+            checked={!v.unlisted_options}
+            onChange={(on) => setUnlisted(!on)}
+          />
+        </Show>
         {/* SBC and SBC XQ: the bitpool below decides the bit rate, shown
             here as worked out (issue #86) */}
         <Show
@@ -539,7 +578,7 @@ export function CodecSettings(props: {
                 options={rates().map((r) => {
                   // Auto with the rate it streams at (issue #86)
                   const label = r === 0 ? autoRateLabel() : `${r} Hz`;
-                  const listed = offeredSampleRates(v.codec, caps()).includes(r);
+                  const listed = offeredSampleRates(v.codec, listedCaps()).includes(r);
                   return { value: r, label: listed ? label : t("ui.profile.sbc_not_offered", label) };
                 })}
                 onChange={(x) => set("sample_rate", x)}
@@ -569,7 +608,7 @@ export function CodecSettings(props: {
                   label:
                     b === 0
                       ? autoDepthLabel()
-                      : offeredBitDepths(v.codec, caps()).includes(b)
+                      : offeredBitDepths(v.codec, listedCaps()).includes(b)
                         ? t(`bitdepth.${b}`)
                         : t("ui.profile.sbc_not_offered", t(`bitdepth.${b}`)),
                 }))}

@@ -1,4 +1,5 @@
-//! Developer mode: a classic device's pairing as BlueCaster keeps it and the
+//! Developer mode: a classic device's pairing as BlueCaster keeps it (the
+//! link key, and the LE keys derived from it while LE Audio is on) and the
 //! services the device lists. For everyone: taking over the link keys
 //! Windows' Bluetooth kept for the adapter BlueCaster now uses (issue #86:
 //! devices paired in Windows then connect without pairing again; the audio
@@ -14,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use bt_host::ServicesError;
 use bt_host::link_keys::FileLinkKeyStore;
-use ipc::{DevicePairing, DeviceService, ErrorInfo, LinkKeyInfo, Msg, ServiceList, WindowsImport};
+use ipc::{DevicePairing, DeviceService, ErrorInfo, LeKeysInfo, LinkKeyInfo, Msg, ServiceList, WindowsImport};
 use serde_json::Value;
 
 use crate::state::CoreState;
@@ -37,6 +38,12 @@ fn address(address: &str) -> Result<[u8; 6], ErrorInfo> {
     bt_host::parse_addr(address).ok_or_else(|| err("device.invalid_address", "error.invalid_address_format"))
 }
 
+/// The link keys file as it is now (`pairing\link_keys.txt`, not the
+/// settings folder itself: issue #86, 3.0.0-beta.1 showed no key)
+fn link_keys(config: &std::path::Path) -> FileLinkKeyStore {
+    FileLinkKeyStore::open(&bluecaster_core::paths::link_keys_file(config))
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -46,13 +53,32 @@ fn hex(bytes: &[u8]) -> String {
 pub fn pairing(state: &CoreState, addr: &str) -> Result<Value, ErrorInfo> {
     developer(state)?;
     let addr = address(addr)?;
-    let store = FileLinkKeyStore::open(&state.config_dir());
+    let store = link_keys(&state.config_dir());
     let link_key = store
         .entries()
         .iter()
         .find(|e| e.addr == addr)
         .map(|e| LinkKeyInfo { key: hex(&e.key), key_type: e.key_type.clamp(0, 255) as u8 });
-    Ok(serde_json::to_value(DevicePairing { link_key }).unwrap_or(Value::Null))
+    // Held by the running stack (its bond file is open there)
+    let le_keys = state.service.host().and_then(|h| h.le_keys(addr)).map(le_keys_info);
+    Ok(serde_json::to_value(DevicePairing { link_key, le_keys }).unwrap_or(Value::Null))
+}
+
+/// BTstack keeps the LTK and IRK most significant octet first: shown least
+/// significant first, the order SMP and HCI carry them in (as the link key)
+fn le_keys_info(k: bt_host::LeKeys) -> LeKeysInfo {
+    let wire = |key: [u8; 16]| {
+        let mut key = key;
+        key.reverse();
+        hex(&key)
+    };
+    LeKeysInfo {
+        long_term_key: k.ltk.map(wire),
+        key_size: k.key_size,
+        identity_resolving_key: k.irk.map(wire),
+        identity_address: bt_host::addr_str(&k.identity_addr),
+        identity_random: k.identity_addr_type & 0x01 != 0,
+    }
 }
 
 /// Each device's services from its last answer since the core started (by
@@ -121,7 +147,7 @@ pub fn import_windows(state: &Arc<CoreState>, adapter: &str) -> Result<Value, Er
     let keys: Vec<([u8; 6], [u8; 16])> =
         result.get("keys").and_then(Value::as_array).into_iter().flatten().filter_map(parse_key).collect();
     let dir = state.config_dir();
-    let have: Vec<[u8; 6]> = FileLinkKeyStore::open(&dir).entries().iter().map(|e| e.addr).collect();
+    let have: Vec<[u8; 6]> = link_keys(&dir).entries().iter().map(|e| e.addr).collect();
     let (mut imported, mut kept) = (Vec::new(), Vec::new());
     let host = state.service.host();
     for (addr, key) in keys {
@@ -133,7 +159,7 @@ pub fn import_windows(state: &Arc<CoreState>, adapter: &str) -> Result<Value, Er
         let stored = match &host {
             Some(h) => h.store_link_key(addr, key, WINDOWS_KEY_TYPE),
             None => {
-                bt_host::link_keys::store(&dir, &addr, &key, WINDOWS_KEY_TYPE);
+                bt_host::link_keys::store(&bluecaster_core::paths::link_keys_file(&dir), &addr, &key, WINDOWS_KEY_TYPE);
                 true
             }
         };
@@ -190,6 +216,36 @@ fn add_audio_devices(state: &Arc<CoreState>, instance_id: &str, with_key: &[Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn le_keys_shown_in_wire_order() {
+        let mut ltk = [0u8; 16];
+        ltk[0] = 0xAB; // most significant, as BTstack keeps it
+        let k = bt_host::LeKeys {
+            identity_addr_type: 1,
+            identity_addr: [0xC0, 0x11, 0x22, 0x33, 0x44, 0x55],
+            irk: None,
+            ltk: Some(ltk),
+            key_size: 16,
+        };
+        let info = le_keys_info(k);
+        assert_eq!(info.long_term_key.as_deref(), Some("000000000000000000000000000000ab"));
+        assert_eq!(info.identity_resolving_key, None);
+        assert_eq!(info.identity_address, "C0:11:22:33:44:55");
+        assert!(info.identity_random);
+        assert_eq!(info.key_size, 16);
+    }
+
+    #[test]
+    fn link_keys_are_read_from_the_pairing_folder() {
+        let config = std::env::temp_dir().join(format!("bluecaster-pairing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&config);
+        let addr = [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF];
+        bt_host::link_keys::store(&bluecaster_core::paths::link_keys_file(&config), &addr, &[7; 16], 4);
+        let found: Vec<[u8; 6]> = link_keys(&config).entries().iter().map(|e| e.addr).collect();
+        let _ = std::fs::remove_dir_all(&config);
+        assert_eq!(found, vec![addr]);
+    }
 
     #[test]
     fn helper_keys_are_read_strictly() {

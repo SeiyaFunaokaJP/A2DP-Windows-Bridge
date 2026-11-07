@@ -42,8 +42,22 @@ pub fn adapters(probe_winusb: bool) -> Vec<Adapter> {
         .filter_map(|d| {
             let realtek_pid = chips::resolve_realtek_pid(d.vid, d.pid, ids);
             let vendor = chips::vendor_for_usb(d.vid, d.pid, realtek_pid);
-            let bluetooth =
-                d.looks_like_bluetooth() || realtek_pid.is_some() || chips::is_bluetooth_vendor_vid(d.vid, d.pid);
+            // A chip maker's VID alone (a vendor-class adapter without a
+            // driver) unless the device says it is something else: a CSR
+            // headset charging, a MediaTek phone
+            let by_vid = chips::is_bluetooth_vendor_vid(d.vid, d.pid);
+            let bluetooth = d.looks_like_bluetooth() || realtek_pid.is_some() || (by_vid && !d.other_class());
+            if by_vid && !bluetooth {
+                tracing::debug!(
+                    "adapter: {:04X}:{:04X} {:?} skipped: {} VID, but class {:?} / functions {:?}",
+                    d.vid,
+                    d.pid,
+                    d.name,
+                    vendor.name(),
+                    d.usb_class,
+                    d.function_classes
+                );
+            }
             if bluetooth {
                 tracing::debug!(
                     "adapter: {:04X}:{:04X} {:?} driver {:?}, realtek pid {realtek_pid:04X?}, vendor {}, class {:?}, problem {:?}, probe {:?}",
@@ -186,18 +200,35 @@ pub fn configure(config: &mut HostConfig, settings: &Settings, _config_dir: &Pat
         // One held by another program cannot be loaded either (v1 skipped
         // it too)
         config.intel_loader = winusb.iter().any(|a| a.vendor == ChipVendor::Intel && !a.device.in_use());
-        for a in winusb.iter().filter(|a| a.vendor == ChipVendor::Intel && a.device.in_use()) {
+        for a in winusb.iter().filter(|a| {
+            matches!(a.vendor, ChipVendor::Intel | ChipVendor::MediaTek | ChipVendor::Qualcomm) && a.device.in_use()
+        }) {
             tracing::info!(
-                "Intel adapter {:04X}:{:04X} is in use by another program: no bootloader download for it",
+                "{} adapter {:04X}:{:04X} is in use by another program: no firmware download for it",
+                a.vendor.name(),
                 a.device.vid,
                 a.device.pid
             );
         }
+        // MediaTek: only the chips its loader knows, never one in use
+        config.mediatek_loader = winusb.iter().any(|a| {
+            a.vendor == ChipVendor::MediaTek
+                && chips::chip_supported(a.vendor, a.device.vid, a.device.pid)
+                && !a.device.in_use()
+        });
+        // Qualcomm: the same
+        config.qualcomm_loader = winusb.iter().any(|a| {
+            a.vendor == ChipVendor::Qualcomm
+                && chips::chip_supported(a.vendor, a.device.vid, a.device.pid)
+                && !a.device.in_use()
+        });
         config.broadcom_ids =
             winusb.iter().filter(|a| a.vendor == ChipVendor::Broadcom).map(|a| (a.device.vid, a.device.pid)).collect();
         tracing::debug!(
-            "adapter: intel bootloader download {}, broadcom patchram ids {:04X?}",
+            "adapter: intel bootloader download {}, mediatek download {}, qualcomm download {}, broadcom patchram ids {:04X?}",
             config.intel_loader,
+            config.mediatek_loader,
+            config.qualcomm_loader,
             config.broadcom_ids
         );
         for a in &winusb {
@@ -516,6 +547,7 @@ mod tests {
             hardware_ids: Vec::new(),
             compatible_ids: Vec::new(),
             usb_class: None,
+            function_classes: Vec::new(),
             driver: DriverInfo::default(),
             driver_kind: DriverKind::WinUsb,
             problem_code: None,

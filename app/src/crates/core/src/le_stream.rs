@@ -147,6 +147,8 @@ impl LeAudioPath {
             SourceRequest::SystemLoopback => Ok(Source::SystemLoopback),
             SourceRequest::VirtualDevice { id, .. } if !id.is_empty() => Ok(Source::RenderDevice { id: id.clone() }),
             SourceRequest::VirtualDevice { .. } => Err("no virtual device selected".into()),
+            SourceRequest::OutputDevice { id, .. } if !id.is_empty() => Ok(Source::RenderDevice { id: id.clone() }),
+            SourceRequest::OutputDevice { .. } => Err("no output device selected".into()),
             SourceRequest::Application { .. } => Err("application capture is not supported with LE Audio".into()),
         }
     }
@@ -812,5 +814,10 @@ mod tests {
             .is_err()
         );
         assert!(matches!(LeAudioPath::capture_source(&SourceRequest::TestTone), Ok(Source::TestTone)));
+        assert_eq!(
+            LeAudioPath::capture_source(&SourceRequest::OutputDevice { id: "{speakers}".into(), name: String::new() })
+                .unwrap(),
+            Source::RenderDevice { id: "{speakers}".into() }
+        );
     }
 }

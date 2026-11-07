@@ -83,7 +83,7 @@ Worauf Sie achten sollten, der Reihe nach:
 Notieren Sie jede Pause, die der Treiber zwischen den Schritten einhält (die Zeitstempel der Aufzeichnung): Ein Chip, der noch zurückgesetzt wird, antwortet nicht.
 
 {: .warning }
-Arbeiten Sie mit Aufzeichnungen, Abfrageberichten und Herstellerdokumentation. Kopieren Sie keinen GPL-Code und folgen Sie ihm nicht eng, etwa den Linux-Kernel-Treibern `btmtk` oder `btqca`: BlueCaster steht unter der MIT-Lizenz, und ein davon abgeleiteter Loader könnte nicht aufgenommen werden.
+Arbeiten Sie mit Aufzeichnungen, Abfrageberichten und Herstellerdokumentation. Kopieren Sie keinen GPL-Code und folgen Sie ihm nicht eng, etwa den Linux-Kernel-Treibern `btmtk` oder `btqca`: BlueCaster steht unter Apache-2.0 oder MIT, und ein davon abgeleiteter Loader könnte nicht aufgenommen werden.
 
 ## Ohne Build ausprobieren: Chip-Skripte {#chip-scripts}
 

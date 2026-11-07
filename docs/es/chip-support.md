@@ -83,7 +83,7 @@ Qué buscar, por orden:
 Anote cualquier espera que el controlador haga entre pasos (las marcas de tiempo de la captura): un chip que todavía se está reiniciando no responde.
 
 {: .warning }
-Trabaje a partir de capturas, informes de sondeo y documentación del fabricante. No copie ni siga de cerca código GPL, como los controladores `btmtk` o `btqca` del kernel de Linux: BlueCaster tiene licencia MIT, y un cargador derivado de ellos no podría incluirse.
+Trabaje a partir de capturas, informes de sondeo y documentación del fabricante. No copie ni siga de cerca código GPL, como los controladores `btmtk` o `btqca` del kernel de Linux: BlueCaster tiene licencia Apache-2.0 o MIT, y un cargador derivado de ellos no podría incluirse.
 
 ## Probarlo sin compilar: scripts de chip {#chip-scripts}
 

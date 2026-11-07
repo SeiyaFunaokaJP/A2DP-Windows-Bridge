@@ -22,6 +22,7 @@ import type {
   CaptureState,
   CodecDetails,
   Device,
+  DevicePairing,
   ErrorInfo,
   Event,
   FirmwareFile,
@@ -123,6 +124,8 @@ export function sampleProfile(over: Partial<Profile> = {}): Profile {
     quality: "hq",
     abr: false,
     codec_fallback: true,
+    codec_forced: false,
+    unlisted_options: false,
     sample_rate: 0,
     bit_depth: 0,
     capture_mode: "loopback",
@@ -178,7 +181,6 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
       aac_no_peak: false,
       aac_no_afterburner: false,
       aac_latm_v0: false,
-      force_codec: false,
       auto_codec_settings: false,
       match_source: false,
       ignore_sink_max: false,
@@ -620,6 +622,8 @@ function sourceOf(mode: string, id: string, name: string): SourceInfo {
       return { kind: "tone", name: "", waiting: false };
     case "virtual":
       return { kind: "virtual", name: name || id, waiting: false };
+    case "output":
+      return { kind: "output", name: name || id, waiting: false };
     case "app":
       return { kind: "app", name: id, waiting: false };
     default:
@@ -631,6 +635,10 @@ export class MockCore implements Transport {
   private mixer = MIXER_APPS;
   /** Addresses paired in Windows' Bluetooth (device.windows_paired) */
   windowsPaired: string[] = [];
+  /** LE keys of the saved devices (device.pairing), as derived with LE Audio on */
+  leKeys: DevicePairing["le_keys"] = null;
+  /** device.services answers "busy" this many times first (another query runs) */
+  servicesBusy = 0;
   readonly window: WindowKind;
   readonly mica = false;
   readonly version = "2.0.0-alpha.1";
@@ -740,19 +748,25 @@ export class MockCore implements Transport {
       // One radio here: the adapter's pairings are all of Windows'
       case "device.windows_paired_through":
         return this.windowsPaired;
-      case "device.pairing":
+      case "device.pairing": {
+        const saved = this.snap.devices.some((d) => d.saved && d.address === String(p.address));
         return {
-          link_key: this.snap.devices.some((d) => d.saved && d.address === String(p.address))
-            ? { key: "00112233445566778899aabbccddeeff", key_type: 4 }
-            : null,
+          link_key: saved ? { key: "00112233445566778899aabbccddeeff", key_type: 4 } : null,
+          le_keys: saved ? this.leKeys : null,
         };
+      }
       case "device.services":
+        if (this.servicesBusy > 0) {
+          this.servicesBusy -= 1;
+          throw errorInfo("device.busy", "ipc.error.services_busy");
+        }
         return {
           services: [
             { uuids: ["0000110b-0000-1000-8000-00805f9b34fb"], name: "Audio Sink" },
             { uuids: ["0000110e-0000-1000-8000-00805f9b34fb", "0000110f-0000-1000-8000-00805f9b34fb"], name: null },
             { uuids: ["00001101-0000-1000-8000-00805f9b34fb"], name: "GAIA" },
             { uuids: ["df21fe2c-2515-4fdb-8886-f12c4d67927c"], name: null },
+            { uuids: ["0000fff0-1234-5678-9abc-def012345678"], name: null },
           ],
           from_last_connection: false,
         };
@@ -1238,7 +1252,12 @@ export class MockCore implements Transport {
       le: profile.le_audio,
       codec: profile.le_audio ? "lc3" : profile.codec,
       profile: name,
-      source: sourceOf(profile.capture_mode, profile.capture_mode === "app" ? profile.app_exe : profile.audio_device_id, profile.audio_device_name),
+      source: sourceOf(
+        // A chosen output device counts in developer mode only (settings.rs capture_source)
+        profile.capture_mode === "output" && !this.snap.settings.developer_mode ? "loopback" : profile.capture_mode,
+        profile.capture_mode === "app" ? profile.app_exe : profile.audio_device_id,
+        profile.audio_device_name,
+      ),
       sampleRate: profile.sample_rate || null,
       abr: profile.abr,
     });

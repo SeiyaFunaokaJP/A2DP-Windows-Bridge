@@ -10,12 +10,13 @@
 // device's codec (a device with none chosen yet, its profile's codec
 // "auto", goes on with Auto's pick), and the cards are dragged (or moved
 // with Alt+arrow keys) into the device's own order (its profile's
-// codec_order, issue #86 round 8). A codec the device does not offer falls
-// back to the first card it offers in that order (lib/codecs.ts
-// effectiveCodec, as the core), which is also what Auto picks then: a profile
-// left with one shows that one chosen (issue #86: no note below the cards), and
-// a click on such a card changes nothing (issue #86), unless developer
-// mode's override forces it: then it is chosen like any other. A codec it may offer
+// codec_order, issue #86 round 8). A card the device does not offer is
+// chosen like any other (issue #86: without Auto-select the choice is the
+// user's): the core asks for it anyway (the profile's codec_forced) and the
+// stream stops with an error if the device refuses it. A codec chosen while
+// the device offered it and no longer offered (earbuds switched codecs)
+// falls back to the first card it offers in that order (lib/codecs.ts
+// effectiveCodec, as the core), shown chosen. A codec it may offer
 // only once chosen (Device.codecs_on_request) stays a card of its own, chosen
 // also while another one streams instead (issue #30). The codec chosen
 // stays in the device's profile while Auto-select is on. The device is
@@ -60,7 +61,6 @@ import {
   effectiveCodec,
   capsForSettings,
   sbcCapsForSettings,
-  forcesCodec,
   isDefaultOrder,
   moved,
   type CodecId,
@@ -69,6 +69,7 @@ import {
 import {
   audioEntries,
   captureDevice,
+  captureInForce,
   codecsOnRequest,
   entryBase,
   entryByKey,
@@ -167,7 +168,8 @@ async function saveEntry(
 }
 
 /** Saves the device's profile with `codec` chosen (`values`: from its "..."
- *  dialog; `order`: the device's codec order, when one is not saved yet).
+ *  dialog; `order`: the device's codec order, when one is not saved yet;
+ *  `forced`: chosen though the device does not offer it, asked for anyway).
  *  The profile's name once saved, None if that failed. */
 export function chooseCodec(
   app: ReturnType<typeof useApp>,
@@ -175,10 +177,11 @@ export function chooseCodec(
   codec: string,
   values?: Omit<CodecChoice, "codec">,
   order?: readonly CodecId[] | null,
+  forced = false,
 ): Promise<string | null> {
   return saveEntry(app, entry, (base) => {
     if (entry.le_audio) return base;
-    const next = withCodec(base, codec, values);
+    const next = { ...withCodec(base, codec, values), codec_forced: forced && codec !== "auto" };
     return order ? { ...next, codec_order: orderKeys(order) } : next;
   });
 }
@@ -213,13 +216,15 @@ export function pickedCodec(
   autoAll: boolean,
   order: readonly CodecId[],
 ): string | null {
-  const codec = (entry.profile ?? entryBase(entry, snap.profiles)).codec;
+  const p = entry.profile ?? entryBase(entry, snap.profiles);
+  const codec = p.codec;
   const known = knownCodecs(snap.devices, entry.address);
   // One it may offer once chosen stays chosen (issue #30)
   if (!autoAll && codecsOnRequest(snap.devices, entry.address).includes(codec)) return codec;
-  // One the device does not offer: the one used instead (issue #86)
+  // One chosen on its card though the device does not offer it: that one;
+  // one it no longer offers: the one used instead (issue #86)
   if (!autoAll && codec !== "auto") {
-    return forcesCodec(snap.settings) ? codec : (effectiveCodec(codec, known, true, order) ?? codec);
+    return p.codec_forced ? codec : (effectiveCodec(codec, known, true, order) ?? codec);
   }
   return streamingCodec(snap, entry) ?? effectiveCodec("auto", known, true, autoAll ? AUTO_ORDER : order);
 }
@@ -359,7 +364,7 @@ function DeviceCodecs(props: {
   // The format Windows plays its source in (one app: the default output, as
   // the core reads it)
   const sourceFormat = () => {
-    const p = shown();
+    const p = captureInForce(shown(), snap().settings.developer_mode);
     const d =
       p.capture_mode === "app"
         ? props.audioDevices.find((x) => x.is_default)
@@ -369,7 +374,6 @@ function DeviceCodecs(props: {
   const known =() => knownCodecs(snap().devices, e().address);
   const onRequest = () => codecsOnRequest(snap().devices, e().address);
   const support = (id: string) => codecSupport(id, known(), onRequest());
-  const refused = (id: string) => support(id) === "not_offered" && !forcesCodec(snap().settings);
   // The device's order while it is being dragged (null: the saved one)
   const [dragOrder, setDragOrder] = createSignal<CodecId[] | null>(null);
   // Its cards' order: Auto-select's is the default one (highest sound
@@ -397,14 +401,11 @@ function DeviceCodecs(props: {
   const showPicked = () => {
     for (const r of grid?.querySelectorAll<HTMLInputElement>("input[type=radio]") ?? []) r.checked = r.value === picked();
   };
+  // A card the device does not offer is asked for anyway (issue #86); the
+  // codec chosen keeps how it was chosen when only its settings change
+  const forcedFor = (id: string) =>
+    id === shown().codec && id === picked() ? shown().codec_forced : support(id) === "not_offered";
   const choose = async (id: string, values?: Omit<CodecChoice, "codec">, live = false) => {
-    // A card the device does not offer: nothing changes (issue #86: the
-    // stream keeps its codec). Settings made for it in its "..." are saved
-    // as they are (the card shown chosen is still the one used).
-    if (!values && refused(id)) {
-      showPicked();
-      return;
-    }
     // A "..." dialog's change while the cards wait: applied after (the cards
     // themselves are disabled meanwhile)
     if (settling()) await untilSettled();
@@ -412,7 +413,9 @@ function DeviceCodecs(props: {
     const running = state() !== "idle" && state() !== "error";
     setBusy(true);
     // An order moved but not back from the core yet goes with it
-    const saved = await queued(() => chooseCodec(app, e(), id, values, props.auto ? null : dragOrder()));
+    const saved = await queued(() =>
+      chooseCodec(app, e(), id, values, props.auto ? null : dragOrder(), forcedFor(id)),
+    );
     setBusy(false);
     showPicked();
     if (saved && running && mounted && !live) settle(app);
@@ -708,9 +711,7 @@ function DeviceCodecs(props: {
                 onReadOnly={(settings) => {
                   // Developer mode: the codec's settings apply under Auto-select
                   if (settings && autoKeepsCodecSettings(snap().settings)) return setSettingsOf(c);
-                  // No reason to turn Auto-select off for a card that changes nothing
-                  if (settings || !refused(c.id))
-                    props.onLocked(() => (settings ? setSettingsOf(c) : void choose(c.id)));
+                  props.onLocked(() => (settings ? setSettingsOf(c) : void choose(c.id)));
                 }}
                 onSettings={() => setSettingsOf(c)}
                 onMove={(by) => moveBy(c.id, by)}

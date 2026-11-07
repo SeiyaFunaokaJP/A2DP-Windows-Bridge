@@ -19,18 +19,18 @@
 //! Also holds the SetupAPI helpers the driver module shares.
 
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
-    CM_DEVNODE_STATUS_FLAGS, CM_Get_DevNode_Status, CM_PROB, CR_SUCCESS, DIGCF_ALLCLASSES, DIGCF_DEVICEINTERFACE,
-    DIGCF_PRESENT, DN_HAS_PROBLEM, HDEVINFO, SETUP_DI_REGISTRY_PROPERTY, SP_DEVICE_INTERFACE_DATA,
-    SP_DEVICE_INTERFACE_DETAIL_DATA_W, SP_DEVINFO_DATA, SPDRP_CLASS, SPDRP_COMPATIBLEIDS, SPDRP_DEVICEDESC,
-    SPDRP_FRIENDLYNAME, SPDRP_HARDWAREID, SPDRP_MFG, SPDRP_SERVICE, SetupDiCreateDeviceInfoList,
-    SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiEnumDeviceInterfaces, SetupDiGetClassDevsW,
-    SetupDiGetDeviceInstanceIdW, SetupDiGetDeviceInterfaceDetailW, SetupDiGetDevicePropertyW,
+    CM_DEVNODE_STATUS_FLAGS, CM_Get_Child, CM_Get_DevNode_PropertyW, CM_Get_DevNode_Status, CM_Get_Sibling, CM_PROB,
+    CR_SUCCESS, DIGCF_ALLCLASSES, DIGCF_DEVICEINTERFACE, DIGCF_PRESENT, DN_HAS_PROBLEM, HDEVINFO,
+    SETUP_DI_REGISTRY_PROPERTY, SP_DEVICE_INTERFACE_DATA, SP_DEVICE_INTERFACE_DETAIL_DATA_W, SP_DEVINFO_DATA,
+    SPDRP_CLASS, SPDRP_COMPATIBLEIDS, SPDRP_DEVICEDESC, SPDRP_FRIENDLYNAME, SPDRP_HARDWAREID, SPDRP_MFG, SPDRP_SERVICE,
+    SetupDiCreateDeviceInfoList, SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiEnumDeviceInterfaces,
+    SetupDiGetClassDevsW, SetupDiGetDeviceInstanceIdW, SetupDiGetDeviceInterfaceDetailW, SetupDiGetDevicePropertyW,
     SetupDiGetDeviceRegistryPropertyW, SetupDiOpenDeviceInfoW,
 };
 use windows::Win32::Devices::Properties::{
-    DEVPKEY_Device_BusReportedDeviceDesc, DEVPKEY_Device_DriverDesc, DEVPKEY_Device_DriverInfPath,
-    DEVPKEY_Device_DriverInfSection, DEVPKEY_Device_DriverProvider, DEVPKEY_Device_DriverVersion, DEVPROP_TYPE_STRING,
-    DEVPROPTYPE,
+    DEVPKEY_Device_BusReportedDeviceDesc, DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_DriverDesc,
+    DEVPKEY_Device_DriverInfPath, DEVPKEY_Device_DriverInfSection, DEVPKEY_Device_DriverProvider,
+    DEVPKEY_Device_DriverVersion, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPTYPE,
 };
 use windows::Win32::Devices::Usb::{
     GUID_DEVINTERFACE_USB_DEVICE, USB_INTERFACE_DESCRIPTOR, USBD_PIPE_TYPE, UsbdPipeTypeBulk, UsbdPipeTypeInterrupt,
@@ -97,6 +97,9 @@ pub struct UsbDevice {
     pub compatible_ids: Vec<String>,
     /// From the compatible IDs (`USB\Class_E0&SubClass_01&Prot_01`)
     pub usb_class: Option<UsbClass>,
+    /// A composite device (`USB\COMPOSITE`): the classes of its functions'
+    /// device nodes (the `MI_xx` children), from their compatible IDs
+    pub function_classes: Vec<UsbClass>,
     pub driver: DriverInfo,
     pub driver_kind: DriverKind,
     /// Device Manager's problem code (28 = no driver, ...), None if fine
@@ -150,6 +153,86 @@ impl UsbDevice {
             || self.usb_class == Some(UsbClass::BLUETOOTH)
             || self.winusb_bluetooth().is_some()
     }
+
+    /// The device says it is something else: its class (or, composite,
+    /// every function's) is one no Bluetooth adapter has (audio, HID,
+    /// storage, a phone's MTP or ADB, ...). A chip maker's VID alone then
+    /// does not make it an adapter: a CSR headset charging, a MediaTek phone.
+    /// No class known, the vendor class or any Bluetooth function: false.
+    pub fn other_class(&self) -> bool {
+        if self.has_bluetooth_compat_id() || self.function_classes.contains(&UsbClass::BLUETOOTH) {
+            return false;
+        }
+        match self.usb_class {
+            Some(c) => !c.may_be_bluetooth(),
+            None => !self.function_classes.is_empty() && self.function_classes.iter().all(|c| !c.may_be_bluetooth()),
+        }
+    }
+}
+
+impl UsbClass {
+    /// A class a Bluetooth adapter may report: Bluetooth (E0), or the vendor
+    /// class (FF) some report instead, but not Android's debug interface on
+    /// it (FF/42: ADB, fastboot)
+    pub fn may_be_bluetooth(self) -> bool {
+        match self.class {
+            0xE0 => true,
+            0xFF => self.subclass != 0x42,
+            // Miscellaneous / application-specific: unclear, kept
+            0xEF | 0xFE => true,
+            _ => false,
+        }
+    }
+}
+
+/// The classes of a composite device's functions: its child device nodes'
+/// compatible IDs (bounded, as a broken tree could loop)
+fn function_classes(devinst: u32) -> Vec<UsbClass> {
+    let mut classes = Vec::new();
+    let mut child = 0u32;
+    // SAFETY: valid devinst and out pointer.
+    if unsafe { CM_Get_Child(&mut child, devinst, 0) } != CR_SUCCESS {
+        return classes;
+    }
+    for _ in 0..32 {
+        if let Some(c) = node_compatible_ids(child).iter().find_map(|id| parse_usb_class_id(id)) {
+            classes.push(c);
+        }
+        let mut next = 0u32;
+        // SAFETY: valid devinst and out pointer.
+        if unsafe { CM_Get_Sibling(&mut next, child, 0) } != CR_SUCCESS {
+            break;
+        }
+        child = next;
+    }
+    classes
+}
+
+/// A device node's compatible IDs (DEVPKEY_Device_CompatibleIds)
+fn node_compatible_ids(devinst: u32) -> Vec<String> {
+    let mut ty = DEVPROPTYPE::default();
+    let mut size = 0u32;
+    // SAFETY: size query: no buffer, valid out pointers.
+    let _ = unsafe { CM_Get_DevNode_PropertyW(devinst, &DEVPKEY_Device_CompatibleIds, &mut ty, None, &mut size, 0) };
+    if size == 0 || size > 64 * 1024 {
+        return Vec::new();
+    }
+    let mut buf = vec![0u16; (size as usize).div_ceil(2)];
+    // SAFETY: a buffer of at least `size` bytes, valid out pointers.
+    let cr = unsafe {
+        CM_Get_DevNode_PropertyW(
+            devinst,
+            &DEVPKEY_Device_CompatibleIds,
+            &mut ty,
+            Some(buf.as_mut_ptr().cast()),
+            &mut size,
+            0,
+        )
+    };
+    if cr != CR_SUCCESS || ty != DEVPROP_TYPE_STRING_LIST {
+        return Vec::new();
+    }
+    parse_multi_sz(&buf)
 }
 
 /// All present USB devices (hubs included; filter with
@@ -464,6 +547,8 @@ impl DevInfoSet {
         let driver_kind = DriverKind::classify(&driver.service, &driver.class_name);
         let compatible_ids = self.registry_multi_sz(data, SPDRP_COMPATIBLEIDS);
         let usb_class = compatible_ids.iter().find_map(|id| parse_usb_class_id(id));
+        let composite = compatible_ids.iter().any(|id| id.eq_ignore_ascii_case(r"USB\COMPOSITE"));
+        let function_classes = if composite { function_classes(data.DevInst) } else { Vec::new() };
         let probe =
             (probe_winusb && driver_kind == DriverKind::WinUsb && !path.is_empty()).then(|| probe_interface(&path));
         let device = UsbDevice {
@@ -481,6 +566,7 @@ impl DevInfoSet {
             pid,
             compatible_ids,
             usb_class,
+            function_classes,
             driver,
             driver_kind,
             probe,
@@ -614,6 +700,57 @@ mod tests {
     }
 
     #[test]
+    fn other_classes_are_told_apart() {
+        let class = |id: &str| parse_usb_class_id(id).unwrap();
+        let mut d = UsbDevice {
+            instance_id: r"USB\VID_0A12&PID_1243\1".into(),
+            device_path: String::new(),
+            vid: 0x0A12,
+            pid: 0x1243,
+            name: String::new(),
+            bus_reported_name: None,
+            manufacturer: String::new(),
+            hardware_ids: vec![],
+            compatible_ids: vec![],
+            usb_class: None,
+            function_classes: vec![],
+            driver: DriverInfo::default(),
+            driver_kind: DriverKind::None,
+            problem_code: None,
+            probe: None,
+        };
+        // Nothing known, the vendor class (a BT400): may be an adapter
+        assert!(!d.other_class());
+        d.usb_class = Some(UsbClass::VENDOR_BLUETOOTH);
+        assert!(!d.other_class());
+        // A CSR headset charging (HID), a phone in MTP mode, mass storage
+        for id in [
+            r"USB\Class_03&SubClass_00&Prot_00",
+            r"USB\Class_06&SubClass_01&Prot_01",
+            r"USB\Class_08&SubClass_06&Prot_50",
+        ] {
+            d.usb_class = Some(class(id));
+            assert!(d.other_class(), "{id}");
+        }
+        // Composite: a phone (MTP + ADB) is something else; a combo card
+        // with a Bluetooth function, or a function of unknown kind, is not
+        d.usb_class = None;
+        d.function_classes =
+            vec![class(r"USB\Class_06&SubClass_01&Prot_01"), class(r"USB\Class_FF&SubClass_42&Prot_01")];
+        assert!(d.other_class());
+        d.function_classes = vec![UsbClass::BLUETOOTH, class(r"USB\Class_E0&SubClass_01&Prot_01")];
+        assert!(!d.other_class());
+        d.function_classes =
+            vec![class(r"USB\Class_03&SubClass_00&Prot_00"), class(r"USB\Class_FF&SubClass_00&Prot_00")];
+        assert!(!d.other_class());
+        // The Bluetooth compatible ID always wins
+        d.function_classes = vec![];
+        d.usb_class = Some(class(r"USB\Class_03&SubClass_00&Prot_00"));
+        d.compatible_ids = vec![r"USB\Class_E0&SubClass_01&Prot_01".into()];
+        assert!(!d.other_class());
+    }
+
+    #[test]
     fn guid_and_multi_sz_formats() {
         let g = GUID::from_u128(0x88BAE032_5A81_49F0_BC3D_A4FF138216D6);
         assert_eq!(format_guid(&g), "{88BAE032-5A81-49F0-BC3D-A4FF138216D6}");
@@ -657,6 +794,7 @@ mod tests {
             hardware_ids: vec![],
             compatible_ids: vec![r"USB\Class_E0&SubClass_01&Prot_01".into(), r"USB\Class_E0&SubClass_01".into()],
             usb_class: Some(UsbClass::BLUETOOTH),
+            function_classes: vec![],
             driver_kind: DriverKind::classify(&driver.service, &driver.class_name),
             driver,
             problem_code: Some(31),

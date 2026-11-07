@@ -50,6 +50,7 @@
 #include "classic/sdp_client_rfcomm.h"
 #include "classic/sdp_server.h"
 #include "classic/sdp_util.h"
+#include "btstack_crypto.h"
 #include "btstack_tlv.h"
 #include "btstack_tlv_windows.h"
 #include "ble/att_db.h"
@@ -79,6 +80,11 @@ int bluecaster_rs_att_write(uint16_t con, uint16_t handle, uint16_t mode, uint16
                         uint16_t size);
 void bluecaster_rs_att_can_send(uint16_t con);
 void bluecaster_rs_le_disconnected(uint16_t con);
+/* Called by the patched sm.c (btstack-sys build.rs, patched_sm) */
+int bluecaster_rs_ctkd_enabled(void);
+int bluecaster_rs_ctkd_wanted(const uint8_t *addr);
+int bluecaster_ctkd_enabled(void) { return bluecaster_rs_ctkd_enabled(); }
+int bluecaster_ctkd_wanted(const unsigned char *addr) { return bluecaster_rs_ctkd_wanted(addr); }
 
 static void cig_slot_release(uint8_t cig_id);
 
@@ -736,6 +742,14 @@ int bluecaster_acl_packets_in_controller(uint16_t con_handle) {
     return c ? (int)c->num_packets_sent : -1;
 }
 
+/* The remote address of a connection; 0 when there is none */
+int bluecaster_connection_address(uint16_t con_handle, uint8_t *addr) {
+    hci_connection_t *c = hci_connection_for_handle(con_handle);
+    if (c == NULL) return 0;
+    memcpy(addr, c->address, 6);
+    return 1;
+}
+
 int bluecaster_acl_role(uint16_t con_handle) {
     hci_role_t r = gap_get_role(con_handle);
     return r == HCI_ROLE_INVALID ? -1 : (int)r;
@@ -970,6 +984,11 @@ int bluecaster_le_init(const char *tlv_path) {
     btstack_tlv_set_instance(tlv, &le_tlv_context);
     le_device_db_tlv_configure(tlv, &le_tlv_context);
 
+    /* sm_init sets up btstack_crypto only once per process: a later run's
+     * hci_init has dropped its HCI event handler, so it never got its LE
+     * Rand answers again and every SM computation (keys, pairing) waited
+     * forever. Set up anew for each run (nothing of it is in use here). */
+    btstack_crypto_deinit();
     sm_init();
     sm_set_io_capabilities(IO_CAPABILITY_NO_INPUT_NO_OUTPUT);
     sm_set_authentication_requirements(SM_AUTHREQ_SECURE_CONNECTION | SM_AUTHREQ_BONDING);

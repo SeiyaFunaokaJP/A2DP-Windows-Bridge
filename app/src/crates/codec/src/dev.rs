@@ -25,9 +25,6 @@ pub struct DevOverrides {
     /// AAC: the StreamMuxConfig of 2.0.2 and before (AudioMuxVersion 0,
     /// implicit signaling) instead of Android's and PipeWire's
     pub aac_latm_v0: bool,
-    /// A codec chosen that the device does not list is asked for anyway,
-    /// with no fallback (RemoteCaps::forcing)
-    pub force_codec: bool,
     /// Auto-select streams the codec it picks with that codec's own
     /// settings (its card's "..."), not Auto's defaults (issue #86)
     pub auto_codec_settings: bool,
@@ -67,7 +64,6 @@ static CURRENT: RwLock<DevOverrides> = RwLock::new(DevOverrides {
     aac_no_peak: false,
     aac_no_afterburner: false,
     aac_latm_v0: false,
-    force_codec: false,
     auto_codec_settings: false,
     match_source: false,
     ignore_sink_max: false,

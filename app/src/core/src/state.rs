@@ -168,6 +168,8 @@ fn to_ipc_profile(p: &CoreProfile, legacy: u16) -> Profile {
         quality: p.quality.clone(),
         abr: p.abr,
         codec_fallback: p.codec_fallback,
+        codec_forced: p.codec_forced,
+        unlisted_options: p.unlisted_options,
         sample_rate: p.sample_rate,
         bit_depth: p.bit_depth,
         capture_mode: p.capture_mode.clone(),
@@ -209,6 +211,7 @@ fn to_ipc_codec_values(v: &profiles::CodecValues) -> ipc::CodecValues {
         sbc_subbands: v.sbc_subbands,
         sbc_allocation: v.sbc_allocation.clone(),
         sbc_channel_mode: v.sbc_channel_mode.clone(),
+        unlisted_options: v.unlisted_options,
     }
 }
 
@@ -226,6 +229,7 @@ fn from_ipc_codec_values(v: &ipc::CodecValues) -> profiles::CodecValues {
         sbc_subbands: v.sbc_subbands,
         sbc_allocation: v.sbc_allocation.clone(),
         sbc_channel_mode: v.sbc_channel_mode.clone(),
+        unlisted_options: v.unlisted_options,
     }
 }
 
@@ -239,6 +243,8 @@ fn merge_profile(base: Option<&CoreProfile>, p: &Profile) -> CoreProfile {
     c.quality = p.quality.clone();
     c.abr = p.abr;
     c.codec_fallback = p.codec_fallback;
+    c.codec_forced = p.codec_forced;
+    c.unlisted_options = p.unlisted_options;
     c.sample_rate = p.sample_rate;
     c.bit_depth = p.bit_depth;
     c.capture_mode = p.capture_mode.clone();
@@ -307,7 +313,6 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
             aac_no_peak: s.dev_overrides.aac_no_peak,
             aac_no_afterburner: s.dev_overrides.aac_no_afterburner,
             aac_latm_v0: s.dev_overrides.aac_latm_v0,
-            force_codec: s.dev_overrides.force_codec,
             auto_codec_settings: s.dev_overrides.auto_codec_settings,
             match_source: s.dev_overrides.match_source,
             ignore_sink_max: s.dev_overrides.ignore_sink_max,
@@ -383,7 +388,6 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
         aac_no_peak: s.dev_overrides.aac_no_peak,
         aac_no_afterburner: s.dev_overrides.aac_no_afterburner,
         aac_latm_v0: s.dev_overrides.aac_latm_v0,
-        force_codec: s.dev_overrides.force_codec,
         auto_codec_settings: s.dev_overrides.auto_codec_settings,
         match_source: s.dev_overrides.match_source,
         ignore_sink_max: s.dev_overrides.ignore_sink_max,
@@ -443,7 +447,11 @@ fn vendor_note(vendor: ChipVendor, vid: u16, pid: u16) -> Option<Msg> {
         ChipVendor::Intel => "firmware.vendor_intel",
         ChipVendor::Broadcom => "firmware.vendor_broadcom",
         ChipVendor::Csr => "firmware.vendor_csr",
-        ChipVendor::MediaTek | ChipVendor::Qualcomm => "firmware.vendor_unsupported",
+        ChipVendor::Barrot => "firmware.vendor_barrot",
+        ChipVendor::Marvell => "firmware.vendor_marvell",
+        ChipVendor::Actions => "firmware.vendor_actions",
+        ChipVendor::MediaTek => "firmware.vendor_mediatek",
+        ChipVendor::Qualcomm => "firmware.vendor_qualcomm",
         ChipVendor::Realtek | ChipVendor::Unknown => return None,
     };
     Some(Msg::new(key))
@@ -1896,6 +1904,7 @@ impl CoreState {
         req.volume_sync = effective_volume_sync(settings.volume_sync, req.volume_sync);
         req.mute_output = settings.mutes_output();
         req.sbc = settings.sbc_frame(req.sbc);
+        req.source = settings.capture_source(req.source);
         if auto.is_some() && settings.debug_mode {
             req.codec_values = p.all_codec_values();
         }
@@ -2497,7 +2506,7 @@ impl CoreState {
                 let order_keeps_codec = order_only && (order_unused || !restart_for_order(&s.stream, &in_order));
                 if restart_after_save(&s.stream, &key) && !order_keeps_codec && !kept_only {
                     let in_place = source_changes_in_place(&s.stream, before.as_ref(), &in_order)
-                        && self.service.change_source(in_order.source());
+                        && self.service.change_source(self.service.settings().capture_source(in_order.source()));
                     let bitpools_in_place = !self.service.settings().auto_codec
                         && bitpools_change_in_place(&s.stream, before.as_ref(), &in_order)
                         && self.service.change_bitpools(in_order.bitpools());
@@ -3763,8 +3772,19 @@ mod tests {
     #[test]
     fn vendors_get_their_notes() {
         assert_eq!(vendor_note(ChipVendor::Intel, 0x8087, 0x0033).unwrap().key, "firmware.vendor_intel");
-        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0CF3, 0xE300).unwrap().key, "firmware.vendor_unsupported");
+        // Qualcomm: ROME and WCN6855 have a loader, the others none (QCA6290)
+        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0CF3, 0xE300).unwrap().key, "firmware.vendor_qualcomm");
+        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0489, 0xE0C7).unwrap().key, "firmware.vendor_qualcomm");
+        assert_eq!(vendor_note(ChipVendor::Qualcomm, 0x0CF3, 0xE400).unwrap().key, "firmware.vendor_unsupported");
+        // MediaTek: the MT79xx have a loader, the others none (MT6639)
+        assert_eq!(vendor_note(ChipVendor::MediaTek, 0x0E8D, 0x7925).unwrap().key, "firmware.vendor_mediatek");
+        assert_eq!(vendor_note(ChipVendor::MediaTek, 0x0E8D, 0x0608).unwrap().key, "firmware.vendor_mediatek");
+        assert_eq!(vendor_note(ChipVendor::MediaTek, 0x0E8D, 0x6639).unwrap().key, "firmware.vendor_unsupported");
         assert!(vendor_note(ChipVendor::Realtek, 0x0BDA, 0x8771).is_none());
+        // ROM dongles and Wi-Fi-loaded combos: a note, never "unsupported"
+        assert_eq!(vendor_note(ChipVendor::Barrot, 0x33FA, 0x0010).unwrap().key, "firmware.vendor_barrot");
+        assert_eq!(vendor_note(ChipVendor::Marvell, 0x1286, 0x204C).unwrap().key, "firmware.vendor_marvell");
+        assert_eq!(vendor_note(ChipVendor::Actions, 0x10D7, 0xB012).unwrap().key, "firmware.vendor_actions");
     }
 
     #[test]

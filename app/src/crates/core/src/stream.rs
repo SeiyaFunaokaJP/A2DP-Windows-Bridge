@@ -26,6 +26,12 @@ pub struct StreamRequest {
     /// None = Auto
     pub codec: Option<CodecKind>,
     pub codec_fallback: bool,
+    /// `codec` was chosen though the device did not offer it: it is asked
+    /// for anyway, with no fallback (the profile's `codec_forced`)
+    pub codec_forced: bool,
+    /// `codec`'s settings are not held to what the device lists (the
+    /// profile's `unlisted_options`)
+    pub unlisted_options: bool,
     /// Experimental codecs may be used (settings `experimental_codecs`):
     /// off, Auto and a fallback never pick them and a chosen one falls back
     pub experimental_codecs: bool,
@@ -102,10 +108,14 @@ impl StreamRequest {
     }
 }
 
+/// Where a stream's audio comes from. OutputDevice: loopback of that output
+/// device whichever is the Windows default (developer mode, issue #193),
+/// never made the default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceRequest {
     SystemLoopback,
     VirtualDevice { id: String, name: String, auto_switch: bool },
+    OutputDevice { id: String, name: String },
     Application { exe: String },
     TestTone,
 }
@@ -125,6 +135,7 @@ impl SourceRequest {
         let (kind, name) = match self {
             SourceRequest::SystemLoopback => ("loopback", String::new()),
             SourceRequest::VirtualDevice { name, .. } => ("virtual", name.clone()),
+            SourceRequest::OutputDevice { name, .. } => ("output", name.clone()),
             SourceRequest::Application { exe } => ("app", exe.clone()),
             SourceRequest::TestTone => ("tone", String::new()),
         };
@@ -137,6 +148,7 @@ impl std::fmt::Display for SourceRequest {
         match self {
             SourceRequest::SystemLoopback => f.write_str("system output"),
             SourceRequest::VirtualDevice { name, .. } => write!(f, "virtual device {}", crate::diag::quoted(name)),
+            SourceRequest::OutputDevice { name, .. } => write!(f, "output device {}", crate::diag::quoted(name)),
             SourceRequest::Application { exe } => write!(f, "app {exe}"),
             SourceRequest::TestTone => f.write_str("test tone"),
         }
@@ -356,9 +368,10 @@ pub fn codec_details(
 /// The audio source of a stream
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SourceInfo {
-    /// "loopback", "virtual", "app" (profile capture modes) or "tone"
+    /// "loopback", "virtual", "output", "app" (profile capture modes) or
+    /// "tone"
     pub kind: &'static str,
-    /// The virtual device's name or the application's executable
+    /// The virtual or output device's name, or the application's executable
     pub name: String,
     /// Application capture: the application is not running
     pub waiting: bool,
@@ -632,6 +645,10 @@ fn open_source(request: &SourceRequest, rate: u32) -> Result<Option<(DeviceSourc
             }
             Source::RenderDevice { id: id.clone() }
         }
+        // Empty only in a hand-edited request (Profile::source gives System
+        // Loopback for an output device profile without one)
+        SourceRequest::OutputDevice { id, .. } if id.is_empty() => return Err(Msg::new("error.wasapi_init")),
+        SourceRequest::OutputDevice { id, .. } => Source::RenderDevice { id: id.clone() },
         SourceRequest::Application { exe } => {
             let build = audio_capture::windows_build();
             if build < audio_capture::APP_CAPTURE_MIN_BUILD {
@@ -659,9 +676,18 @@ fn open_source(request: &SourceRequest, rate: u32) -> Result<Option<(DeviceSourc
 }
 
 /// System Loopback may stand in when `source` cannot be opened: a chosen
-/// virtual device only, an empty choice stays the error it is
+/// virtual or output device only (removed, disabled, held by another app),
+/// an empty choice stays the error it is
 fn loopback_may_replace(source: &SourceRequest) -> bool {
-    matches!(source, SourceRequest::VirtualDevice { id, .. } if !id.is_empty())
+    matches!(source, SourceRequest::VirtualDevice { id, .. } | SourceRequest::OutputDevice { id, .. } if !id.is_empty())
+}
+
+/// What the session says while System Loopback stands in for `source`
+fn stand_in_text(source: &SourceRequest) -> Msg {
+    match source {
+        SourceRequest::OutputDevice { .. } => Msg::new("status.connected_output_fallback"),
+        _ => Msg::new("status.connected_source_fallback"),
+    }
 }
 
 /// What the source [`open_source`] opened delivers. Application capture:
@@ -1181,15 +1207,20 @@ fn sbc_xq_fallback(kind: CodecKind, failure: &ConfigFailure, requested: Option<C
         && (requested.is_none() || fallback)
 }
 
-/// `remote` with `forced` usable, the codec developer mode's force_codec
-/// asks for though the device does not list it
-fn with_forced(remote: RemoteCaps, forced: Option<CodecKind>) -> RemoteCaps {
-    let Some(kind) = forced else { return remote };
-    match remote.forcing(kind) {
-        Some(caps) => {
+/// `remote` as the profile asks for it: `forced` usable, the codec chosen
+/// on its card though the device does not offer it, and `unlisted`'s
+/// settings not held to what the device lists (its card's "Show only
+/// supported options" off; issue #86)
+fn as_asked(remote: RemoteCaps, forced: Option<CodecKind>, unlisted: Option<CodecKind>) -> RemoteCaps {
+    let remote = match forced.map(|k| (k, remote.forcing(k))) {
+        Some((kind, Some(caps))) => {
             tracing::warn!("codec: forcing {}, which the device does not list", kind.name());
             caps
         }
+        _ => remote,
+    };
+    match unlisted {
+        Some(kind) => remote.unlisted(kind),
         None => remote,
     }
 }
@@ -1207,7 +1238,9 @@ fn sbc_abr(req: &StreamRequest, kind: CodecKind) -> bool {
 fn source_mix(source: &SourceRequest) -> Option<audio_capture::MixFormat> {
     match source {
         SourceRequest::SystemLoopback | SourceRequest::Application { .. } => audio_capture::mix_format(None),
-        SourceRequest::VirtualDevice { id, .. } if !id.is_empty() => audio_capture::mix_format(Some(id)),
+        SourceRequest::VirtualDevice { id, .. } | SourceRequest::OutputDevice { id, .. } if !id.is_empty() => {
+            audio_capture::mix_format(Some(id))
+        }
         _ => None,
     }
 }
@@ -1454,21 +1487,22 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     }
 
     // ---- codec ----
-    // Developer mode: the codec chosen, listed or not, and no fallback
-    let force = codec::dev::overrides().force_codec;
-    let forced = req.codec.filter(|&k| force && k.available() && !remote.has(k));
-    remote = with_forced(remote, forced);
+    // A codec chosen on its card that the device did not offer: asked for
+    // anyway, and no fallback (issue #86: without Auto-select the choice is
+    // the user's; it stops with an error if the device refuses it)
+    let forced = req.codec.filter(|&k| req.codec_forced && k.available() && !remote.has(k));
+    let fallback = req.codec_fallback && !req.codec_forced;
+    remote = as_asked(remote, forced, None);
     if !req.auto_order.is_default() {
         tracing::info!("codec: the device's order set by the user: {}", req.auto_order.names());
     }
-    let choice = match caps::choose_in(&remote, req.codec, req.codec_fallback, req.experimental_codecs, &req.auto_order)
-    {
+    let choice = match caps::choose_in(&remote, req.codec, fallback, req.experimental_codecs, &req.auto_order) {
         Ok(c) => c,
         Err(why) => {
             tracing::debug!(
                 "codec: no codec for request {:?} (fallback {}, experimental {}): {why:?}",
                 req.codec.map(CodecKind::name),
-                req.codec_fallback,
+                fallback,
                 req.experimental_codecs
             );
             host.disconnect();
@@ -1488,6 +1522,14 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         tracing::warn!("codec fallback: {} not available ({why:?}), using {}", wanted.name(), kind.name());
     }
     tracing::info!("codec selected: {}", kind.name());
+    // The codec chosen with its card's "Show only supported options" off:
+    // its settings go by what BlueCaster has, not by what the device lists
+    // (never under Auto-select, which keeps to what streams)
+    let mut unlisted = (req.unlisted_options && req.codec == Some(kind)).then_some(kind);
+    if unlisted.is_some() {
+        tracing::warn!("codec: {} settings beyond what the device lists (the user's choice)", kind.name());
+        remote = as_asked(remote, None, unlisted);
+    }
     // Developer mode: Auto-select with the picked codec's own settings
     let own = req.codec_values.iter().find(|(k, _)| *k == kind).map(|(_, v)| v.clone());
     let req = match own.filter(|_| req.codec.is_none() && codec::dev::overrides().auto_codec_settings) {
@@ -1503,7 +1545,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     tracing::debug!(
         "codec: requested {:?} (fallback {}), chose {} ({})",
         req.codec.map(CodecKind::name),
-        req.codec_fallback,
+        fallback,
         kind.name(),
         if req.codec.is_none() {
             "auto: best the device offers"
@@ -1579,8 +1621,9 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // Restored while the headphones are off: switched again when they are back
     let mut switch_default_again = false;
     default_guard.follow(&req.source);
-    // A virtual device that cannot be opened (another app may hold it): this
-    // session sends what Windows plays, the profile stays as it is
+    // A virtual device that cannot be opened (another app may hold it), or
+    // an output device that is gone: this session sends what Windows plays,
+    // the profile stays as it is
     let mut source = req.source.clone();
     let mut source_text = None;
     let opened = match open_source(&source, preferred) {
@@ -1595,8 +1638,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                 host.disconnect();
                 return inner.notify(StreamState::Error, m);
             };
+            source_text = Some(stand_in_text(&source));
             source = SourceRequest::SystemLoopback;
-            source_text = Some(Msg::new("status.connected_source_fallback"));
             o
         }
     };
@@ -1641,7 +1684,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     if let Err(failure) = &configured
         && !stopped()
         && forced.is_none()
-        && sbc_xq_fallback(kind, failure, req.codec, req.codec_fallback)
+        && sbc_xq_fallback(kind, failure, req.codec, fallback)
     {
         // The sink lists dual channel but refuses it. BTstack's A2DP setup
         // of this connection ends with the refusal: connect again and take
@@ -1656,6 +1699,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
         };
         kind = CodecKind::Sbc;
+        unlisted = None;
         if req.codec.is_some() && replaced.is_none() {
             replaced = Some((CodecKind::SbcXq, Unavailable::NotSupported));
         }
@@ -1675,10 +1719,19 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                 tracing::error!("{e}");
             }
             host.disconnect();
+            // What the user chose beyond what the device lists: say so, and
+            // how to get sound back (issue #86)
+            let msg = if forced.is_some() {
+                Msg::with("error.codec_unsupported_refused", &[&kind.name()])
+            } else if unlisted.is_some() {
+                Msg::with("error.codec_unlisted_refused", &[&kind.name()])
+            } else {
+                Msg::new("error.codec_configure")
+            };
             return if stopped() {
                 inner.notify(StreamState::Idle, Msg::new("status.ready"))
             } else {
-                inner.notify(StreamState::Error, rom_or(&host, Msg::new("error.codec_configure")))
+                inner.notify(StreamState::Error, rom_or(&host, msg))
             };
         }
     };
@@ -1785,7 +1838,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
 
     // A reconnect builds the configuration anew from what the device lists
     // then (v1 read its capabilities again)
-    let rebuild = |r: &RemoteCaps| match with_forced(r.clone(), forced).configuration_with(
+    let rebuild = |r: &RemoteCaps| match as_asked(r.clone(), forced, unlisted).configuration_with(
         kind,
         format.sample_rate,
         channels,
@@ -2209,7 +2262,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             }
             break;
         };
-        r.remote = with_forced(r.remote, forced);
+        r.remote = as_asked(r.remote, forced, unlisted);
         // The encoder follows the new stream: its MTU and the device's
         // settings (e.g. its SBC bitpool range) may have changed
         let new_config =
@@ -2433,6 +2486,20 @@ mod tests {
         let mut h = DefaultHandover::default();
         assert_eq!(h.end(Some("{cable}"), "{speakers}".into()).as_deref(), Some("{speakers}"));
         assert_eq!(h, DefaultHandover::default());
+    }
+
+    #[test]
+    fn loopback_stands_in_for_a_missing_output_device() {
+        let out = |id: &str| SourceRequest::OutputDevice { id: id.into(), name: "Speakers".into() };
+        assert!(loopback_may_replace(&out("{speakers}")));
+        assert!(!loopback_may_replace(&out("")));
+        assert_eq!(stand_in_text(&out("{speakers}")).key, "status.connected_output_fallback");
+        let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: true };
+        assert_eq!(stand_in_text(&virt).key, "status.connected_source_fallback");
+        // Never made the default output
+        assert_eq!(out("{speakers}").default_switch(), None);
+        let info = out("{speakers}").info();
+        assert_eq!((info.kind, info.name.as_str()), ("output", "Speakers"));
     }
 
     #[test]

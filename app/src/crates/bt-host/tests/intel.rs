@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
+use bt_host::bringup::sim;
 use bt_host::intel::*;
 
 // ---- packets ----
@@ -567,4 +568,214 @@ fn legacy_generation_answering_in_tlv() {
     let run = run(&mut ctl, HashMap::new(), &[]);
     assert_eq!(run.result, Some(Ok(Outcome::AlreadyRunning)));
     assert_eq!(ctl.commands[1], [0x05, 0xFC, 0]);
+}
+
+// ---- ROM controllers (7260 / 7265 and kin): the .bseq patch ----
+
+/// A .bseq: each command with its events
+fn bseq(records: &[(Vec<u8>, Vec<Vec<u8>>)]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (command, events) in records {
+        out.push(0x01);
+        out.extend_from_slice(command);
+        for e in events {
+            out.push(0x02);
+            out.extend_from_slice(e);
+        }
+    }
+    out
+}
+
+fn cmd(opcode: u16, params: &[u8]) -> Vec<u8> {
+    bt_host::bringup::hci_command(opcode, params)
+}
+
+/// The shape of Intel's 7260 patch: patch pieces, settings (0xFC2F, a
+/// Command Status and vendor event 0x19), manufacturer mode left, 0xFC60
+fn rom_patch() -> Vec<u8> {
+    bseq(&[
+        (
+            cmd(0xFC8E, &[0x00, 0x01, 0x00, 0x08, 0x00, 0x04, 0x02, 0x03, 0x0D, 0x57]),
+            vec![command_complete(0xFC8E, &[0])],
+        ),
+        (cmd(0xFC8E, &[0xAA; 20]), vec![command_complete(0xFC8E, &[0])]),
+        (cmd(0xFC2F, &[0x55; 12]), vec![sim::command_status(0xFC2F, 0), vendor(0x19, &[0x00])]),
+        (cmd(0xFC11, &[0x00, 0x00]), vec![command_complete(0xFC11, &[0])]),
+        (cmd(0xFC60, &[0x01, 0x01]), vec![command_complete(0xFC60, &[0])]),
+    ])
+}
+
+/// A generation's default file: settings only
+fn rom_settings() -> Vec<u8> {
+    bseq(&[(cmd(0xFC2F, &[0x55; 12]), vec![sim::command_status(0xFC2F, 0), vendor(0x19, &[0x00])])])
+}
+
+/// Legacy Read Version of a 7260 (WP): ROM firmware 1.0.2.3.d, patch number
+fn rom_version(patch: u8) -> Vec<u8> {
+    vec![0x00, 0x37, 0x07, 0x10, 0x01, 0x00, 0x02, 0x03, 0x0D, patch]
+}
+
+const ROM_PATCH: &str = "ibt-hw-37.7.10-fw-1.0.2.3.d.bseq";
+
+#[derive(Default)]
+struct RomChip {
+    versions: VecDeque<Vec<u8>>,
+    /// Answer the patch piece with this index (0-based, 0xFC8E only) with
+    /// an error status
+    refuse_piece: Option<usize>,
+    /// Stay silent on the patch piece with this index
+    silent_piece: Option<usize>,
+    pieces: usize,
+}
+
+impl sim::SimController for RomChip {
+    fn command(&mut self, command: &[u8]) -> Vec<Vec<u8>> {
+        let op = sim::opcode(command);
+        match op {
+            0xFC05 => vec![command_complete(op, &self.versions.pop_front().expect("unexpected Read Version"))],
+            0xFC8E => {
+                let n = self.pieces;
+                self.pieces += 1;
+                if self.silent_piece == Some(n) {
+                    return Vec::new();
+                }
+                // A stray vendor event first: ignored
+                let status = if self.refuse_piece == Some(n) { 0x12 } else { 0x00 };
+                vec![vendor(0x17, &[0x01]), command_complete(op, &[status])]
+            }
+            0xFC2F => vec![sim::command_status(op, 0), vendor(0x19, &[0x00])],
+            _ => vec![command_complete(op, &[0x00])],
+        }
+    }
+
+    fn bulk_command(&mut self, _command: &[u8]) -> Vec<Vec<u8>> {
+        panic!("a ROM controller gets no command on the bulk pipe")
+    }
+}
+
+/// Runs the loader against `chip` with these files; also the names read
+fn run_rom(chip: &mut RomChip, files: HashMap<String, Vec<u8>>) -> (sim::SimRun, Vec<String>) {
+    let read: Rc<RefCell<Vec<String>>> = Rc::default();
+    let log = read.clone();
+    let mut loader = Loader::new(Box::new(move |name| {
+        log.borrow_mut().push(name.to_owned());
+        files.get(name).cloned()
+    }));
+    let run = sim::run(&mut loader, chip);
+    assert!(!run.bootloader, "a ROM controller is left in bootloader mode");
+    assert!(run.commands.iter().all(|c| !c.bulk));
+    let names = read.borrow().clone();
+    (run, names)
+}
+
+fn mfg_params(run: &sim::SimRun) -> Vec<Vec<u8>> {
+    run.commands.iter().filter(|c| c.opcode() == 0xFC11).map(|c| c.params().to_vec()).collect()
+}
+
+#[test]
+fn rom_patch_file_names_and_records() {
+    let v = parse_legacy_version(&rom_version(0)).unwrap();
+    assert_eq!(rom_patch_files(&v), [ROM_PATCH, "ibt-hw-37.7.bseq"]);
+    let stp = parse_legacy_version(&[0x00, 0x37, 0x08, 0x10, 0x22, 0x50, 0x19, 0x14, 0x0F, 0x00]).unwrap();
+    assert_eq!(rom_patch_files(&stp)[0], "ibt-hw-37.8.10-fw-22.50.19.14.f.bseq");
+
+    let steps = parse_bseq(&rom_patch()).unwrap();
+    assert_eq!(steps.len(), 5);
+    assert_eq!(steps[1].command, cmd(0xFC8E, &[0xAA; 20]));
+    // The last event of a command is the one that ends it
+    assert_eq!(steps[2].event, vendor(0x19, &[0x00]));
+
+    assert!(parse_bseq(&[]).is_err());
+    assert!(parse_bseq(&[0x03, 0x00]).is_err());
+    // A command without its event, an event first, a cut record
+    assert!(parse_bseq(&bseq(&[(cmd(0xFC8E, &[1]), vec![])])).is_err());
+    assert!(parse_bseq(&[0x02, 0x0E, 0x00]).is_err());
+    let cut = rom_patch();
+    assert!(parse_bseq(&cut[..cut.len() - 1]).is_err());
+}
+
+#[test]
+fn rom_patch_applied() {
+    let mut chip = RomChip { versions: vec![rom_version(0), rom_version(0x01)].into(), ..RomChip::default() };
+    let (run, read) = run_rom(&mut chip, files(&[(ROM_PATCH, rom_patch()), ("ibt-hw-37.7.bseq", rom_settings())]));
+    assert_eq!(run.result, Ok(Outcome::Loaded { firmware: ROM_PATCH.into(), detail: Some("patch applied") }));
+    assert_eq!(read, [ROM_PATCH]);
+    assert_eq!(run.opcodes(), [0xFC05, 0xFC11, 0xFC8E, 0xFC8E, 0xFC2F, 0xFC11, 0xFC60, 0xFC11, 0xFC05]);
+    // In, the file's own exit, then out with a reset and the patch active
+    assert_eq!(mfg_params(&run), [vec![0x01, 0x00], vec![0x00, 0x00], vec![0x00, 0x02]]);
+    // The commands as the file has them
+    assert_eq!(run.commands[3].bytes, cmd(0xFC8E, &[0xAA; 20]));
+    // Read Version after the reset without a parameter
+    assert_eq!(run.commands[8].bytes, [0x05, 0xFC, 0]);
+    assert_eq!(run.timeouts, 0);
+}
+
+#[test]
+fn rom_without_patch_file() {
+    let mut chip = RomChip { versions: vec![rom_version(0)].into(), ..RomChip::default() };
+    let (run, read) = run_rom(&mut chip, HashMap::new());
+    assert_eq!(run.result, Ok(Outcome::Rom));
+    assert_eq!(read, [ROM_PATCH, "ibt-hw-37.7.bseq"]);
+    assert_eq!(run.opcodes(), [0xFC05]);
+}
+
+#[test]
+fn rom_default_file_has_settings_only() {
+    let mut chip = RomChip { versions: vec![rom_version(0)].into(), ..RomChip::default() };
+    let (run, read) = run_rom(&mut chip, files(&[("ibt-hw-37.7.bseq", rom_settings())]));
+    assert_eq!(
+        run.result,
+        Ok(Outcome::Loaded { firmware: "ibt-hw-37.7.bseq".into(), detail: Some("settings only, no patch") })
+    );
+    assert_eq!(read, [ROM_PATCH, "ibt-hw-37.7.bseq"]);
+    // No reset: nothing to activate
+    assert_eq!(mfg_params(&run), [vec![0x01, 0x00], vec![0x00, 0x00]]);
+}
+
+#[test]
+fn rom_patched_already() {
+    // Patched in this power cycle (Intel's driver, an earlier start)
+    let mut chip = RomChip { versions: vec![rom_version(0x01)].into(), ..RomChip::default() };
+    let (run, read) = run_rom(&mut chip, files(&[(ROM_PATCH, rom_patch())]));
+    assert_eq!(run.result, Ok(Outcome::AlreadyRunning));
+    assert!(read.is_empty());
+    assert_eq!(run.opcodes(), [0xFC05]);
+}
+
+#[test]
+fn rom_patch_refused_or_unanswered() {
+    // The second piece fails, or gets no answer: out with the patch
+    // dropped, and the ROM firmware runs
+    for (refuse, silent) in [(Some(1), None), (None, Some(1))] {
+        let mut chip = RomChip {
+            versions: vec![rom_version(0)].into(),
+            refuse_piece: refuse,
+            silent_piece: silent,
+            ..RomChip::default()
+        };
+        let (run, _) = run_rom(&mut chip, files(&[(ROM_PATCH, rom_patch())]));
+        assert_eq!(run.result, Ok(Outcome::Rom));
+        assert_eq!(run.opcodes(), [0xFC05, 0xFC11, 0xFC8E, 0xFC8E, 0xFC11]);
+        assert_eq!(mfg_params(&run), [vec![0x01, 0x00], vec![0x00, 0x01]]);
+        assert_eq!(run.timeouts, usize::from(silent.is_some()));
+    }
+}
+
+#[test]
+fn rom_patch_file_that_does_not_parse() {
+    let mut chip = RomChip { versions: vec![rom_version(0)].into(), ..RomChip::default() };
+    let (run, _) = run_rom(&mut chip, files(&[(ROM_PATCH, vec![0x01, 0x8E])]));
+    assert_eq!(run.result, Ok(Outcome::Rom));
+    assert_eq!(run.opcodes(), [0xFC05]);
+}
+#[test]
+fn rom_and_first_bootloader_adapters_are_intel() {
+    use bt_host::chips::{ChipVendor, chip_support_tag, chip_supported, vendor_for_usb};
+    // 7260 / 3160, 7265 / 3165, 8260 / 8265, 3168: the Intel loader runs
+    // for them, tagged experimental
+    for pid in [0x07DC, 0x0A2A, 0x0A2B, 0x0AA7] {
+        assert_eq!(vendor_for_usb(0x8087, pid, None), ChipVendor::Intel, "8087:{pid:04X}");
+        assert!(chip_supported(ChipVendor::Intel, 0x8087, pid));
+        assert_eq!(chip_support_tag(ChipVendor::Intel, 0x8087, pid), Some("experimental"));
+    }
 }

@@ -104,7 +104,7 @@ describe("Codecs screen", () => {
       .find((e) => e) as HTMLElement;
     const select = within(entry).getByLabelText(t("capture.mode"));
     await within(select).findByRole("option", { name: "CABLE Input (VB-Audio Virtual Cable)" });
-    expect(within(select).getByRole("option", { name: t("capture.loopback_device", "Speakers (Realtek(R) Audio)") })).not.toBeDisabled();
+    expect(within(select).getByRole("option", { name: t("capture.loopback_default", "Speakers (Realtek(R) Audio)") })).not.toBeDisabled();
     expect(within(select).queryByRole("group", { name: t("capture.app") })).toBeNull();
     // Nor an A2DP packet size
     expect(within(entry).queryByLabelText(t("advanced.max_packet"))).toBeNull();
