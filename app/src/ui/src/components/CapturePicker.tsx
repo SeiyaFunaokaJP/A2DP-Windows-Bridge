@@ -54,9 +54,11 @@ export function captureChoices(
       label: t("capture.volume_sync_missing", p.audio_device_name || p.audio_device_id),
     });
   }
-  // Every output, virtual ones too: which device is virtual is a guess
-  // (a digital output may look like one), and here none becomes the default
-  const output: Choice[] = developer ? devices.map((d) => ({ value: `output:${d.id}`, label: d.name })) : [];
+  // The other outputs: each device is listed once, virtual ones under Virtual
+  // Device
+  const output: Choice[] = developer
+    ? devices.filter((d) => !d.is_virtual).map((d) => ({ value: `output:${d.id}`, label: d.name }))
+    : [];
   if (developer && p.capture_mode === "output" && p.audio_device_id && !output.some((c) => c.value === captureValue(p))) {
     output.unshift({
       value: captureValue(p),

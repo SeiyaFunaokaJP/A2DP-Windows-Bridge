@@ -1116,12 +1116,8 @@ describe("a device's capture source (Audio Devices, issue #86)", () => {
     const settings = (await mock!.call("state.snapshot")) as { settings: Record<string, unknown> };
     await mock!.call("settings.set", { settings: { ...settings.settings, developer_mode: true } });
     const output = await within(select).findByRole("group", { name: t("capture.output") });
-    // Every output, virtual ones too (which is virtual is a guess)
-    expect(within(output).getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "Speakers (Realtek(R) Audio)",
-      "CABLE Input (VB-Audio Virtual Cable)",
-      "Voicemeeter Input (VB-Audio Voicemeeter VAIO)",
-    ]);
+    // Each device once: the virtual ones stay under Virtual Device
+    expect(within(output).getAllByRole("option").map((o) => o.textContent)).toEqual(["Speakers (Realtek(R) Audio)"]);
     calls.length = 0;
     fireEvent.change(select, { target: { value: "output:{0.0.0.00000000}.{speakers}" } });
     await waitFor(() => expect(saves(calls)).toHaveLength(1));
