@@ -901,7 +901,7 @@
   "status.device_back": "オーディオデバイスの電源が戻りました。接続しています...",
   "ui.profile.codec_supported": "対応",
   "ui.profile.codec_not_supported": "非対応",
-  "ui.profile.codec_support_unknown": "不明",
+  "ui.profile.codec_support_unknown": "未確認",
   "ui.profile.codecs_hide": "対応しているコーデックのみ表示",
   "ui.codecs.auto_select": "対応するコーデックのうち最も音質の高いものを自動で選ぶ",
   "ui.codecs.auto_dialog_title": "自動選択をオフにしますか?",

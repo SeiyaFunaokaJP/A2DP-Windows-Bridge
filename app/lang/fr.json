@@ -900,7 +900,7 @@
   "status.device_unreachable": "Déconnecté (éteint ou hors de portée)",
   "ui.profile.codec_supported": "Pris en charge",
   "ui.profile.codec_not_supported": "Non pris en charge",
-  "ui.profile.codec_support_unknown": "Inconnu",
+  "ui.profile.codec_support_unknown": "Non confirmé",
   "ui.profile.codecs_hide": "Afficher uniquement les codecs pris en charge",
   "ui.codecs.auto_select": "Sélectionner automatiquement le codec pris en charge de meilleure qualité",
   "ui.codecs.auto_dialog_title": "Désactiver la sélection automatique ?",

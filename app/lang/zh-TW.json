@@ -900,7 +900,7 @@
   "status.device_unreachable": "已中斷連線(已關機或超出範圍)",
   "ui.profile.codec_supported": "支援",
   "ui.profile.codec_not_supported": "不支援",
-  "ui.profile.codec_support_unknown": "未知",
+  "ui.profile.codec_support_unknown": "未確認",
   "ui.profile.codecs_hide": "僅顯示支援的編解碼器",
   "ui.codecs.auto_select": "自動選擇支援的音質最高的編解碼器",
   "ui.codecs.auto_dialog_title": "關閉自動選擇?",
