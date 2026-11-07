@@ -257,6 +257,8 @@ En el modo Dispositivo virtual, **Usar como salida predeterminada de Windows mie
 - Algunas aplicaciones siguen reproduciendo en el dispositivo anterior hasta que se reinician.
 - Si BlueCaster se cierra inesperadamente, el dispositivo predeterminado no se restaura. Cámbielo en la configuración de Sonido de Windows.
 
+En modo de desarrollador, la lista **Origen de salida** también ofrece **Dispositivo de salida**: cada dispositivo de salida de Windows (altavoces, unos auriculares USB, un televisor, ...). BlueCaster graba entonces lo que reproduce ese dispositivo, sea cual sea la salida predeterminada de Windows, y nunca lo hace predeterminado; **Sincronizar volumen de Windows** sincroniza el volumen de ese dispositivo. Si falta al conectar (desenchufado o deshabilitado), BlueCaster envía Loopback del sistema en su lugar y el estado de la conexión lo indica; **Dispositivos de audio** lo muestra como no conectado. Sin el modo de desarrollador, ese dispositivo captura Loopback del sistema: la elección sigue guardada y vuelve a contar al activar de nuevo el modo de desarrollador.
+
 ### Modo Aplicación {#application-mode}
 
 El modo Aplicación envía el audio de una aplicación, por ejemplo un reproductor de música, un navegador o una aplicación de efectos. Elija la aplicación en la lista **Origen de salida**, en Aplicación. Muestra las aplicaciones que están reproduciendo audio en ese momento; si la suya no aparece, inicie la reproducción en ella y haga clic en **Actualizar** junto a la lista. Se incluyen los procesos secundarios de la aplicación, así que también funciona un navegador que reproduce el audio desde un proceso aparte.

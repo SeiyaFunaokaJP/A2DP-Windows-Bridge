@@ -257,6 +257,8 @@ En mode Périphérique virtuel, **Définir comme sortie par défaut de Windows p
 - Certaines applications continuent de jouer sur le périphérique précédent jusqu'à leur redémarrage.
 - Si BlueCaster se ferme de manière inattendue, le périphérique par défaut n'est pas rétabli. Modifiez-le dans les paramètres Son de Windows.
 
+En mode développeur, la liste **Source de sortie** propose aussi **Périphérique de sortie** : chaque périphérique de sortie de Windows (haut-parleurs, casque USB, téléviseur, ...). BlueCaster enregistre alors ce que joue ce périphérique, quelle que soit la sortie par défaut de Windows, et n'en fait jamais la sortie par défaut ; **Synchro du volume Windows** synchronise le volume de ce périphérique. S'il est absent à la connexion (débranché ou désactivé), BlueCaster envoie le bouclage système à la place et l'état de la connexion l'indique ; **Périphériques audio** l'affiche comme non connecté. Sans le mode développeur, un tel périphérique capture le bouclage système : le choix reste enregistré et compte de nouveau dès que le mode développeur est réactivé.
+
 ### Mode Application {#application-mode}
 
 Le mode Application envoie l'audio d'une seule application, par exemple un lecteur de musique, un navigateur ou une application d'effets. Choisissez l'application dans la liste **Source de sortie**, sous Application. Elle affiche les applications qui lisent de l'audio en ce moment ; si la vôtre manque, lancez-y une lecture et cliquez sur **Actualiser** à côté de la liste. Les processus enfants de l'application sont inclus, si bien qu'un navigateur qui lit l'audio depuis un processus séparé fonctionne aussi.

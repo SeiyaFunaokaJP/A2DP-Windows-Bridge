@@ -38,9 +38,9 @@ export function profilesOf(profiles: readonly Profile[], address: string): Profi
   return profiles.filter((p) => p.device_address.toUpperCase() === a);
 }
 
-/** A device's settings are complete: a virtual device or an app chosen when captured from */
+/** A device's settings are complete: a virtual or output device or an app chosen when captured from */
 export function deviceFieldsComplete(f: DeviceFields): boolean {
-  if (f.capture_mode === "virtual") return f.audio_device_id !== "";
+  if (f.capture_mode === "virtual" || f.capture_mode === "output") return f.audio_device_id !== "";
   if (f.capture_mode === "app") return f.app_exe !== "";
   return true;
 }
@@ -295,16 +295,27 @@ export function defaultProfileName(deviceName: string, address: string, leAudio:
 
 /**
  * The render device a capture mode records: the default output device
- * (loopback), the chosen virtual device, or none (application capture:
- * Windows converts to the rate asked for)
+ * (loopback), the chosen virtual or output device, or none (application
+ * capture: Windows converts to the rate asked for)
  */
 export function captureDevice(
   p: Pick<Profile, "capture_mode" | "audio_device_id">,
   devices: readonly AudioDevice[],
 ): AudioDevice | null {
   if (p.capture_mode === "loopback") return devices.find((d) => d.is_default) ?? null;
-  if (p.capture_mode === "virtual") return devices.find((d) => d.id === p.audio_device_id) ?? null;
+  if (p.capture_mode === "virtual" || p.capture_mode === "output") {
+    return devices.find((d) => d.id === p.audio_device_id) ?? null;
+  }
   return null;
+}
+
+/**
+ * The capture source a profile streams: a chosen output device counts in
+ * developer mode only (issue #193; the core's Settings::capture_source),
+ * System Loopback outside it. The profile keeps its choice.
+ */
+export function captureInForce<P extends Pick<Profile, "capture_mode">>(p: P, developer: boolean): P {
+  return p.capture_mode === "output" && !developer ? { ...p, capture_mode: "loopback" } : p;
 }
 
 /**

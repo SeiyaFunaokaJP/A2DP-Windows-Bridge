@@ -18,6 +18,7 @@ import { LINKS } from "../lib/links";
 import {
   appCaptureSupport,
   captureDevice,
+  captureInForce,
   deviceFields,
   deviceFieldsComplete,
   entryBase,
@@ -84,8 +85,12 @@ export function DeviceSettings(props: { device: Device }) {
   const noVirtual = () => listed() && virtualDevices().length === 0;
   const [appSupport] = createResource(appCaptureSupport);
   const leOnly = () => leEntry() || (profiles().length > 0 && profiles().every((p) => p.le_audio));
-  /** The shown settings as a profile (what Home's capture source list takes) */
-  const shown = (): Profile => ({ ...newestBase(profiles()), ...f, le_audio: leOnly() });
+  const developer = () => snap().settings.developer_mode;
+  /** The shown settings as a profile (what Home's capture source list
+   *  takes), with the source it streams: outside developer mode a chosen
+   *  output device is shown as System Loopback, and kept */
+  const shown = (): Profile => captureInForce({ ...newestBase(profiles()), ...f, le_audio: leOnly() }, developer());
+  const mode = () => shown().capture_mode;
 
   /** Changes the device's settings: into each of its profiles once complete
    *  (a virtual device or an app chosen); a profile in use starts again with
@@ -112,14 +117,16 @@ export function DeviceSettings(props: { device: Device }) {
     setSaving(false);
   };
 
-  /** System Loopback, the virtual devices and the playing apps in one list */
+  /** System Loopback, the virtual devices, the output devices (developer
+   *  mode) and the playing apps in one list */
   const sources = createMemo((): Option<string>[] => {
     const p = shown();
-    const c = captureChoices(p, devices() ?? [], apps() ?? [], appSupport() !== "no");
+    const c = captureChoices(p, devices() ?? [], apps() ?? [], appSupport() !== "no", developer());
     const virtual: Option<string>[] = c.virtual.map((o) => ({ ...o, group: t("capture.virtual") }));
     if (virtual.length === 0 && noVirtual()) {
       virtual.push({ value: "virtual:", label: t("capture.no_virtual_device"), group: t("capture.virtual"), disabled: true });
     }
+    const outputs: Option<string>[] = c.output.map((o) => ({ ...o, group: t("capture.output") }));
     const list: Option<string>[] = c.apps.map((o) => ({ ...o, group: t("capture.app") }));
     if (list.length === 0 && apps() !== null && !p.le_audio && appSupport() !== "no") {
       list.push({ value: "app:", label: t("capture.no_app_playing"), group: t("capture.app"), disabled: true });
@@ -127,7 +134,7 @@ export function DeviceSettings(props: { device: Device }) {
     // The Windows default output it records, by name (issue #86)
     const output = (devices() ?? []).find((d) => d.is_default)?.name;
     const loopback = output ? t("capture.loopback_device", output) : t("capture.loopback");
-    return [{ value: "loopback", label: loopback }, ...virtual, ...list];
+    return [{ value: "loopback", label: loopback }, ...virtual, ...outputs, ...list];
   });
   const chooseSource = (value: string) => {
     const p = shown();
@@ -149,24 +156,26 @@ export function DeviceSettings(props: { device: Device }) {
           <div class="inline capture-source">
             <Icon name={captureText(shown()).icon} />
             <Select id={id} describedBy={aboutId} value={captureValue(shown())} options={sources()} onChange={chooseSource} />
-            <CaptureFormat fields={f} profiles={profiles()} devices={devices()} />
+            <CaptureFormat fields={shown()} profiles={profiles()} devices={devices()} />
             <IconButton icon="arrow_sync" label={t("capture.app_refresh")} onClick={load} />
           </div>
         )}
       </Field>
       <div class="capture-about" id={aboutId}>
         <p class="hint">
-          {f.capture_mode === "virtual"
+          {mode() === "virtual"
             ? t("capture.hint_virtual")
-            : f.capture_mode === "app"
-              ? `${t("capture.hint_app")}\n${t("capture.app_hint")}`
-              : t("capture.hint_loopback")}
+            : mode() === "output"
+              ? t("capture.hint_output")
+              : mode() === "app"
+                ? `${t("capture.hint_app")}\n${t("capture.app_hint")}`
+                : t("capture.hint_loopback")}
         </p>
-        <Show when={f.capture_mode === "app" && appSupport() !== "yes" && appSupport() !== "no"}>
+        <Show when={mode() === "app" && appSupport() !== "yes" && appSupport() !== "no"}>
           <p class="hint">{t("ui.profile.app_capture_requirement")}</p>
         </Show>
       </div>
-      <FormatWarning fields={f} profiles={profiles()} devices={devices()} />
+      <FormatWarning fields={shown()} profiles={profiles()} devices={devices()} />
       {/* Whether this Windows can capture one app: only the core knows the
           build for sure (it refuses the stream on an older Windows); the UI
           asks the WebView's client hints */}

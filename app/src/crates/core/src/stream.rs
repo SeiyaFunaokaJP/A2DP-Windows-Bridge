@@ -102,10 +102,14 @@ impl StreamRequest {
     }
 }
 
+/// Where a stream's audio comes from. OutputDevice: loopback of that output
+/// device whichever is the Windows default (developer mode, issue #193),
+/// never made the default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourceRequest {
     SystemLoopback,
     VirtualDevice { id: String, name: String, auto_switch: bool },
+    OutputDevice { id: String, name: String },
     Application { exe: String },
     TestTone,
 }
@@ -125,6 +129,7 @@ impl SourceRequest {
         let (kind, name) = match self {
             SourceRequest::SystemLoopback => ("loopback", String::new()),
             SourceRequest::VirtualDevice { name, .. } => ("virtual", name.clone()),
+            SourceRequest::OutputDevice { name, .. } => ("output", name.clone()),
             SourceRequest::Application { exe } => ("app", exe.clone()),
             SourceRequest::TestTone => ("tone", String::new()),
         };
@@ -137,6 +142,7 @@ impl std::fmt::Display for SourceRequest {
         match self {
             SourceRequest::SystemLoopback => f.write_str("system output"),
             SourceRequest::VirtualDevice { name, .. } => write!(f, "virtual device {}", crate::diag::quoted(name)),
+            SourceRequest::OutputDevice { name, .. } => write!(f, "output device {}", crate::diag::quoted(name)),
             SourceRequest::Application { exe } => write!(f, "app {exe}"),
             SourceRequest::TestTone => f.write_str("test tone"),
         }
@@ -356,9 +362,10 @@ pub fn codec_details(
 /// The audio source of a stream
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SourceInfo {
-    /// "loopback", "virtual", "app" (profile capture modes) or "tone"
+    /// "loopback", "virtual", "output", "app" (profile capture modes) or
+    /// "tone"
     pub kind: &'static str,
-    /// The virtual device's name or the application's executable
+    /// The virtual or output device's name, or the application's executable
     pub name: String,
     /// Application capture: the application is not running
     pub waiting: bool,
@@ -632,6 +639,10 @@ fn open_source(request: &SourceRequest, rate: u32) -> Result<Option<(DeviceSourc
             }
             Source::RenderDevice { id: id.clone() }
         }
+        // Empty only in a hand-edited request (Profile::source gives System
+        // Loopback for an output device profile without one)
+        SourceRequest::OutputDevice { id, .. } if id.is_empty() => return Err(Msg::new("error.wasapi_init")),
+        SourceRequest::OutputDevice { id, .. } => Source::RenderDevice { id: id.clone() },
         SourceRequest::Application { exe } => {
             let build = audio_capture::windows_build();
             if build < audio_capture::APP_CAPTURE_MIN_BUILD {
@@ -659,9 +670,18 @@ fn open_source(request: &SourceRequest, rate: u32) -> Result<Option<(DeviceSourc
 }
 
 /// System Loopback may stand in when `source` cannot be opened: a chosen
-/// virtual device only, an empty choice stays the error it is
+/// virtual or output device only (removed, disabled, held by another app),
+/// an empty choice stays the error it is
 fn loopback_may_replace(source: &SourceRequest) -> bool {
-    matches!(source, SourceRequest::VirtualDevice { id, .. } if !id.is_empty())
+    matches!(source, SourceRequest::VirtualDevice { id, .. } | SourceRequest::OutputDevice { id, .. } if !id.is_empty())
+}
+
+/// What the session says while System Loopback stands in for `source`
+fn stand_in_text(source: &SourceRequest) -> Msg {
+    match source {
+        SourceRequest::OutputDevice { .. } => Msg::new("status.connected_output_fallback"),
+        _ => Msg::new("status.connected_source_fallback"),
+    }
 }
 
 /// What the source [`open_source`] opened delivers. Application capture:
@@ -1207,7 +1227,9 @@ fn sbc_abr(req: &StreamRequest, kind: CodecKind) -> bool {
 fn source_mix(source: &SourceRequest) -> Option<audio_capture::MixFormat> {
     match source {
         SourceRequest::SystemLoopback | SourceRequest::Application { .. } => audio_capture::mix_format(None),
-        SourceRequest::VirtualDevice { id, .. } if !id.is_empty() => audio_capture::mix_format(Some(id)),
+        SourceRequest::VirtualDevice { id, .. } | SourceRequest::OutputDevice { id, .. } if !id.is_empty() => {
+            audio_capture::mix_format(Some(id))
+        }
         _ => None,
     }
 }
@@ -1579,8 +1601,9 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     // Restored while the headphones are off: switched again when they are back
     let mut switch_default_again = false;
     default_guard.follow(&req.source);
-    // A virtual device that cannot be opened (another app may hold it): this
-    // session sends what Windows plays, the profile stays as it is
+    // A virtual device that cannot be opened (another app may hold it), or
+    // an output device that is gone: this session sends what Windows plays,
+    // the profile stays as it is
     let mut source = req.source.clone();
     let mut source_text = None;
     let opened = match open_source(&source, preferred) {
@@ -1595,8 +1618,8 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                 host.disconnect();
                 return inner.notify(StreamState::Error, m);
             };
+            source_text = Some(stand_in_text(&source));
             source = SourceRequest::SystemLoopback;
-            source_text = Some(Msg::new("status.connected_source_fallback"));
             o
         }
     };
@@ -2433,6 +2456,20 @@ mod tests {
         let mut h = DefaultHandover::default();
         assert_eq!(h.end(Some("{cable}"), "{speakers}".into()).as_deref(), Some("{speakers}"));
         assert_eq!(h, DefaultHandover::default());
+    }
+
+    #[test]
+    fn loopback_stands_in_for_a_missing_output_device() {
+        let out = |id: &str| SourceRequest::OutputDevice { id: id.into(), name: "Speakers".into() };
+        assert!(loopback_may_replace(&out("{speakers}")));
+        assert!(!loopback_may_replace(&out("")));
+        assert_eq!(stand_in_text(&out("{speakers}")).key, "status.connected_output_fallback");
+        let virt = SourceRequest::VirtualDevice { id: "{x}".into(), name: "CABLE".into(), auto_switch: true };
+        assert_eq!(stand_in_text(&virt).key, "status.connected_source_fallback");
+        // Never made the default output
+        assert_eq!(out("{speakers}").default_switch(), None);
+        let info = out("{speakers}").info();
+        assert_eq!((info.kind, info.name.as_str()), ("output", "Speakers"));
     }
 
     #[test]
