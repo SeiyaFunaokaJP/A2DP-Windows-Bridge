@@ -34,9 +34,11 @@ import { audioEntries, codecsOnRequest, entryBase, entryByKey, entryOf, knownCod
 import { chooseCodec, codecShown, pickedCodec, settle, settling, streamingCodec } from "./Codecs";
 
 /** Adapters whose firmware files are missing from the settings folder or
- *  invalid (v1's "Firmware not found!" / "Firmware file is invalid!" bar) */
+ *  invalid (v1's "Firmware not found!" / "Firmware file is invalid!" bar).
+ *  Only those on WinUSB: one Windows runs, or that is disabled, needs none
+ *  yet (issue #86) */
 export function adaptersMissingFirmware(snap: Snapshot): AdapterInfo[] {
-  return snap.adapter.adapters.filter((a) => a.firmware_present === false);
+  return snap.adapter.adapters.filter((a) => a.firmware_present === false && a.driver === "winusb");
 }
 
 /** The bar over Home while an adapter lacks its firmware files, or the

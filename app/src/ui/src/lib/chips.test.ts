@@ -151,6 +151,8 @@ describe("firmware state", () => {
     const s = setting(CHIP_AUTO);
     expect(adapterFirmwareTag(rtl(true), s)).toEqual({ key: "firmware.present", status: "good" });
     expect(adapterFirmwareTag(rtl(false), s)).toEqual({ key: "firmware.missing_short", status: "bad" });
+    // Not on WinUSB yet (Windows runs it, or it is disabled): amber
+    expect(adapterFirmwareTag({ ...rtl(false), driver: "bluetooth" }, s)).toEqual({ key: "firmware.missing_short", status: "warn" });
     expect(adapterFirmwareTag(other("Intel", "firmware.vendor_intel"), s).key).toBe("ui.adapter.firmware_not_realtek");
     expect(adapterFirmwareTag(other("Qualcomm", "firmware.vendor_unsupported"), s)).toEqual({
       key: "ui.adapter.firmware_unsupported",

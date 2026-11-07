@@ -51,7 +51,10 @@ describe("device pairing", () => {
     expect(within(table).getByText("A/V Remote Control")).toBeInTheDocument();
     // One name: the SIG's, not the device's beside it; one known to neither
     expect(within(table).getByText("Serial Port")).toBeInTheDocument();
-    expect(within(table).queryByText(/GAIA/)).toBeNull();
+    expect(within(table).queryByText("GAIA")).toBeNull();
+    // A vendor's service by its name, in a dialog wide enough for it
+    expect(within(table).getByText("Qualcomm GAIA Command/Response")).toBeInTheDocument();
+    expect(dialog).toHaveClass("dialog-wide");
     expect(within(table).getByText(t("ui.pairing.unknown_service"))).toBeInTheDocument();
     expect(within(table).getByText("Google Fast Pair")).toBeInTheDocument();
     // The key in the same dialog, with no Linux file

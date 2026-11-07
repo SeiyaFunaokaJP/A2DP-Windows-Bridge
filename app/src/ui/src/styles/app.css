@@ -913,6 +913,9 @@ option {
   gap: var(--s3);
   animation: rise var(--t-mid) var(--ease);
 }
+.dialog-wide {
+  width: min(46rem, 100%);
+}
 .dialog > h2,
 .dialog-actions {
   flex: none;

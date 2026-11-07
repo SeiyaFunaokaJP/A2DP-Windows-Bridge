@@ -107,6 +107,8 @@ const POLL_INTERVAL_MS: u32 = 1;
 /// coarse, so the clock decides too ([`WMT_TIMEOUT_MS`])
 const MAX_POLLS: u32 = 3000;
 const WMT_TIMEOUT_MS: u128 = 3000;
+/// Read Local Version sends: the first event after a restart can get lost
+const VERSION_TRIES: u8 = 2;
 /// "In progress" answers to a section query before giving up, one every
 /// [`PROGRESS_WAIT_MS`]
 const MAX_PROGRESS: u32 = 20;
@@ -218,8 +220,11 @@ enum Wmt {
 
 enum State {
     Idle,
-    /// Read Local Version sent: answered when the firmware runs
-    Version,
+    /// Read Local Version sent: answered when the firmware runs. Sent again
+    /// once: the first event after a restart can get lost
+    Version {
+        tries: u8,
+    },
     /// Chip ID and ROM version: the register reads asked for
     ChipId,
     ChipId79xx,
@@ -280,6 +285,11 @@ impl Loader {
             total_chunks: 0,
             sent_sections: 0,
         }
+    }
+
+    fn read_version(&mut self, tries: u8) -> Vec<Action> {
+        self.state = State::Version { tries };
+        vec![Action::Command(hci_command(OP_READ_LOCAL_VERSION, &[])), Action::Timer(COMMAND_TIMEOUT_MS)]
     }
 
     fn finish(&mut self, result: Result<Outcome, LoadError>) -> Vec<Action> {
@@ -492,19 +502,18 @@ impl ChipLoader for Loader {
 
     fn start(&mut self) -> Vec<Action> {
         self.started = Instant::now();
-        self.state = State::Version;
-        vec![Action::Command(hci_command(OP_READ_LOCAL_VERSION, &[])), Action::Timer(COMMAND_TIMEOUT_MS)]
+        self.read_version(1)
     }
 
     fn on_event(&mut self, event: &[u8]) -> Vec<Action> {
         match (&self.state, parse_event(event)) {
             // Answered: the firmware runs and Bluetooth is on
-            (State::Version, HciEvent::Complete { opcode: OP_READ_LOCAL_VERSION, status: 0, .. }) => {
+            (State::Version { .. }, HciEvent::Complete { opcode: OP_READ_LOCAL_VERSION, status: 0, .. }) => {
                 self.finish(Ok(Outcome::AlreadyRunning))
             }
             // The ROM refuses HCI: download
-            (State::Version, HciEvent::Complete { opcode: OP_READ_LOCAL_VERSION, status, .. })
-            | (State::Version, HciEvent::Status { opcode: OP_READ_LOCAL_VERSION, status }) => {
+            (State::Version { .. }, HciEvent::Complete { opcode: OP_READ_LOCAL_VERSION, status, .. })
+            | (State::Version { .. }, HciEvent::Status { opcode: OP_READ_LOCAL_VERSION, status }) => {
                 tracing::info!("mediatek: Read Local Version refused (0x{status:02X}): the ROM runs, downloading");
                 self.state = State::ChipId;
                 vec![Action::UsbControl(read_register(REGISTER_CHIP_ID))]
@@ -530,7 +539,11 @@ impl ChipLoader for Loader {
 
     fn on_timeout(&mut self) -> Vec<Action> {
         match std::mem::replace(&mut self.state, State::Idle) {
-            State::Version => self.finish(Err(LoadError::Timeout("Read Local Version"))),
+            State::Version { tries } if tries < VERSION_TRIES => {
+                tracing::info!("mediatek: no answer to Read Local Version, sending it again");
+                self.read_version(tries + 1)
+            }
+            State::Version { .. } => self.finish(Err(LoadError::Timeout("Read Local Version"))),
             // The next read of the pending event
             state @ State::Waiting { .. } => {
                 self.state = state;
@@ -571,7 +584,7 @@ impl ChipLoader for Loader {
                     );
                     return if version { self.after_version(chip, v) } else { self.on_chip(chip, v, false) };
                 }
-                if matches!(self.state, State::Idle | State::Done | State::Version | State::Pause { .. }) {
+                if matches!(self.state, State::Idle | State::Done | State::Version { .. } | State::Pause { .. }) {
                     return Vec::new();
                 }
                 tracing::warn!("mediatek: USB control transfer failed: {e}");
@@ -588,7 +601,7 @@ impl ChipLoader for Loader {
 
     fn step(&self) -> &'static str {
         match self.state {
-            State::Version => "version",
+            State::Version { .. } => "version",
             State::ChipId | State::ChipId79xx | State::FwVersion { .. } | State::Flavor { .. } => "chip ID",
             State::Waiting { what: Wmt::FuncOn, .. } | State::Pause { then: Wmt::FuncOn } => "start",
             State::Waiting { .. } | State::Pause { .. } => "download",
@@ -719,6 +732,8 @@ mod tests {
         empty_reads: u32,
         /// Never answers a WMT command
         silent: bool,
+        /// Read Local Version answers lost on the way
+        lost_versions: u32,
         /// WMT events not read yet
         pending: Vec<Vec<u8>>,
         empty_left: u32,
@@ -742,6 +757,7 @@ mod tests {
                 busy: 0,
                 empty_reads: 2,
                 silent: false,
+                lost_versions: 0,
                 pending: Vec::new(),
                 empty_left: 0,
                 specs: Vec::new(),
@@ -765,6 +781,10 @@ mod tests {
         fn command(&mut self, c: &[u8]) -> Vec<Vec<u8>> {
             let opcode = sim::opcode(c);
             if opcode == OP_READ_LOCAL_VERSION {
+                if self.lost_versions > 0 {
+                    self.lost_versions -= 1;
+                    return Vec::new();
+                }
                 let status = if self.firmware_runs { 0 } else { 0x0C };
                 return vec![command_complete(opcode, status, &[])];
             }
@@ -918,6 +938,18 @@ mod tests {
         assert_eq!(r.commands[0].opcode(), OP_READ_LOCAL_VERSION);
         assert!(r.timers.contains(&SETTLE_MS));
         assert!(!r.bootloader);
+    }
+
+    /// The first event after a restart got lost (#86): asked again once
+    #[test]
+    fn asks_the_version_again_when_its_answer_is_lost() {
+        let r = run(&mut Chip { firmware_runs: true, lost_versions: 1, ..Chip::new() }, HashMap::new());
+        assert_eq!(r.result, Ok(Outcome::AlreadyRunning));
+        assert_eq!(r.opcodes(), [OP_READ_LOCAL_VERSION, OP_READ_LOCAL_VERSION]);
+        let r = run(&mut Chip { lost_versions: 1, ..Chip::new() }, files(&[10]));
+        assert_eq!(r.result, Ok(Outcome::Loaded { firmware: NAME.into(), detail: None }));
+        let r = run(&mut Chip { lost_versions: 2, ..Chip::new() }, files(&[10]));
+        assert_eq!(r.result, Err(LoadError::Timeout("Read Local Version")));
     }
 
     #[test]

@@ -117,6 +117,7 @@ export interface AdapterFirmware {
   /** The core can fetch the files from linux-firmware */
   firmware_download?: boolean;
   vendor_note: { key: string; args: string[] } | null;
+  driver?: "winusb" | "bluetooth" | "other" | "none";
 }
 
 /**
@@ -181,7 +182,9 @@ export function adapterFirmwareTag(
 ): { key: string; status: "good" | "warn" | "bad" } {
   if (a.firmware_present === true) return { key: "firmware.present", status: "good" };
   if (a.firmware_present === false) {
-    return { key: a.firmware_invalid ? "firmware.invalid_short" : "firmware.missing_short", status: "bad" };
+    // Needed once the adapter is on WinUSB: amber before (issue #86)
+    const status = a.driver === undefined || a.driver === "winusb" ? "bad" : "warn";
+    return { key: a.firmware_invalid ? "firmware.invalid_short" : "firmware.missing_short", status };
   }
   // BlueCaster cannot use it: red, as a missing file (issue #86)
   if (a.vendor_note?.key === "firmware.vendor_unsupported") return { key: "ui.adapter.firmware_unsupported", status: "bad" };
