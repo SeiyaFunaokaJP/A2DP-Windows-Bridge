@@ -33,7 +33,6 @@ const NO_OVERRIDES: DevOverrides = {
   aac_no_peak: false,
   aac_no_afterburner: false,
   aac_latm_v0: false,
-  force_codec: false,
   auto_codec_settings: false,
   match_source: false,
   ignore_sink_max: false,
@@ -201,12 +200,6 @@ function Overrides(props: { value: DevOverrides; save: (v: DevOverrides) => Prom
     <div>
       <Banner kind={active() ? "warn" : "info"} title={active() ? t("ui.dev.active") : t("ui.dev.intro")} />
       <Section title={t("ui.nav.codecs")}>
-        <Toggle
-          label={t("ui.dev.force_codec")}
-          hint={t("ui.dev.force_codec_hint")}
-          checked={props.value.force_codec}
-          onChange={(v) => set({ force_codec: v })}
-        />
         <Toggle
           label={t("ui.dev.auto_codec_settings")}
           hint={t("ui.dev.auto_codec_settings_hint")}

@@ -168,6 +168,8 @@ fn to_ipc_profile(p: &CoreProfile, legacy: u16) -> Profile {
         quality: p.quality.clone(),
         abr: p.abr,
         codec_fallback: p.codec_fallback,
+        codec_forced: p.codec_forced,
+        unlisted_options: p.unlisted_options,
         sample_rate: p.sample_rate,
         bit_depth: p.bit_depth,
         capture_mode: p.capture_mode.clone(),
@@ -209,6 +211,7 @@ fn to_ipc_codec_values(v: &profiles::CodecValues) -> ipc::CodecValues {
         sbc_subbands: v.sbc_subbands,
         sbc_allocation: v.sbc_allocation.clone(),
         sbc_channel_mode: v.sbc_channel_mode.clone(),
+        unlisted_options: v.unlisted_options,
     }
 }
 
@@ -226,6 +229,7 @@ fn from_ipc_codec_values(v: &ipc::CodecValues) -> profiles::CodecValues {
         sbc_subbands: v.sbc_subbands,
         sbc_allocation: v.sbc_allocation.clone(),
         sbc_channel_mode: v.sbc_channel_mode.clone(),
+        unlisted_options: v.unlisted_options,
     }
 }
 
@@ -239,6 +243,8 @@ fn merge_profile(base: Option<&CoreProfile>, p: &Profile) -> CoreProfile {
     c.quality = p.quality.clone();
     c.abr = p.abr;
     c.codec_fallback = p.codec_fallback;
+    c.codec_forced = p.codec_forced;
+    c.unlisted_options = p.unlisted_options;
     c.sample_rate = p.sample_rate;
     c.bit_depth = p.bit_depth;
     c.capture_mode = p.capture_mode.clone();
@@ -307,7 +313,6 @@ fn to_ipc_settings(s: &CoreSettings) -> Settings {
             aac_no_peak: s.dev_overrides.aac_no_peak,
             aac_no_afterburner: s.dev_overrides.aac_no_afterburner,
             aac_latm_v0: s.dev_overrides.aac_latm_v0,
-            force_codec: s.dev_overrides.force_codec,
             auto_codec_settings: s.dev_overrides.auto_codec_settings,
             match_source: s.dev_overrides.match_source,
             ignore_sink_max: s.dev_overrides.ignore_sink_max,
@@ -383,7 +388,6 @@ fn merge_settings(base: &CoreSettings, s: &Settings) -> CoreSettings {
         aac_no_peak: s.dev_overrides.aac_no_peak,
         aac_no_afterburner: s.dev_overrides.aac_no_afterburner,
         aac_latm_v0: s.dev_overrides.aac_latm_v0,
-        force_codec: s.dev_overrides.force_codec,
         auto_codec_settings: s.dev_overrides.auto_codec_settings,
         match_source: s.dev_overrides.match_source,
         ignore_sink_max: s.dev_overrides.ignore_sink_max,

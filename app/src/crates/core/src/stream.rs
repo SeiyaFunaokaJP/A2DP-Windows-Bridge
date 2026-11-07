@@ -26,6 +26,12 @@ pub struct StreamRequest {
     /// None = Auto
     pub codec: Option<CodecKind>,
     pub codec_fallback: bool,
+    /// `codec` was chosen though the device did not offer it: it is asked
+    /// for anyway, with no fallback (the profile's `codec_forced`)
+    pub codec_forced: bool,
+    /// `codec`'s settings are not held to what the device lists (the
+    /// profile's `unlisted_options`)
+    pub unlisted_options: bool,
     /// Experimental codecs may be used (settings `experimental_codecs`):
     /// off, Auto and a fallback never pick them and a chosen one falls back
     pub experimental_codecs: bool,
@@ -1181,15 +1187,20 @@ fn sbc_xq_fallback(kind: CodecKind, failure: &ConfigFailure, requested: Option<C
         && (requested.is_none() || fallback)
 }
 
-/// `remote` with `forced` usable, the codec developer mode's force_codec
-/// asks for though the device does not list it
-fn with_forced(remote: RemoteCaps, forced: Option<CodecKind>) -> RemoteCaps {
-    let Some(kind) = forced else { return remote };
-    match remote.forcing(kind) {
-        Some(caps) => {
+/// `remote` as the profile asks for it: `forced` usable, the codec chosen
+/// on its card though the device does not offer it, and `unlisted`'s
+/// settings not held to what the device lists (its card's "Show only
+/// supported options" off; issue #86)
+fn as_asked(remote: RemoteCaps, forced: Option<CodecKind>, unlisted: Option<CodecKind>) -> RemoteCaps {
+    let remote = match forced.map(|k| (k, remote.forcing(k))) {
+        Some((kind, Some(caps))) => {
             tracing::warn!("codec: forcing {}, which the device does not list", kind.name());
             caps
         }
+        _ => remote,
+    };
+    match unlisted {
+        Some(kind) => remote.unlisted(kind),
         None => remote,
     }
 }
@@ -1454,21 +1465,22 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     }
 
     // ---- codec ----
-    // Developer mode: the codec chosen, listed or not, and no fallback
-    let force = codec::dev::overrides().force_codec;
-    let forced = req.codec.filter(|&k| force && k.available() && !remote.has(k));
-    remote = with_forced(remote, forced);
+    // A codec chosen on its card that the device did not offer: asked for
+    // anyway, and no fallback (issue #86: without Auto-select the choice is
+    // the user's; it stops with an error if the device refuses it)
+    let forced = req.codec.filter(|&k| req.codec_forced && k.available() && !remote.has(k));
+    let fallback = req.codec_fallback && !req.codec_forced;
+    remote = as_asked(remote, forced, None);
     if !req.auto_order.is_default() {
         tracing::info!("codec: the device's order set by the user: {}", req.auto_order.names());
     }
-    let choice = match caps::choose_in(&remote, req.codec, req.codec_fallback, req.experimental_codecs, &req.auto_order)
-    {
+    let choice = match caps::choose_in(&remote, req.codec, fallback, req.experimental_codecs, &req.auto_order) {
         Ok(c) => c,
         Err(why) => {
             tracing::debug!(
                 "codec: no codec for request {:?} (fallback {}, experimental {}): {why:?}",
                 req.codec.map(CodecKind::name),
-                req.codec_fallback,
+                fallback,
                 req.experimental_codecs
             );
             host.disconnect();
@@ -1488,6 +1500,14 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
         tracing::warn!("codec fallback: {} not available ({why:?}), using {}", wanted.name(), kind.name());
     }
     tracing::info!("codec selected: {}", kind.name());
+    // The codec chosen with its card's "Show only supported options" off:
+    // its settings go by what BlueCaster has, not by what the device lists
+    // (never under Auto-select, which keeps to what streams)
+    let mut unlisted = (req.unlisted_options && req.codec == Some(kind)).then_some(kind);
+    if unlisted.is_some() {
+        tracing::warn!("codec: {} settings beyond what the device lists (the user's choice)", kind.name());
+        remote = as_asked(remote, None, unlisted);
+    }
     // Developer mode: Auto-select with the picked codec's own settings
     let own = req.codec_values.iter().find(|(k, _)| *k == kind).map(|(_, v)| v.clone());
     let req = match own.filter(|_| req.codec.is_none() && codec::dev::overrides().auto_codec_settings) {
@@ -1503,7 +1523,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     tracing::debug!(
         "codec: requested {:?} (fallback {}), chose {} ({})",
         req.codec.map(CodecKind::name),
-        req.codec_fallback,
+        fallback,
         kind.name(),
         if req.codec.is_none() {
             "auto: best the device offers"
@@ -1641,7 +1661,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
     if let Err(failure) = &configured
         && !stopped()
         && forced.is_none()
-        && sbc_xq_fallback(kind, failure, req.codec, req.codec_fallback)
+        && sbc_xq_fallback(kind, failure, req.codec, fallback)
     {
         // The sink lists dual channel but refuses it. BTstack's A2DP setup
         // of this connection ends with the refusal: connect again and take
@@ -1656,6 +1676,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             Err(f) => return inner.notify(StreamState::Error, rom_or(&host, connect_error(Some(f)))),
         };
         kind = CodecKind::Sbc;
+        unlisted = None;
         if req.codec.is_some() && replaced.is_none() {
             replaced = Some((CodecKind::SbcXq, Unavailable::NotSupported));
         }
@@ -1675,10 +1696,19 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
                 tracing::error!("{e}");
             }
             host.disconnect();
+            // What the user chose beyond what the device lists: say so, and
+            // how to get sound back (issue #86)
+            let msg = if forced.is_some() {
+                Msg::with("error.codec_unsupported_refused", &[&kind.name()])
+            } else if unlisted.is_some() {
+                Msg::with("error.codec_unlisted_refused", &[&kind.name()])
+            } else {
+                Msg::new("error.codec_configure")
+            };
             return if stopped() {
                 inner.notify(StreamState::Idle, Msg::new("status.ready"))
             } else {
-                inner.notify(StreamState::Error, rom_or(&host, Msg::new("error.codec_configure")))
+                inner.notify(StreamState::Error, rom_or(&host, msg))
             };
         }
     };
@@ -1785,7 +1815,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
 
     // A reconnect builds the configuration anew from what the device lists
     // then (v1 read its capabilities again)
-    let rebuild = |r: &RemoteCaps| match with_forced(r.clone(), forced).configuration_with(
+    let rebuild = |r: &RemoteCaps| match as_asked(r.clone(), forced, unlisted).configuration_with(
         kind,
         format.sample_rate,
         channels,
@@ -2209,7 +2239,7 @@ pub(crate) fn run(inner: &Arc<Inner>, req: StreamRequest) {
             }
             break;
         };
-        r.remote = with_forced(r.remote, forced);
+        r.remote = as_asked(r.remote, forced, unlisted);
         // The encoder follows the new stream: its MTU and the device's
         // settings (e.g. its SBC bitpool range) may have changed
         let new_config =

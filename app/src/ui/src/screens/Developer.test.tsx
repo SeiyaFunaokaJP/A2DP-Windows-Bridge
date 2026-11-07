@@ -88,13 +88,13 @@ describe("developer screen", () => {
     expect(core.state.snap!.settings.dev_overrides.rtp_marker).toBe(false);
   });
 
-  it("saves the forced connection with the overrides", async () => {
+  it("saves a codec override with the others", async () => {
     const { core } = await open();
     await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
     fireEvent.click(await screen.findByRole("tab", { name: t("ui.dev.codec_settings") }));
-    fireEvent.click(await screen.findByRole("switch", { name: new RegExp(t("ui.dev.force_codec")) }));
+    fireEvent.click(await screen.findByRole("switch", { name: new RegExp(t("ui.dev.auto_codec_settings")) }));
     await screen.findByText(t("ui.dev.active"));
-    expect(core.state.snap!.settings.dev_overrides.force_codec).toBe(true);
+    expect(core.state.snap!.settings.dev_overrides.auto_codec_settings).toBe(true);
   });
 
   it("keeps the Volume Mixer switch in the app settings (issue #86)", async () => {

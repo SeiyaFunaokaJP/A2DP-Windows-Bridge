@@ -60,6 +60,8 @@ export function newProfile(): Profile {
     quality: "hq",
     abr: false,
     codec_fallback: true,
+    codec_forced: false,
+    unlisted_options: false,
     sample_rate: 0,
     bit_depth: 0,
     // Every new device captures System Loopback (issue #86: it plays with
@@ -176,6 +178,7 @@ export function codecValues(p: Profile): CodecValues {
     sbc_subbands: p.sbc_subbands,
     sbc_allocation: p.sbc_allocation,
     sbc_channel_mode: p.sbc_channel_mode,
+    unlisted_options: p.unlisted_options,
   };
 }
 

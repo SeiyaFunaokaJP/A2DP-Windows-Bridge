@@ -42,6 +42,8 @@ Usage: bluecaster-core --cli [-d XX:XX:XX:XX:XX:XX] [options]
   -a                    adaptive bit rate (LDAC, LHDC V5, aptX Adaptive; SBC / SBC XQ: bitpool)
   --fallback            a codec -c the device does not offer falls back to the
                         best one it offers (as the app does), instead of an error
+  --force-codec         a codec -c the device does not offer is asked for anyway
+  --unlisted-options    the codec's settings beyond what the device lists
   --no-experimental     never use the experimental codecs (aptX HD, aptX LL, Opus,
                         Opus 05, FastStream: experimental in the README)
   -m <mode>             capture: loopback (default), virtual, app
@@ -119,6 +121,10 @@ struct Args {
     abr: bool,
     /// --fallback: a codec the device does not offer falls back, as a profile's
     fallback: bool,
+    /// --force-codec: a codec the device does not offer is asked for anyway
+    force_codec: bool,
+    /// --unlisted-options: settings beyond what the device lists
+    unlisted_options: bool,
     /// --no-experimental: settings experimental_codecs off
     no_experimental: bool,
     mode: String,
@@ -207,6 +213,8 @@ fn parse(args: &[String]) -> Result<Args, String> {
         quality: Quality::High,
         abr: false,
         fallback: false,
+        force_codec: false,
+        unlisted_options: false,
         no_experimental: false,
         mode: "loopback".into(),
         audio_device: String::new(),
@@ -261,6 +269,8 @@ fn parse(args: &[String]) -> Result<Args, String> {
             "-q" => a.quality = Quality::from_key(&value(&mut it, "-q")?.to_lowercase()),
             "-a" => a.abr = true,
             "--fallback" => a.fallback = true,
+            "--force-codec" => a.force_codec = true,
+            "--unlisted-options" => a.unlisted_options = true,
             "--no-experimental" => a.no_experimental = true,
             "-m" => a.mode = value(&mut it, "-m")?.to_lowercase(),
             "--audio-device" => a.audio_device = value(&mut it, "--audio-device")?,
@@ -613,6 +623,8 @@ pub fn run(args: &[String]) -> i32 {
         device_name,
         codec: a.codec,
         codec_fallback: a.fallback,
+        codec_forced: a.force_codec,
+        unlisted_options: a.unlisted_options,
         experimental_codecs: !a.no_experimental,
         auto_order: codec::AutoOrder::default(),
         quality: a.quality,

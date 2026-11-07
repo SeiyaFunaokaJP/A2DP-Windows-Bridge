@@ -14,6 +14,16 @@ codec: string,
  */
 quality: string, abr: boolean, codec_fallback: boolean, 
 /**
+ * The codec was chosen on its card while the device did not offer it:
+ * asked for anyway, no fallback (issue #86)
+ */
+codec_forced: boolean, 
+/**
+ * The codec's settings are not held to what the device lists (its
+ * card's "Show only supported options" off, issue #86)
+ */
+unlisted_options: boolean, 
+/**
  * 0 = auto
  */
 sample_rate: number, 
