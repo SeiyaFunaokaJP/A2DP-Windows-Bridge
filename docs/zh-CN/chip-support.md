@@ -83,7 +83,7 @@ BlueCaster 自己驱动 Bluetooth 适配器（WinUSB），因此在适配器能�
 注意驱动程序在步骤之间留出的延迟（看抓包的时间戳）：仍在复位的芯片不会应答。
 
 {: .warning }
-请以抓包、探测报告和厂商文档为依据。不要复制或照搬 GPL 代码，例如 Linux 内核的 `btmtk` 或 `btqca` 驱动程序：BlueCaster 采用 MIT 许可证，由它们派生的加载程序无法被收录。
+请以抓包、探测报告和厂商文档为依据。不要复制或照搬 GPL 代码，例如 Linux 内核的 `btmtk` 或 `btqca` 驱动程序：BlueCaster 采用 Apache-2.0 或 MIT 许可证，由它们派生的加载程序无法被收录。
 
 ## 无需构建即可试用：芯片脚本 {#chip-scripts}
 

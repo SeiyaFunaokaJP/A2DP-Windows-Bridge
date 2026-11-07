@@ -83,7 +83,7 @@ Ce qu'il faut chercher, dans l'ordre :
 Notez tout délai que le pilote respecte entre deux étapes (horodatages de la capture) : une puce encore en cours de réinitialisation ne répond pas.
 
 {: .warning }
-Travaillez à partir des captures, des rapports de sonde et de la documentation du fabricant. Ne copiez pas de code GPL et ne le suivez pas de près, par exemple les pilotes `btmtk` ou `btqca` du noyau Linux : BlueCaster est sous licence MIT, et un chargeur qui en serait dérivé ne pourrait pas être intégré.
+Travaillez à partir des captures, des rapports de sonde et de la documentation du fabricant. Ne copiez pas de code GPL et ne le suivez pas de près, par exemple les pilotes `btmtk` ou `btqca` du noyau Linux : BlueCaster est sous licence Apache-2.0 ou MIT, et un chargeur qui en serait dérivé ne pourrait pas être intégré.
 
 ## Essayer sans compiler : les scripts de puce {#chip-scripts}
 

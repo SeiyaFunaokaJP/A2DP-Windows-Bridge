@@ -82,7 +82,7 @@ What to look for, in order:
 Note any delay the driver keeps between steps (the capture's timestamps): a chip that is still resetting does not answer.
 
 {: .warning }
-Work from captures, probe reports and vendor documentation. Do not copy or closely follow GPL code, such as the Linux kernel's `btmtk` or `btqca` drivers: BlueCaster is MIT licensed, and a loader derived from them could not be included.
+Work from captures, probe reports and vendor documentation. Do not copy or closely follow GPL code, such as the Linux kernel's `btmtk` or `btqca` drivers: BlueCaster is licensed under Apache-2.0 or MIT, and a loader derived from them could not be included.
 
 ## Try it without a build: chip scripts {#chip-scripts}
 
