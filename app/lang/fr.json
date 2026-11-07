@@ -921,6 +921,7 @@
   "ui.pairing.key_type": "Type %u",
   "ui.pairing.no_key": "Aucune clé de liaison enregistrée",
   "ui.pairing.copy_key": "Copier la clé",
+  "ui.pairing.reverse_bytes": "Inverser l'ordre des octets",
   "ui.pairing.copied": "Copié dans le presse-papiers",
   "ui.pairing.secret": "Toute personne ayant ces clés peut se faire passer pour cet appareil.",
   "ui.pairing.services": "Services",

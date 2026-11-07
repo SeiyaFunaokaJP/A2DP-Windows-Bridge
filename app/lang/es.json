@@ -921,6 +921,7 @@
   "ui.pairing.key_type": "Tipo %u",
   "ui.pairing.no_key": "No hay clave de enlace guardada",
   "ui.pairing.copy_key": "Copiar clave",
+  "ui.pairing.reverse_bytes": "Invertir el orden de bytes",
   "ui.pairing.copied": "Copiado al portapapeles",
   "ui.pairing.secret": "Cualquiera con estas claves puede hacerse pasar por este dispositivo.",
   "ui.pairing.services": "Servicios",

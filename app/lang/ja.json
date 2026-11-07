@@ -922,6 +922,7 @@
   "ui.pairing.key_type": "種類 %u",
   "ui.pairing.no_key": "リンクキーは保存されていません",
   "ui.pairing.copy_key": "キーをコピー",
+  "ui.pairing.reverse_bytes": "バイト順を反転",
   "ui.pairing.copied": "クリップボードにコピーしました",
   "ui.pairing.secret": "これらのキーがあれば誰でもこのデバイスになりすませます。",
   "ui.pairing.services": "サービス",

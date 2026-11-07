@@ -51,3 +51,8 @@ export function serviceName(uuid: string): string | null {
 export function serviceLabel(s: { uuids: string[]; name: string | null }): string | null {
   return s.uuids.map((u) => serviceName(u)).find((n) => n) ?? s.name;
 }
+
+/** Hex digits with their bytes in the other order ("0a1b2c" -> "2c1b0a") */
+export function reverseBytes(hex: string): string {
+  return (hex.match(/../g) ?? []).reverse().join("");
+}

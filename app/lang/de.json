@@ -921,6 +921,7 @@
   "ui.pairing.key_type": "Typ %u",
   "ui.pairing.no_key": "Kein Verbindungsschlüssel gespeichert",
   "ui.pairing.copy_key": "Schlüssel kopieren",
+  "ui.pairing.reverse_bytes": "Bytereihenfolge umkehren",
   "ui.pairing.copied": "In die Zwischenablage kopiert",
   "ui.pairing.secret": "Wer diese Schlüssel hat, kann sich als dieses Gerät ausgeben.",
   "ui.pairing.services": "Dienste",

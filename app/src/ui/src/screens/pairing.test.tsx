@@ -89,6 +89,32 @@ describe("device pairing", () => {
     expect(within(dialog).queryByText(t("ui.pairing.le_keys_hint"))).toBeNull();
   });
 
+  it("reverses a key's byte order, and copies it as shown (issue #86)", async () => {
+    await open("#/devices", true);
+    const [tag] = await screen.findAllByRole("button", { name: t("ui.pairing.services") });
+    fireEvent.click(tag);
+    const dialog = await screen.findByRole("dialog", { name: t("ui.pairing.services") });
+    await within(dialog).findByText("00112233445566778899AABBCCDDEEFF");
+    const [reverse] = within(dialog).getAllByRole("button", { name: t("ui.pairing.reverse_bytes") });
+    expect(reverse).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(reverse);
+    expect(within(dialog).getByText("FFEEDDCCBBAA99887766554433221100")).toBeInTheDocument();
+    expect(reverse).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(reverse);
+    expect(within(dialog).getByText("00112233445566778899AABBCCDDEEFF")).toBeInTheDocument();
+  });
+
+  it("asks for the services again while another query runs (issue #86)", async () => {
+    const { calls } = await open("#/devices", true);
+    mock!.servicesBusy = 2;
+    const [tag] = await screen.findAllByRole("button", { name: t("ui.pairing.services") });
+    fireEvent.click(tag);
+    const dialog = await screen.findByRole("dialog", { name: t("ui.pairing.services") });
+    expect(await within(dialog).findByRole("table", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(within(dialog).queryByText(t("ipc.error.services_busy"))).toBeNull();
+    expect(calls.filter((c) => c.method === "device.services")).toHaveLength(3);
+  });
+
   it("imports Windows' pairings on Audio Devices, without developer mode (issue #86)", async () => {
     const { calls } = await open("#/devices", false);
     // Only while Windows lists a device BlueCaster has not saved

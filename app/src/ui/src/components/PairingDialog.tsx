@@ -4,13 +4,19 @@
 // link key BlueCaster keeps for it and the LE keys derived from it (LE
 // Audio on), each "not available" when BlueCaster has none.
 
-import { createResource, For, Show } from "solid-js";
+import { createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import { errorText, useApp } from "../app/context";
 import { t } from "../i18n";
-import type { Device } from "../ipc/types";
+import { IpcError, type Device, type DeviceService } from "../ipc/types";
 import { copyText } from "../lib/format";
-import { serviceLabel } from "../lib/pairing";
+import { reverseBytes, serviceLabel } from "../lib/pairing";
 import { Button, Dialog } from "./controls";
+
+/** How often and how long the services are asked again while another
+ *  query runs (issue #86: the stack's own SDP queries while connecting, or
+ *  the last one of this dialog; the core gives one up after 15 s) */
+const BUSY_RETRY_MS = 500;
+const BUSY_RETRIES = 30;
 
 export function PairingDialog(props: { device: Device | null; onClose: () => void }) {
   const app = useApp();
@@ -22,12 +28,23 @@ export function PairingDialog(props: { device: Device | null; onClose: () => voi
       .then((p) => ({ key: p.link_key, le: p.le_keys, error: null as string | null }))
       .catch((e: unknown) => ({ key: null, le: null, error: errorText(e) })),
   );
-  const [services] = createResource(address, (a) =>
-    app.core
-      .request("device.services", { address: a })
-      .then((l) => ({ list: l.services, last: l.from_last_connection, error: null as string | null }))
-      .catch((e: unknown) => ({ list: [], last: false, error: errorText(e) })),
-  );
+  let closed = false;
+  onCleanup(() => (closed = true));
+  // Busy: still loading, asked again shortly, never shown as an error
+  // unless it lasts
+  const askServices = async (a: string, retries: number): Promise<{ list: DeviceService[]; last: boolean; error: string | null }> => {
+    try {
+      const l = await app.core.request("device.services", { address: a });
+      return { list: l.services, last: l.from_last_connection, error: null };
+    } catch (e: unknown) {
+      if (IpcError.from(e).code === "device.busy" && retries > 0 && !closed && address() === a) {
+        await new Promise((r) => setTimeout(r, BUSY_RETRY_MS));
+        return askServices(a, retries - 1);
+      }
+      return { list: [], last: false, error: errorText(e) };
+    }
+  };
+  const [services] = createResource(address, (a) => askServices(a, BUSY_RETRIES));
   const copy = async (text: string) =>
     app.notify(t((await copyText(text)) ? "ui.pairing.copied" : "dbgc.copy_failed"));
   const name = () => props.device?.name || t("device.name_unknown");
@@ -119,29 +136,38 @@ export function PairingDialog(props: { device: Device | null; onClose: () => voi
   );
 }
 
-/** One key: its hex digits (upper case) with a copy button, or "not available" */
+/** One key: its hex digits (upper case) with a copy button and one that
+ *  reverses the byte order (issue #86: other systems keep some keys the
+ *  other way round), or "not available" */
 function KeyRow(props: {
   name: string;
   value: string | null | undefined;
   tag?: string;
   copy: (text: string) => Promise<unknown>;
 }) {
+  const [reversed, setReversed] = createSignal(false);
   return (
     <>
       <dt>{props.name}</dt>
       <dd>
         <Show when={props.value} fallback={<span class="muted">{t("ui.pairing.not_available")}</span>}>
-          {(v) => (
-            <>
-              <code class="mono pairing-key">{v().toUpperCase()}</code>{" "}
-              <Show when={props.tag}>
-                <span class="tag">{props.tag}</span>{" "}
-              </Show>
-              <Button icon="copy" onClick={() => void props.copy(v().toUpperCase())}>
-                {t("ui.pairing.copy_key")}
-              </Button>
-            </>
-          )}
+          {(v) => {
+            const shown = () => (reversed() ? reverseBytes(v()) : v()).toUpperCase();
+            return (
+              <>
+                <code class="mono pairing-key">{shown()}</code>{" "}
+                <Show when={props.tag}>
+                  <span class="tag">{props.tag}</span>{" "}
+                </Show>
+                <Button icon="copy" onClick={() => void props.copy(shown())}>
+                  {t("ui.pairing.copy_key")}
+                </Button>{" "}
+                <Button aria-pressed={reversed()} onClick={() => setReversed(!reversed())}>
+                  {t("ui.pairing.reverse_bytes")}
+                </Button>
+              </>
+            );
+          }}
         </Show>
       </dd>
     </>

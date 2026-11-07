@@ -637,6 +637,8 @@ export class MockCore implements Transport {
   windowsPaired: string[] = [];
   /** LE keys of the saved devices (device.pairing), as derived with LE Audio on */
   leKeys: DevicePairing["le_keys"] = null;
+  /** device.services answers "busy" this many times first (another query runs) */
+  servicesBusy = 0;
   readonly window: WindowKind;
   readonly mica = false;
   readonly version = "2.0.0-alpha.1";
@@ -754,6 +756,10 @@ export class MockCore implements Transport {
         };
       }
       case "device.services":
+        if (this.servicesBusy > 0) {
+          this.servicesBusy -= 1;
+          throw errorInfo("device.busy", "ipc.error.services_busy");
+        }
         return {
           services: [
             { uuids: ["0000110b-0000-1000-8000-00805f9b34fb"], name: "Audio Sink" },

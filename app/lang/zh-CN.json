@@ -921,6 +921,7 @@
   "ui.pairing.key_type": "类型 %u",
   "ui.pairing.no_key": "未保存链接密钥",
   "ui.pairing.copy_key": "复制密钥",
+  "ui.pairing.reverse_bytes": "反转字节顺序",
   "ui.pairing.copied": "已复制到剪贴板",
   "ui.pairing.secret": "任何持有这些密钥的人都可以冒充此设备。",
   "ui.pairing.services": "服务",
