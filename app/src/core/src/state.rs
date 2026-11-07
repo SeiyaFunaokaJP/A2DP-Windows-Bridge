@@ -443,6 +443,9 @@ fn vendor_note(vendor: ChipVendor, vid: u16, pid: u16) -> Option<Msg> {
         ChipVendor::Intel => "firmware.vendor_intel",
         ChipVendor::Broadcom => "firmware.vendor_broadcom",
         ChipVendor::Csr => "firmware.vendor_csr",
+        ChipVendor::Barrot => "firmware.vendor_barrot",
+        ChipVendor::Marvell => "firmware.vendor_marvell",
+        ChipVendor::Actions => "firmware.vendor_actions",
         ChipVendor::MediaTek => "firmware.vendor_mediatek",
         ChipVendor::Qualcomm => "firmware.vendor_qualcomm",
         ChipVendor::Realtek | ChipVendor::Unknown => return None,
@@ -3774,6 +3777,10 @@ mod tests {
         assert_eq!(vendor_note(ChipVendor::MediaTek, 0x0E8D, 0x0608).unwrap().key, "firmware.vendor_mediatek");
         assert_eq!(vendor_note(ChipVendor::MediaTek, 0x0E8D, 0x6639).unwrap().key, "firmware.vendor_unsupported");
         assert!(vendor_note(ChipVendor::Realtek, 0x0BDA, 0x8771).is_none());
+        // ROM dongles and Wi-Fi-loaded combos: a note, never "unsupported"
+        assert_eq!(vendor_note(ChipVendor::Barrot, 0x33FA, 0x0010).unwrap().key, "firmware.vendor_barrot");
+        assert_eq!(vendor_note(ChipVendor::Marvell, 0x1286, 0x204C).unwrap().key, "firmware.vendor_marvell");
+        assert_eq!(vendor_note(ChipVendor::Actions, 0x10D7, 0xB012).unwrap().key, "firmware.vendor_actions");
     }
 
     #[test]

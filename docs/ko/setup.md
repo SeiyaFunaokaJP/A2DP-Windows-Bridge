@@ -166,6 +166,9 @@ BlueCaster에서 실제로 사용된 어댑터와 헤드폰, 그 코덱과 보�
 |:-----|:--------|:-----|
 | Realtek | TP-Link UB500, RTL8761BU | 펌웨어 다운로드 필요(위 참조). 가장 많이 테스트됨 |
 | CSR | 일반 CSR8510 동글 | 바로 작동하며 펌웨어 불필요 |
+| Barrot | Bluetooth 5.4 / 6.0 동글(`33FA:0010`, `33FA:0012`) | ROM 펌웨어로 작동하며 펌웨어 불필요. 지금까지 사용자 보고 1건 |
+| Marvell | Microsoft Surface Pro / Surface Book 내장(88W8897) | *실험적.* 펌웨어 파일 불필요: Wi-Fi 드라이버가 Bluetooth 펌웨어도 불러오므로 Wi-Fi를 켜 두세요. 실제 하드웨어에서는 아직 테스트되지 않았습니다 |
+| Actions | ATS2851 동글 (`10D7:B012`) | *실험적.* ROM 펌웨어로 동작하며 펌웨어가 필요 없습니다. 실행할 수 없는 명령을 지원한다고 알리므로 BlueCaster가 숨깁니다. 아직 실제 하드웨어에서 테스트되지 않음 |
 | Broadcom | ASUS BT400 (BCM20702) | *실험적.* Bluetooth `E0/01/01` 대신 벤더 클래스 `FF/01/01`을 보고하는 어댑터(BCM20702 OEM 동글)도 감지됩니다. ROM 펌웨어로 작동하며, 펌웨어 폴더에 선택적인 PatchRAM `.hcd`(예: `BCM20702A1-0b05-17cb.hcd`)가 있으면 시작 시 업로드됩니다 |
 | Intel | Intel 7260 / 3160 / 7265 / 3165 / 3168 / 8260 / 8265 / 9260 / AX200 / AX201 / AX210 / AX211 | *실험적.* 부트로더 모드(예: 콜드 부팅 직후)에서는 linux-firmware `intel/`의 해당 `ibt-*.sfi` + `ibt-*.ddc`가 펌웨어 폴더에 필요합니다. 필요한 파일 이름은 로그에 나옵니다(예: `ibt-0180-0041.sfi`). 7260 / 3160 / 7265 / 3165 / 3168은 ROM으로 동작하므로 파일이 필요 없습니다. 같은 폴더에 해당 `ibt-hw-*.bseq` 패치가 있으면 적용합니다. 지금까지 테스트된 것은 AX211뿐입니다 |
 | MediaTek | MT7925, MT7922, MT7921, MT7902(AMD RZ717, RZ616, RZ608 등 Wi-Fi 카드) | *실험적.* 칩에 맞는 `BT_RAM_CODE_MT*_hdr.bin`(예: `BT_RAM_CODE_MT7925_1_1_hdr.bin`)이 필요합니다. MediaTek의 Windows Bluetooth 드라이버가 설치되어 있으면 BlueCaster가 거기서 읽고, 없으면 linux-firmware `mediatek/`의 파일을 펌웨어 폴더에 넣으십시오. 필요한 파일 이름은 로그에 나옵니다. 아직 실제 하드웨어에서 테스트되지 않았습니다 |
