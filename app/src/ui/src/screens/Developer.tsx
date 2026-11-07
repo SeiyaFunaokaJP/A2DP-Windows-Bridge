@@ -88,6 +88,13 @@ export function Developer() {
               onChange={(v) => void saveSettings(app, { volume_mixer: v })}
             />
           </Section>
+          <Section title={t("update.check")}>
+            <Toggle
+              label={t("ui.dev.include_alphas")}
+              checked={settings().include_alphas}
+              onChange={(v) => void saveSettings(app, { include_alphas: v })}
+            />
+          </Section>
           <div>
             <Button icon="arrow_reset" disabled={allDefault()} onClick={resetAll}>
               {t("ui.dev.reset_all")}

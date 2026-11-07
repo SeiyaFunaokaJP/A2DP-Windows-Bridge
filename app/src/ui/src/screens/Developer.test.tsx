@@ -108,6 +108,13 @@ describe("developer screen", () => {
     expect(screen.queryByRole("switch", { name: new RegExp(t("ui.dev.volume_mixer")) })).toBeNull();
   });
 
+  it("saves the alpha update channel in the app settings", async () => {
+    const { core } = await open();
+    await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });
+    fireEvent.click(await screen.findByRole("switch", { name: t("ui.dev.include_alphas") }));
+    await waitFor(() => expect(core.state.snap!.settings.include_alphas).toBe(true));
+  });
+
   it("saves the logging settings in range and puts markers in the log", async () => {
     const { core, calls } = await open();
     await core.request("settings.set", { settings: { ...core.state.snap!.settings, developer_mode: true } });

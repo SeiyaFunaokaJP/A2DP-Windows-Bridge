@@ -167,6 +167,7 @@ export function sampleSettings(over: Partial<Settings> = {}): Settings {
     battery_low_percent: 20,
     check_updates_on_startup: true,
     include_prereleases: false,
+    include_alphas: false,
     media_keys: true,
     auto_reconnect: true,
     volume_sync: true,

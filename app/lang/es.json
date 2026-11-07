@@ -417,6 +417,7 @@
   "ui.dev.ignore_sink_max": "Ignorar la tasa de bits máxima del dispositivo",
   "ui.dev.volume_mixer": "Usar el mezclador de volumen",
   "ui.dev.volume_mixer_hint": "No recomendado: puede no coincidir con los controles de volumen de Windows. Usa VB-Cable.",
+  "ui.dev.include_alphas": "Incluir versiones alfa al buscar actualizaciones",
   "ui.dev.rtp_marker": "Bit marcador RTP",
   "ui.dev.packet_dump": "Registrar los primeros paquetes",
   "ui.dev.packet_dump_hint": "Tamaño, marca de tiempo y primeros bytes, en el registro.",
