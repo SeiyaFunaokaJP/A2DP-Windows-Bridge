@@ -96,7 +96,7 @@ BlueCaster 还会一直记录一些内容，这样即使问题只发生过一次
 
 ### 适配器
 
-- 检测到的 USB Bluetooth 适配器及其芯片、地址、USB ID、Bluetooth 版本、**驱动程序**和**固件**；插入或拔出适配器时列表会自动更新。驱动程序为**原始驱动程序**（Windows 或制造商安装的驱动程序；将鼠标悬停其上可查看其名称）或 **WinUSB 驱动程序**（BlueCaster 使用的驱动程序）。Realtek 适配器即使尚未使用过，也会显示其地址（来自其 USB 序列号）；其他适配器的地址和 Bluetooth 版本要在 Windows 的 Bluetooth 或 BlueCaster 使用过该适配器后才会显示（将鼠标悬停在该行上可查看原因）。BlueCaster 无法使用的适配器（MediaTek、Qualcomm）保留其驱动程序：其 WinUSB 和固件按钮处于禁用状态。Intel 和 Broadcom 适配器带有**实验性**标记。在开发者模式下仍可为其分配 WinUSB；在使用 WinUSB 的适配器上点 **读取芯片信息**，会把芯片对几条读取命令的应答保存到 `logs\probe\`，供想为它添加支持的人使用（期间蓝牙会停止，下次使用时重新启动）；之后**在 GitHub 上报告**会新建一个已填好这些信息的 issue。由 BlueCaster 自行加载固件的适配器（Intel）启动期间，此页面会显示加载情况以及是否失败
+- 检测到的 USB Bluetooth 适配器及其芯片、地址、USB ID、Bluetooth 版本、**驱动程序**和**固件**；插入或拔出适配器时列表会自动更新。驱动程序为**原始驱动程序**（Windows 或制造商安装的驱动程序；将鼠标悬停其上可查看其名称）或 **WinUSB 驱动程序**（BlueCaster 使用的驱动程序）。Realtek 适配器即使尚未使用过，也会显示其地址（来自其 USB 序列号）；其他适配器的地址和 Bluetooth 版本要在 Windows 的 Bluetooth 或 BlueCaster 使用过该适配器后才会显示（将鼠标悬停在该行上可查看原因）。BlueCaster 无法使用的适配器（Qualcomm、部分 MediaTek）保留其驱动程序：其 WinUSB 和固件按钮处于禁用状态。Intel、MediaTek MT79xx 和 Broadcom 适配器带有**实验性**标记。在开发者模式下仍可为其分配 WinUSB；在使用 WinUSB 的适配器上点 **读取芯片信息**，会把芯片对几条读取命令的应答保存到 `logs\probe\`，供想为它添加支持的人使用（期间蓝牙会停止，下次使用时重新启动）；之后**在 GitHub 上报告**会新建一个已填好这些信息的 issue。由 BlueCaster 自行加载固件的适配器（Intel、MediaTek）启动期间，此页面会显示加载情况以及是否失败
 - **替换为 WinUSB 驱动程序** / **恢复原始驱动程序**（请参阅[安装与设置](setup#winusb)）；每次操作 Windows 都会请求管理员权限。恢复之前，对话框会列出 Windows 也配对过的已保存设备：BlueCaster 的配对为它们生成了新密钥，因此它们可能需要在 Windows 中重新配对
 - 用于固件的 **Bluetooth 芯片**，以及**下载固件**、**打开下载页面**和**打开固件文件夹**（请参阅[固件](setup#firmware)）
 - **避开 Wi-Fi 信道**：自动、关或手动，旁边显示 Wi-Fi 信道：自动时为当前避开的信道，关时不显示（两者均为只读），手动时为您输入的信道（请参阅[链路质量与 AFH](#link-quality)）

@@ -10,6 +10,8 @@ export const LINKS = {
   /** Realtek firmware: linux-firmware rtl_bt (v1 wx_firmware_dialog.cpp) */
   firmwareRealtek: "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/rtl_bt",
   firmwareIntel: "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/intel",
+  /** MediaTek: read from its Windows driver; linux-firmware has the same files */
+  firmwareMediaTek: "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/mediatek",
   /** linux-firmware has no Broadcom .hcd; this collects them from the Windows drivers */
   firmwareBroadcom: "https://github.com/winterheart/broadcom-bt-firmware",
   releases: `${REPO}/releases`,
@@ -130,6 +132,7 @@ export function chipReportUrl(r: ChipReport): string {
 export function firmwareUrl(vendor: string): string {
   const v = vendor.toLowerCase();
   if (v.includes("intel")) return LINKS.firmwareIntel;
+  if (v.includes("mediatek")) return LINKS.firmwareMediaTek;
   if (v.includes("broadcom")) return LINKS.firmwareBroadcom;
   return LINKS.firmwareRealtek;
 }
@@ -139,6 +142,7 @@ export function firmwareUrl(vendor: string): string {
 export function vendorFirmwareUrl(vendor: string): string | null {
   const v = vendor.toLowerCase();
   if (v.includes("intel")) return LINKS.firmwareIntel;
+  if (v.includes("mediatek")) return LINKS.firmwareMediaTek;
   if (v.includes("broadcom")) return LINKS.firmwareBroadcom;
   return null;
 }

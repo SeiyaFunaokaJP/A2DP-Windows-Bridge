@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # Ajouter la prise en charge d'une puce
 
-BlueCaster pilote lui-même l'adaptateur Bluetooth (WinUSB) : il doit donc faire ce que fait le pilote Windows du fabricant avant que l'adaptateur fonctionne, c'est-à-dire, pour de nombreuses puces, y charger un firmware à chaque démarrage. Les adaptateurs Realtek, Intel, Broadcom et CSR fonctionnent déjà ; MediaTek (MT7921, MT7922 et d'autres) et Qualcomm (QCA61x4) non, car personne n'a encore écrit leur chargeur.
+BlueCaster pilote lui-même l'adaptateur Bluetooth (WinUSB) : il doit donc faire ce que fait le pilote Windows du fabricant avant que l'adaptateur fonctionne, c'est-à-dire, pour de nombreuses puces, y charger un firmware à chaque démarrage. Les adaptateurs Realtek, Intel, Broadcom et CSR fonctionnent déjà, et les MediaTek MT7925, MT7922, MT7921 et MT7902 à titre expérimental ; les autres puces MediaTek (MT7927 et de plus anciennes) et Qualcomm (QCA61x4) non, car personne n'a encore écrit leur chargeur. `app/src/crates/bt-host/src/mediatek.rs` (celui des MT79xx) est un vrai chargeur sur lequel s'appuyer pour une autre puce MediaTek.
 
 Cette page décrit la marche à suivre pour en ajouter un. Il vous faut un adaptateur équipé de cette puce ; les mainteneurs n'en ont pas. Même sans écrire de code, vous pouvez aider : les étapes 1 et 2 produisent le rapport dont un contributeur a besoin.
 

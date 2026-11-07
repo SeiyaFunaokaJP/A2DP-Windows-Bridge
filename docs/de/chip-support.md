@@ -7,7 +7,7 @@ nav_order: 3.5
 
 # Unterstützung für Chips hinzufügen
 
-BlueCaster steuert den Bluetooth-Adapter selbst (WinUSB) und muss daher erledigen, was sonst der Windows-Treiber des Herstellers tut, bevor der Adapter funktioniert: Bei vielen Chips heißt das, bei jedem Start eine Firmware in den Chip zu laden. Adapter von Realtek, Intel, Broadcom und CSR funktionieren bereits; MediaTek (MT7921, MT7922 und andere) und Qualcomm (QCA61x4) nicht, weil noch niemand ihren Loader geschrieben hat.
+BlueCaster steuert den Bluetooth-Adapter selbst (WinUSB) und muss daher erledigen, was sonst der Windows-Treiber des Herstellers tut, bevor der Adapter funktioniert: Bei vielen Chips heißt das, bei jedem Start eine Firmware in den Chip zu laden. Adapter von Realtek, Intel, Broadcom und CSR funktionieren bereits, die MediaTek-Chips MT7925, MT7922, MT7921 und MT7902 experimentell; die übrigen MediaTek-Chips (MT7927 und ältere) und Qualcomm (QCA61x4) nicht, weil noch niemand ihren Loader geschrieben hat. `app/src/crates/bt-host/src/mediatek.rs` (der der MT79xx) ist ein echter Loader, auf dem sich für einen weiteren MediaTek-Chip aufbauen lässt.
 
 Diese Seite beschreibt, wie man einen solchen Loader hinzufügt. Sie brauchen dafür einen Adapter mit dem betreffenden Chip; die Maintainer haben keinen. Auch ohne selbst Code zu schreiben, können Sie helfen: Die Schritte 1 und 2 liefern den Bericht, den ein Entwickler braucht.
 
